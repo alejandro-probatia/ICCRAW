@@ -52,6 +52,30 @@ app batch-develop ./raws --recipe recipe.yml --profile camera_profile.icc --out 
 app validate-profile samples.json --profile camera_profile.icc --out validation.json
 ```
 
+## Interfaz Gráfica Ligera
+
+La aplicación incluye una GUI simple basada en `tkinter` para operar el flujo sin comandos manuales:
+
+```bash
+app-ui
+```
+
+o directamente:
+
+```bash
+bash scripts/run_ui.sh
+```
+
+Pestañas disponibles:
+
+- `RAW Info`
+- `Develop`
+- `Detect + Sample`
+- `Build + Validate Profile`
+- `Batch Develop`
+
+La GUI escribe los mismos artefactos JSON/TIFF/ICC que la CLI, manteniendo trazabilidad.
+
 ## Receta reproducible
 
 Ver ejemplo en [testdata/recipes/scientific_recipe.yml](/home/alejandro/Repositorios/ICC-entrada/testdata/recipes/scientific_recipe.yml).

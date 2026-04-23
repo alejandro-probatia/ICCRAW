@@ -16,6 +16,7 @@ Pipeline científico reproducible:
 - `icc_entrada.export`: aplicación de perfil a lotes y export TIFF 16-bit.
 - `icc_entrada.reporting`: contexto de ejecución y trazabilidad.
 - `icc_entrada.cli`: interfaz de línea de comandos.
+- `icc_entrada.gui`: interfaz gráfica ligera (tkinter) sobre el mismo motor reproducible.
 
 ## Perfil ICC
 

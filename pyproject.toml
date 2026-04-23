@@ -25,6 +25,7 @@ dependencies = [
 
 [project.scripts]
 app = "icc_entrada.cli:main"
+app-ui = "icc_entrada.gui:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
