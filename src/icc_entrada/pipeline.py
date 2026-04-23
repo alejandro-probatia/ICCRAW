@@ -5,7 +5,6 @@ import subprocess
 import shutil
 import tempfile
 import numpy as np
-import rawpy
 
 from .models import DevelopResult, Recipe
 from .raw import raw_info
@@ -13,14 +12,18 @@ from .recipe import scientific_guard
 from .utils import read_image, write_tiff16
 
 
-DEMOSAIC_MAP = {
-    "linear": rawpy.DemosaicAlgorithm.LINEAR,
-    "vng": rawpy.DemosaicAlgorithm.VNG,
-    "ppg": rawpy.DemosaicAlgorithm.PPG,
-    "ahd": rawpy.DemosaicAlgorithm.AHD,
-    "dcb": rawpy.DemosaicAlgorithm.DCB,
-    "dht": rawpy.DemosaicAlgorithm.DHT,
-    "aa_hd": rawpy.DemosaicAlgorithm.AAHD,
+DCRAW_QUALITY_MAP = {
+    # dcraw -q:
+    # 0: linear, 1: VNG, 2: PPG, 3: AHD.
+    "linear": "0",
+    "vng": "1",
+    "ppg": "2",
+    "ahd": "3",
+    # Unsupported names map to closest reproducible mode.
+    "dcb": "3",
+    "dht": "3",
+    "aa_hd": "3",
+    "rcd": "3",
 }
 
 
@@ -62,74 +65,88 @@ def _develop_image(input_path: Path, recipe: Recipe) -> np.ndarray:
     if input_path.suffix.lower() not in RAW_SUFFIXES:
         return read_image(input_path)
 
-    demosaic = DEMOSAIC_MAP.get(recipe.demosaic_algorithm.lower(), rawpy.DemosaicAlgorithm.AHD)
-    use_camera_wb = recipe.white_balance_mode.lower() == "camera_metadata"
-    no_auto_bright = True
-
-    user_wb = None
-    if recipe.white_balance_mode.lower() == "fixed" and recipe.wb_multipliers:
-        vals = recipe.wb_multipliers
-        if len(vals) == 4:
-            user_wb = [float(vals[0]), float(vals[1]), float(vals[3])]
-        elif len(vals) == 3:
-            user_wb = [float(vals[0]), float(vals[1]), float(vals[2])]
-
-    gamma = (1.0, 1.0) if recipe.output_linear else (2.222, 4.5)
-
-    try:
-        with rawpy.imread(str(input_path)) as raw:
-            user_black = None
-            user_sat = None
-            mode = recipe.black_level_mode.lower()
-            if mode.startswith("fixed:"):
-                user_black = int(mode.split(":", 1)[1])
-            if mode.startswith("white:"):
-                user_sat = int(mode.split(":", 1)[1])
-
-            rgb = raw.postprocess(
-                output_bps=16,
-                gamma=gamma,
-                no_auto_bright=no_auto_bright,
-                use_auto_wb=False,
-                use_camera_wb=use_camera_wb,
-                user_wb=user_wb,
-                demosaic_algorithm=demosaic,
-                user_black=user_black,
-                user_sat=user_sat,
-                highlight_mode=rawpy.HighlightMode.Clip,
-                fbdd_noise_reduction=rawpy.FBDDNoiseReductionMode.Off,
-            )
-        return rgb.astype(np.float32) / 65535.0
-    except Exception:
+    developer = recipe.raw_developer.strip().lower()
+    if developer in {"", "dcraw", "dcraw-cli"}:
         return _develop_with_dcraw(input_path, recipe)
+    raise RuntimeError(f"raw_developer no soportado: {recipe.raw_developer}. Usa 'dcraw'.")
 
 
 def _develop_with_dcraw(input_path: Path, recipe: Recipe) -> np.ndarray:
     if shutil.which("dcraw") is None:
-        raise RuntimeError("No se pudo decodificar RAW: rawpy fallo y dcraw no esta disponible")
-
-    q_map = {"linear": "0", "vng": "1", "ppg": "2", "ahd": "3"}
-    q = q_map.get(recipe.demosaic_algorithm.lower(), "3")
+        raise RuntimeError("No se puede revelar RAW: 'dcraw' no esta disponible en PATH.")
+    cmd = _build_dcraw_command(input_path, recipe)
 
     with tempfile.TemporaryDirectory(prefix="icc_entrada_dcraw_") as tmp:
         out = Path(tmp) / "dcraw_out.tiff"
-        cmd = ["dcraw", "-T", "-4", "-o", "0", "-q", q]
-        if recipe.white_balance_mode.lower() == "camera_metadata":
-            cmd.append("-w")
-        if recipe.white_balance_mode.lower() == "fixed" and recipe.wb_multipliers:
-            wb = recipe.wb_multipliers
-            if len(wb) >= 3:
-                cmd.extend(["-r", str(wb[0]), str(wb[1]), str(wb[2]), str(wb[1])])
-        cmd.extend(["-c", str(input_path)])
-
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if proc.returncode != 0:
+            stderr_tail = proc.stderr.decode("utf-8", errors="ignore")[-400:]
             raise RuntimeError(
-                "No se pudo decodificar RAW con rawpy ni dcraw. "
-                f"dcraw stderr: {proc.stderr.decode('utf-8', errors='ignore')[-200:]}"
+                "Fallo de decodificacion RAW con dcraw. "
+                f"stderr: {stderr_tail}"
             )
+        if not proc.stdout:
+            raise RuntimeError("dcraw no devolvio datos TIFF en stdout.")
         out.write_bytes(proc.stdout)
         return read_image(out)
+
+
+def _build_dcraw_command(input_path: Path, recipe: Recipe) -> list[str]:
+    q = DCRAW_QUALITY_MAP.get(recipe.demosaic_algorithm.strip().lower(), "3")
+    cmd = [
+        "dcraw",
+        "-T",
+        "-4",
+        "-W",
+        "-H",
+        "0",
+        "-t",
+        "0",
+        "-o",
+        "0",
+        "-q",
+        q,
+    ]
+
+    wb_mode = recipe.white_balance_mode.strip().lower()
+    if wb_mode == "camera_metadata":
+        cmd.append("-w")
+    elif wb_mode == "fixed":
+        wb = _dcraw_wb(recipe.wb_multipliers)
+        if wb is not None:
+            cmd.extend(["-r", *(f"{v:.10g}" for v in wb)])
+
+    black_mode = recipe.black_level_mode.strip().lower()
+    if black_mode.startswith("fixed:"):
+        cmd.extend(["-k", str(_parse_int_mode_value(black_mode, "fixed"))])
+    elif black_mode.startswith("white:"):
+        cmd.extend(["-S", str(_parse_int_mode_value(black_mode, "white"))])
+
+    cmd.extend(["-c", str(input_path)])
+    return cmd
+
+
+def _dcraw_wb(values: list[float] | None) -> list[float] | None:
+    if not values:
+        return None
+    wb = [float(v) for v in values]
+    if len(wb) >= 4:
+        return [wb[0], wb[1], wb[2], wb[3]]
+    if len(wb) == 3:
+        # dcraw expects R G B G.
+        return [wb[0], wb[1], wb[2], wb[1]]
+    return None
+
+
+def _parse_int_mode_value(mode: str, prefix: str) -> int:
+    raw = mode.split(":", 1)[1]
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"Valor invalido para {prefix} level: {raw}") from exc
+    if value < 0:
+        raise RuntimeError(f"Valor invalido para {prefix} level: {raw}")
+    return value
 
 
 def _apply_srgb_oetf(x: np.ndarray) -> np.ndarray:

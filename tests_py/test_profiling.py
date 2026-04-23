@@ -3,9 +3,27 @@ import numpy as np
 
 from icc_entrada.models import PatchSample, Recipe, SampleSet
 from icc_entrada.profiling import build_profile
+import icc_entrada.profiling as profiling
 
 
-def test_build_profile_generates_icc_and_sidecar(tmp_path: Path):
+def test_build_profile_generates_icc_and_sidecar(tmp_path: Path, monkeypatch):
+    def fake_build_profile_with_argyll(
+        out_icc: Path,
+        measured_rgb: np.ndarray,
+        reference_xyz: np.ndarray,
+        patch_ids: list[str],
+        description: str,
+        extra_args: list[str] | None,
+    ) -> None:
+        icc_bytes = profiling.build_matrix_shaper_icc(
+            description=description,
+            matrix_camera_to_xyz=np.eye(3),
+            gamma=1.0,
+        )
+        out_icc.write_bytes(icc_bytes)
+
+    monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+
     samples = []
     for i in range(1, 25):
         samples.append(
@@ -34,3 +52,4 @@ def test_build_profile_generates_icc_and_sidecar(tmp_path: Path):
     assert out_icc.exists()
     assert out_icc.stat().st_size > 256
     assert Path(result.output_profile_json).exists()
+    assert result.metadata["profile_engine_used"] == "argyll"

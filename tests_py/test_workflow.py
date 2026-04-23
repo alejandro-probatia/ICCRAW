@@ -8,9 +8,27 @@ import tifffile
 from icc_entrada.recipe import load_recipe
 from icc_entrada.sampling import ReferenceCatalog
 from icc_entrada.workflow import auto_profile_batch
+import icc_entrada.profiling as profiling
 
 
-def test_auto_profile_batch_end_to_end(tmp_path: Path):
+def test_auto_profile_batch_end_to_end(tmp_path: Path, monkeypatch):
+    def fake_build_profile_with_argyll(
+        out_icc: Path,
+        measured_rgb: np.ndarray,
+        reference_xyz: np.ndarray,
+        patch_ids: list[str],
+        description: str,
+        extra_args: list[str] | None,
+    ) -> None:
+        icc_bytes = profiling.build_matrix_shaper_icc(
+            description=description,
+            matrix_camera_to_xyz=np.eye(3),
+            gamma=1.0,
+        )
+        out_icc.write_bytes(icc_bytes)
+
+    monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+
     charts_dir = tmp_path / "charts"
     targets_dir = tmp_path / "targets"
     out_dir = tmp_path / "out"

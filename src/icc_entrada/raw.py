@@ -3,8 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import subprocess
+from typing import Any
 
-import rawpy
+try:
+    import rawpy
+except Exception:  # pragma: no cover - optional dependency at runtime.
+    rawpy = None
 
 from .models import RawMetadata
 from .utils import sha256_file
@@ -15,6 +19,8 @@ def raw_info(path: Path) -> RawMetadata:
         raise FileNotFoundError(f"RAW no encontrado: {path}")
 
     exif = _read_exif(path)
+    if rawpy is None:
+        return _fallback_metadata(path, exif)
 
     try:
         with rawpy.imread(str(path)) as raw:
@@ -47,23 +53,7 @@ def raw_info(path: Path) -> RawMetadata:
                 intermediate_working_space="scene_linear_camera_rgb",
             )
     except Exception:
-        return RawMetadata(
-            source_file=str(path),
-            input_sha256=sha256_file(path),
-            camera_model=exif.get("Model") or exif.get("CameraModelName"),
-            cfa_pattern="unknown",
-            available_white_balance="unknown",
-            wb_multipliers=None,
-            black_level=None,
-            white_level=None,
-            color_matrix_hint=None,
-            iso=_to_int(exif.get("ISO")),
-            exposure_time_seconds=_to_float(exif.get("ExposureTime")),
-            lens_model=exif.get("LensModel") or exif.get("LensID") or exif.get("LensType"),
-            capture_datetime=exif.get("DateTimeOriginal") or exif.get("CreateDate"),
-            dimensions=None,
-            intermediate_working_space="scene_linear_camera_rgb",
-        )
+        return _fallback_metadata(path, exif)
 
 
 def _read_exif(path: Path) -> dict:
@@ -103,7 +93,43 @@ def _to_float(value) -> float | None:
         return None
 
 
-def _cfa_name(raw: rawpy.RawPy) -> str:
+def _fallback_metadata(path: Path, exif: dict[str, Any]) -> RawMetadata:
+    return RawMetadata(
+        source_file=str(path),
+        input_sha256=sha256_file(path),
+        camera_model=exif.get("Model") or exif.get("CameraModelName"),
+        cfa_pattern="unknown",
+        available_white_balance="unknown",
+        wb_multipliers=None,
+        black_level=None,
+        white_level=None,
+        color_matrix_hint=None,
+        iso=_to_int(exif.get("ISO")),
+        exposure_time_seconds=_to_float(exif.get("ExposureTime")),
+        lens_model=exif.get("LensModel") or exif.get("LensID") or exif.get("LensType"),
+        capture_datetime=exif.get("DateTimeOriginal") or exif.get("CreateDate"),
+        dimensions=_extract_dimensions(exif),
+        intermediate_working_space="scene_linear_camera_rgb",
+    )
+
+
+def _extract_dimensions(exif: dict[str, Any]) -> list[int] | None:
+    width = (
+        _to_int(exif.get("RawImageFullWidth"))
+        or _to_int(exif.get("ImageWidth"))
+        or _to_int(exif.get("ExifImageWidth"))
+    )
+    height = (
+        _to_int(exif.get("RawImageFullHeight"))
+        or _to_int(exif.get("ImageHeight"))
+        or _to_int(exif.get("ExifImageHeight"))
+    )
+    if width and height:
+        return [int(width), int(height)]
+    return None
+
+
+def _cfa_name(raw) -> str:
     try:
         pattern = raw.raw_pattern
         if pattern is None:

@@ -54,6 +54,7 @@ class RawMetadata:
 
 @dataclass
 class Recipe:
+    raw_developer: str = "dcraw"
     demosaic_algorithm: str = "ahd"
     black_level_mode: str = "metadata"
     white_balance_mode: str = "fixed"

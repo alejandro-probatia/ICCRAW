@@ -1,5 +1,7 @@
+from pathlib import Path
+
 from icc_entrada.models import Recipe
-from icc_entrada.recipe import scientific_guard
+from icc_entrada.recipe import load_recipe, scientific_guard
 
 
 def test_recipe_default_scientific_safe():
@@ -13,3 +15,10 @@ def test_recipe_warns_non_neutral():
     g = scientific_guard(r)
     assert not g.is_scientific_safe
     assert len(g.warnings) >= 3
+
+
+def test_recipe_default_raw_developer_is_dcraw(tmp_path: Path):
+    recipe_file = tmp_path / "recipe.yml"
+    recipe_file.write_text("{}", encoding="utf-8")
+    recipe = load_recipe(recipe_file)
+    assert recipe.raw_developer == "dcraw"

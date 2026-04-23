@@ -22,14 +22,13 @@ Motivación:
 
 Decisión:
 
-- motor preferente para build de perfil: **ArgyllCMS** (`colprof`) cuando está instalado.
-- fallback operativo: perfil matrix/shaper interno reproducible para no bloquear ejecución en entornos sin Argyll.
+- motor de build de perfil ICC: **ArgyllCMS** (`colprof`) como único backend soportado.
 
 Motivación:
 
 1. ArgyllCMS es referencia técnica consolidada,
 2. permite validación/contraste externo,
-3. fallback interno mantiene continuidad de pipeline y testing.
+3. evita divergencias entre motores y mejora la reproducibilidad entre entornos.
 
 ## DEC-0003: Dependencias de imagen y RAW
 
@@ -38,7 +37,8 @@ Motivación:
 
 Decisión:
 
-- `rawpy` (LibRaw) para ingesta/revelado,
+- `dcraw` como motor principal de revelado RAW (invocado por subprocess),
+- `rawpy` como dependencia opcional para metadatos RAW enriquecidos,
 - `opencv-python-headless` para detección geométrica,
 - `tifffile` para export TIFF 16-bit,
 - `colour-science` para métricas y conversiones colorimétricas.
@@ -54,6 +54,6 @@ Decisión:
 
 Compatibilidad (resumen):
 
-1. LibRaw (vía rawpy): compatible en este modelo de distribución,
+1. `dcraw` y `ArgyllCMS` se usan como herramientas externas (subproceso), evitando acoplamiento binario directo,
 2. OpenCV BSD: compatible,
-3. ArgyllCMS usado como herramienta externa (subproceso), evitando acoplamiento binario directo.
+3. `rawpy` es opcional y no bloquea el funcionamiento del pipeline principal.

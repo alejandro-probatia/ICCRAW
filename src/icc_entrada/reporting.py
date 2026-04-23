@@ -45,7 +45,8 @@ def gather_run_context(version: str) -> dict:
         deterministic_mode=deterministic_mode,
         dependencies=[
             DependencyVersion(name="python", version=platform.python_version()),
-            DependencyVersion(name="rawpy", version=_safe_import_version("rawpy")),
+            DependencyVersion(name="dcraw", version=_dcraw_version()),
+            DependencyVersion(name="rawpy-optional", version=_safe_import_version("rawpy")),
             DependencyVersion(name="opencv", version=_safe_import_version("cv2")),
             DependencyVersion(name="colour-science", version=_safe_import_version("colour")),
             DependencyVersion(name="tifffile", version=_safe_import_version("tifffile")),
@@ -60,3 +61,22 @@ def _safe_import_version(module: str) -> str:
     except Exception:
         return "not-available"
     return getattr(mod, "__version__", "unknown")
+
+
+def _dcraw_version() -> str:
+    try:
+        proc = subprocess.run(
+            ["dcraw", "-v"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return "not-available"
+        line = (proc.stdout or "").strip().splitlines()
+        if not line:
+            return "unknown"
+        return line[0].strip()
+    except Exception:
+        return "not-available"

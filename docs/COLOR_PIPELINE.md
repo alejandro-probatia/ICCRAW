@@ -15,10 +15,10 @@ Reglas:
 ## Fases
 
 1. `raw-info`: metadatos técnicos.
-2. `develop`: revelado controlado lineal.
+2. `develop`: revelado controlado lineal con `dcraw` para entradas RAW.
 3. `detect-chart`: homografía + parches.
 4. `sample-chart`: medición robusta por parche.
-5. `build-profile`: ArgyllCMS preferente (fallback matrix/shaper).
+5. `build-profile`: ArgyllCMS (`colprof`) como motor único de perfil ICC.
 6. `validate-profile`: DeltaE 76/2000.
 7. `batch-develop`: mismo recipe + mismo perfil sobre lote RAW.
 

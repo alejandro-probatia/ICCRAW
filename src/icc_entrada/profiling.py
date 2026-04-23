@@ -57,30 +57,26 @@ def build_profile(
     out_icc.parent.mkdir(parents=True, exist_ok=True)
 
     engine_requested = (recipe.profile_engine or "argyll").lower()
-    engine_used = "internal_matrix"
+    if engine_requested != "argyll":
+        raise RuntimeError(
+            f"profile_engine no soportado: {recipe.profile_engine}. "
+            "Este proyecto usa exclusivamente ArgyllCMS ('argyll')."
+        )
+
+    _build_profile_with_argyll(
+        out_icc=out_icc,
+        measured_rgb=measured_rgb,
+        reference_xyz=reference_xyz,
+        patch_ids=patch_ids,
+        description=f"ICCRAW {samples.chart_name} {samples.chart_version}",
+        extra_args=recipe.argyll_colprof_args,
+    )
+
+    engine_used = "argyll"
     engine_warning = None
 
-    if engine_requested == "argyll":
-        try:
-            _build_profile_with_argyll(
-                out_icc=out_icc,
-                measured_rgb=measured_rgb,
-                reference_xyz=reference_xyz,
-                patch_ids=patch_ids,
-                description=f"ICCRAW {samples.chart_name} {samples.chart_version}",
-                extra_args=recipe.argyll_colprof_args,
-            )
-            engine_used = "argyll"
-        except Exception as exc:
-            engine_warning = f"ArgyllCMS no disponible/fallo ({exc}); se usa perfil interno matrix/shaper"
-
-    if engine_used != "argyll":
-        icc_bytes = build_matrix_shaper_icc(
-            description=f"ICCRAW {samples.chart_name} {samples.chart_version}",
-            matrix_camera_to_xyz=matrix,
-            gamma=1.0,
-        )
-        out_icc.write_bytes(icc_bytes)
+    if not out_icc.exists():
+        raise RuntimeError("ArgyllCMS no genero el perfil ICC esperado.")
 
     profile_json_path = out_icc.with_suffix(".profile.json")
     metadata = {

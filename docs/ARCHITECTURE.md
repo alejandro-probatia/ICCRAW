@@ -8,8 +8,8 @@ Pipeline científico reproducible:
 
 ## Módulos Python
 
-- `icc_entrada.raw`: ingesta RAW y metadatos (rawpy + exiftool).
-- `icc_entrada.pipeline`: revelado controlado por `recipe`.
+- `icc_entrada.raw`: ingesta RAW y metadatos (exiftool + rawpy opcional).
+- `icc_entrada.pipeline`: revelado controlado por `recipe` con backend `dcraw`.
 - `icc_entrada.chart_detection`: localización de carta + homografía + patch geometry.
 - `icc_entrada.sampling`: muestreo robusto por parche y enlace con referencia.
 - `icc_entrada.profiling`: ajuste de perfil, DeltaE, generación ICC.
@@ -21,8 +21,7 @@ Pipeline científico reproducible:
 
 ## Perfil ICC
 
-- Motor preferente: `ArgyllCMS (colprof)`.
-- Fallback: perfil matrix/shaper interno.
+- Motor único: `ArgyllCMS (colprof)`.
 - Siempre se guarda sidecar `.profile.json` con matriz, recipe y métricas para reproducibilidad.
 
 ## Reproducibilidad

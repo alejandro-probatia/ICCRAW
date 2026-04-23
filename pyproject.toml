@@ -15,12 +15,16 @@ authors = [
 dependencies = [
   "numpy>=2.0",
   "PyYAML>=6.0",
-  "rawpy>=0.26",
   "opencv-python-headless>=4.10",
   "tifffile>=2025.1",
   "Pillow>=10.0",
   "colour-science>=0.4.7",
   "scipy>=1.13",
+]
+
+[project.optional-dependencies]
+raw_metadata = [
+  "rawpy>=0.26",
 ]
 
 [project.scripts]

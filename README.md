@@ -12,12 +12,12 @@ Aplicación open source para fotografía técnico-científica:
 ## Stack actual
 
 - Lenguaje principal: **Python**.
-- Decodificación RAW: `rawpy` (LibRaw).
+- Revelado RAW: `dcraw` (CLI, modo determinista).
+- Metadatos RAW enriquecidos (opcional): `rawpy` (LibRaw) + `exiftool`.
 - Detección geométrica: `OpenCV`.
 - Colorimetría y DeltaE: `colour-science`.
 - Export TIFF 16-bit: `tifffile`.
-- Motor de perfil recomendado: **ArgyllCMS (`colprof`)** cuando está disponible.
-- Fallback explícito: perfil matrix/shaper interno con sidecar reproducible.
+- Motor de perfil ICC: **ArgyllCMS (`colprof`)**.
 
 ## Instalación
 
@@ -25,13 +25,15 @@ Aplicación open source para fotografía técnico-científica:
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .
+# Opcional (metadatos RAW enriquecidos con rawpy/LibRaw):
+# pip install -e .[raw_metadata]
 ```
 
 Opcional pero recomendado para perfilado con ArgyllCMS:
 
 ```bash
 # Debian/Ubuntu
-sudo apt-get install argyll
+sudo apt-get install dcraw argyll exiftool
 ```
 
 ## CLI
@@ -100,13 +102,14 @@ Ver ejemplo en [testdata/recipes/scientific_recipe.yml](/home/alejandro/Reposito
 Campos clave:
 
 - `demosaic_algorithm`
+- `raw_developer` (`dcraw`)
 - `black_level_mode`
 - `white_balance_mode`
 - `wb_multipliers`
 - `output_linear`
 - `tone_curve`
 - `profiling_mode`
-- `profile_engine` (`argyll` recomendado)
+- `profile_engine` (`argyll`, único motor soportado)
 
 ## Reproducibilidad y límites
 

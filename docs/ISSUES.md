@@ -2,7 +2,7 @@
 
 ## P0
 
-1. Integrar ArgyllCMS real (`colprof`) en entorno CI para eliminar fallback en builds oficiales.
+1. Garantizar ArgyllCMS (`colprof`) en entorno CI para tests de integración reales.
 2. Añadir dataset RAW real multi-fabricante para pruebas de regresión.
 3. Validar determinismo del pipeline en ejecuciones repetidas.
 
@@ -21,5 +21,5 @@
 ## P3
 
 1. Perfilado avanzado LUT además de matriz 3x3.
-2. Comparador automático Argyll vs motor interno.
+2. Comparador automático entre perfiles de sesiones/iluminantes distintos.
 3. GUI ligera posterior al cierre del motor CLI.

@@ -1,3 +1,4 @@
+raw_developer: dcraw
 demosaic_algorithm: rcd
 black_level_mode:
   mode: metadata
