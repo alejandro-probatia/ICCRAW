@@ -60,12 +60,12 @@ class ICCRawGUI:
         self.tab_batch = ttk.Frame(notebook)
         self.tab_auto = ttk.Frame(notebook)
 
-        notebook.add(self.tab_raw, text="RAW Info")
-        notebook.add(self.tab_develop, text="Develop")
-        notebook.add(self.tab_chart, text="Detect + Sample")
-        notebook.add(self.tab_profile, text="Build + Validate Profile")
-        notebook.add(self.tab_batch, text="Batch Develop")
-        notebook.add(self.tab_auto, text="Auto Workflow")
+        notebook.add(self.tab_raw, text="Información RAW")
+        notebook.add(self.tab_develop, text="Revelado")
+        notebook.add(self.tab_chart, text="Detectar + Muestrear")
+        notebook.add(self.tab_profile, text="Crear + Validar Perfil")
+        notebook.add(self.tab_batch, text="Revelado por Lotes")
+        notebook.add(self.tab_auto, text="Flujo Automático")
 
         self._build_tab_raw()
         self._build_tab_develop()
@@ -87,7 +87,7 @@ class ICCRawGUI:
         form = self.raw_output["form"]
         output = self.raw_output["output"]
 
-        self._path_row(form, 0, "Input RAW", self.raw_input, file_select=True)
+        self._path_row(form, 0, "Archivo RAW de entrada", self.raw_input, file_select=True)
         self._action_row(
             form,
             1,
@@ -105,11 +105,11 @@ class ICCRawGUI:
         tab = self._build_form_and_output(self.tab_develop)
         form, output = tab["form"], tab["output"]
 
-        self._path_row(form, 0, "Input RAW/Imagen", self.dev_input, file_select=True)
-        self._path_row(form, 1, "Recipe YAML/JSON", self.dev_recipe, file_select=True)
-        self._path_row(form, 2, "Output TIFF", self.dev_out, save_select=True)
-        self._path_row(form, 3, "Audit TIFF (opcional)", self.dev_audit, save_select=True)
-        self._action_row(form, 4, [("Ejecutar develop", lambda: self._run_develop(output))])
+        self._path_row(form, 0, "Archivo RAW/imagen de entrada", self.dev_input, file_select=True)
+        self._path_row(form, 1, "Receta YAML/JSON", self.dev_recipe, file_select=True)
+        self._path_row(form, 2, "TIFF de salida", self.dev_out, save_select=True)
+        self._path_row(form, 3, "TIFF de auditoría (opcional)", self.dev_audit, save_select=True)
+        self._action_row(form, 4, [("Ejecutar revelado", lambda: self._run_develop(output))])
 
     def _build_tab_chart(self) -> None:
         self.chart_input = tk.StringVar(value="/tmp/session_chart.tiff")
@@ -122,9 +122,9 @@ class ICCRawGUI:
         tab = self._build_form_and_output(self.tab_chart)
         form, output = tab["form"], tab["output"]
 
-        self._path_row(form, 0, "Input TIFF", self.chart_input, file_select=True)
-        self._path_row(form, 1, "Detection JSON", self.chart_detect_out, save_select=True)
-        self._path_row(form, 2, "Preview PNG (opcional)", self.chart_preview_out, save_select=True)
+        self._path_row(form, 0, "TIFF de entrada", self.chart_input, file_select=True)
+        self._path_row(form, 1, "JSON de detección", self.chart_detect_out, save_select=True)
+        self._path_row(form, 2, "Vista previa PNG (opcional)", self.chart_preview_out, save_select=True)
 
         ttk.Label(form, text="Tipo de carta").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=4)
         ttk.Combobox(
@@ -136,7 +136,7 @@ class ICCRawGUI:
         ).grid(row=3, column=1, sticky="w", pady=4)
 
         self._path_row(form, 4, "Referencia JSON", self.chart_reference, file_select=True)
-        self._path_row(form, 5, "Samples JSON", self.chart_samples_out, save_select=True)
+        self._path_row(form, 5, "JSON de muestras", self.chart_samples_out, save_select=True)
 
         self._action_row(
             form,
@@ -159,14 +159,14 @@ class ICCRawGUI:
         tab = self._build_form_and_output(self.tab_profile)
         form, output = tab["form"], tab["output"]
 
-        self._path_row(form, 0, "Samples JSON", self.profile_samples, file_select=True)
-        self._path_row(form, 1, "Recipe YAML/JSON", self.profile_recipe, file_select=True)
-        self._path_row(form, 2, "Output ICC", self.profile_icc, save_select=True)
-        self._path_row(form, 3, "Report JSON", self.profile_report, save_select=True)
-        self._path_row(form, 4, "Validation JSON", self.profile_validation, save_select=True)
+        self._path_row(form, 0, "JSON de muestras", self.profile_samples, file_select=True)
+        self._path_row(form, 1, "Receta YAML/JSON", self.profile_recipe, file_select=True)
+        self._path_row(form, 2, "Perfil ICC de salida", self.profile_icc, save_select=True)
+        self._path_row(form, 3, "Informe JSON", self.profile_report, save_select=True)
+        self._path_row(form, 4, "Validación JSON", self.profile_validation, save_select=True)
 
-        self._entry_row(form, 5, "Camera model (opcional)", self.profile_camera)
-        self._entry_row(form, 6, "Lens model (opcional)", self.profile_lens)
+        self._entry_row(form, 5, "Modelo de cámara (opcional)", self.profile_camera)
+        self._entry_row(form, 6, "Modelo de lente (opcional)", self.profile_lens)
 
         self._action_row(
             form,
@@ -186,12 +186,12 @@ class ICCRawGUI:
         tab = self._build_form_and_output(self.tab_batch)
         form, output = tab["form"], tab["output"]
 
-        self._path_row(form, 0, "Directorio input (RAW o TIFF)", self.batch_input, dir_select=True)
-        self._path_row(form, 1, "Recipe YAML/JSON", self.batch_recipe, file_select=True)
+        self._path_row(form, 0, "Directorio de entrada (RAW o TIFF)", self.batch_input, dir_select=True)
+        self._path_row(form, 1, "Receta YAML/JSON", self.batch_recipe, file_select=True)
         self._path_row(form, 2, "Perfil ICC", self.batch_profile, file_select=True)
-        self._path_row(form, 3, "Directorio output", self.batch_out, dir_select=True)
+        self._path_row(form, 3, "Directorio de salida", self.batch_out, dir_select=True)
 
-        self._action_row(form, 4, [("Ejecutar batch", lambda: self._run_batch(output))])
+        self._action_row(form, 4, [("Ejecutar lote", lambda: self._run_batch(output))])
 
     def _build_tab_auto(self) -> None:
         self.auto_charts = tk.StringVar(value="testdata/batch_images")
@@ -210,14 +210,14 @@ class ICCRawGUI:
         tab = self._build_form_and_output(self.tab_auto)
         form, output = tab["form"], tab["output"]
 
-        self._path_row(form, 0, "Capturas carta (dir RAW/imagen)", self.auto_charts, dir_select=True)
-        self._path_row(form, 1, "Capturas objetivo (dir RAW/imagen)", self.auto_targets, dir_select=True)
-        self._path_row(form, 2, "Recipe YAML/JSON", self.auto_recipe, file_select=True)
+        self._path_row(form, 0, "Capturas de carta (directorio RAW/imagen)", self.auto_charts, dir_select=True)
+        self._path_row(form, 1, "Capturas objetivo (directorio RAW/imagen)", self.auto_targets, dir_select=True)
+        self._path_row(form, 2, "Receta YAML/JSON", self.auto_recipe, file_select=True)
         self._path_row(form, 3, "Referencia carta JSON", self.auto_reference, file_select=True)
-        self._path_row(form, 4, "Perfil ICC salida", self.auto_profile_out, save_select=True)
-        self._path_row(form, 5, "Reporte perfil JSON", self.auto_profile_report, save_select=True)
-        self._path_row(form, 6, "Output batch TIFF dir", self.auto_out, dir_select=True)
-        self._path_row(form, 7, "Workdir intermedio", self.auto_workdir, dir_select=True)
+        self._path_row(form, 4, "Perfil ICC de salida", self.auto_profile_out, save_select=True)
+        self._path_row(form, 5, "Informe de perfil JSON", self.auto_profile_report, save_select=True)
+        self._path_row(form, 6, "Directorio de salida TIFF por lote", self.auto_out, dir_select=True)
+        self._path_row(form, 7, "Directorio de trabajo intermedio", self.auto_workdir, dir_select=True)
 
         ttk.Label(form, text="Tipo de carta").grid(row=8, column=0, sticky="w", padx=(0, 8), pady=4)
         ttk.Combobox(
@@ -228,9 +228,9 @@ class ICCRawGUI:
             width=20,
         ).grid(row=8, column=1, sticky="w", pady=4)
 
-        self._entry_row(form, 9, "Min confidence (0-1)", self.auto_min_conf)
-        self._entry_row(form, 10, "Camera model (opcional)", self.auto_camera)
-        self._entry_row(form, 11, "Lens model (opcional)", self.auto_lens)
+        self._entry_row(form, 9, "Confianza mínima (0-1)", self.auto_min_conf)
+        self._entry_row(form, 10, "Modelo de cámara (opcional)", self.auto_camera)
+        self._entry_row(form, 11, "Modelo de lente (opcional)", self.auto_lens)
 
         self._action_row(
             form,
@@ -348,7 +348,7 @@ class ICCRawGUI:
         def on_success(result):
             self._render_json(output, to_json_dict(result))
 
-        self._run_task(task, on_success, "raw-info")
+        self._run_task(task, on_success, "lectura de metadatos RAW")
 
     def _run_develop(self, output: tk.Text) -> None:
         in_path = Path(self.dev_input.get().strip())
@@ -368,7 +368,7 @@ class ICCRawGUI:
         def on_success(payload):
             self._render_json(output, payload)
 
-        self._run_task(task, on_success, "develop")
+        self._run_task(task, on_success, "revelado controlado")
 
     def _run_detect_chart(self, output: tk.Text) -> None:
         in_path = Path(self.chart_input.get().strip())
@@ -386,7 +386,7 @@ class ICCRawGUI:
         def on_success(payload):
             self._render_json(output, payload)
 
-        self._run_task(task, on_success, "detect-chart")
+        self._run_task(task, on_success, "detección de carta")
 
     def _run_sample_chart(self, output: tk.Text) -> None:
         in_path = Path(self.chart_input.get().strip())
@@ -404,7 +404,7 @@ class ICCRawGUI:
         def on_success(payload):
             self._render_json(output, payload)
 
-        self._run_task(task, on_success, "sample-chart")
+        self._run_task(task, on_success, "muestreo de carta")
 
     def _run_build_profile(self, output: tk.Text) -> None:
         samples_path = Path(self.profile_samples.get().strip())
@@ -424,7 +424,7 @@ class ICCRawGUI:
         def on_success(payload):
             self._render_json(output, payload)
 
-        self._run_task(task, on_success, "build-profile")
+        self._run_task(task, on_success, "construcción de perfil ICC")
 
     def _run_validate_profile(self, output: tk.Text) -> None:
         samples_path = Path(self.profile_samples.get().strip())
@@ -440,7 +440,7 @@ class ICCRawGUI:
         def on_success(payload):
             self._render_json(output, payload)
 
-        self._run_task(task, on_success, "validate-profile")
+        self._run_task(task, on_success, "validación de perfil")
 
     def _run_batch(self, output: tk.Text) -> None:
         input_dir = Path(self.batch_input.get().strip())
@@ -457,7 +457,7 @@ class ICCRawGUI:
         def on_success(payload):
             self._render_json(output, payload)
 
-        self._run_task(task, on_success, "batch-develop")
+        self._run_task(task, on_success, "revelado por lotes")
 
     def _run_auto_workflow(self, output: tk.Text) -> None:
         charts_dir = Path(self.auto_charts.get().strip())
@@ -495,7 +495,7 @@ class ICCRawGUI:
         def on_success(payload):
             self._render_json(output, payload)
 
-        self._run_task(task, on_success, "auto-profile-batch")
+        self._run_task(task, on_success, "flujo automático completo")
 
 
 def main() -> int:

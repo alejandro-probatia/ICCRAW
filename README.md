@@ -84,12 +84,12 @@ bash scripts/run_ui.sh
 
 Pestañas disponibles:
 
-- `RAW Info`
-- `Develop`
-- `Detect + Sample`
-- `Build + Validate Profile`
-- `Batch Develop`
-- `Auto Workflow` (capturas de carta -> perfil ICC -> batch TIFF 16-bit con ICC)
+- `Información RAW`
+- `Revelado`
+- `Detectar + Muestrear`
+- `Crear + Validar Perfil`
+- `Revelado por Lotes`
+- `Flujo Automático` (capturas de carta -> perfil ICC -> lote TIFF 16-bit con ICC)
 
 La GUI escribe los mismos artefactos JSON/TIFF/ICC que la CLI, manteniendo trazabilidad.
 
