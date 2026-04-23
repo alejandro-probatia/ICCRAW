@@ -17,6 +17,7 @@ Pipeline científico reproducible:
 - `icc_entrada.reporting`: contexto de ejecución y trazabilidad.
 - `icc_entrada.cli`: interfaz de línea de comandos.
 - `icc_entrada.gui`: interfaz gráfica ligera (tkinter) sobre el mismo motor reproducible.
+- `icc_entrada.workflow`: orquestación automática de pipeline completo (chart captures -> perfil -> batch TIFF ICC).
 
 ## Perfil ICC
 

@@ -17,6 +17,7 @@ from .raw import raw_info
 from .recipe import load_recipe
 from .reporting import gather_run_context
 from .sampling import ReferenceCatalog, chart_detection_from_json, sample_chart, sampleset_from_json
+from .workflow import auto_profile_batch
 
 
 class ICCRawGUI:
@@ -57,18 +58,21 @@ class ICCRawGUI:
         self.tab_chart = ttk.Frame(notebook)
         self.tab_profile = ttk.Frame(notebook)
         self.tab_batch = ttk.Frame(notebook)
+        self.tab_auto = ttk.Frame(notebook)
 
         notebook.add(self.tab_raw, text="RAW Info")
         notebook.add(self.tab_develop, text="Develop")
         notebook.add(self.tab_chart, text="Detect + Sample")
         notebook.add(self.tab_profile, text="Build + Validate Profile")
         notebook.add(self.tab_batch, text="Batch Develop")
+        notebook.add(self.tab_auto, text="Auto Workflow")
 
         self._build_tab_raw()
         self._build_tab_develop()
         self._build_tab_chart()
         self._build_tab_profile()
         self._build_tab_batch()
+        self._build_tab_auto()
 
     def _build_status_bar(self) -> None:
         frame = ttk.Frame(self.root, padding=(12, 0, 12, 12))
@@ -188,6 +192,51 @@ class ICCRawGUI:
         self._path_row(form, 3, "Directorio output", self.batch_out, dir_select=True)
 
         self._action_row(form, 4, [("Ejecutar batch", lambda: self._run_batch(output))])
+
+    def _build_tab_auto(self) -> None:
+        self.auto_charts = tk.StringVar(value="testdata/batch_images")
+        self.auto_targets = tk.StringVar(value="testdata/batch_images")
+        self.auto_recipe = tk.StringVar(value="testdata/recipes/scientific_recipe.yml")
+        self.auto_reference = tk.StringVar(value="testdata/references/colorchecker24_reference.json")
+        self.auto_profile_out = tk.StringVar(value="/tmp/camera_profile_auto.icc")
+        self.auto_profile_report = tk.StringVar(value="/tmp/profile_report_auto.json")
+        self.auto_out = tk.StringVar(value="/tmp/batch_tiffs_auto")
+        self.auto_workdir = tk.StringVar(value="/tmp/iccraw_auto_work")
+        self.auto_chart_type = tk.StringVar(value="colorchecker24")
+        self.auto_min_conf = tk.StringVar(value="0.35")
+        self.auto_camera = tk.StringVar(value="")
+        self.auto_lens = tk.StringVar(value="")
+
+        tab = self._build_form_and_output(self.tab_auto)
+        form, output = tab["form"], tab["output"]
+
+        self._path_row(form, 0, "Capturas carta (dir RAW/imagen)", self.auto_charts, dir_select=True)
+        self._path_row(form, 1, "Capturas objetivo (dir RAW/imagen)", self.auto_targets, dir_select=True)
+        self._path_row(form, 2, "Recipe YAML/JSON", self.auto_recipe, file_select=True)
+        self._path_row(form, 3, "Referencia carta JSON", self.auto_reference, file_select=True)
+        self._path_row(form, 4, "Perfil ICC salida", self.auto_profile_out, save_select=True)
+        self._path_row(form, 5, "Reporte perfil JSON", self.auto_profile_report, save_select=True)
+        self._path_row(form, 6, "Output batch TIFF dir", self.auto_out, dir_select=True)
+        self._path_row(form, 7, "Workdir intermedio", self.auto_workdir, dir_select=True)
+
+        ttk.Label(form, text="Tipo de carta").grid(row=8, column=0, sticky="w", padx=(0, 8), pady=4)
+        ttk.Combobox(
+            form,
+            textvariable=self.auto_chart_type,
+            values=["colorchecker24", "it8"],
+            state="readonly",
+            width=20,
+        ).grid(row=8, column=1, sticky="w", pady=4)
+
+        self._entry_row(form, 9, "Min confidence (0-1)", self.auto_min_conf)
+        self._entry_row(form, 10, "Camera model (opcional)", self.auto_camera)
+        self._entry_row(form, 11, "Lens model (opcional)", self.auto_lens)
+
+        self._action_row(
+            form,
+            12,
+            [("Ejecutar flujo automático completo", lambda: self._run_auto_workflow(output))],
+        )
 
     def _build_form_and_output(self, parent: ttk.Frame) -> dict:
         parent.columnconfigure(0, weight=1)
@@ -409,6 +458,44 @@ class ICCRawGUI:
             self._render_json(output, payload)
 
         self._run_task(task, on_success, "batch-develop")
+
+    def _run_auto_workflow(self, output: tk.Text) -> None:
+        charts_dir = Path(self.auto_charts.get().strip())
+        targets_dir = Path(self.auto_targets.get().strip())
+        recipe_path = Path(self.auto_recipe.get().strip())
+        reference_path = Path(self.auto_reference.get().strip())
+        profile_out = Path(self.auto_profile_out.get().strip())
+        profile_report = Path(self.auto_profile_report.get().strip())
+        out_dir = Path(self.auto_out.get().strip())
+        workdir = Path(self.auto_workdir.get().strip())
+        chart_type = self.auto_chart_type.get().strip()
+        min_conf = float(self.auto_min_conf.get().strip() or "0.35")
+        camera = self.auto_camera.get().strip() or None
+        lens = self.auto_lens.get().strip() or None
+
+        def task():
+            recipe = load_recipe(recipe_path)
+            reference = ReferenceCatalog.from_path(reference_path)
+            result = auto_profile_batch(
+                chart_captures_dir=charts_dir,
+                target_captures_dir=targets_dir,
+                recipe=recipe,
+                reference=reference,
+                profile_out=profile_out,
+                profile_report_out=profile_report,
+                batch_out_dir=out_dir,
+                work_dir=workdir,
+                chart_type=chart_type,
+                min_confidence=min_conf,
+                camera_model=camera,
+                lens_model=lens,
+            )
+            return result
+
+        def on_success(payload):
+            self._render_json(output, payload)
+
+        self._run_task(task, on_success, "auto-profile-batch")
 
 
 def main() -> int:

@@ -50,6 +50,22 @@ app build-profile samples.json --recipe recipe.yml --out camera_profile.icc --re
 app batch-develop ./raws --recipe recipe.yml --profile camera_profile.icc --out ./tiffs
 
 app validate-profile samples.json --profile camera_profile.icc --out validation.json
+
+# Flujo completo automático:
+# 1) develop de capturas de carta
+# 2) detección automática de carta
+# 3) muestreo y agregación multi-captura
+# 4) build-profile
+# 5) batch-develop con perfil ICC embebido en TIFF 16-bit
+app auto-profile-batch \
+  --charts ./charts_raw \
+  --targets ./raws \
+  --recipe recipe.yml \
+  --reference target.json \
+  --profile-out camera_profile.icc \
+  --profile-report profile_report.json \
+  --out ./tiffs \
+  --workdir ./work_auto
 ```
 
 ## Interfaz Gráfica Ligera
@@ -73,6 +89,7 @@ Pestañas disponibles:
 - `Detect + Sample`
 - `Build + Validate Profile`
 - `Batch Develop`
+- `Auto Workflow` (capturas de carta -> perfil ICC -> batch TIFF 16-bit con ICC)
 
 La GUI escribe los mismos artefactos JSON/TIFF/ICC que la CLI, manteniendo trazabilidad.
 

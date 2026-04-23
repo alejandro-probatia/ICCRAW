@@ -7,3 +7,4 @@ def test_parser_has_expected_commands():
     assert "raw-info" in text
     assert "build-profile" in text
     assert "batch-develop" in text
+    assert "auto-profile-batch" in text

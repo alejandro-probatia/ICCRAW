@@ -27,6 +27,7 @@ from .raw import raw_info
 from .recipe import load_recipe
 from .reporting import gather_run_context
 from .sampling import ReferenceCatalog, chart_detection_from_json, sample_chart, sampleset_from_json
+from .workflow import auto_profile_batch
 
 APP_VERSION = "0.1.0-python"
 
@@ -74,6 +75,20 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("samples")
     s.add_argument("--profile", required=True)
     s.add_argument("--out", required=True)
+
+    s = sub.add_parser("auto-profile-batch")
+    s.add_argument("--charts", required=True, help="Directorio de capturas RAW/imagen con carta ColorChecker")
+    s.add_argument("--targets", required=True, help="Directorio de RAW/imagenes objetivo para batch")
+    s.add_argument("--recipe", required=True)
+    s.add_argument("--reference", required=True)
+    s.add_argument("--profile-out", required=True)
+    s.add_argument("--profile-report", required=True)
+    s.add_argument("--out", required=True, help="Directorio de salida TIFF batch")
+    s.add_argument("--workdir", required=True, help="Directorio de artefactos intermedios (detecciones/samples)")
+    s.add_argument("--chart-type", choices=["colorchecker24", "it8"], default="colorchecker24")
+    s.add_argument("--min-confidence", type=float, default=0.35)
+    s.add_argument("--camera", default=None)
+    s.add_argument("--lens", default=None)
 
     return p
 
@@ -150,6 +165,26 @@ def main(argv: list[str] | None = None) -> int:
             result = validate_profile(samples=samples, profile_path=Path(args.profile))
             write_json(Path(args.out), result)
             print(json.dumps(to_json_dict(result), indent=2))
+            return 0
+
+        if args.command == "auto-profile-batch":
+            recipe = load_recipe(Path(args.recipe))
+            reference = ReferenceCatalog.from_path(Path(args.reference))
+            result = auto_profile_batch(
+                chart_captures_dir=Path(args.charts),
+                target_captures_dir=Path(args.targets),
+                recipe=recipe,
+                reference=reference,
+                profile_out=Path(args.profile_out),
+                profile_report_out=Path(args.profile_report),
+                batch_out_dir=Path(args.out),
+                work_dir=Path(args.workdir),
+                chart_type=args.chart_type,
+                min_confidence=float(args.min_confidence),
+                camera_model=args.camera,
+                lens_model=args.lens,
+            )
+            print(json.dumps(result, indent=2))
             return 0
 
     except Exception as exc:
