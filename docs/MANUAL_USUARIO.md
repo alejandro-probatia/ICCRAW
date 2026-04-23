@@ -11,6 +11,10 @@ ICCRAW implementa un flujo reproducible para:
 5. aplicar el mismo flujo + perfil a lotes RAW/TIFF,
 6. generar trazabilidad (JSON, hashes y manifiestos).
 
+## Estado actual (importante)
+
+La version actual esta en desarrollo. Existe funcionalidad base para ejecutar flujo tecnico y GUI, pero **todavia no puede considerarse una herramienta plenamente funcional ni validada para uso cientifico/forense en produccion**.
+
 ## 2. Requisitos
 
 ### 2.1 Dependencias del sistema
@@ -34,6 +38,8 @@ python3 -m venv .venv
 pip install -e .
 # Opcional para metadatos RAW enriquecidos:
 pip install -e .[raw_metadata]
+# Opcional para GUI Qt:
+pip install -e .[gui]
 ```
 
 ### 2.3 Licencia y uso legal
@@ -117,28 +123,58 @@ app auto-profile-batch \
   --workdir /tmp/work_auto
 ```
 
-## 4. Flujo con interfaz gráfica
+## 4. Flujo con interfaz grafica Qt
 
 Arranque:
 
 ```bash
 app-ui
+# o:
+app-ui-qt
 ```
 
 o:
 
 ```bash
 bash scripts/run_ui.sh
+# o:
+bash scripts/run_ui_qt.sh
 ```
 
-Pestañas:
+Estructura de la interfaz:
 
-- Información RAW
-- Revelado
-- Detectar + Muestrear
-- Crear + Validar Perfil
-- Revelado por Lotes
-- Flujo Automático
+Pestañas principales:
+
+1. `Generación Perfil ICC`
+   - genera perfil ICC a partir de capturas de carta,
+   - guarda perfil y reporte para reutilización en sesiones posteriores.
+2. `Revelado RAW`
+   - navegación completa de unidades y directorios,
+   - selección visual por miniaturas,
+   - preview RAW rápida,
+   - ajustes de nitidez y ruido,
+   - revelado individual y por lotes,
+   - aplicación opcional de perfil ICC en preview/export.
+3. `Monitoreo Flujo`
+   - estado de tareas,
+   - tabla de ejecución,
+   - log de eventos del pipeline.
+
+Flujo recomendado en GUI:
+
+1. Navegar a la carpeta de trabajo en el panel izquierdo.
+2. Ir a `Generación Perfil ICC`, asignar carpeta de cartas y generar el perfil.
+3. Guardar y activar el perfil generado para sesiones posteriores.
+4. Ir a `Revelado RAW`, seleccionar visualmente RAW objetivo y cargar preview.
+5. Ajustar nitidez y ruido (luminancia/color) en panel derecho.
+6. Ejecutar revelado individual o por lote y exportar TIFF 16-bit.
+7. Revisar `Monitoreo Flujo` para estado de tareas, incidencias y trazas.
+
+Notas de uso de preview:
+
+- El checkbox `Aplicar perfil ICC en resultado` se inicia desactivado para evitar dominantes si el perfil activo no corresponde al flujo actual.
+- Si el perfil activo no tiene sidecar `.profile.json` válido o genera clipping extremo en preview, la aplicación muestra la vista sin perfil y registra aviso.
+- `Vista -> Pantalla completa` (`F11`) y `Vista -> Restablecer distribución` permiten adaptar la interfaz a cualquier tamaño de pantalla.
 
 ## 5. Artefactos que genera el sistema
 

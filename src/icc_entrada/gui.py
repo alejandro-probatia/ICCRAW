@@ -1,508 +1,1763 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 import json
-import threading
-import traceback
 from pathlib import Path
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+import shlex
+import sys
+import tempfile
+import traceback
+import warnings
 
-from .chart_detection import detect_chart, draw_detection_overlay
-from .cli import APP_VERSION
-from .export import batch_develop
-from .models import to_json_dict, write_json
+import cv2
+import numpy as np
+import yaml
+
+warnings.filterwarnings(
+    "ignore",
+    message='.*"Matplotlib" related API features are not available.*',
+)
+
+try:
+    from colour.utilities import ColourUsageWarning
+
+    warnings.filterwarnings("ignore", category=ColourUsageWarning)
+except Exception:
+    pass
+
+from .export import apply_profile_matrix
+from .models import Recipe
 from .pipeline import develop_controlled
-from .profiling import build_profile, validate_profile
-from .raw import raw_info
+from .preview import (
+    apply_adjustments,
+    apply_profile_preview,
+    linear_to_srgb_display,
+    load_image_for_preview,
+    preview_analysis_text,
+)
+from .profiling import load_profile_model
 from .recipe import load_recipe
-from .reporting import gather_run_context
-from .sampling import ReferenceCatalog, chart_detection_from_json, sample_chart, sampleset_from_json
-from .workflow import auto_profile_batch
+from .sampling import ReferenceCatalog
+from .utils import RAW_EXTENSIONS, read_image, write_tiff16
+from .workflow import auto_generate_profile_from_charts
+
+try:
+    from PySide6 import QtCore, QtGui, QtWidgets
+except Exception:  # pragma: no cover - entorno sin GUI
+    QtCore = None
+    QtGui = None
+    QtWidgets = None
 
 
-class ICCRawGUI:
-    def __init__(self, root: tk.Tk) -> None:
-        self.root = root
-        self.root.title("ICCRAW - Interfaz Técnica")
-        self.root.geometry("1200x860")
+IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+BROWSABLE_EXTENSIONS = RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
 
-        self.status_var = tk.StringVar(value="Listo")
+DEMOSAIC_OPTIONS = [
+    "linear",
+    "vng",
+    "ppg",
+    "ahd",
+    "dcb",
+    "dht",
+    "aa_hd",
+    "rcd",
+]
 
-        self._build_header()
-        self._build_tabs()
-        self._build_status_bar()
+WB_MODE_OPTIONS = [
+    ("Fijo (multiplicadores manuales)", "fixed"),
+    ("Desde metadatos de camara", "camera_metadata"),
+]
 
-    def _build_header(self) -> None:
-        frame = ttk.Frame(self.root, padding=(12, 12, 12, 4))
-        frame.pack(fill="x")
+BLACK_MODE_OPTIONS = [
+    ("Metadata", "metadata"),
+    ("Fijo", "fixed"),
+    ("White level", "white"),
+]
 
-        title = ttk.Label(
-            frame,
-            text="ICCRAW",
-            font=("TkDefaultFont", 15, "bold"),
-        )
-        title.pack(anchor="w")
+TONE_OPTIONS = [
+    ("Lineal", "linear"),
+    ("sRGB", "srgb"),
+    ("Gamma", "gamma"),
+]
 
-        subtitle = ttk.Label(
-            frame,
-            text="Interfaz simple para pipeline reproducible RAW -> carta -> perfil ICC -> lote",
-        )
-        subtitle.pack(anchor="w")
+SPACE_OPTIONS = [
+    "scene_linear_camera_rgb",
+    "srgb",
+    "camera_rgb",
+]
 
-    def _build_tabs(self) -> None:
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill="both", expand=True, padx=12, pady=8)
+SAMPLE_OPTIONS = [
+    "trimmed_mean",
+    "median",
+]
 
-        self.tab_raw = ttk.Frame(notebook)
-        self.tab_develop = ttk.Frame(notebook)
-        self.tab_chart = ttk.Frame(notebook)
-        self.tab_profile = ttk.Frame(notebook)
-        self.tab_batch = ttk.Frame(notebook)
-        self.tab_auto = ttk.Frame(notebook)
+FILTER_MODE_OPTIONS = [
+    "off",
+    "mild",
+    "medium",
+    "strong",
+]
 
-        notebook.add(self.tab_raw, text="Información RAW")
-        notebook.add(self.tab_develop, text="Revelado")
-        notebook.add(self.tab_chart, text="Detectar + Muestrear")
-        notebook.add(self.tab_profile, text="Crear + Validar Perfil")
-        notebook.add(self.tab_batch, text="Revelado por Lotes")
-        notebook.add(self.tab_auto, text="Flujo Automático")
+PROFILE_ALGO_OPTIONS = [
+    ("shaper+matrix (-as)", "-as"),
+    ("gamma+matrix (-ag)", "-ag"),
+    ("matrix only (-am)", "-am"),
+    ("Lab cLUT (-al)", "-al"),
+    ("XYZ cLUT (-ax)", "-ax"),
+]
 
-        self._build_tab_raw()
-        self._build_tab_develop()
-        self._build_tab_chart()
-        self._build_tab_profile()
-        self._build_tab_batch()
-        self._build_tab_auto()
+PROFILE_QUALITY_OPTIONS = [
+    ("Low", "l"),
+    ("Medium", "m"),
+    ("High", "h"),
+    ("Ultra", "u"),
+]
 
-    def _build_status_bar(self) -> None:
-        frame = ttk.Frame(self.root, padding=(12, 0, 12, 12))
-        frame.pack(fill="x")
-        ttk.Separator(frame).pack(fill="x", pady=(0, 8))
-        ttk.Label(frame, textvariable=self.status_var).pack(anchor="w")
+PROFILE_FORMAT_OPTIONS = [".icc", ".icm"]
 
-    def _build_tab_raw(self) -> None:
-        self.raw_input = tk.StringVar(value="testdata/raw/mock_capture.nef")
-        self.raw_output = self._build_form_and_output(self.tab_raw)
 
-        form = self.raw_output["form"]
-        output = self.raw_output["output"]
+if QtWidgets is not None:
+    class TaskThread(QtCore.QThread):
+        succeeded = QtCore.Signal(object)
+        failed = QtCore.Signal(str)
 
-        self._path_row(form, 0, "Archivo RAW de entrada", self.raw_input, file_select=True)
-        self._action_row(
-            form,
-            1,
-            [
-                ("Leer metadatos", lambda: self._run_raw_info(output)),
-            ],
-        )
+        def __init__(self, task):
+            super().__init__()
+            self._task = task
 
-    def _build_tab_develop(self) -> None:
-        self.dev_input = tk.StringVar(value="testdata/charts/synthetic_colorchecker.tiff")
-        self.dev_recipe = tk.StringVar(value="testdata/recipes/scientific_recipe.yml")
-        self.dev_out = tk.StringVar(value="/tmp/session_chart.tiff")
-        self.dev_audit = tk.StringVar(value="/tmp/session_chart_linear.tiff")
-
-        tab = self._build_form_and_output(self.tab_develop)
-        form, output = tab["form"], tab["output"]
-
-        self._path_row(form, 0, "Archivo RAW/imagen de entrada", self.dev_input, file_select=True)
-        self._path_row(form, 1, "Receta YAML/JSON", self.dev_recipe, file_select=True)
-        self._path_row(form, 2, "TIFF de salida", self.dev_out, save_select=True)
-        self._path_row(form, 3, "TIFF de auditoría (opcional)", self.dev_audit, save_select=True)
-        self._action_row(form, 4, [("Ejecutar revelado", lambda: self._run_develop(output))])
-
-    def _build_tab_chart(self) -> None:
-        self.chart_input = tk.StringVar(value="/tmp/session_chart.tiff")
-        self.chart_detect_out = tk.StringVar(value="/tmp/detection.json")
-        self.chart_preview_out = tk.StringVar(value="/tmp/overlay.png")
-        self.chart_reference = tk.StringVar(value="testdata/references/colorchecker24_reference.json")
-        self.chart_samples_out = tk.StringVar(value="/tmp/samples.json")
-        self.chart_type = tk.StringVar(value="colorchecker24")
-
-        tab = self._build_form_and_output(self.tab_chart)
-        form, output = tab["form"], tab["output"]
-
-        self._path_row(form, 0, "TIFF de entrada", self.chart_input, file_select=True)
-        self._path_row(form, 1, "JSON de detección", self.chart_detect_out, save_select=True)
-        self._path_row(form, 2, "Vista previa PNG (opcional)", self.chart_preview_out, save_select=True)
-
-        ttk.Label(form, text="Tipo de carta").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=4)
-        ttk.Combobox(
-            form,
-            textvariable=self.chart_type,
-            values=["colorchecker24", "it8"],
-            state="readonly",
-            width=20,
-        ).grid(row=3, column=1, sticky="w", pady=4)
-
-        self._path_row(form, 4, "Referencia JSON", self.chart_reference, file_select=True)
-        self._path_row(form, 5, "JSON de muestras", self.chart_samples_out, save_select=True)
-
-        self._action_row(
-            form,
-            6,
-            [
-                ("Detectar carta", lambda: self._run_detect_chart(output)),
-                ("Muestrear carta", lambda: self._run_sample_chart(output)),
-            ],
-        )
-
-    def _build_tab_profile(self) -> None:
-        self.profile_samples = tk.StringVar(value="/tmp/samples.json")
-        self.profile_recipe = tk.StringVar(value="testdata/recipes/scientific_recipe.yml")
-        self.profile_icc = tk.StringVar(value="/tmp/camera_profile.icc")
-        self.profile_report = tk.StringVar(value="/tmp/profile_report.json")
-        self.profile_validation = tk.StringVar(value="/tmp/validation.json")
-        self.profile_camera = tk.StringVar(value="")
-        self.profile_lens = tk.StringVar(value="")
-
-        tab = self._build_form_and_output(self.tab_profile)
-        form, output = tab["form"], tab["output"]
-
-        self._path_row(form, 0, "JSON de muestras", self.profile_samples, file_select=True)
-        self._path_row(form, 1, "Receta YAML/JSON", self.profile_recipe, file_select=True)
-        self._path_row(form, 2, "Perfil ICC de salida", self.profile_icc, save_select=True)
-        self._path_row(form, 3, "Informe JSON", self.profile_report, save_select=True)
-        self._path_row(form, 4, "Validación JSON", self.profile_validation, save_select=True)
-
-        self._entry_row(form, 5, "Modelo de cámara (opcional)", self.profile_camera)
-        self._entry_row(form, 6, "Modelo de lente (opcional)", self.profile_lens)
-
-        self._action_row(
-            form,
-            7,
-            [
-                ("Construir perfil ICC", lambda: self._run_build_profile(output)),
-                ("Validar perfil", lambda: self._run_validate_profile(output)),
-            ],
-        )
-
-    def _build_tab_batch(self) -> None:
-        self.batch_input = tk.StringVar(value="testdata/batch_images")
-        self.batch_recipe = tk.StringVar(value="testdata/recipes/scientific_recipe.yml")
-        self.batch_profile = tk.StringVar(value="/tmp/camera_profile.icc")
-        self.batch_out = tk.StringVar(value="/tmp/batch_tiffs")
-
-        tab = self._build_form_and_output(self.tab_batch)
-        form, output = tab["form"], tab["output"]
-
-        self._path_row(form, 0, "Directorio de entrada (RAW o TIFF)", self.batch_input, dir_select=True)
-        self._path_row(form, 1, "Receta YAML/JSON", self.batch_recipe, file_select=True)
-        self._path_row(form, 2, "Perfil ICC", self.batch_profile, file_select=True)
-        self._path_row(form, 3, "Directorio de salida", self.batch_out, dir_select=True)
-
-        self._action_row(form, 4, [("Ejecutar lote", lambda: self._run_batch(output))])
-
-    def _build_tab_auto(self) -> None:
-        self.auto_charts = tk.StringVar(value="testdata/batch_images")
-        self.auto_targets = tk.StringVar(value="testdata/batch_images")
-        self.auto_recipe = tk.StringVar(value="testdata/recipes/scientific_recipe.yml")
-        self.auto_reference = tk.StringVar(value="testdata/references/colorchecker24_reference.json")
-        self.auto_profile_out = tk.StringVar(value="/tmp/camera_profile_auto.icc")
-        self.auto_profile_report = tk.StringVar(value="/tmp/profile_report_auto.json")
-        self.auto_out = tk.StringVar(value="/tmp/batch_tiffs_auto")
-        self.auto_workdir = tk.StringVar(value="/tmp/iccraw_auto_work")
-        self.auto_chart_type = tk.StringVar(value="colorchecker24")
-        self.auto_min_conf = tk.StringVar(value="0.35")
-        self.auto_camera = tk.StringVar(value="")
-        self.auto_lens = tk.StringVar(value="")
-
-        tab = self._build_form_and_output(self.tab_auto)
-        form, output = tab["form"], tab["output"]
-
-        self._path_row(form, 0, "Capturas de carta (directorio RAW/imagen)", self.auto_charts, dir_select=True)
-        self._path_row(form, 1, "Capturas objetivo (directorio RAW/imagen)", self.auto_targets, dir_select=True)
-        self._path_row(form, 2, "Receta YAML/JSON", self.auto_recipe, file_select=True)
-        self._path_row(form, 3, "Referencia carta JSON", self.auto_reference, file_select=True)
-        self._path_row(form, 4, "Perfil ICC de salida", self.auto_profile_out, save_select=True)
-        self._path_row(form, 5, "Informe de perfil JSON", self.auto_profile_report, save_select=True)
-        self._path_row(form, 6, "Directorio de salida TIFF por lote", self.auto_out, dir_select=True)
-        self._path_row(form, 7, "Directorio de trabajo intermedio", self.auto_workdir, dir_select=True)
-
-        ttk.Label(form, text="Tipo de carta").grid(row=8, column=0, sticky="w", padx=(0, 8), pady=4)
-        ttk.Combobox(
-            form,
-            textvariable=self.auto_chart_type,
-            values=["colorchecker24", "it8"],
-            state="readonly",
-            width=20,
-        ).grid(row=8, column=1, sticky="w", pady=4)
-
-        self._entry_row(form, 9, "Confianza mínima (0-1)", self.auto_min_conf)
-        self._entry_row(form, 10, "Modelo de cámara (opcional)", self.auto_camera)
-        self._entry_row(form, 11, "Modelo de lente (opcional)", self.auto_lens)
-
-        self._action_row(
-            form,
-            12,
-            [("Ejecutar flujo automático completo", lambda: self._run_auto_workflow(output))],
-        )
-
-    def _build_form_and_output(self, parent: ttk.Frame) -> dict:
-        parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(1, weight=1)
-
-        form = ttk.Frame(parent, padding=12)
-        form.grid(row=0, column=0, sticky="ew")
-        form.columnconfigure(1, weight=1)
-
-        output_frame = ttk.Frame(parent, padding=(12, 0, 12, 12))
-        output_frame.grid(row=1, column=0, sticky="nsew")
-        output_frame.columnconfigure(0, weight=1)
-        output_frame.rowconfigure(0, weight=1)
-
-        text = tk.Text(output_frame, wrap="none", height=20)
-        ybar = ttk.Scrollbar(output_frame, orient="vertical", command=text.yview)
-        xbar = ttk.Scrollbar(output_frame, orient="horizontal", command=text.xview)
-        text.configure(yscrollcommand=ybar.set, xscrollcommand=xbar.set)
-
-        text.grid(row=0, column=0, sticky="nsew")
-        ybar.grid(row=0, column=1, sticky="ns")
-        xbar.grid(row=1, column=0, sticky="ew")
-
-        return {"form": form, "output": text}
-
-    def _entry_row(self, parent: ttk.Frame, row: int, label: str, var: tk.StringVar) -> None:
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
-        ttk.Entry(parent, textvariable=var).grid(row=row, column=1, sticky="ew", pady=4)
-
-    def _path_row(
-        self,
-        parent: ttk.Frame,
-        row: int,
-        label: str,
-        var: tk.StringVar,
-        *,
-        file_select: bool = False,
-        save_select: bool = False,
-        dir_select: bool = False,
-    ) -> None:
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=(0, 8), pady=4)
-        ttk.Entry(parent, textvariable=var).grid(row=row, column=1, sticky="ew", pady=4)
-
-        if file_select:
-            ttk.Button(parent, text="...", width=3, command=lambda: self._pick_file(var)).grid(
-                row=row, column=2, padx=(8, 0), pady=4
-            )
-        elif save_select:
-            ttk.Button(parent, text="...", width=3, command=lambda: self._pick_save(var)).grid(
-                row=row, column=2, padx=(8, 0), pady=4
-            )
-        elif dir_select:
-            ttk.Button(parent, text="...", width=3, command=lambda: self._pick_dir(var)).grid(
-                row=row, column=2, padx=(8, 0), pady=4
-            )
-
-    def _action_row(self, parent: ttk.Frame, row: int, actions: list[tuple[str, callable]]) -> None:
-        frame = ttk.Frame(parent)
-        frame.grid(row=row, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        for i, (label, callback) in enumerate(actions):
-            ttk.Button(frame, text=label, command=callback).grid(row=0, column=i, padx=(0, 8))
-
-    def _pick_file(self, var: tk.StringVar) -> None:
-        value = filedialog.askopenfilename()
-        if value:
-            var.set(value)
-
-    def _pick_save(self, var: tk.StringVar) -> None:
-        value = filedialog.asksaveasfilename()
-        if value:
-            var.set(value)
-
-    def _pick_dir(self, var: tk.StringVar) -> None:
-        value = filedialog.askdirectory()
-        if value:
-            var.set(value)
-
-    def _render_json(self, output: tk.Text, payload: dict) -> None:
-        output.delete("1.0", tk.END)
-        output.insert("1.0", json.dumps(payload, indent=2, ensure_ascii=False))
-
-    def _run_task(self, task, on_success, context_label: str) -> None:
-        self.status_var.set(f"Ejecutando: {context_label}...")
-
-        def worker() -> None:
+        def run(self) -> None:
             try:
-                result = task()
-                self.root.after(0, lambda: self._on_task_success(result, on_success, context_label))
-            except Exception as exc:
-                tb = traceback.format_exc()
-                self.root.after(0, lambda: self._on_task_error(exc, tb, context_label))
+                payload = self._task()
+                self.succeeded.emit(payload)
+            except Exception:
+                self.failed.emit(traceback.format_exc())
 
-        threading.Thread(target=worker, daemon=True).start()
 
-    def _on_task_success(self, result, on_success, context_label: str) -> None:
-        on_success(result)
-        self.status_var.set(f"Completado: {context_label}")
-
-    def _on_task_error(self, exc: Exception, tb: str, context_label: str) -> None:
-        self.status_var.set(f"Error en: {context_label}")
-        messagebox.showerror("Error", f"{exc}\n\n{tb}")
-
-    def _run_raw_info(self, output: tk.Text) -> None:
-        path = Path(self.raw_input.get().strip())
-
-        def task():
-            return raw_info(path)
-
-        def on_success(result):
-            self._render_json(output, to_json_dict(result))
-
-        self._run_task(task, on_success, "lectura de metadatos RAW")
-
-    def _run_develop(self, output: tk.Text) -> None:
-        in_path = Path(self.dev_input.get().strip())
-        recipe_path = Path(self.dev_recipe.get().strip())
-        out_path = Path(self.dev_out.get().strip())
-        audit_str = self.dev_audit.get().strip()
-        audit_path = Path(audit_str) if audit_str else None
-
-        def task():
-            recipe = load_recipe(recipe_path)
-            result = develop_controlled(in_path, recipe, out_path, audit_path)
-            return {
-                "run_context": gather_run_context(APP_VERSION),
-                "develop": to_json_dict(result),
-            }
-
-        def on_success(payload):
-            self._render_json(output, payload)
-
-        self._run_task(task, on_success, "revelado controlado")
-
-    def _run_detect_chart(self, output: tk.Text) -> None:
-        in_path = Path(self.chart_input.get().strip())
-        detect_out = Path(self.chart_detect_out.get().strip())
-        preview_out = self.chart_preview_out.get().strip()
-        chart_type = self.chart_type.get().strip()
-
-        def task():
-            result = detect_chart(in_path, chart_type=chart_type)
-            write_json(detect_out, result)
-            if preview_out:
-                draw_detection_overlay(in_path, result, Path(preview_out))
-            return to_json_dict(result)
-
-        def on_success(payload):
-            self._render_json(output, payload)
-
-        self._run_task(task, on_success, "detección de carta")
-
-    def _run_sample_chart(self, output: tk.Text) -> None:
-        in_path = Path(self.chart_input.get().strip())
-        detection_path = Path(self.chart_detect_out.get().strip())
-        reference_path = Path(self.chart_reference.get().strip())
-        samples_out = Path(self.chart_samples_out.get().strip())
-
-        def task():
-            detection = chart_detection_from_json(detection_path)
-            reference = ReferenceCatalog.from_path(reference_path)
-            samples = sample_chart(in_path, detection, reference)
-            write_json(samples_out, samples)
-            return to_json_dict(samples)
-
-        def on_success(payload):
-            self._render_json(output, payload)
-
-        self._run_task(task, on_success, "muestreo de carta")
-
-    def _run_build_profile(self, output: tk.Text) -> None:
-        samples_path = Path(self.profile_samples.get().strip())
-        recipe_path = Path(self.profile_recipe.get().strip())
-        icc_path = Path(self.profile_icc.get().strip())
-        report_path = Path(self.profile_report.get().strip())
-        camera = self.profile_camera.get().strip() or None
-        lens = self.profile_lens.get().strip() or None
-
-        def task():
-            samples = sampleset_from_json(samples_path)
-            recipe = load_recipe(recipe_path)
-            result = build_profile(samples, recipe, icc_path, camera_model=camera, lens_model=lens)
-            write_json(report_path, result)
-            return to_json_dict(result)
-
-        def on_success(payload):
-            self._render_json(output, payload)
-
-        self._run_task(task, on_success, "construcción de perfil ICC")
-
-    def _run_validate_profile(self, output: tk.Text) -> None:
-        samples_path = Path(self.profile_samples.get().strip())
-        icc_path = Path(self.profile_icc.get().strip())
-        validation_out = Path(self.profile_validation.get().strip())
-
-        def task():
-            samples = sampleset_from_json(samples_path)
-            result = validate_profile(samples, icc_path)
-            write_json(validation_out, result)
-            return to_json_dict(result)
-
-        def on_success(payload):
-            self._render_json(output, payload)
-
-        self._run_task(task, on_success, "validación de perfil")
-
-    def _run_batch(self, output: tk.Text) -> None:
-        input_dir = Path(self.batch_input.get().strip())
-        recipe_path = Path(self.batch_recipe.get().strip())
-        profile_path = Path(self.batch_profile.get().strip())
-        out_dir = Path(self.batch_out.get().strip())
-
-        def task():
-            recipe = load_recipe(recipe_path)
-            manifest = batch_develop(input_dir, recipe, profile_path, out_dir)
-            write_json(out_dir / "batch_manifest.json", manifest)
-            return to_json_dict(manifest)
-
-        def on_success(payload):
-            self._render_json(output, payload)
-
-        self._run_task(task, on_success, "revelado por lotes")
-
-    def _run_auto_workflow(self, output: tk.Text) -> None:
-        charts_dir = Path(self.auto_charts.get().strip())
-        targets_dir = Path(self.auto_targets.get().strip())
-        recipe_path = Path(self.auto_recipe.get().strip())
-        reference_path = Path(self.auto_reference.get().strip())
-        profile_out = Path(self.auto_profile_out.get().strip())
-        profile_report = Path(self.auto_profile_report.get().strip())
-        out_dir = Path(self.auto_out.get().strip())
-        workdir = Path(self.auto_workdir.get().strip())
-        chart_type = self.auto_chart_type.get().strip()
-        min_conf = float(self.auto_min_conf.get().strip() or "0.35")
-        camera = self.auto_camera.get().strip() or None
-        lens = self.auto_lens.get().strip() or None
-
-        def task():
-            recipe = load_recipe(recipe_path)
-            reference = ReferenceCatalog.from_path(reference_path)
-            result = auto_profile_batch(
-                chart_captures_dir=charts_dir,
-                target_captures_dir=targets_dir,
-                recipe=recipe,
-                reference=reference,
-                profile_out=profile_out,
-                profile_report_out=profile_report,
-                batch_out_dir=out_dir,
-                work_dir=workdir,
-                chart_type=chart_type,
-                min_confidence=min_conf,
-                camera_model=camera,
-                lens_model=lens,
+    class ImagePanel(QtWidgets.QLabel):
+        def __init__(self, title: str) -> None:
+            super().__init__()
+            self._base_pixmap: QtGui.QPixmap | None = None
+            self.setAlignment(QtCore.Qt.AlignCenter)
+            self.setMinimumSize(220, 160)
+            self.setText(title)
+            self.setStyleSheet(
+                "QLabel {"
+                "border: 1px solid #4b5563;"
+                "background-color: #111827;"
+                "color: #e5e7eb;"
+                "font-size: 13px;"
+                "}"
             )
-            return result
 
-        def on_success(payload):
-            self._render_json(output, payload)
+        def set_rgb_float_image(self, image_rgb: np.ndarray) -> None:
+            rgb = np.clip(image_rgb, 0.0, 1.0)
+            u8 = np.clip(np.round(rgb * 255.0), 0, 255).astype(np.uint8)
+            h, w, _ = u8.shape
+            qimg = QtGui.QImage(u8.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
+            self._base_pixmap = QtGui.QPixmap.fromImage(qimg)
+            self._refresh_scaled_pixmap()
 
-        self._run_task(task, on_success, "flujo automático completo")
+        def resizeEvent(self, event) -> None:  # noqa: N802
+            super().resizeEvent(event)
+            self._refresh_scaled_pixmap()
+
+        def _refresh_scaled_pixmap(self) -> None:
+            if self._base_pixmap is None:
+                return
+            scaled = self._base_pixmap.scaled(
+                self.size(),
+                QtCore.Qt.KeepAspectRatio,
+                QtCore.Qt.SmoothTransformation,
+            )
+            self.setPixmap(scaled)
 
 
-def main() -> int:
-    root = tk.Tk()
-    ICCRawGUI(root)
-    root.mainloop()
-    return 0
+    class ICCRawMainWindow(QtWidgets.QMainWindow):
+        def __init__(self) -> None:
+            super().__init__()
+            self.setWindowTitle("ICCRAW - Revelado RAW y perfil ICC")
+            self.resize(1800, 1020)
+            self._settings = QtCore.QSettings("ICCRAW", "ICCRAW")
+
+            self._threads: list[TaskThread] = []
+            self._thumb_cache: dict[str, QtGui.QIcon] = {}
+            self._preview_cache: dict[str, np.ndarray] = {}
+            self._preview_cache_order: list[str] = []
+            self._current_dir = Path.home()
+            self._selected_file: Path | None = None
+            self._storage_roots: list[Path] = []
+            self._task_counter = 0
+            self._active_tasks = 0
+
+            self._original_linear: np.ndarray | None = None
+            self._adjusted_linear: np.ndarray | None = None
+            self._preview_srgb: np.ndarray | None = None
+
+            self._build_ui()
+            self._build_menu_bar()
+            self._init_fs_model()
+            self._refresh_storage_roots()
+            self._apply_recipe_to_controls(Recipe())
+            layout_restored = self._restore_window_settings()
+            if not layout_restored:
+                self._reset_layout_splitters()
+            self._set_current_directory(self._current_dir)
+            self.statusBar().showMessage("Listo")
+
+        def _build_ui(self) -> None:
+            root = QtWidgets.QWidget()
+            root_layout = QtWidgets.QVBoxLayout(root)
+            root_layout.setContentsMargins(6, 6, 6, 6)
+            root_layout.setSpacing(6)
+
+            header = QtWidgets.QHBoxLayout()
+            title = QtWidgets.QLabel("ICCRAW")
+            title.setStyleSheet("font-size: 22px; font-weight: 700;")
+            subtitle = QtWidgets.QLabel("Flujo tecnico reproducible: RAW -> carta -> perfil ICC -> TIFF 16-bit")
+            subtitle.setStyleSheet("font-size: 12px; color: #4b5563;")
+            header.addWidget(title)
+            header.addWidget(subtitle)
+            header.addStretch(1)
+            header.addWidget(self._button("Abrir carpeta...", self._pick_directory))
+            header.addWidget(self._button("Recargar", self._reload_current_directory))
+            header.addWidget(self._button("Pantalla completa", self._menu_toggle_fullscreen))
+            root_layout.addLayout(header)
+
+            self.main_tabs = QtWidgets.QTabWidget()
+            raw_tab = self._build_tab_raw_develop()
+            profile_tab = self._build_tab_profile_generation()
+            monitor_tab = self._build_tab_monitor()
+
+            self.main_tabs.addTab(profile_tab, "1. Generación Perfil ICC")
+            self.main_tabs.addTab(raw_tab, "2. Revelado RAW")
+            self.main_tabs.addTab(monitor_tab, "3. Monitoreo Flujo")
+
+            root_layout.addWidget(self.main_tabs, 1)
+
+            self.setCentralWidget(root)
+
+        def _build_menu_bar(self) -> None:
+            mb = self.menuBar()
+
+            menu_file = mb.addMenu("Archivo")
+            menu_file.addAction(self._action("Abrir carpeta...", self._pick_directory, "Ctrl+O"))
+            menu_file.addAction(self._action("Cargar seleccion", self._on_load_selected, "Ctrl+L"))
+            menu_file.addAction(self._action("Guardar preview PNG", self._on_save_preview, "Ctrl+S"))
+            menu_file.addAction(self._action("Revelar seleccion a TIFF", self._on_develop_selected, "Ctrl+R"))
+            menu_file.addSeparator()
+            menu_file.addAction(self._action("Salir", self.close, "Ctrl+Q"))
+
+            menu_cfg = mb.addMenu("Configuracion")
+            menu_cfg.addAction(self._action("Cargar receta...", self._menu_load_recipe))
+            menu_cfg.addAction(self._action("Guardar receta...", self._menu_save_recipe))
+            menu_cfg.addAction(self._action("Receta por defecto", self._menu_reset_recipe))
+            menu_cfg.addSeparator()
+            menu_cfg.addAction(self._action("Ir a pestaña Generación Perfil", lambda: self.main_tabs.setCurrentIndex(0)))
+            menu_cfg.addAction(self._action("Ir a pestaña Revelado RAW", lambda: self.main_tabs.setCurrentIndex(1)))
+            menu_cfg.addAction(self._action("Ir a pestaña Monitoreo", lambda: self.main_tabs.setCurrentIndex(2)))
+
+            menu_profile = mb.addMenu("Perfil ICC")
+            menu_profile.addAction(self._action("Cargar perfil activo...", self._menu_load_profile))
+            menu_profile.addAction(self._action("Usar perfil generado", self._use_generated_profile_as_active))
+
+            menu_view = mb.addMenu("Vista")
+            a_compare = self._action("Comparar original/resultado", self._menu_toggle_compare)
+            a_compare.setCheckable(True)
+            a_compare.setChecked(False)
+            self._action_compare = a_compare
+            menu_view.addAction(a_compare)
+            menu_view.addAction(self._action("Ir a Nitidez", lambda: self._go_to_nitidez_tab()))
+            menu_view.addAction(self._action("Pantalla completa", self._menu_toggle_fullscreen, "F11"))
+            menu_view.addAction(self._action("Restablecer distribución", self._reset_layout_splitters))
+
+            menu_help = mb.addMenu("Ayuda")
+            menu_help.addAction(self._action("Acerca de ICCRAW", self._menu_about))
+
+        def _go_to_nitidez_tab(self) -> None:
+            self.main_tabs.setCurrentIndex(1)
+            self.config_tabs.setCurrentIndex(0)
+
+        def _menu_toggle_fullscreen(self, _checked: bool = False) -> None:
+            if self.isFullScreen():
+                self.showNormal()
+            else:
+                self.showFullScreen()
+
+        def _reset_layout_splitters(self) -> None:
+            if hasattr(self, "raw_splitter"):
+                w = max(1200, int(self.width() * 0.98))
+                left = max(250, int(w * 0.19))
+                right = max(320, int(w * 0.25))
+                center = max(520, w - left - right)
+                self.raw_splitter.setSizes([left, center, right])
+
+            if hasattr(self, "compare_splitter"):
+                cw = max(600, int(self.width() * 0.55))
+                self.compare_splitter.setSizes([cw // 2, cw // 2])
+
+            if hasattr(self, "viewer_splitter"):
+                h = max(700, int(self.height() * 0.85))
+                self.viewer_splitter.setSizes([int(h * 0.78), int(h * 0.22)])
+
+        def _restore_window_settings(self) -> bool:
+            restored_layout = False
+            geometry = self._settings_to_bytearray(self._settings.value("window/geometry"))
+            if geometry is not None:
+                self.restoreGeometry(geometry)
+
+            state = self._settings_to_bytearray(self._settings.value("window/state"))
+            if state is not None:
+                self.restoreState(state)
+
+            raw_splitter_state = self._settings_to_bytearray(self._settings.value("layout/raw_splitter"))
+            if raw_splitter_state is not None and hasattr(self, "raw_splitter"):
+                self.raw_splitter.restoreState(raw_splitter_state)
+                restored_layout = True
+
+            viewer_splitter_state = self._settings_to_bytearray(self._settings.value("layout/viewer_splitter"))
+            if viewer_splitter_state is not None and hasattr(self, "viewer_splitter"):
+                self.viewer_splitter.restoreState(viewer_splitter_state)
+                restored_layout = True
+
+            compare_splitter_state = self._settings_to_bytearray(self._settings.value("layout/compare_splitter"))
+            if compare_splitter_state is not None and hasattr(self, "compare_splitter"):
+                self.compare_splitter.restoreState(compare_splitter_state)
+                restored_layout = True
+            return restored_layout
+
+        def _save_window_settings(self) -> None:
+            self._settings.setValue("window/geometry", self.saveGeometry())
+            self._settings.setValue("window/state", self.saveState())
+            if hasattr(self, "raw_splitter"):
+                self._settings.setValue("layout/raw_splitter", self.raw_splitter.saveState())
+            if hasattr(self, "viewer_splitter"):
+                self._settings.setValue("layout/viewer_splitter", self.viewer_splitter.saveState())
+            if hasattr(self, "compare_splitter"):
+                self._settings.setValue("layout/compare_splitter", self.compare_splitter.saveState())
+
+        def _settings_to_bytearray(self, value):
+            if value is None:
+                return None
+            if isinstance(value, QtCore.QByteArray):
+                return value
+            if isinstance(value, (bytes, bytearray)):
+                return QtCore.QByteArray(bytes(value))
+            return None
+
+        def closeEvent(self, event) -> None:  # noqa: N802
+            self._save_window_settings()
+            super().closeEvent(event)
+
+        def _build_tab_raw_develop(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            layout = QtWidgets.QVBoxLayout(tab)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
+
+            self.raw_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+            self.raw_splitter.setChildrenCollapsible(True)
+            self.raw_splitter.setHandleWidth(9)
+            self.raw_splitter.addWidget(self._build_left_pane())
+            self.raw_splitter.addWidget(self._build_center_pane())
+            self.raw_splitter.addWidget(self._build_right_pane())
+            self.raw_splitter.setSizes([340, 1100, 460])
+            self.raw_splitter.setStretchFactor(0, 0)
+            self.raw_splitter.setStretchFactor(1, 1)
+            self.raw_splitter.setStretchFactor(2, 0)
+            layout.addWidget(self.raw_splitter, 1)
+            return tab
+
+        def _build_tab_profile_generation(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            outer = QtWidgets.QVBoxLayout(tab)
+            outer.setContentsMargins(8, 8, 8, 8)
+            outer.setSpacing(8)
+
+            box = QtWidgets.QGroupBox("Generación de perfil ICC desde cartas")
+            grid = QtWidgets.QGridLayout(box)
+
+            self.profile_charts_dir = QtWidgets.QLineEdit(str(self._current_dir))
+            self._add_path_row(grid, 0, "Directorio capturas carta", self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
+
+            self.path_reference = QtWidgets.QLineEdit("testdata/references/colorchecker24_reference.json")
+            self._add_path_row(grid, 1, "Referencia carta JSON", self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
+
+            self.profile_out_path_edit = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
+            self._add_path_row(grid, 2, "Perfil ICC de salida", self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
+
+            self.profile_report_out = QtWidgets.QLineEdit("/tmp/profile_report_gui.json")
+            self._add_path_row(grid, 3, "Reporte perfil JSON", self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False)
+
+            self.profile_workdir = QtWidgets.QLineEdit("/tmp/iccraw_profile_work")
+            self._add_path_row(grid, 4, "Directorio artefactos", self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True)
+
+            grid.addWidget(QtWidgets.QLabel("Tipo de carta"), 5, 0)
+            self.profile_chart_type = QtWidgets.QComboBox()
+            self.profile_chart_type.addItems(["colorchecker24", "it8"])
+            grid.addWidget(self.profile_chart_type, 5, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Confianza mínima"), 6, 0)
+            self.profile_min_conf = QtWidgets.QDoubleSpinBox()
+            self.profile_min_conf.setRange(0.0, 1.0)
+            self.profile_min_conf.setSingleStep(0.05)
+            self.profile_min_conf.setDecimals(2)
+            self.profile_min_conf.setValue(0.35)
+            grid.addWidget(self.profile_min_conf, 6, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Cámara (opcional)"), 7, 0)
+            self.profile_camera = QtWidgets.QLineEdit("")
+            grid.addWidget(self.profile_camera, 7, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Lente (opcional)"), 8, 0)
+            self.profile_lens = QtWidgets.QLineEdit("")
+            grid.addWidget(self.profile_lens, 8, 1, 1, 2)
+
+            row = QtWidgets.QHBoxLayout()
+            row.addWidget(self._button("Usar directorio actual como cartas", self._use_current_dir_as_profile_charts))
+            row.addWidget(self._button("Generar perfil ICC", self._on_generate_profile))
+            row.addWidget(self._button("Usar perfil generado en revelado", self._use_generated_profile_as_active))
+            grid.addLayout(row, 9, 0, 1, 3)
+
+            outer.addWidget(box)
+
+            self.profile_output = QtWidgets.QPlainTextEdit()
+            self.profile_output.setReadOnly(True)
+            self.profile_output.setPlaceholderText("Resultado JSON de la generación de perfil")
+            outer.addWidget(self.profile_output, 1)
+            return tab
+
+        def _build_tab_monitor(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            outer = QtWidgets.QVBoxLayout(tab)
+            outer.setContentsMargins(8, 8, 8, 8)
+            outer.setSpacing(8)
+
+            top = QtWidgets.QHBoxLayout()
+            self.monitor_status_label = QtWidgets.QLabel("Sin tareas en ejecución")
+            self.monitor_progress = QtWidgets.QProgressBar()
+            self.monitor_progress.setRange(0, 1)
+            self.monitor_progress.setValue(0)
+            top.addWidget(self.monitor_status_label, 1)
+            top.addWidget(self.monitor_progress, 1)
+            outer.addLayout(top)
+
+            self.monitor_tasks = QtWidgets.QTableWidget(0, 4)
+            self.monitor_tasks.setHorizontalHeaderLabels(["ID", "Tarea", "Estado", "Detalle"])
+            self.monitor_tasks.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+            self.monitor_tasks.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+            self.monitor_tasks.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+            self.monitor_tasks.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+            outer.addWidget(self.monitor_tasks, 1)
+
+            self.monitor_log = QtWidgets.QPlainTextEdit()
+            self.monitor_log.setReadOnly(True)
+            self.monitor_log.setPlaceholderText("Eventos y trazas de flujo")
+            outer.addWidget(self.monitor_log, 1)
+            return tab
+
+        def _build_left_pane(self) -> QtWidgets.QWidget:
+            pane = QtWidgets.QWidget()
+            pane.setMinimumWidth(240)
+            layout = QtWidgets.QVBoxLayout(pane)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
+
+            box = QtWidgets.QGroupBox("Explorador de unidades y carpetas")
+            box_layout = QtWidgets.QVBoxLayout(box)
+
+            root_row = QtWidgets.QHBoxLayout()
+            root_row.addWidget(QtWidgets.QLabel("Unidad / raiz"))
+            self.storage_root_combo = QtWidgets.QComboBox()
+            self.storage_root_combo.currentIndexChanged.connect(self._on_storage_root_changed)
+            root_row.addWidget(self.storage_root_combo, 1)
+            root_row.addWidget(self._button("Actualizar", self._refresh_storage_roots))
+            box_layout.addLayout(root_row)
+
+            self.current_dir_label = QtWidgets.QLabel("")
+            self.current_dir_label.setWordWrap(True)
+            self.current_dir_label.setStyleSheet("font-size: 12px; color: #374151;")
+            box_layout.addWidget(self.current_dir_label)
+
+            self.dir_tree = QtWidgets.QTreeView()
+            self.dir_tree.setHeaderHidden(True)
+            self.dir_tree.setMinimumHeight(260)
+            self.dir_tree.clicked.connect(self._on_tree_clicked)
+            box_layout.addWidget(self.dir_tree, 1)
+
+            self.file_list = QtWidgets.QListWidget()
+            self.file_list.setViewMode(QtWidgets.QListView.IconMode)
+            self.file_list.setIconSize(QtCore.QSize(132, 132))
+            self.file_list.setResizeMode(QtWidgets.QListView.Adjust)
+            self.file_list.setMovement(QtWidgets.QListView.Static)
+            self.file_list.setSpacing(8)
+            self.file_list.setWordWrap(True)
+            self.file_list.setUniformItemSizes(False)
+            self.file_list.itemSelectionChanged.connect(self._on_file_selection_changed)
+            self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
+            box_layout.addWidget(self.file_list, 2)
+
+            row = QtWidgets.QHBoxLayout()
+            row.addWidget(self._button("Cargar seleccion", self._on_load_selected))
+            row.addWidget(self._button("Usar como cartas", self._use_current_dir_as_profile_charts))
+            row.addWidget(self._button("Usar como lote", self._use_current_dir_as_batch_input))
+            box_layout.addLayout(row)
+
+            layout.addWidget(box, 1)
+            return pane
+
+        def _build_center_pane(self) -> QtWidgets.QWidget:
+            pane = QtWidgets.QWidget()
+            pane.setMinimumWidth(420)
+            layout = QtWidgets.QVBoxLayout(pane)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
+
+            controls = QtWidgets.QGroupBox("Visor principal")
+            g = QtWidgets.QGridLayout(controls)
+
+            g.addWidget(QtWidgets.QLabel("Archivo actual"), 0, 0)
+            self.selected_file_label = QtWidgets.QLabel("Sin archivo seleccionado")
+            self.selected_file_label.setWordWrap(True)
+            self.selected_file_label.setStyleSheet("font-size: 12px; color: #1f2937;")
+            g.addWidget(self.selected_file_label, 0, 1, 1, 4)
+
+            self.chk_compare = QtWidgets.QCheckBox("Comparar original / resultado")
+            self.chk_compare.toggled.connect(self._toggle_compare)
+            g.addWidget(self.chk_compare, 1, 0, 1, 2)
+
+            self.chk_apply_profile = QtWidgets.QCheckBox("Aplicar perfil ICC en resultado")
+            self.chk_apply_profile.setChecked(False)
+            self.chk_apply_profile.setToolTip(
+                "Desactivado por defecto para evitar dominantes si el perfil no corresponde "
+                "a camara + iluminacion + receta actuales."
+            )
+            self.chk_apply_profile.toggled.connect(lambda _v: self._refresh_preview())
+            g.addWidget(self.chk_apply_profile, 1, 2, 1, 2)
+
+            g.addWidget(self._button("Cargar seleccion", self._on_load_selected), 2, 0)
+            g.addWidget(self._button("Guardar preview", self._on_save_preview), 2, 1)
+            g.addWidget(self._button("Revelar a TIFF", self._on_develop_selected), 2, 2)
+            g.addWidget(self._button("Recargar directorio", self._reload_current_directory), 2, 3)
+
+            layout.addWidget(controls)
+
+            self.viewer_stack = QtWidgets.QStackedWidget()
+
+            self.image_result_single = ImagePanel("Resultado")
+            single_page = QtWidgets.QWidget()
+            single_layout = QtWidgets.QVBoxLayout(single_page)
+            single_layout.setContentsMargins(0, 0, 0, 0)
+            single_layout.addWidget(self.image_result_single, 1)
+            self.viewer_stack.addWidget(single_page)
+
+            self.image_original_compare = ImagePanel("Original")
+            self.image_result_compare = ImagePanel("Resultado")
+            self.compare_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+            self.compare_splitter.setChildrenCollapsible(True)
+            self.compare_splitter.setHandleWidth(8)
+            self.compare_splitter.addWidget(self.image_original_compare)
+            self.compare_splitter.addWidget(self.image_result_compare)
+            self.compare_splitter.setSizes([560, 560])
+            self.viewer_stack.addWidget(self.compare_splitter)
+            self.viewer_stack.setCurrentIndex(0)
+
+            tabs = QtWidgets.QTabWidget()
+            self.preview_analysis = QtWidgets.QPlainTextEdit()
+            self.preview_analysis.setReadOnly(True)
+            self.preview_analysis.setPlaceholderText("Analisis tecnico lineal")
+            tabs.addTab(self.preview_analysis, "Analisis")
+
+            self.preview_log = QtWidgets.QPlainTextEdit()
+            self.preview_log.setReadOnly(True)
+            self.preview_log.setPlaceholderText("Eventos y trazas de ejecucion")
+            tabs.addTab(self.preview_log, "Log")
+
+            self.viewer_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+            self.viewer_splitter.setChildrenCollapsible(True)
+            self.viewer_splitter.setHandleWidth(8)
+            self.viewer_splitter.addWidget(self.viewer_stack)
+            self.viewer_splitter.addWidget(tabs)
+            self.viewer_splitter.setSizes([860, 170])
+            layout.addWidget(self.viewer_splitter, 1)
+            return pane
+
+        def _build_right_pane(self) -> QtWidgets.QWidget:
+            pane = QtWidgets.QWidget()
+            pane.setMinimumWidth(280)
+            layout = QtWidgets.QVBoxLayout(pane)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
+
+            self.config_tabs = QtWidgets.QTabWidget()
+            self.config_tabs.addTab(self._build_tab_preview_settings(), "Nitidez")
+            self.config_tabs.addTab(self._build_tab_raw_config(), "Revelado RAW")
+            self.config_tabs.addTab(self._build_tab_profile_config(), "Perfil ICC")
+            self.config_tabs.addTab(self._build_tab_batch_config(), "Lote RAW")
+            layout.addWidget(self.config_tabs, 1)
+
+            return pane
+
+        def _build_tab_preview_settings(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            grid = QtWidgets.QGridLayout(tab)
+
+            self.slider_sharpen, self.label_sharpen = self._slider(
+                minimum=0,
+                maximum=300,
+                value=0,
+                on_change=self._on_slider_change,
+                formatter=lambda v: f"Nitidez (amount): {v / 100:.2f}",
+            )
+            grid.addWidget(self.label_sharpen, 0, 0, 1, 3)
+            grid.addWidget(self.slider_sharpen, 1, 0, 1, 3)
+
+            self.slider_radius, self.label_radius = self._slider(
+                minimum=1,
+                maximum=80,
+                value=10,
+                on_change=self._on_slider_change,
+                formatter=lambda v: f"Radio nitidez: {v / 10:.1f}",
+            )
+            grid.addWidget(self.label_radius, 2, 0, 1, 3)
+            grid.addWidget(self.slider_radius, 3, 0, 1, 3)
+
+            self.slider_noise_luma, self.label_noise_luma = self._slider(
+                minimum=0,
+                maximum=100,
+                value=0,
+                on_change=self._on_slider_change,
+                formatter=lambda v: f"Ruido luminancia: {v / 100:.2f}",
+            )
+            grid.addWidget(self.label_noise_luma, 4, 0, 1, 3)
+            grid.addWidget(self.slider_noise_luma, 5, 0, 1, 3)
+
+            self.slider_noise_color, self.label_noise_color = self._slider(
+                minimum=0,
+                maximum=100,
+                value=0,
+                on_change=self._on_slider_change,
+                formatter=lambda v: f"Ruido color: {v / 100:.2f}",
+            )
+            grid.addWidget(self.label_noise_color, 6, 0, 1, 3)
+            grid.addWidget(self.slider_noise_color, 7, 0, 1, 3)
+
+            self.check_fast_raw_preview = QtWidgets.QCheckBox("Preview RAW rapida (recomendado)")
+            self.check_fast_raw_preview.setChecked(True)
+            self.check_fast_raw_preview.setToolTip(
+                "Usa miniatura embebida o revelado RAW half-size para acelerar carga y previsualizacion."
+            )
+            grid.addWidget(self.check_fast_raw_preview, 8, 0, 1, 3)
+
+            grid.addWidget(QtWidgets.QLabel("Lado maximo preview (px)"), 9, 0)
+            self.spin_preview_max_side = QtWidgets.QSpinBox()
+            self.spin_preview_max_side.setRange(900, 6000)
+            self.spin_preview_max_side.setSingleStep(100)
+            self.spin_preview_max_side.setValue(2600)
+            grid.addWidget(self.spin_preview_max_side, 9, 1, 1, 2)
+
+            self.path_preview_png = QtWidgets.QLineEdit("/tmp/iccraw_preview.png")
+            self._add_path_row(grid, 10, "Guardar preview PNG", self.path_preview_png, file_mode=False, save_mode=True, dir_mode=False)
+            grid.addWidget(self._button("Restablecer ajustes", self._reset_adjustments), 11, 0, 1, 3)
+            return tab
+
+        def _build_tab_raw_config(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            grid = QtWidgets.QGridLayout(tab)
+
+            self.path_recipe = QtWidgets.QLineEdit("testdata/recipes/scientific_recipe.yml")
+            self._add_path_row(grid, 0, "Receta YAML/JSON", self.path_recipe, file_mode=True, save_mode=False, dir_mode=False)
+
+            row_recipe = QtWidgets.QHBoxLayout()
+            row_recipe.addWidget(self._button("Cargar receta", self._menu_load_recipe))
+            row_recipe.addWidget(self._button("Guardar receta", self._menu_save_recipe))
+            row_recipe.addWidget(self._button("Receta por defecto", self._menu_reset_recipe))
+            grid.addLayout(row_recipe, 1, 0, 1, 3)
+
+            grid.addWidget(QtWidgets.QLabel("Motor RAW"), 2, 0)
+            self.combo_raw_developer = QtWidgets.QComboBox()
+            self.combo_raw_developer.addItem("dcraw")
+            self.combo_raw_developer.setEnabled(False)
+            grid.addWidget(self.combo_raw_developer, 2, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Demosaic/interpolacion"), 3, 0)
+            self.combo_demosaic = QtWidgets.QComboBox()
+            for opt in DEMOSAIC_OPTIONS:
+                self.combo_demosaic.addItem(opt, opt)
+            grid.addWidget(self.combo_demosaic, 3, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Balance de blancos"), 4, 0)
+            self.combo_wb_mode = QtWidgets.QComboBox()
+            for label, val in WB_MODE_OPTIONS:
+                self.combo_wb_mode.addItem(label, val)
+            grid.addWidget(self.combo_wb_mode, 4, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("WB multiplicadores"), 5, 0)
+            self.edit_wb_multipliers = QtWidgets.QLineEdit("1,1,1,1")
+            self.edit_wb_multipliers.setToolTip("Formato: R,G,B,G (o R,G,B)")
+            grid.addWidget(self.edit_wb_multipliers, 5, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Black level mode"), 6, 0)
+            self.combo_black_mode = QtWidgets.QComboBox()
+            for label, val in BLACK_MODE_OPTIONS:
+                self.combo_black_mode.addItem(label, val)
+            grid.addWidget(self.combo_black_mode, 6, 1)
+            self.spin_black_value = QtWidgets.QSpinBox()
+            self.spin_black_value.setRange(0, 65535)
+            self.spin_black_value.setValue(0)
+            grid.addWidget(self.spin_black_value, 6, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Exposure compensation (EV)"), 7, 0)
+            self.spin_exposure = QtWidgets.QDoubleSpinBox()
+            self.spin_exposure.setRange(-8.0, 8.0)
+            self.spin_exposure.setDecimals(2)
+            self.spin_exposure.setSingleStep(0.1)
+            grid.addWidget(self.spin_exposure, 7, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Tone curve"), 8, 0)
+            self.combo_tone_curve = QtWidgets.QComboBox()
+            for label, val in TONE_OPTIONS:
+                self.combo_tone_curve.addItem(label, val)
+            grid.addWidget(self.combo_tone_curve, 8, 1)
+            self.spin_gamma = QtWidgets.QDoubleSpinBox()
+            self.spin_gamma.setRange(0.8, 4.0)
+            self.spin_gamma.setDecimals(2)
+            self.spin_gamma.setValue(2.2)
+            grid.addWidget(self.spin_gamma, 8, 2)
+
+            self.check_output_linear = QtWidgets.QCheckBox("Salida lineal")
+            self.check_output_linear.setChecked(True)
+            grid.addWidget(self.check_output_linear, 9, 0, 1, 3)
+
+            grid.addWidget(QtWidgets.QLabel("Denoise modo receta"), 10, 0)
+            self.combo_recipe_denoise = QtWidgets.QComboBox()
+            self.combo_recipe_denoise.addItems(FILTER_MODE_OPTIONS)
+            grid.addWidget(self.combo_recipe_denoise, 10, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Sharpen modo receta"), 11, 0)
+            self.combo_recipe_sharpen = QtWidgets.QComboBox()
+            self.combo_recipe_sharpen.addItems(FILTER_MODE_OPTIONS)
+            grid.addWidget(self.combo_recipe_sharpen, 11, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Working space"), 12, 0)
+            self.combo_working_space = QtWidgets.QComboBox()
+            self.combo_working_space.addItems(SPACE_OPTIONS)
+            grid.addWidget(self.combo_working_space, 12, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Output space"), 13, 0)
+            self.combo_output_space = QtWidgets.QComboBox()
+            self.combo_output_space.addItems(SPACE_OPTIONS)
+            grid.addWidget(self.combo_output_space, 13, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Sampling strategy"), 14, 0)
+            self.combo_sampling = QtWidgets.QComboBox()
+            self.combo_sampling.addItems(SAMPLE_OPTIONS)
+            grid.addWidget(self.combo_sampling, 14, 1, 1, 2)
+
+            self.check_profiling_mode = QtWidgets.QCheckBox("Profiling mode")
+            self.check_profiling_mode.setChecked(True)
+            grid.addWidget(self.check_profiling_mode, 15, 0, 1, 3)
+
+            grid.addWidget(QtWidgets.QLabel("Input color assumption"), 16, 0)
+            self.edit_input_color = QtWidgets.QLineEdit("camera_native")
+            grid.addWidget(self.edit_input_color, 16, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Illuminant metadata"), 17, 0)
+            self.edit_illuminant = QtWidgets.QLineEdit("")
+            grid.addWidget(self.edit_illuminant, 17, 1, 1, 2)
+            return tab
+
+        def _build_tab_profile_config(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            grid = QtWidgets.QGridLayout(tab)
+
+            self.path_profile_active = QtWidgets.QLineEdit("/tmp/camera_profile.icc")
+            self._add_path_row(grid, 0, "Perfil ICC activo (preview/export)", self.path_profile_active, file_mode=True, save_mode=False, dir_mode=False)
+
+            self.path_profile_out = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
+            self._add_path_row(grid, 1, "Perfil ICC salida (workflow)", self.path_profile_out, file_mode=False, save_mode=True, dir_mode=False)
+
+            grid.addWidget(QtWidgets.QLabel("Formato archivo"), 2, 0)
+            self.combo_profile_format = QtWidgets.QComboBox()
+            self.combo_profile_format.addItems(PROFILE_FORMAT_OPTIONS)
+            grid.addWidget(self.combo_profile_format, 2, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Tipo de perfil ICC"), 3, 0)
+            self.combo_profile_algo = QtWidgets.QComboBox()
+            for label, flag in PROFILE_ALGO_OPTIONS:
+                self.combo_profile_algo.addItem(label, flag)
+            grid.addWidget(self.combo_profile_algo, 3, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Calidad perfil"), 4, 0)
+            self.combo_profile_quality = QtWidgets.QComboBox()
+            for label, q in PROFILE_QUALITY_OPTIONS:
+                self.combo_profile_quality.addItem(label, q)
+            self.combo_profile_quality.setCurrentIndex(1)
+            grid.addWidget(self.combo_profile_quality, 4, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Args extra colprof"), 5, 0)
+            self.edit_colprof_args = QtWidgets.QLineEdit("")
+            self.edit_colprof_args.setPlaceholderText("Ejemplo: -D \"Perfil Camara Museo\"")
+            grid.addWidget(self.edit_colprof_args, 5, 1, 1, 2)
+
+            row = QtWidgets.QHBoxLayout()
+            row.addWidget(self._button("Cargar perfil activo", self._menu_load_profile))
+            row.addWidget(self._button("Usar perfil generado", self._use_generated_profile_as_active))
+            grid.addLayout(row, 6, 0, 1, 3)
+            return tab
+
+        def _build_tab_batch_config(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            layout = QtWidgets.QVBoxLayout(tab)
+            grid = QtWidgets.QGridLayout()
+
+            self.batch_input_dir = QtWidgets.QLineEdit(str(self._current_dir))
+            self._add_path_row(grid, 0, "Directorio entrada lote", self.batch_input_dir, file_mode=False, save_mode=False, dir_mode=True)
+
+            self.batch_out_dir = QtWidgets.QLineEdit("/tmp/iccraw_batch_tiffs")
+            self._add_path_row(grid, 1, "Directorio salida TIFF", self.batch_out_dir, file_mode=False, save_mode=False, dir_mode=True)
+
+            self.batch_embed_profile = QtWidgets.QCheckBox("Embeber perfil ICC activo en TIFF")
+            self.batch_embed_profile.setChecked(True)
+            grid.addWidget(self.batch_embed_profile, 2, 0, 1, 3)
+
+            self.batch_apply_adjustments = QtWidgets.QCheckBox("Aplicar ajustes de Nitidez/Ruido del panel")
+            self.batch_apply_adjustments.setChecked(True)
+            grid.addWidget(self.batch_apply_adjustments, 3, 0, 1, 3)
+
+            row_1 = QtWidgets.QHBoxLayout()
+            row_1.addWidget(self._button("Usar directorio actual como entrada", self._use_current_dir_as_batch_input))
+            row_1.addWidget(self._button("Revelar selección (lote)", self._on_batch_develop_selected))
+            row_1.addWidget(self._button("Revelar directorio completo", self._on_batch_develop_directory))
+
+            self.batch_output = QtWidgets.QPlainTextEdit()
+            self.batch_output.setReadOnly(True)
+            self.batch_output.setPlaceholderText("Salida JSON de lote RAW")
+
+            layout.addLayout(grid)
+            layout.addLayout(row_1)
+            layout.addWidget(self.batch_output, 1)
+            return tab
+
+        def _init_fs_model(self) -> None:
+            self._dir_model = QtWidgets.QFileSystemModel(self)
+            self._dir_model.setFilter(QtCore.QDir.AllDirs | QtCore.QDir.NoDotAndDotDot)
+            root_path = "" if sys.platform.startswith("win") else "/"
+            self._dir_model.setRootPath(root_path)
+            index = self._dir_model.index(root_path)
+            self.dir_tree.setModel(self._dir_model)
+            self.dir_tree.setRootIndex(index)
+            for c in (1, 2, 3):
+                self.dir_tree.hideColumn(c)
+
+        def _action(self, text: str, callback, shortcut: str | None = None) -> QtGui.QAction:
+            a = QtGui.QAction(text, self)
+            if shortcut:
+                a.setShortcut(shortcut)
+            a.triggered.connect(callback)
+            return a
+
+        def _button(self, text: str, callback) -> QtWidgets.QPushButton:
+            b = QtWidgets.QPushButton(text)
+            b.clicked.connect(callback)
+            return b
+
+        def _slider(self, minimum: int, maximum: int, value: int, on_change, formatter):
+            label = QtWidgets.QLabel(formatter(value))
+            slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+            slider.setRange(minimum, maximum)
+            slider.setValue(value)
+            slider.valueChanged.connect(lambda v: label.setText(formatter(v)))
+            slider.valueChanged.connect(on_change)
+            return slider, label
+
+        def _add_path_row(
+            self,
+            grid: QtWidgets.QGridLayout,
+            row: int,
+            label_text: str,
+            line_edit: QtWidgets.QLineEdit,
+            *,
+            file_mode: bool,
+            save_mode: bool,
+            dir_mode: bool,
+        ) -> None:
+            grid.addWidget(QtWidgets.QLabel(label_text), row, 0)
+            grid.addWidget(line_edit, row, 1)
+            browse = QtWidgets.QPushButton("...")
+            browse.setMaximumWidth(36)
+            browse.clicked.connect(
+                lambda: self._browse_for_path(
+                    target=line_edit,
+                    file_mode=file_mode,
+                    save_mode=save_mode,
+                    dir_mode=dir_mode,
+                )
+            )
+            grid.addWidget(browse, row, 2)
+
+        def _browse_for_path(self, target, *, file_mode: bool, save_mode: bool, dir_mode: bool) -> None:
+            if dir_mode:
+                path = QtWidgets.QFileDialog.getExistingDirectory(self, "Selecciona directorio")
+                if path:
+                    target.setText(path)
+                return
+            if save_mode:
+                path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Guardar como")
+                if path:
+                    target.setText(path)
+                return
+            if file_mode:
+                path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Selecciona archivo")
+                if path:
+                    target.setText(path)
+
+        def _pick_directory(self) -> None:
+            p = QtWidgets.QFileDialog.getExistingDirectory(self, "Selecciona directorio")
+            if not p:
+                return
+            selected = Path(p)
+            self.dir_tree.setCurrentIndex(self._dir_model.index(str(selected)))
+            self._set_current_directory(selected)
+
+        def _detect_storage_roots(self) -> list[Path]:
+            roots: list[Path] = []
+            if sys.platform.startswith("win"):
+                for fi in QtCore.QDir.drives():
+                    p = Path(fi.absoluteFilePath())
+                    if p not in roots:
+                        roots.append(p)
+            else:
+                roots.append(Path("/"))
+
+            if hasattr(QtCore, "QStorageInfo"):
+                for vol in QtCore.QStorageInfo.mountedVolumes():
+                    try:
+                        if not vol.isValid() or not vol.isReady():
+                            continue
+                        p = Path(vol.rootPath())
+                        if p not in roots:
+                            roots.append(p)
+                    except Exception:
+                        continue
+
+            roots = sorted(roots, key=lambda p: str(p))
+            return roots
+
+        def _refresh_storage_roots(self) -> None:
+            roots = self._detect_storage_roots()
+            self._storage_roots = roots
+            current_dir = self._current_dir
+
+            self.storage_root_combo.blockSignals(True)
+            self.storage_root_combo.clear()
+            best_idx = -1
+            best_len = -1
+
+            for idx, root in enumerate(roots):
+                label = str(root)
+                self.storage_root_combo.addItem(label, str(root))
+                if str(current_dir).startswith(str(root)) and len(str(root)) > best_len:
+                    best_idx = idx
+                    best_len = len(str(root))
+
+            if best_idx >= 0:
+                self.storage_root_combo.setCurrentIndex(best_idx)
+            self.storage_root_combo.blockSignals(False)
+
+        def _on_storage_root_changed(self, idx: int) -> None:
+            if idx < 0:
+                return
+            data = self.storage_root_combo.itemData(idx)
+            if not data:
+                return
+            root = Path(str(data))
+            self.dir_tree.setCurrentIndex(self._dir_model.index(str(root)))
+            self._set_current_directory(root)
+
+        def _on_tree_clicked(self, index) -> None:
+            p = Path(self._dir_model.filePath(index))
+            self._set_current_directory(p)
+
+        def _set_current_directory(self, folder: Path) -> None:
+            if not folder.exists() or not folder.is_dir():
+                return
+            self._current_dir = folder
+            self.current_dir_label.setText(str(folder))
+            self._populate_file_list(folder)
+            self._set_status(f"Directorio actual: {folder}")
+
+        def _reload_current_directory(self) -> None:
+            self._populate_file_list(self._current_dir)
+
+        def _populate_file_list(self, folder: Path) -> None:
+            self.file_list.clear()
+            self._selected_file = None
+            self.selected_file_label.setText("Sin archivo seleccionado")
+
+            files = [
+                p for p in sorted(folder.iterdir())
+                if p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
+            ]
+            max_items = 500
+            shown = files[:max_items]
+
+            for p in shown:
+                item = QtWidgets.QListWidgetItem(p.name)
+                item.setData(QtCore.Qt.UserRole, str(p))
+                item.setTextAlignment(QtCore.Qt.AlignHCenter)
+                item.setToolTip(str(p))
+                item.setIcon(self._icon_for_file(p))
+                self.file_list.addItem(item)
+
+            if len(files) > max_items:
+                rest = len(files) - max_items
+                i = QtWidgets.QListWidgetItem(f"... {rest} archivos mas")
+                i.setFlags(QtCore.Qt.NoItemFlags)
+                self.file_list.addItem(i)
+
+        def _icon_for_file(self, path: Path) -> QtGui.QIcon:
+            try:
+                st = path.stat()
+                key = f"{path}:{st.st_mtime_ns}"
+            except Exception:
+                key = str(path)
+
+            cached = self._thumb_cache.get(key)
+            if cached is not None:
+                return cached
+
+            if path.suffix.lower() in RAW_EXTENSIONS:
+                icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileIcon)
+                self._thumb_cache[key] = icon
+                return icon
+
+            try:
+                rgb = read_image(path)
+                h, w, _ = rgb.shape
+                max_side = max(h, w)
+                if max_side > 280:
+                    scale = 280.0 / max_side
+                    rgb = cv2.resize(
+                        rgb,
+                        (max(1, int(w * scale)), max(1, int(h * scale))),
+                        interpolation=cv2.INTER_AREA,
+                    )
+                srgb = linear_to_srgb_display(rgb)
+                u8 = np.clip(np.round(srgb * 255.0), 0, 255).astype(np.uint8)
+                hh, ww, _ = u8.shape
+                qimg = QtGui.QImage(u8.data, ww, hh, 3 * ww, QtGui.QImage.Format_RGB888).copy()
+                pix = QtGui.QPixmap.fromImage(qimg).scaled(
+                    132,
+                    132,
+                    QtCore.Qt.KeepAspectRatio,
+                    QtCore.Qt.SmoothTransformation,
+                )
+                icon = QtGui.QIcon(pix)
+                self._thumb_cache[key] = icon
+                return icon
+            except Exception:
+                icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileIcon)
+                self._thumb_cache[key] = icon
+                return icon
+
+        def _on_file_selection_changed(self) -> None:
+            item = self.file_list.currentItem()
+            if item is None:
+                self._selected_file = None
+                self.selected_file_label.setText("Sin archivo seleccionado")
+                return
+            raw_path = item.data(QtCore.Qt.UserRole)
+            if not raw_path:
+                self._selected_file = None
+                return
+            self._selected_file = Path(raw_path)
+            self.selected_file_label.setText(str(self._selected_file))
+
+        def _on_file_double_clicked(self, _item) -> None:
+            self._on_load_selected()
+
+        def _toggle_compare(self, enabled: bool) -> None:
+            self.viewer_stack.setCurrentIndex(1 if enabled else 0)
+            if hasattr(self, "_action_compare"):
+                self._action_compare.blockSignals(True)
+                self._action_compare.setChecked(enabled)
+                self._action_compare.blockSignals(False)
+
+        def _menu_toggle_compare(self, checked: bool) -> None:
+            self.chk_compare.setChecked(checked)
+            self._toggle_compare(checked)
+
+        def _menu_about(self) -> None:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Acerca de ICCRAW",
+                "ICCRAW\n\nRevelado RAW tecnico y perfilado ICC reproducible.\n"
+                "Backend: dcraw + ArgyllCMS.\nGUI: Qt/PySide6.",
+            )
+
+        def _menu_load_profile(self) -> None:
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self,
+                "Selecciona perfil ICC",
+                self.path_profile_active.text().strip(),
+                "ICC Profiles (*.icc *.icm);;Todos (*)",
+            )
+            if not path:
+                return
+            self.path_profile_active.setText(path)
+            self._set_status(f"Perfil activo: {path}")
+            self._refresh_preview()
+
+        def _menu_load_recipe(self) -> None:
+            start = self.path_recipe.text().strip() or str(Path.cwd())
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self,
+                "Selecciona receta",
+                start,
+                "Recetas (*.yml *.yaml *.json);;Todos (*)",
+            )
+            if not path:
+                return
+            recipe_path = Path(path)
+            recipe = load_recipe(recipe_path)
+            self.path_recipe.setText(str(recipe_path))
+            self._apply_recipe_to_controls(recipe)
+            self._set_status(f"Receta cargada: {recipe_path}")
+
+        def _menu_save_recipe(self) -> None:
+            start = self.path_recipe.text().strip() or str(Path.cwd() / "recipe.yml")
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self,
+                "Guardar receta",
+                start,
+                "YAML (*.yml *.yaml);;JSON (*.json)",
+            )
+            if not path:
+                return
+            out = Path(path)
+            recipe = self._build_effective_recipe()
+            payload = asdict(recipe)
+            out.parent.mkdir(parents=True, exist_ok=True)
+
+            if out.suffix.lower() in {".yaml", ".yml"}:
+                out.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+            else:
+                out.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+            self.path_recipe.setText(str(out))
+            self._set_status(f"Receta guardada: {out}")
+
+        def _menu_reset_recipe(self) -> None:
+            self._apply_recipe_to_controls(Recipe())
+            self._set_status("Receta restablecida a valores por defecto")
+
+        def _apply_recipe_to_controls(self, recipe: Recipe) -> None:
+            self._set_combo_data(self.combo_demosaic, recipe.demosaic_algorithm)
+            self._set_combo_data(self.combo_wb_mode, recipe.white_balance_mode)
+            self.edit_wb_multipliers.setText(",".join(f"{float(v):.6g}" for v in recipe.wb_multipliers))
+
+            mode, value = self._split_black_mode(recipe.black_level_mode)
+            self._set_combo_data(self.combo_black_mode, mode)
+            self.spin_black_value.setValue(value)
+
+            self.spin_exposure.setValue(float(recipe.exposure_compensation))
+
+            tone_mode, gamma = self._split_tone_curve(recipe.tone_curve)
+            self._set_combo_data(self.combo_tone_curve, tone_mode)
+            self.spin_gamma.setValue(gamma)
+
+            self.check_output_linear.setChecked(bool(recipe.output_linear))
+            self._set_combo_text(self.combo_recipe_denoise, recipe.denoise)
+            self._set_combo_text(self.combo_recipe_sharpen, recipe.sharpen)
+            self._set_combo_text(self.combo_working_space, recipe.working_space)
+            self._set_combo_text(self.combo_output_space, recipe.output_space)
+            self._set_combo_text(self.combo_sampling, recipe.sampling_strategy)
+            self.check_profiling_mode.setChecked(bool(recipe.profiling_mode))
+            self.edit_input_color.setText(recipe.input_color_assumption)
+            self.edit_illuminant.setText(recipe.illuminant_metadata or "")
+
+            if recipe.argyll_colprof_args:
+                self._apply_argyll_args_to_controls(recipe.argyll_colprof_args)
+            else:
+                self._set_combo_data(self.combo_profile_quality, "m")
+                self._set_combo_data(self.combo_profile_algo, "-as")
+                self.edit_colprof_args.setText("")
+
+        def _split_black_mode(self, value: str) -> tuple[str, int]:
+            txt = (value or "metadata").strip().lower()
+            if txt.startswith("fixed:"):
+                try:
+                    return "fixed", int(txt.split(":", 1)[1])
+                except Exception:
+                    return "fixed", 0
+            if txt.startswith("white:"):
+                try:
+                    return "white", int(txt.split(":", 1)[1])
+                except Exception:
+                    return "white", 0
+            return "metadata", 0
+
+        def _split_tone_curve(self, value: str) -> tuple[str, float]:
+            txt = (value or "linear").strip().lower()
+            if txt.startswith("gamma:"):
+                try:
+                    return "gamma", float(txt.split(":", 1)[1])
+                except Exception:
+                    return "gamma", 2.2
+            if txt == "srgb":
+                return "srgb", 2.2
+            return "linear", 2.2
+
+        def _apply_argyll_args_to_controls(self, args: list[str]) -> None:
+            quality = None
+            algo = None
+            extra: list[str] = []
+            for a in args:
+                if a.startswith("-q") and len(a) == 3:
+                    quality = a[-1]
+                elif a in {"-as", "-ag", "-am", "-al", "-ax"}:
+                    algo = a
+                else:
+                    extra.append(a)
+            if quality is not None:
+                self._set_combo_data(self.combo_profile_quality, quality)
+            if algo is not None:
+                self._set_combo_data(self.combo_profile_algo, algo)
+            self.edit_colprof_args.setText(" ".join(extra))
+
+        def _set_combo_data(self, combo: QtWidgets.QComboBox, data_value: str) -> None:
+            for i in range(combo.count()):
+                if str(combo.itemData(i)) == str(data_value):
+                    combo.setCurrentIndex(i)
+                    return
+            self._set_combo_text(combo, str(data_value))
+
+        def _set_combo_text(self, combo: QtWidgets.QComboBox, text: str) -> None:
+            idx = combo.findText(str(text), QtCore.Qt.MatchFixedString)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+
+        def _build_effective_recipe(self) -> Recipe:
+            recipe = Recipe()
+            path_text = self.path_recipe.text().strip()
+            if path_text:
+                p = Path(path_text)
+                if p.exists():
+                    recipe = load_recipe(p)
+
+            recipe.raw_developer = "dcraw"
+            recipe.demosaic_algorithm = str(self.combo_demosaic.currentData() or self.combo_demosaic.currentText())
+            recipe.white_balance_mode = str(self.combo_wb_mode.currentData() or self.combo_wb_mode.currentText())
+            recipe.wb_multipliers = self._parse_wb_multipliers(self.edit_wb_multipliers.text(), recipe.wb_multipliers)
+
+            black_mode = str(self.combo_black_mode.currentData() or "metadata")
+            black_value = int(self.spin_black_value.value())
+            if black_mode == "fixed":
+                recipe.black_level_mode = f"fixed:{black_value}"
+            elif black_mode == "white":
+                recipe.black_level_mode = f"white:{black_value}"
+            else:
+                recipe.black_level_mode = "metadata"
+
+            recipe.exposure_compensation = float(self.spin_exposure.value())
+            tone_mode = str(self.combo_tone_curve.currentData() or "linear")
+            if tone_mode == "gamma":
+                recipe.tone_curve = f"gamma:{float(self.spin_gamma.value()):.3g}"
+            else:
+                recipe.tone_curve = tone_mode
+
+            recipe.output_linear = bool(self.check_output_linear.isChecked())
+            recipe.denoise = self.combo_recipe_denoise.currentText().strip().lower()
+            recipe.sharpen = self.combo_recipe_sharpen.currentText().strip().lower()
+            recipe.working_space = self.combo_working_space.currentText().strip()
+            recipe.output_space = self.combo_output_space.currentText().strip()
+            recipe.sampling_strategy = self.combo_sampling.currentText().strip()
+            recipe.profiling_mode = bool(self.check_profiling_mode.isChecked())
+            recipe.input_color_assumption = self.edit_input_color.text().strip() or "camera_native"
+            recipe.illuminant_metadata = self.edit_illuminant.text().strip() or None
+            recipe.chart_reference = self.path_reference.text().strip() or None
+            recipe.profile_engine = "argyll"
+            recipe.argyll_colprof_args = self._build_colprof_args()
+            return recipe
+
+        def _build_colprof_args(self) -> list[str]:
+            quality = str(self.combo_profile_quality.currentData() or "m")
+            algo = str(self.combo_profile_algo.currentData() or "-as")
+            args = [f"-q{quality}", algo]
+            custom = self.edit_colprof_args.text().strip()
+            if custom:
+                try:
+                    args.extend(shlex.split(custom))
+                except Exception:
+                    self._log_preview("No se pudieron parsear args extra colprof; se ignoran.")
+            return args
+
+        def _parse_wb_multipliers(self, text: str, fallback: list[float]) -> list[float]:
+            raw = [p.strip() for p in text.split(",") if p.strip()]
+            vals: list[float] = []
+            for p in raw:
+                try:
+                    vals.append(float(p))
+                except Exception:
+                    continue
+            if len(vals) >= 3:
+                return vals
+            return list(fallback)
+
+        def _normalized_profile_out_path(self) -> Path:
+            current = self.path_profile_out.text().strip() or "/tmp/camera_profile_gui.icc"
+            ext = self.combo_profile_format.currentText().strip().lower() or ".icc"
+            p = Path(current)
+            if p.suffix.lower() != ext:
+                p = p.with_suffix(ext)
+            self.path_profile_out.setText(str(p))
+            if hasattr(self, "profile_out_path_edit"):
+                self.profile_out_path_edit.setText(str(p))
+            return p
+
+        def _preview_cache_key(
+            self,
+            *,
+            selected: Path,
+            recipe: Recipe,
+            fast_raw: bool,
+            max_preview_side: int,
+        ) -> str:
+            try:
+                st = selected.stat()
+                stamp = f"{st.st_mtime_ns}:{st.st_size}"
+            except Exception:
+                stamp = "nostat"
+
+            wb = ",".join(f"{float(v):.6g}" for v in recipe.wb_multipliers)
+            recipe_sig = "|".join(
+                [
+                    recipe.raw_developer,
+                    recipe.demosaic_algorithm,
+                    recipe.white_balance_mode,
+                    recipe.black_level_mode,
+                    recipe.tone_curve,
+                    f"{float(recipe.exposure_compensation):.3g}",
+                    recipe.output_space,
+                    wb,
+                ]
+            )
+            return f"{selected}|{stamp}|{int(fast_raw)}|{max_preview_side}|{recipe_sig}"
+
+        def _cache_preview_image(self, key: str, image: np.ndarray) -> None:
+            self._preview_cache[key] = image.copy()
+            self._preview_cache_order.append(key)
+            max_entries = 12
+            while len(self._preview_cache_order) > max_entries:
+                old = self._preview_cache_order.pop(0)
+                self._preview_cache.pop(old, None)
+
+        def _on_load_selected(self) -> None:
+            if self._selected_file is None:
+                QtWidgets.QMessageBox.information(self, "Info", "Selecciona primero un archivo.")
+                return
+
+            selected = self._selected_file
+            recipe = self._build_effective_recipe()
+            fast_raw = bool(self.check_fast_raw_preview.isChecked())
+            max_preview_side = int(self.spin_preview_max_side.value())
+            cache_key = self._preview_cache_key(
+                selected=selected,
+                recipe=recipe,
+                fast_raw=fast_raw,
+                max_preview_side=max_preview_side,
+            )
+
+            cached = self._preview_cache.get(cache_key)
+            if cached is not None:
+                self._original_linear = cached.copy()
+                self._adjusted_linear = self._original_linear.copy()
+                self._refresh_preview()
+                self._log_preview(f"Preview cargada desde cache: {selected.name}")
+                self._set_status(f"Preview en cache: {selected.name}")
+                return
+
+            def task():
+                return load_image_for_preview(
+                    selected,
+                    recipe=recipe,
+                    fast_raw=fast_raw,
+                    max_preview_side=max_preview_side,
+                )
+
+            def on_success(payload) -> None:
+                image_linear, msg = payload
+                self._original_linear = np.asarray(image_linear, dtype=np.float32)
+                self._adjusted_linear = self._original_linear.copy()
+                self._cache_preview_image(cache_key, self._original_linear)
+                self._refresh_preview()
+                self._log_preview(msg)
+
+            self._start_background_task("Carga de imagen para preview", task, on_success)
+
+        def _on_slider_change(self) -> None:
+            if self._original_linear is not None:
+                self._refresh_preview()
+
+        def _reset_adjustments(self) -> None:
+            self.slider_sharpen.setValue(0)
+            self.slider_radius.setValue(10)
+            self.slider_noise_luma.setValue(0)
+            self.slider_noise_color.setValue(0)
+            if self._original_linear is not None:
+                self._refresh_preview()
+
+        def _refresh_preview(self) -> None:
+            if self._original_linear is None:
+                return
+            try:
+                nl = self.slider_noise_luma.value() / 100.0
+                nc = self.slider_noise_color.value() / 100.0
+                sharpen = self.slider_sharpen.value() / 100.0
+                radius = self.slider_radius.value() / 10.0
+
+                adjusted = apply_adjustments(
+                    self._original_linear,
+                    denoise_luminance=nl,
+                    denoise_color=nc,
+                    sharpen_amount=sharpen,
+                    sharpen_radius=radius,
+                )
+                self._adjusted_linear = adjusted
+
+                original_srgb = linear_to_srgb_display(self._original_linear)
+                self.image_original_compare.set_rgb_float_image(original_srgb)
+
+                result_srgb = linear_to_srgb_display(adjusted)
+                if self.chk_apply_profile.isChecked() and self.path_profile_active.text().strip():
+                    p = Path(self.path_profile_active.text().strip())
+                    if p.exists() and p.with_suffix(".profile.json").exists():
+                        candidate = apply_profile_preview(adjusted, p)
+                        if self._looks_broken_profile_preview(candidate):
+                            self._log_preview(
+                                "Aviso: preview del perfil ICC parece no fiable "
+                                "(dominante/clipping extremo). Se muestra vista sin perfil."
+                            )
+                        else:
+                            result_srgb = candidate
+                    else:
+                        self._log_preview(
+                            f"Aviso: perfil activo sin sidecar valido ({p}). Se muestra vista sin perfil."
+                        )
+
+                self._preview_srgb = np.asarray(result_srgb, dtype=np.float32)
+                self.image_result_single.set_rgb_float_image(self._preview_srgb)
+                self.image_result_compare.set_rgb_float_image(self._preview_srgb)
+                self.preview_analysis.setPlainText(preview_analysis_text(self._original_linear, adjusted))
+            except Exception as exc:
+                QtWidgets.QMessageBox.warning(self, "Aviso", str(exc))
+
+        def _looks_broken_profile_preview(self, image_srgb: np.ndarray) -> bool:
+            x = np.clip(np.asarray(image_srgb, dtype=np.float32), 0.0, 1.0)
+            if x.ndim != 3 or x.shape[2] < 3:
+                return True
+            if not np.isfinite(x).all():
+                return True
+
+            means = np.mean(x[..., :3], axis=(0, 1))
+            clipped_hi = np.mean(x[..., :3] >= 0.995, axis=(0, 1))
+            clipped_channels = int(np.count_nonzero(clipped_hi > 0.80))
+            chroma_ratio = float((np.max(means) + 1e-6) / (np.min(means) + 1e-6))
+
+            # Heuristic safeguard for clearly wrong matrix/profile assignments.
+            return clipped_channels >= 2 and chroma_ratio > 3.5
+
+        def _on_save_preview(self) -> None:
+            if self._preview_srgb is None:
+                QtWidgets.QMessageBox.information(self, "Info", "No hay preview para guardar.")
+                return
+            out = Path(self.path_preview_png.text().strip() or "/tmp/iccraw_preview.png")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            bgr = np.clip(np.round(self._preview_srgb[..., ::-1] * 255.0), 0, 255).astype(np.uint8)
+            ok = cv2.imwrite(str(out), bgr)
+            if not ok:
+                QtWidgets.QMessageBox.critical(self, "Error", f"No se pudo guardar: {out}")
+                return
+            self._log_preview(f"Preview guardada en: {out}")
+            self._set_status(f"Preview guardada: {out}")
+
+        def _on_develop_selected(self) -> None:
+            if self._selected_file is None:
+                QtWidgets.QMessageBox.information(self, "Info", "Selecciona un archivo para revelar.")
+                return
+
+            in_path = self._selected_file
+            default_out = str(in_path.with_suffix(".tiff"))
+            out_text, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self,
+                "Guardar TIFF revelado",
+                default_out,
+                "TIFF (*.tif *.tiff)",
+            )
+            if not out_text:
+                return
+            out_path = Path(out_text)
+
+            recipe = self._build_effective_recipe()
+            use_profile = self.chk_apply_profile.isChecked() and self.path_profile_active.text().strip() != ""
+            profile_path = Path(self.path_profile_active.text().strip()) if use_profile else None
+
+            def task():
+                with tempfile.TemporaryDirectory(prefix="iccraw_gui_develop_") as tmp:
+                    temp_linear = Path(tmp) / "develop_linear.tiff"
+                    develop_controlled(in_path, recipe, temp_linear, None)
+                    image = read_image(temp_linear)
+
+                    icc_bytes: bytes | None = None
+                    if profile_path is not None and profile_path.exists():
+                        model = load_profile_model(profile_path)
+                        matrix = np.asarray(model["matrix_camera_to_xyz"], dtype=np.float64)
+                        image = apply_profile_matrix(image, matrix, recipe.output_space, recipe.output_linear)
+                        icc_bytes = profile_path.read_bytes()
+
+                    write_tiff16(out_path, image, icc_profile=icc_bytes)
+                return {"output_tiff": str(out_path)}
+
+            def on_success(payload) -> None:
+                self._log_preview(f"TIFF revelado: {payload['output_tiff']}")
+                self._set_status(f"Revelado completado: {payload['output_tiff']}")
+
+            self._start_background_task("Revelado a TIFF", task, on_success)
+
+        def _use_current_dir_as_profile_charts(self) -> None:
+            self.profile_charts_dir.setText(str(self._current_dir))
+            self._set_status(f"Directorio cartas: {self._current_dir}")
+
+        def _use_current_dir_as_batch_input(self) -> None:
+            self.batch_input_dir.setText(str(self._current_dir))
+            self._set_status(f"Directorio lote: {self._current_dir}")
+
+        def _on_generate_profile(self) -> None:
+            charts = Path(self.profile_charts_dir.text().strip())
+            reference_path = Path(self.path_reference.text().strip())
+            profile_out = Path(self.profile_out_path_edit.text().strip())
+            ext = self.combo_profile_format.currentText().strip().lower() or ".icc"
+            if profile_out.suffix.lower() != ext:
+                profile_out = profile_out.with_suffix(ext)
+                self.profile_out_path_edit.setText(str(profile_out))
+            profile_report = Path(self.profile_report_out.text().strip())
+            workdir = Path(self.profile_workdir.text().strip())
+            chart_type = self.profile_chart_type.currentText()
+            min_confidence = float(self.profile_min_conf.value())
+            camera = self.profile_camera.text().strip() or None
+            lens = self.profile_lens.text().strip() or None
+            recipe = self._build_effective_recipe()
+
+            # Sync profile output path with RAW tab profile controls.
+            self.path_profile_out.setText(str(profile_out))
+
+            def task():
+                reference = ReferenceCatalog.from_path(reference_path)
+                return auto_generate_profile_from_charts(
+                    chart_captures_dir=charts,
+                    recipe=recipe,
+                    reference=reference,
+                    profile_out=profile_out,
+                    profile_report_out=profile_report,
+                    work_dir=workdir,
+                    chart_type=chart_type,
+                    min_confidence=min_confidence,
+                    camera_model=camera,
+                    lens_model=lens,
+                )
+
+            def on_success(payload) -> None:
+                self.profile_output.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False))
+                self.path_profile_active.setText(str(profile_out))
+                self._log_preview(f"Perfil generado: {profile_out}")
+                self._set_status(f"Perfil ICC generado: {profile_out}")
+
+            self._start_background_task("Generación de perfil ICC", task, on_success)
+
+        def _collect_selected_file_paths(self) -> list[Path]:
+            files: list[Path] = []
+            for item in self.file_list.selectedItems():
+                value = item.data(QtCore.Qt.UserRole)
+                if not value:
+                    continue
+                p = Path(str(value))
+                if p.exists() and p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS:
+                    files.append(p)
+            files.sort()
+            return files
+
+        def _on_batch_develop_selected(self) -> None:
+            files = self._collect_selected_file_paths()
+            if not files:
+                QtWidgets.QMessageBox.information(self, "Info", "Selecciona uno o más archivos para el lote.")
+                return
+            self._start_batch_develop(files, "Lote desde selección")
+
+        def _on_batch_develop_directory(self) -> None:
+            folder = Path(self.batch_input_dir.text().strip())
+            if not folder.exists() or not folder.is_dir():
+                QtWidgets.QMessageBox.information(self, "Info", f"Directorio inválido: {folder}")
+                return
+            files = [
+                p for p in sorted(folder.iterdir())
+                if p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
+            ]
+            if not files:
+                QtWidgets.QMessageBox.information(self, "Info", "No hay RAW/imagenes compatibles en el directorio.")
+                return
+            self._start_batch_develop(files, "Lote desde directorio")
+
+        def _start_batch_develop(self, files: list[Path], task_label: str) -> None:
+            out_dir = Path(self.batch_out_dir.text().strip())
+            recipe = self._build_effective_recipe()
+            apply_adjust = bool(self.batch_apply_adjustments.isChecked())
+            use_profile = bool(self.batch_embed_profile.isChecked()) and self.path_profile_active.text().strip() != ""
+            profile_path = Path(self.path_profile_active.text().strip()) if use_profile else None
+
+            nl = self.slider_noise_luma.value() / 100.0
+            nc = self.slider_noise_color.value() / 100.0
+            sharpen = self.slider_sharpen.value() / 100.0
+            radius = self.slider_radius.value() / 10.0
+
+            def task():
+                out_dir.mkdir(parents=True, exist_ok=True)
+                outputs: list[dict[str, str]] = []
+
+                with tempfile.TemporaryDirectory(prefix="iccraw_gui_batch_") as tmp:
+                    tmpdir = Path(tmp)
+                    matrix = None
+                    icc_bytes: bytes | None = None
+                    if profile_path is not None and profile_path.exists():
+                        model = load_profile_model(profile_path)
+                        matrix = np.asarray(model["matrix_camera_to_xyz"], dtype=np.float64)
+                        icc_bytes = profile_path.read_bytes()
+                    elif profile_path is not None:
+                        raise RuntimeError(f"No existe perfil ICC activo: {profile_path}")
+
+                    for idx, src in enumerate(files, start=1):
+                        if src.suffix.lower() in RAW_EXTENSIONS:
+                            temp_linear = tmpdir / f"{idx:04d}_{src.stem}.tiff"
+                            develop_controlled(src, recipe, temp_linear, None)
+                            image = read_image(temp_linear)
+                        else:
+                            image = read_image(src)
+
+                        if apply_adjust:
+                            image = apply_adjustments(
+                                image,
+                                denoise_luminance=nl,
+                                denoise_color=nc,
+                                sharpen_amount=sharpen,
+                                sharpen_radius=radius,
+                            )
+
+                        if matrix is not None:
+                            image = apply_profile_matrix(image, matrix, recipe.output_space, recipe.output_linear)
+
+                        out_path = out_dir / f"{src.stem}.tiff"
+                        write_tiff16(out_path, image, icc_profile=icc_bytes if use_profile else None)
+                        outputs.append({"source": str(src), "output": str(out_path)})
+
+                return {
+                    "task": task_label,
+                    "input_files": len(files),
+                    "output_dir": str(out_dir),
+                    "outputs": outputs,
+                }
+
+            def on_success(payload) -> None:
+                self.batch_output.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False))
+                self._log_preview(f"Lote completado: {payload['input_files']} archivos")
+                self._set_status(f"Lote completado en {payload['output_dir']}")
+
+            self._start_background_task(task_label, task, on_success)
+
+        def _use_generated_profile_as_active(self) -> None:
+            p = self._normalized_profile_out_path()
+            if not p.exists():
+                QtWidgets.QMessageBox.information(self, "Info", "El perfil de salida aun no existe.")
+                return
+            self.path_profile_active.setText(str(p))
+            self._set_status(f"Perfil activo: {p}")
+
+        def _start_background_task(self, label: str, task, on_success) -> None:
+            self._set_status(f"Ejecutando: {label}")
+            task_row = self._monitor_task_start(label)
+            thread = TaskThread(task)
+            self._threads.append(thread)
+
+            def cleanup() -> None:
+                if thread in self._threads:
+                    self._threads.remove(thread)
+                thread.deleteLater()
+
+            def ok(payload) -> None:
+                try:
+                    on_success(payload)
+                    self._set_status(f"Completado: {label}")
+                    self._monitor_task_finish(task_row, "Completado", "OK")
+                finally:
+                    cleanup()
+
+            def fail(trace: str) -> None:
+                cleanup()
+                self._log_preview(trace[-1200:])
+                self._set_status(f"Error en: {label}")
+                self._monitor_task_finish(task_row, "Error", trace.strip().splitlines()[-1] if trace.strip() else "Error")
+                QtWidgets.QMessageBox.critical(self, "Error", trace[-4000:])
+
+            thread.succeeded.connect(ok)
+            thread.failed.connect(fail)
+            thread.start()
+
+        def _log_preview(self, text: str) -> None:
+            self.preview_log.appendPlainText(text)
+            self.monitor_log.appendPlainText(text)
+
+        def _monitor_task_start(self, label: str) -> int:
+            self._task_counter += 1
+            self._active_tasks += 1
+
+            row = self.monitor_tasks.rowCount()
+            self.monitor_tasks.insertRow(row)
+            self.monitor_tasks.setItem(row, 0, QtWidgets.QTableWidgetItem(str(self._task_counter)))
+            self.monitor_tasks.setItem(row, 1, QtWidgets.QTableWidgetItem(label))
+            self.monitor_tasks.setItem(row, 2, QtWidgets.QTableWidgetItem("En curso"))
+            self.monitor_tasks.setItem(row, 3, QtWidgets.QTableWidgetItem(""))
+            self.monitor_tasks.scrollToBottom()
+
+            self.monitor_status_label.setText(f"Ejecutando: {label}")
+            self.monitor_progress.setRange(0, 0)
+            return row
+
+        def _monitor_task_finish(self, row: int, status: str, detail: str) -> None:
+            self._active_tasks = max(0, self._active_tasks - 1)
+            self.monitor_tasks.setItem(row, 2, QtWidgets.QTableWidgetItem(status))
+            self.monitor_tasks.setItem(row, 3, QtWidgets.QTableWidgetItem(detail))
+            self.monitor_tasks.scrollToBottom()
+
+            if self._active_tasks == 0:
+                self.monitor_progress.setRange(0, 1)
+                self.monitor_progress.setValue(1 if status == "Completado" else 0)
+                self.monitor_status_label.setText("Sin tareas en ejecución")
+
+        def _set_status(self, text: str) -> None:
+            self.statusBar().showMessage(text, 8000)
+
+
+def main(argv: list[str] | None = None) -> int:
+    if QtWidgets is None:
+        print(
+            "ERROR: Dependencia de GUI no disponible. Instala PySide6 con: pip install -e .[gui]",
+            file=sys.stderr,
+        )
+        return 2
+
+    app = QtWidgets.QApplication(argv if argv is not None else sys.argv)
+    app.setApplicationName("ICCRAW")
+    app.setOrganizationName("ICCRAW")
+    win = ICCRawMainWindow()
+    win.show()
+    return app.exec()
 
 
 if __name__ == "__main__":

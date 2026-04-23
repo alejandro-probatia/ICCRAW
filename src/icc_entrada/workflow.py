@@ -19,14 +19,12 @@ from .utils import RAW_EXTENSIONS
 IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 
 
-def auto_profile_batch(
+def auto_generate_profile_from_charts(
     chart_captures_dir: Path,
-    target_captures_dir: Path,
     recipe: Recipe,
     reference: ReferenceCatalog,
     profile_out: Path,
     profile_report_out: Path,
-    batch_out_dir: Path,
     work_dir: Path,
     chart_type: str = "colorchecker24",
     min_confidence: float = 0.35,
@@ -106,6 +104,43 @@ def auto_profile_batch(
     )
     write_json(profile_report_out, profile_result)
 
+    return {
+        "chart_captures_total": len(chart_files),
+        "chart_captures_used": len(accepted_samples),
+        "chart_captures_skipped": skipped,
+        "aggregated_samples": str(aggregated_samples_path),
+        "profile": to_json_dict(profile_result),
+        "profile_report_path": str(profile_report_out),
+    }
+
+
+def auto_profile_batch(
+    chart_captures_dir: Path,
+    target_captures_dir: Path,
+    recipe: Recipe,
+    reference: ReferenceCatalog,
+    profile_out: Path,
+    profile_report_out: Path,
+    batch_out_dir: Path,
+    work_dir: Path,
+    chart_type: str = "colorchecker24",
+    min_confidence: float = 0.35,
+    camera_model: str | None = None,
+    lens_model: str | None = None,
+) -> dict[str, Any]:
+    profile_payload = auto_generate_profile_from_charts(
+        chart_captures_dir=chart_captures_dir,
+        recipe=recipe,
+        reference=reference,
+        profile_out=profile_out,
+        profile_report_out=profile_report_out,
+        work_dir=work_dir,
+        chart_type=chart_type,
+        min_confidence=min_confidence,
+        camera_model=camera_model,
+        lens_model=lens_model,
+    )
+
     manifest = batch_develop(
         raws_dir=target_captures_dir,
         recipe=recipe,
@@ -116,11 +151,12 @@ def auto_profile_batch(
     write_json(manifest_path, manifest)
 
     return {
-        "chart_captures_total": len(chart_files),
-        "chart_captures_used": len(accepted_samples),
-        "chart_captures_skipped": skipped,
-        "aggregated_samples": str(aggregated_samples_path),
-        "profile": to_json_dict(profile_result),
+        "chart_captures_total": profile_payload["chart_captures_total"],
+        "chart_captures_used": profile_payload["chart_captures_used"],
+        "chart_captures_skipped": profile_payload["chart_captures_skipped"],
+        "aggregated_samples": profile_payload["aggregated_samples"],
+        "profile": profile_payload["profile"],
+        "profile_report_path": profile_payload["profile_report_path"],
         "batch_manifest": to_json_dict(manifest),
         "batch_manifest_path": str(manifest_path),
     }

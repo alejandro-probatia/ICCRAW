@@ -41,7 +41,7 @@ def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: P
 
         develop_controlled(raw, recipe, out_linear, None)
         image = read_image(out_linear)
-        corrected = _apply_profile_matrix(image, matrix, recipe.output_space, recipe.output_linear)
+        corrected = apply_profile_matrix(image, matrix, recipe.output_space, recipe.output_linear)
         write_tiff16(out_final, corrected, icc_profile=icc_bytes)
 
         entries.append(
@@ -62,7 +62,12 @@ def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: P
     )
 
 
-def _apply_profile_matrix(image_linear_rgb: np.ndarray, matrix_camera_to_xyz: np.ndarray, output_space: str, output_linear: bool) -> np.ndarray:
+def apply_profile_matrix(
+    image_linear_rgb: np.ndarray,
+    matrix_camera_to_xyz: np.ndarray,
+    output_space: str,
+    output_linear: bool,
+) -> np.ndarray:
     h, w, _ = image_linear_rgb.shape
     flat = image_linear_rgb.reshape(-1, 3).astype(np.float64)
 
@@ -85,3 +90,8 @@ def _apply_profile_matrix(image_linear_rgb: np.ndarray, matrix_camera_to_xyz: np
         out = np.clip(rgb_linear, 0.0, 1.0)
 
     return out.reshape(h, w, 3).astype(np.float32)
+
+
+# Backward-compat alias kept to avoid breaking external scripts that imported
+# the previous private name before it was promoted to public API.
+_apply_profile_matrix = apply_profile_matrix

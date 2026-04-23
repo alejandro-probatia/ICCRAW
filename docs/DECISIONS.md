@@ -64,3 +64,34 @@ Cumplimiento (resumen):
 1. toda distribucion del software debe incluir acceso a la fuente correspondiente bajo AGPL,
 2. en despliegues de red/aplicacion remota, se mantiene obligacion AGPL de ofrecer fuente al usuario remoto,
 3. se conserva trazabilidad de herramientas externas y sus versiones en el contexto de ejecucion.
+
+## DEC-0005: Stack de interfaz grafica
+
+- Estado: aceptada
+- Fecha: 2026-04-23
+
+Decision:
+
+- usar **Qt for Python (PySide6)** para la GUI.
+
+Motivacion:
+
+1. mayor mantenibilidad a medio plazo para interfaz tecnica compleja,
+2. buen rendimiento en visualizacion de imagen y herramientas de analisis,
+3. licencia comunitaria LGPLv3/GPLv3 con buen encaje en ecosistema AGPL del proyecto.
+
+## DEC-0006: Objetivo no comercial y licencia libre
+
+- Estado: aceptada
+- Fecha: 2026-04-23
+
+Decision:
+
+- mantener `AGPL-3.0-or-later` como licencia del repositorio,
+- declarar explicitamente que el objetivo de gobernanza del proyecto es cientifico/comunitario sin finalidad comercial.
+
+Motivacion:
+
+1. la AGPL protege la reciprocidad de mejoras y uso en red,
+2. añadir clausulas "solo no comercial" romperia compatibilidad open source y reutilizacion cientifica,
+3. se prioriza seguridad juridica y compatibilidad con dependencias libres.

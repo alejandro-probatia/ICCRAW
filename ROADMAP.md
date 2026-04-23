@@ -6,7 +6,8 @@
 - CLI MVP funcional,
 - pipeline reproducible con recipe,
 - tests iniciales,
-- trazabilidad JSON.
+- trazabilidad JSON,
+- GUI Qt inicial para previsualización técnica y flujo automático.
 
 ## Fase 1
 
@@ -32,4 +33,4 @@
 - empaquetado y distribución comunitaria,
 - guías de contribución científica,
 - auditoría de cumplimiento legal y licencias para releases AGPL,
-- GUI ligera opcional (post-estabilización del núcleo).
+- internacionalización GUI (es/en) y módulos avanzados de análisis.

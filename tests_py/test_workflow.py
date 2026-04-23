@@ -7,7 +7,7 @@ import tifffile
 
 from icc_entrada.recipe import load_recipe
 from icc_entrada.sampling import ReferenceCatalog
-from icc_entrada.workflow import auto_profile_batch
+from icc_entrada.workflow import auto_generate_profile_from_charts, auto_profile_batch
 import icc_entrada.profiling as profiling
 
 
@@ -67,6 +67,57 @@ def test_auto_profile_batch_end_to_end(tmp_path: Path, monkeypatch):
     assert (out_dir / "batch_manifest.json").exists()
     assert result["chart_captures_used"] >= 1
     assert len(result["batch_manifest"]["entries"]) == 2
+
+
+def test_auto_generate_profile_from_charts_only(tmp_path: Path, monkeypatch):
+    def fake_build_profile_with_argyll(
+        out_icc: Path,
+        measured_rgb: np.ndarray,
+        reference_lab: np.ndarray,
+        patch_ids: list[str],
+        description: str,
+        extra_args: list[str] | None,
+    ) -> None:
+        icc_bytes = profiling.build_matrix_shaper_icc(
+            description=description,
+            matrix_camera_to_xyz=np.eye(3),
+            gamma=1.0,
+        )
+        out_icc.write_bytes(icc_bytes)
+
+    monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+
+    charts_dir = tmp_path / "charts"
+    work_dir = tmp_path / "work_profile"
+    charts_dir.mkdir()
+
+    img = _synthetic_colorchecker_image()
+    tifffile.imwrite(str(charts_dir / "chart_01.tiff"), img, photometric="rgb", metadata=None)
+    tifffile.imwrite(str(charts_dir / "chart_02.tiff"), img, photometric="rgb", metadata=None)
+
+    repo_root = Path(__file__).resolve().parents[1]
+    recipe = load_recipe(repo_root / "testdata/recipes/scientific_recipe.yml")
+    reference = ReferenceCatalog.from_path(repo_root / "testdata/references/colorchecker24_reference.json")
+
+    profile_out = tmp_path / "profile_only.icc"
+    profile_report = tmp_path / "profile_only_report.json"
+
+    result = auto_generate_profile_from_charts(
+        chart_captures_dir=charts_dir,
+        recipe=recipe,
+        reference=reference,
+        profile_out=profile_out,
+        profile_report_out=profile_report,
+        work_dir=work_dir,
+        chart_type="colorchecker24",
+        min_confidence=0.0,
+    )
+
+    assert profile_out.exists()
+    assert profile_report.exists()
+    assert result["chart_captures_total"] == 2
+    assert result["chart_captures_used"] >= 1
+    assert "profile" in result
 
 
 def _synthetic_colorchecker_image() -> np.ndarray:

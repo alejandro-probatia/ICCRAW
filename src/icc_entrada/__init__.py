@@ -9,5 +9,6 @@ __all__ = [
     "reporting",
     "recipe",
     "gui",
+    "preview",
     "workflow",
 ]

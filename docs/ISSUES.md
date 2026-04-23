@@ -19,9 +19,10 @@
 1. Benchmark de rendimiento y paralelización de lote.
 2. Paquetización reproducible (wheel + contenedor).
 3. Guía de contribución científica (captura, iluminación, QA colorimétrico).
+4. Tests automáticos de smoke para GUI Qt en CI (modo headless).
 
 ## P3
 
 1. Perfilado avanzado LUT además de matriz 3x3.
 2. Comparador automático entre perfiles de sesiones/iluminantes distintos.
-3. GUI ligera posterior al cierre del motor CLI.
+3. Internacionalización GUI (es/en) y presets técnicos por disciplina.

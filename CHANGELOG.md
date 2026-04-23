@@ -21,6 +21,59 @@ Para mantener trazabilidad completa, cada cambio debe:
 ### Added
 
 - Plantilla de mantenimiento continuo del changelog y política de actualización.
+- Módulo `preview` para carga de imagen/RAW en previsualización, ajustes técnicos y análisis lineal.
+- GUI nueva basada en Qt/PySide6 (`app-ui`, `app-ui-qt`) con:
+  - previsualización técnica con perfil ICC,
+  - ajustes de nitidez y reducción de ruido,
+  - ejecución de flujo automático carta -> perfil -> lote.
+- Dependencia opcional `gui` en `pyproject.toml`.
+- Script `scripts/run_ui_qt.sh`.
+- Navegador visual de directorios y miniaturas RAW/imagen integrado en GUI para selección de archivos clave.
+- Acción GUI para revelar archivo seleccionado a TIFF 16-bit con perfil ICC opcional.
+- Ajustes de ruido separados en luminancia y color.
+- Menu superior en GUI con accesos a configuracion y operaciones (`Archivo`, `Configuracion`, `Perfil ICC`, `Vista`, `Ayuda`).
+- Soporte de exploracion multiunidad en GUI para navegar el arbol completo del sistema de archivos.
+- Panel de configuracion RAW ampliado (demosaic, WB, black/white level, tone curve, espacios, sampling, profiling mode).
+- Panel de configuracion de perfil ICC ampliado (tipo `-a`, calidad `-q`, args extra `colprof`, formato `.icc/.icm`).
+- Optimizacion de carga y previsualizacion RAW/DNG:
+  - modo rapido con miniatura embebida o decodificacion `dcraw -h`,
+  - downscale configurable de preview para reducir latencia en archivos grandes,
+  - cache de previews por archivo+recipe para recargas inmediatas.
+- Nueva función de backend `auto_generate_profile_from_charts` para generar perfil ICC sin ejecutar batch.
+- Reorganización funcional en 3 pestañas principales:
+  - Generación Perfil ICC,
+  - Revelado RAW,
+  - Monitoreo Flujo.
+- Revelado por lotes integrado en pestaña de Revelado RAW (selección o directorio completo).
+
+### Changed
+
+- Se reemplaza completamente la GUI anterior (tkinter) por implementación Qt.
+- `apply_profile_matrix` pasa a API pública en `icc_entrada.export` para reutilización en previsualización.
+- Documentación y roadmap actualizados para reflejar GUI Qt y política legal AGPL + dependencias.
+- Rediseño de GUI a layout de 3 paneles (explorador, visor principal, panel de control) priorizando espacio de imagen y flujo práctico de producción.
+- Reorganizacion de GUI para flujo de trabajo tipo revelador RAW (navegacion, seleccion visual y maximo espacio para imagen).
+- Renombrada pestaña de ajustes visuales de `Vista` a `Nitidez`.
+- El flujo de perfilado y el flujo de revelado por lotes se separan explícitamente para mayor claridad operativa.
+- La previsualización aplica perfil ICC desactivado por defecto para evitar dominantes cuando el perfil no corresponde al set cámara+iluminación+recipe activo.
+- La ventana Qt guarda/restaura tamaño y distribución de paneles para mejorar trabajo en pantallas de distinto tamaño.
+
+### Docs
+
+- Política legal ampliada para:
+  - compatibilidad AGPL con objetivo comunitario no comercial,
+  - notas de licencia de ArgyllCMS, dcraw y PySide6,
+  - obligaciones de redistribución y trazabilidad.
+- Nuevo documento `docs/THIRD_PARTY_LICENSES.md` con inventario operativo de licencias de terceros.
+- Advertencia explícita en README y manual: el estado actual es de desarrollo y la aplicación aún no se considera plenamente funcional/validada para producción científica o forense.
+
+### Fixed
+
+- Corrección de previsualización RAW rápida:
+  - salida de `dcraw` para preview en espacio sRGB (`-o 1`) en lugar de cámara nativa sin conversión,
+  - normalización de miniatura embebida a lineal para evitar doble corrección gamma.
+- Salvaguarda en preview con perfil ICC:
+  - si falta sidecar `.profile.json` o se detecta clipping/dominante extrema, la vista cae a modo sin perfil con aviso en log.
 
 ## [0.1.0] - 2026-04-23
 
