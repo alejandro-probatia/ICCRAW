@@ -66,17 +66,19 @@ def _safe_import_version(module: str) -> str:
 def _dcraw_version() -> str:
     try:
         proc = subprocess.run(
-            ["dcraw", "-v"],
+            ["dcraw"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             check=False,
         )
-        if proc.returncode != 0:
-            return "not-available"
-        line = (proc.stdout or "").strip().splitlines()
-        if not line:
-            return "unknown"
-        return line[0].strip()
+        output = (proc.stdout or "").strip().splitlines()
+        for line in output:
+            txt = line.strip()
+            if txt.lower().startswith("dcraw"):
+                return txt
+        if output:
+            return output[0].strip()
+        return "unknown"
     except Exception:
         return "not-available"

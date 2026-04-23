@@ -34,6 +34,7 @@ Opcional pero recomendado para perfilado con ArgyllCMS:
 ```bash
 # Debian/Ubuntu
 sudo apt-get install dcraw argyll exiftool
+bash scripts/check_tools.sh
 ```
 
 ## CLI
@@ -122,5 +123,7 @@ Campos clave:
 - [Architecture](/home/alejandro/Repositorios/ICC-entrada/ARCHITECTURE.md)
 - [Roadmap](/home/alejandro/Repositorios/ICC-entrada/ROADMAP.md)
 - [Color Pipeline](/home/alejandro/Repositorios/ICC-entrada/COLOR_PIPELINE.md)
+- [Manual de Usuario](/home/alejandro/Repositorios/ICC-entrada/docs/MANUAL_USUARIO.md)
+- [Integración dcraw + ArgyllCMS](/home/alejandro/Repositorios/ICC-entrada/docs/INTEGRACION_DCRAW_ARGYLL.md)
 - [Decisiones](/home/alejandro/Repositorios/ICC-entrada/docs/DECISIONS.md)
 - [Backlog priorizado](/home/alejandro/Repositorios/ICC-entrada/docs/ISSUES.md)

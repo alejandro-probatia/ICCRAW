@@ -66,7 +66,7 @@ def build_profile(
     _build_profile_with_argyll(
         out_icc=out_icc,
         measured_rgb=measured_rgb,
-        reference_xyz=reference_xyz,
+        reference_lab=reference_lab,
         patch_ids=patch_ids,
         description=f"ICCRAW {samples.chart_name} {samples.chart_version}",
         extra_args=recipe.argyll_colprof_args,
@@ -184,7 +184,7 @@ def _samples_to_arrays(samples: SampleSet):
 def _build_profile_with_argyll(
     out_icc: Path,
     measured_rgb: np.ndarray,
-    reference_xyz: np.ndarray,
+    reference_lab: np.ndarray,
     patch_ids: list[str],
     description: str,
     extra_args: list[str] | None,
@@ -197,7 +197,7 @@ def _build_profile_with_argyll(
         tmpdir = Path(tmp)
         base = tmpdir / "camera_profile"
         ti3 = base.with_suffix(".ti3")
-        _write_ti3(ti3, measured_rgb, reference_xyz, patch_ids)
+        _write_ti3(ti3, measured_rgb, reference_lab, patch_ids)
 
         args = [colprof, "-v", "-D", description]
         env_args = os.environ.get("ICC_ARGYLL_COLPROF_ARGS", "").strip()
@@ -221,24 +221,27 @@ def _build_profile_with_argyll(
         shutil.copy2(produced, out_icc)
 
 
-def _write_ti3(path: Path, measured_rgb: np.ndarray, reference_xyz: np.ndarray, patch_ids: list[str]) -> None:
+def _write_ti3(path: Path, measured_rgb: np.ndarray, reference_lab: np.ndarray, patch_ids: list[str]) -> None:
     lines: list[str] = []
     lines.append('CTI3')
     lines.append('DESCRIPTOR "ICCRAW chart samples"')
     lines.append('ORIGINATOR "ICCRAW"')
     lines.append('CREATED "{}"'.format(datetime.now(timezone.utc).isoformat()))
-    lines.append('COLOR_REP "RGB_XYZ"')
+    lines.append('KEYWORD "DEVICE_CLASS"')
+    lines.append('DEVICE_CLASS "INPUT"')
+    lines.append('KEYWORD "COLOR_REP"')
+    lines.append('COLOR_REP "LAB_RGB"')
     lines.append('NUMBER_OF_FIELDS 7')
     lines.append('BEGIN_DATA_FORMAT')
-    lines.append('SAMPLE_ID RGB_R RGB_G RGB_B XYZ_X XYZ_Y XYZ_Z')
+    lines.append('SAMPLE_ID LAB_L LAB_A LAB_B RGB_R RGB_G RGB_B')
     lines.append('END_DATA_FORMAT')
     lines.append(f'NUMBER_OF_SETS {len(patch_ids)}')
     lines.append('BEGIN_DATA')
 
-    for pid, rgb, xyz in zip(patch_ids, measured_rgb, reference_xyz, strict=True):
+    for pid, rgb, lab in zip(patch_ids, measured_rgb, reference_lab, strict=True):
         rr, gg, bb = [float(v) * 100.0 for v in rgb]
-        xx, yy, zz = [float(v) * 100.0 for v in xyz]
-        lines.append(f'{pid} {rr:.6f} {gg:.6f} {bb:.6f} {xx:.6f} {yy:.6f} {zz:.6f}')
+        ll, aa, bb_lab = [float(v) for v in lab]
+        lines.append(f'{pid} {ll:.6f} {aa:.6f} {bb_lab:.6f} {rr:.6f} {gg:.6f} {bb:.6f}')
 
     lines.append('END_DATA')
     path.write_text("\n".join(lines) + "\n", encoding="ascii")

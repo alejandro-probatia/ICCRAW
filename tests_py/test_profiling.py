@@ -10,7 +10,7 @@ def test_build_profile_generates_icc_and_sidecar(tmp_path: Path, monkeypatch):
     def fake_build_profile_with_argyll(
         out_icc: Path,
         measured_rgb: np.ndarray,
-        reference_xyz: np.ndarray,
+        reference_lab: np.ndarray,
         patch_ids: list[str],
         description: str,
         extra_args: list[str] | None,

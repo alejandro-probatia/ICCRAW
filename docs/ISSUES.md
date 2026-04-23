@@ -11,6 +11,7 @@
 1. Mejorar detección automática de ColorChecker24 en condiciones no ideales.
 2. Completar soporte IT8 (detección + referencia + validación).
 3. Añadir export CGATS completo para interoperabilidad externa.
+4. Integrar manifiestos C2PA/CAI firmados para cadena de custodia del proceso.
 
 ## P2
 
