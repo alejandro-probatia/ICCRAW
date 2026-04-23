@@ -6,6 +6,11 @@ Pipeline científico reproducible:
 
 `RAW -> develop controlado -> detect-chart -> sample-chart -> build-profile -> batch-develop -> validate-profile`
 
+Gobernanza y licencia:
+
+- proyecto mantenido por la comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
+- licencia del repositorio: `AGPL-3.0-or-later`.
+
 ## Módulos Python
 
 - `icc_entrada.raw`: ingesta RAW y metadatos (exiftool + rawpy opcional).

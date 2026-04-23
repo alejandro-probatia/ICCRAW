@@ -19,7 +19,7 @@
 - endurecer motor ArgyllCMS:
   - presets por tipo de perfil,
   - validación cruzada automática,
-  - reporte comparativo Argyll vs ajuste interno.
+  - reportes de calidad y estabilidad entre sesiones.
 
 ## Fase 3
 
@@ -31,4 +31,5 @@
 
 - empaquetado y distribución comunitaria,
 - guías de contribución científica,
+- auditoría de cumplimiento legal y licencias para releases AGPL,
 - GUI ligera opcional (post-estabilización del núcleo).

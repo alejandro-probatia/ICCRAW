@@ -36,6 +36,13 @@ pip install -e .
 pip install -e .[raw_metadata]
 ```
 
+### 2.3 Licencia y uso legal
+
+- ICCRAW se distribuye bajo `AGPL-3.0-or-later`.
+- Proyecto mantenido por la comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
+- Antes de redistribuir o desplegar como servicio, revisar:
+  - `docs/LEGAL_COMPLIANCE.md`
+
 ## 3. Flujo recomendado (CLI)
 
 ## 3.1 Obtener metadatos RAW

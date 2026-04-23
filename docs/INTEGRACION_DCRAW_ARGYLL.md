@@ -9,6 +9,11 @@ Este documento describe cómo ICCRAW integra:
 
 La meta es mantener un flujo científico reproducible y auditable.
 
+Marco legal:
+
+- Licencia del proyecto: `AGPL-3.0-or-later`.
+- Referencia operativa de cumplimiento: `docs/LEGAL_COMPLIANCE.md`.
+
 ## Instalación del sistema
 
 ### Opción recomendada (global, con `sudo`)

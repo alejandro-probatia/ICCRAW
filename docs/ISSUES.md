@@ -5,6 +5,7 @@
 1. Garantizar ArgyllCMS (`colprof`) en entorno CI para tests de integración reales.
 2. Añadir dataset RAW real multi-fabricante para pruebas de regresión.
 3. Validar determinismo del pipeline en ejecuciones repetidas.
+4. Automatizar auditoría de licencias y avisos para releases AGPL.
 
 ## P1
 

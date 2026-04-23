@@ -45,15 +45,22 @@ Decisión:
 
 ## DEC-0004: Licencia inicial
 
-- Estado: aceptada (revisable si cambia estrategia de linking/distribución)
+- Estado: aceptada
 - Fecha: 2026-04-23
 
 Decisión:
 
-- licencia del repositorio: `GPL-3.0-or-later`.
+- licencia del repositorio: `AGPL-3.0-or-later`.
+- gobernanza y mantenimiento: comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
 
 Compatibilidad (resumen):
 
 1. `dcraw` y `ArgyllCMS` se usan como herramientas externas (subproceso), evitando acoplamiento binario directo,
 2. OpenCV BSD: compatible,
 3. `rawpy` es opcional y no bloquea el funcionamiento del pipeline principal.
+
+Cumplimiento (resumen):
+
+1. toda distribucion del software debe incluir acceso a la fuente correspondiente bajo AGPL,
+2. en despliegues de red/aplicacion remota, se mantiene obligacion AGPL de ofrecer fuente al usuario remoto,
+3. se conserva trazabilidad de herramientas externas y sus versiones en el contexto de ejecucion.

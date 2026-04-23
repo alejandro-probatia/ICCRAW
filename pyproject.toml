@@ -8,9 +8,9 @@ version = "0.1.0"
 description = "Pipeline reproducible para RAW, deteccion de carta y perfilado ICC de camara"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "GPL-3.0-or-later"}
+license = {text = "AGPL-3.0-or-later"}
 authors = [
-  {name = "ICCRAW Contributors"}
+  {name = "Comunidad de la Asociacion Espanola de Imagen Cientifica y Forense"}
 ]
 dependencies = [
   "numpy>=2.0",

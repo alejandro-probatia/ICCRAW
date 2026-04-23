@@ -9,6 +9,10 @@ Aplicación open source para fotografía técnico-científica:
 5. aplicación del mismo flujo + perfil a lotes RAW,
 6. trazabilidad y auditoría (JSON sidecars + hashes + manifiestos).
 
+Mantenimiento comunitario:
+
+- Comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
+
 ## Stack actual
 
 - Lenguaje principal: **Python**.
@@ -118,6 +122,12 @@ Campos clave:
 - Válido para condiciones comparables de cámara + óptica + iluminante + recipe.
 - Cambios de demosaicing/WB/tone mapping pueden invalidar la validez colorimétrica.
 
+## Licencia
+
+- Licencia del proyecto: `AGPL-3.0-or-later`.
+- Para despliegues y redistribucion, seguir:
+  - [Cumplimiento Legal y Licencias](/home/alejandro/Repositorios/ICC-entrada/docs/LEGAL_COMPLIANCE.md)
+
 ## Documentación
 
 - [Architecture](/home/alejandro/Repositorios/ICC-entrada/ARCHITECTURE.md)
@@ -125,5 +135,6 @@ Campos clave:
 - [Color Pipeline](/home/alejandro/Repositorios/ICC-entrada/COLOR_PIPELINE.md)
 - [Manual de Usuario](/home/alejandro/Repositorios/ICC-entrada/docs/MANUAL_USUARIO.md)
 - [Integración dcraw + ArgyllCMS](/home/alejandro/Repositorios/ICC-entrada/docs/INTEGRACION_DCRAW_ARGYLL.md)
+- [Cumplimiento Legal y Licencias](/home/alejandro/Repositorios/ICC-entrada/docs/LEGAL_COMPLIANCE.md)
 - [Decisiones](/home/alejandro/Repositorios/ICC-entrada/docs/DECISIONS.md)
 - [Backlog priorizado](/home/alejandro/Repositorios/ICC-entrada/docs/ISSUES.md)
