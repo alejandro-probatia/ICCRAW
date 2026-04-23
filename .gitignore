@@ -1,0 +1,10 @@
+/target
+.venv/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+**/*.rs.bk
+.DS_Store
+/tmp/
+*.swp
+*.swo

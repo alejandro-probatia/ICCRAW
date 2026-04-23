@@ -1,0 +1,32 @@
+{
+  "chart_name": "ColorChecker 24",
+  "chart_version": "2005",
+  "illuminant": "D50",
+  "observer": "2",
+  "patches": [
+    { "patch_id": "P01", "reference_rgb": [0.0700, 0.0850, 0.1020], "reference_lab": [27.1000, -7.7000, -11.7500] },
+    { "patch_id": "P02", "reference_rgb": [0.0900, 0.1000, 0.1140], "reference_lab": [29.2000, -7.4000, -11.5000] },
+    { "patch_id": "P03", "reference_rgb": [0.1100, 0.1150, 0.1260], "reference_lab": [31.3000, -7.1000, -11.2500] },
+    { "patch_id": "P04", "reference_rgb": [0.1300, 0.1300, 0.1380], "reference_lab": [33.4000, -6.8000, -11.0000] },
+    { "patch_id": "P05", "reference_rgb": [0.1500, 0.1450, 0.1500], "reference_lab": [35.5000, -6.5000, -10.7500] },
+    { "patch_id": "P06", "reference_rgb": [0.1700, 0.1600, 0.1620], "reference_lab": [37.6000, -6.2000, -10.5000] },
+    { "patch_id": "P07", "reference_rgb": [0.1900, 0.1750, 0.1740], "reference_lab": [39.7000, -5.9000, -10.2500] },
+    { "patch_id": "P08", "reference_rgb": [0.2100, 0.1900, 0.1860], "reference_lab": [41.8000, -5.6000, -10.0000] },
+    { "patch_id": "P09", "reference_rgb": [0.2300, 0.2050, 0.1980], "reference_lab": [43.9000, -5.3000, -9.7500] },
+    { "patch_id": "P10", "reference_rgb": [0.2500, 0.2200, 0.2100], "reference_lab": [46.0000, -5.0000, -9.5000] },
+    { "patch_id": "P11", "reference_rgb": [0.2700, 0.2350, 0.2220], "reference_lab": [48.1000, -4.7000, -9.2500] },
+    { "patch_id": "P12", "reference_rgb": [0.2900, 0.2500, 0.2340], "reference_lab": [50.2000, -4.4000, -9.0000] },
+    { "patch_id": "P13", "reference_rgb": [0.3100, 0.2650, 0.2460], "reference_lab": [52.3000, -4.1000, -8.7500] },
+    { "patch_id": "P14", "reference_rgb": [0.3300, 0.2800, 0.2580], "reference_lab": [54.4000, -3.8000, -8.5000] },
+    { "patch_id": "P15", "reference_rgb": [0.3500, 0.2950, 0.2700], "reference_lab": [56.5000, -3.5000, -8.2500] },
+    { "patch_id": "P16", "reference_rgb": [0.3700, 0.3100, 0.2820], "reference_lab": [58.6000, -3.2000, -8.0000] },
+    { "patch_id": "P17", "reference_rgb": [0.3900, 0.3250, 0.2940], "reference_lab": [60.7000, -2.9000, -7.7500] },
+    { "patch_id": "P18", "reference_rgb": [0.4100, 0.3400, 0.3060], "reference_lab": [62.8000, -2.6000, -7.5000] },
+    { "patch_id": "P19", "reference_rgb": [0.4300, 0.3550, 0.3180], "reference_lab": [64.9000, -2.3000, -7.2500] },
+    { "patch_id": "P20", "reference_rgb": [0.4500, 0.3700, 0.3300], "reference_lab": [67.0000, -2.0000, -7.0000] },
+    { "patch_id": "P21", "reference_rgb": [0.4700, 0.3850, 0.3420], "reference_lab": [69.1000, -1.7000, -6.7500] },
+    { "patch_id": "P22", "reference_rgb": [0.4900, 0.4000, 0.3540], "reference_lab": [71.2000, -1.4000, -6.5000] },
+    { "patch_id": "P23", "reference_rgb": [0.5100, 0.4150, 0.3660], "reference_lab": [73.3000, -1.1000, -6.2500] },
+    { "patch_id": "P24", "reference_rgb": [0.5300, 0.4300, 0.3780], "reference_lab": [75.4000, -0.8000, -6.0000] }
+  ]
+}

@@ -1,0 +1,19 @@
+[package]
+name = "icc-profiling"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+camino.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+icc-color = { path = "../color" }
+icc-sampling = { path = "../sampling" }
+icc-pipeline = { path = "../pipeline" }
+
+[dev-dependencies]
+tempfile = "=3.10.1"
+icc-chart-detection = { path = "../chart_detection" }

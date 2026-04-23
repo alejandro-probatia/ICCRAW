@@ -1,0 +1,188 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+import json
+
+
+def _normalize(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _normalize(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_normalize(v) for v in value]
+    return value
+
+
+def to_json_dict(obj: Any) -> dict[str, Any]:
+    return _normalize(asdict(obj))
+
+
+def write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if hasattr(payload, "__dataclass_fields__"):
+        data = to_json_dict(payload)
+    else:
+        data = _normalize(payload)
+    path.write_text(json.dumps(data, indent=2, sort_keys=False), encoding="utf-8")
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@dataclass
+class RawMetadata:
+    source_file: str
+    input_sha256: str
+    camera_model: str | None
+    cfa_pattern: str
+    available_white_balance: str
+    wb_multipliers: list[float] | None
+    black_level: int | None
+    white_level: int | None
+    color_matrix_hint: list[list[float]] | None
+    iso: int | None
+    exposure_time_seconds: float | None
+    lens_model: str | None
+    capture_datetime: str | None
+    dimensions: list[int] | None
+    intermediate_working_space: str
+
+
+@dataclass
+class Recipe:
+    demosaic_algorithm: str = "ahd"
+    black_level_mode: str = "metadata"
+    white_balance_mode: str = "fixed"
+    wb_multipliers: list[float] = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])
+    exposure_compensation: float = 0.0
+    tone_curve: str = "linear"
+    output_linear: bool = True
+    denoise: str = "off"
+    sharpen: str = "off"
+    input_color_assumption: str = "camera_native"
+    working_space: str = "scene_linear_camera_rgb"
+    output_space: str = "scene_linear_camera_rgb"
+    chart_reference: str | None = None
+    illuminant_metadata: str | None = None
+    sampling_strategy: str = "trimmed_mean"
+    profiling_mode: bool = True
+    profile_engine: str = "argyll"
+    argyll_colprof_args: list[str] | None = None
+
+
+@dataclass
+class ScientificGuard:
+    is_scientific_safe: bool
+    warnings: list[str]
+
+
+@dataclass
+class DevelopResult:
+    raw_metadata: RawMetadata
+    recipe: Recipe
+    scientific_guard: ScientificGuard
+    output_tiff: str
+    audit_tiff: str | None
+
+
+@dataclass
+class Point2:
+    x: float
+    y: float
+
+
+@dataclass
+class PatchDetection:
+    patch_id: str
+    polygon: list[Point2]
+    sample_region: list[Point2]
+
+
+@dataclass
+class ChartDetectionResult:
+    chart_type: str
+    confidence_score: float
+    valid_patch_ratio: float
+    homography: list[float]
+    chart_polygon: list[Point2]
+    patches: list[PatchDetection]
+    warnings: list[str]
+
+
+@dataclass
+class PatchSample:
+    patch_id: str
+    measured_rgb: list[float]
+    reference_rgb: list[float] | None
+    reference_lab: list[float] | None
+    excluded_pixel_ratio: float
+    saturated_pixel_ratio: float
+
+
+@dataclass
+class SampleSet:
+    chart_name: str
+    chart_version: str
+    illuminant: str
+    strategy: str
+    samples: list[PatchSample]
+    missing_reference_patches: list[str]
+
+
+@dataclass
+class PatchError:
+    patch_id: str
+    delta_e76: float
+    delta_e2000: float
+
+
+@dataclass
+class ErrorSummary:
+    mean_delta_e76: float
+    median_delta_e76: float
+    p95_delta_e76: float
+    max_delta_e76: float
+    mean_delta_e2000: float
+    median_delta_e2000: float
+    p95_delta_e2000: float
+    max_delta_e2000: float
+
+
+@dataclass
+class ProfileBuildResult:
+    output_icc: str
+    output_profile_json: str
+    model: str
+    matrix_camera_to_xyz: list[list[float]]
+    trc_gamma: float
+    error_summary: ErrorSummary
+    patch_errors: list[PatchError]
+    metadata: dict[str, Any]
+
+
+@dataclass
+class ValidationResult:
+    profile_path: str
+    error_summary: ErrorSummary
+    patch_errors: list[PatchError]
+
+
+@dataclass
+class BatchManifestEntry:
+    source_raw: str
+    source_sha256: str
+    output_tiff: str
+    output_sha256: str
+    profile_path: str
+
+
+@dataclass
+class BatchManifest:
+    recipe_sha256: str
+    profile_path: str
+    software_version: str
+    entries: list[BatchManifestEntry]
