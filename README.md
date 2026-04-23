@@ -133,6 +133,7 @@ Campos clave:
 - [Architecture](/home/alejandro/Repositorios/ICC-entrada/ARCHITECTURE.md)
 - [Roadmap](/home/alejandro/Repositorios/ICC-entrada/ROADMAP.md)
 - [Color Pipeline](/home/alejandro/Repositorios/ICC-entrada/COLOR_PIPELINE.md)
+- [Changelog](/home/alejandro/Repositorios/ICC-entrada/CHANGELOG.md)
 - [Manual de Usuario](/home/alejandro/Repositorios/ICC-entrada/docs/MANUAL_USUARIO.md)
 - [Integración dcraw + ArgyllCMS](/home/alejandro/Repositorios/ICC-entrada/docs/INTEGRACION_DCRAW_ARGYLL.md)
 - [Cumplimiento Legal y Licencias](/home/alejandro/Repositorios/ICC-entrada/docs/LEGAL_COMPLIANCE.md)

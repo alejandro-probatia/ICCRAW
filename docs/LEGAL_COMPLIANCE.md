@@ -31,7 +31,7 @@ Politica de integracion:
 
 1. No eliminar ni modificar avisos de licencia de terceros.
 2. Mantener este archivo y `LICENSE` sincronizados con la politica vigente.
-3. Documentar en changelog cualquier cambio de licencia o dependencia critica.
+3. Documentar en `CHANGELOG.md` cualquier cambio de licencia o dependencia critica.
 4. Antes de publicar builds o contenedores, verificar que:
    - se adjunta licencia AGPL del proyecto,
    - se documentan dependencias externas,

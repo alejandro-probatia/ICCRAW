@@ -43,6 +43,11 @@ pip install -e .[raw_metadata]
 - Antes de redistribuir o desplegar como servicio, revisar:
   - `docs/LEGAL_COMPLIANCE.md`
 
+### 2.4 Registro de cambios
+
+- El historial oficial del proyecto se mantiene en `CHANGELOG.md`.
+- Cada cambio funcional, legal o de reproducibilidad debe quedar documentado allí.
+
 ## 3. Flujo recomendado (CLI)
 
 ## 3.1 Obtener metadatos RAW
