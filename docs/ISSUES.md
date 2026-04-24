@@ -36,7 +36,10 @@ criterios de aceptacion completos estan en:
 7. [ ] Completar soporte IT8 (deteccion + referencia + validacion).
 8. [x] Añadir export CGATS completo para interoperabilidad externa.
 9. [x] Añadir referencia ColorChecker 2005 D50 no sintetica para flujo operativo.
-10. [ ] Integrar detecciones manuales guardadas por captura en `auto-profile-batch`.
+10. [x] Añadir perfil de revelado científico previo al ICC.
+11. [x] Ejecutar `auto-profile-batch` en doble pasada: receta base -> receta calibrada -> ICC.
+12. [ ] Integrar detecciones manuales guardadas por captura en `auto-profile-batch`.
+13. [ ] Añadir QA de nitidez/MTF y contraste local con criterio medible, no slider subjetivo.
 
 ## P2
 

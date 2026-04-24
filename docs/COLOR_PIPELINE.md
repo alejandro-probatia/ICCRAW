@@ -25,12 +25,16 @@ Reglas:
 ## Fases
 
 1. `raw-info`: metadatos técnicos.
-2. `develop`: revelado controlado lineal con `dcraw` para entradas RAW.
+2. `develop`: revelado base controlado lineal con `dcraw` para entradas RAW.
 3. `detect-chart`: homografía + parches.
 4. `sample-chart`: medición robusta por parche.
-5. `build-profile`: ArgyllCMS (`colprof`) como motor único de perfil ICC.
-6. `validate-profile`: DeltaE 76/2000.
-7. `batch-develop`: mismo recipe + mismo perfil sobre lote RAW.
+5. `build-develop-profile`: neutralidad y densidad desde fila neutra de carta.
+6. receta calibrada: WB fijo, EV limitado por preservación de altas luces,
+   salida lineal y sin procesos creativos.
+7. segunda medición de carta con la misma geometría y receta calibrada.
+8. `build-profile`: ArgyllCMS (`colprof`) como motor único de perfil ICC.
+9. `validate-profile`: DeltaE 76/2000 del ICC real.
+10. `batch-develop`: receta calibrada + perfil ICC sobre lote RAW.
 
 ## Invariantes criticas
 
@@ -45,6 +49,10 @@ Reglas:
    numericos auxiliares.
 5. [x] El fallback de deteccion de carta no debe producir perfiles automaticamente
    sin confirmacion o modo explicito.
+6. [x] La geometria de carta detectada en la pasada base se reutiliza en la
+   pasada calibrada; no depende del renderizado ya corregido.
+7. [x] El perfil ICC no debe compensar exposición/densidad básica si la carta
+   permite construir antes una receta calibrada.
 
 ## Validez del perfil
 

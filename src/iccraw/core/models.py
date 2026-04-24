@@ -138,6 +138,34 @@ class SampleSet:
 
 
 @dataclass
+class NeutralPatchCalibration:
+    patch_id: str
+    measured_rgb: list[float]
+    balanced_rgb: list[float]
+    reference_lab: list[float]
+    reference_y: float
+    measured_luma: float
+    ev_correction: float
+    density_error_log10: float
+
+
+@dataclass
+class DevelopmentProfile:
+    model: str
+    chart_name: str
+    chart_version: str
+    illuminant: str
+    neutral_patch_ids: list[str]
+    white_balance_multipliers: list[float]
+    exposure_compensation: float
+    density_error_ev_mean: float
+    density_error_ev_max_abs: float
+    warnings: list[str]
+    calibrated_recipe: Recipe
+    neutral_patches: list[NeutralPatchCalibration]
+
+
+@dataclass
 class PatchError:
     patch_id: str
     delta_e76: float

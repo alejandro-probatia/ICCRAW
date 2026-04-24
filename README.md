@@ -74,11 +74,16 @@ iccraw sample-chart chart.tiff --detection detection.json --reference target.jso
 # Referencia ColorChecker 24 operativa incluida:
 # testdata/references/colorchecker24_colorchecker2005_d50.json
 
+iccraw build-develop-profile samples.json \
+  --recipe recipe.yml \
+  --out development_profile.json \
+  --calibrated-recipe recipe_calibrated.yml
+
 iccraw export-cgats samples.json --out samples.ti3
 
-iccraw build-profile samples.json --recipe recipe.yml --out camera_profile.icc --report report.json
+iccraw build-profile samples.json --recipe recipe_calibrated.yml --out camera_profile.icc --report report.json
 
-iccraw batch-develop ./raws --recipe recipe.yml --profile camera_profile.icc --out ./tiffs
+iccraw batch-develop ./raws --recipe recipe_calibrated.yml --profile camera_profile.icc --out ./tiffs
 
 iccraw validate-profile samples.json --profile camera_profile.icc --out validation.json
 
@@ -86,13 +91,17 @@ iccraw validate-profile samples.json --profile camera_profile.icc --out validati
 # 1) develop de capturas de carta
 # 2) detección automática de carta
 # 3) muestreo y agregación multi-captura
-# 4) build-profile
-# 5) batch-develop con perfil ICC embebido en TIFF 16-bit
+# 4) perfil de revelado: neutralidad + densidad/exposicion desde carta
+# 5) segunda medicion con receta calibrada
+# 6) build-profile ICC
+# 7) batch-develop con receta calibrada y perfil ICC embebido en TIFF 16-bit
 iccraw auto-profile-batch \
   --charts ./charts_raw \
   --targets ./raws \
   --recipe recipe.yml \
   --reference target.json \
+  --development-profile-out development_profile.json \
+  --calibrated-recipe-out recipe_calibrated.yml \
   --profile-out camera_profile.icc \
   --profile-report profile_report.json \
   --out ./tiffs \

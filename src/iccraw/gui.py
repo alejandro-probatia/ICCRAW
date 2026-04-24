@@ -36,6 +36,7 @@ from .raw.pipeline import develop_controlled
 from .raw.preview import (
     apply_adjustments,
     apply_profile_preview,
+    extract_embedded_preview,
     linear_to_srgb_display,
     load_image_for_preview,
     preview_analysis_text,
@@ -516,7 +517,7 @@ if QtWidgets is not None:
             outer.setContentsMargins(8, 8, 8, 8)
             outer.setSpacing(8)
 
-            box = QtWidgets.QGroupBox("Generación de perfil ICC desde cartas")
+            box = QtWidgets.QGroupBox("Generación científica desde carta: revelado + ICC")
             grid = QtWidgets.QGridLayout(box)
 
             self.profile_charts_dir = QtWidgets.QLineEdit(str(self._current_dir))
@@ -534,36 +535,42 @@ if QtWidgets is not None:
             self.profile_workdir = QtWidgets.QLineEdit("/tmp/iccraw_profile_work")
             self._add_path_row(grid, 4, "Directorio artefactos", self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True)
 
-            grid.addWidget(QtWidgets.QLabel("Tipo de carta"), 5, 0)
+            self.develop_profile_out = QtWidgets.QLineEdit("/tmp/development_profile_gui.json")
+            self._add_path_row(grid, 5, "1. Perfil de revelado JSON", self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False)
+
+            self.calibrated_recipe_out = QtWidgets.QLineEdit("/tmp/recipe_calibrated_gui.yml")
+            self._add_path_row(grid, 6, "1. Receta calibrada", self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False)
+
+            grid.addWidget(QtWidgets.QLabel("2. Tipo de carta"), 7, 0)
             self.profile_chart_type = QtWidgets.QComboBox()
             self.profile_chart_type.addItems(["colorchecker24", "it8"])
-            grid.addWidget(self.profile_chart_type, 5, 1, 1, 2)
+            grid.addWidget(self.profile_chart_type, 7, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Confianza mínima"), 6, 0)
+            grid.addWidget(QtWidgets.QLabel("Confianza mínima"), 8, 0)
             self.profile_min_conf = QtWidgets.QDoubleSpinBox()
             self.profile_min_conf.setRange(0.0, 1.0)
             self.profile_min_conf.setSingleStep(0.05)
             self.profile_min_conf.setDecimals(2)
             self.profile_min_conf.setValue(0.35)
-            grid.addWidget(self.profile_min_conf, 6, 1, 1, 2)
+            grid.addWidget(self.profile_min_conf, 8, 1, 1, 2)
 
             self.profile_allow_fallback = QtWidgets.QCheckBox("Permitir fallback")
             self.profile_allow_fallback.setChecked(False)
-            grid.addWidget(self.profile_allow_fallback, 7, 1, 1, 2)
+            grid.addWidget(self.profile_allow_fallback, 9, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Cámara (opcional)"), 8, 0)
+            grid.addWidget(QtWidgets.QLabel("Cámara (opcional)"), 10, 0)
             self.profile_camera = QtWidgets.QLineEdit("")
-            grid.addWidget(self.profile_camera, 8, 1, 1, 2)
+            grid.addWidget(self.profile_camera, 10, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Lente (opcional)"), 9, 0)
+            grid.addWidget(QtWidgets.QLabel("Lente (opcional)"), 11, 0)
             self.profile_lens = QtWidgets.QLineEdit("")
-            grid.addWidget(self.profile_lens, 9, 1, 1, 2)
+            grid.addWidget(self.profile_lens, 11, 1, 1, 2)
 
             row = QtWidgets.QHBoxLayout()
             row.addWidget(self._button("Usar directorio actual como cartas", self._use_current_dir_as_profile_charts))
-            row.addWidget(self._button("Generar perfil ICC", self._on_generate_profile))
+            row.addWidget(self._button("Generar revelado + ICC", self._on_generate_profile))
             row.addWidget(self._button("Usar perfil generado en revelado", self._use_generated_profile_as_active))
-            grid.addLayout(row, 9, 0, 1, 3)
+            grid.addLayout(row, 12, 0, 1, 3)
 
             outer.addWidget(box)
 
@@ -692,6 +699,7 @@ if QtWidgets is not None:
             self.file_list.setSpacing(8)
             self.file_list.setWordWrap(True)
             self.file_list.setUniformItemSizes(False)
+            self.file_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
             self.file_list.itemSelectionChanged.connect(self._on_file_selection_changed)
             self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
             layout.addWidget(self.file_list, 1)
@@ -1162,6 +1170,8 @@ if QtWidgets is not None:
                 "profile_output_path": self.profile_out_path_edit.text().strip(),
                 "profile_report_path": self.profile_report_out.text().strip(),
                 "profile_workdir": self.profile_workdir.text().strip(),
+                "development_profile_path": self.develop_profile_out.text().strip(),
+                "calibrated_recipe_path": self.calibrated_recipe_out.text().strip(),
                 "profile_chart_type": self.profile_chart_type.currentText().strip(),
                 "profile_min_confidence": float(self.profile_min_conf.value()),
                 "profile_allow_fallback_detection": bool(self.profile_allow_fallback.isChecked()),
@@ -1205,6 +1215,8 @@ if QtWidgets is not None:
             default_profile_out = profiles_dir / f"{safe_name}.icc"
             default_report = config_dir / "profile_report.json"
             default_workdir = work_dir / "profile_generation"
+            default_development_profile = config_dir / "development_profile.json"
+            default_calibrated_recipe = config_dir / "recipe_calibrated.yml"
             default_recipe = config_dir / "recipe.yml"
             default_preview = exports_dir / "preview" / "preview.png"
             default_tiff_out = exports_dir / "tiff"
@@ -1215,6 +1227,8 @@ if QtWidgets is not None:
             self.path_profile_out.setText(self.profile_out_path_edit.text().strip())
             self.profile_report_out.setText(str(state.get("profile_report_path") or default_report))
             self.profile_workdir.setText(str(state.get("profile_workdir") or default_workdir))
+            self.develop_profile_out.setText(str(state.get("development_profile_path") or default_development_profile))
+            self.calibrated_recipe_out.setText(str(state.get("calibrated_recipe_path") or default_calibrated_recipe))
             self.batch_input_dir.setText(str(raw_dir))
             self.batch_out_dir.setText(str(state.get("batch_output_dir") or default_tiff_out))
             self.path_preview_png.setText(str(state.get("preview_png_path") or default_preview))
@@ -1713,38 +1727,45 @@ if QtWidgets is not None:
                 return cached
 
             if path.suffix.lower() in RAW_EXTENSIONS:
-                icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileIcon)
+                preview = extract_embedded_preview(path)
+                if preview is not None:
+                    icon = self._icon_from_linear_image(preview)
+                else:
+                    icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileIcon)
                 self._thumb_cache[key] = icon
                 return icon
 
             try:
                 rgb = read_image(path)
-                h, w, _ = rgb.shape
-                max_side = max(h, w)
-                if max_side > 280:
-                    scale = 280.0 / max_side
-                    rgb = cv2.resize(
-                        rgb,
-                        (max(1, int(w * scale)), max(1, int(h * scale))),
-                        interpolation=cv2.INTER_AREA,
-                    )
-                srgb = linear_to_srgb_display(rgb)
-                u8 = np.clip(np.round(srgb * 255.0), 0, 255).astype(np.uint8)
-                hh, ww, _ = u8.shape
-                qimg = QtGui.QImage(u8.data, ww, hh, 3 * ww, QtGui.QImage.Format_RGB888).copy()
-                pix = QtGui.QPixmap.fromImage(qimg).scaled(
-                    132,
-                    132,
-                    QtCore.Qt.KeepAspectRatio,
-                    QtCore.Qt.SmoothTransformation,
-                )
-                icon = QtGui.QIcon(pix)
+                icon = self._icon_from_linear_image(rgb)
                 self._thumb_cache[key] = icon
                 return icon
             except Exception:
                 icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileIcon)
                 self._thumb_cache[key] = icon
                 return icon
+
+        def _icon_from_linear_image(self, rgb: np.ndarray) -> QtGui.QIcon:
+            h, w, _ = rgb.shape
+            max_side = max(h, w)
+            if max_side > 280:
+                scale = 280.0 / max_side
+                rgb = cv2.resize(
+                    rgb,
+                    (max(1, int(w * scale)), max(1, int(h * scale))),
+                    interpolation=cv2.INTER_AREA,
+                )
+            srgb = linear_to_srgb_display(rgb)
+            u8 = np.clip(np.round(srgb * 255.0), 0, 255).astype(np.uint8)
+            hh, ww, _ = u8.shape
+            qimg = QtGui.QImage(u8.data, ww, hh, 3 * ww, QtGui.QImage.Format_RGB888).copy()
+            pix = QtGui.QPixmap.fromImage(qimg).scaled(
+                132,
+                132,
+                QtCore.Qt.KeepAspectRatio,
+                QtCore.Qt.SmoothTransformation,
+            )
+            return QtGui.QIcon(pix)
 
         def _on_file_selection_changed(self) -> None:
             item = self.file_list.currentItem()
@@ -2227,6 +2248,8 @@ if QtWidgets is not None:
                 self.profile_out_path_edit.setText(str(profile_out))
             profile_report = Path(self.profile_report_out.text().strip())
             workdir = Path(self.profile_workdir.text().strip())
+            development_profile_out = Path(self.develop_profile_out.text().strip())
+            calibrated_recipe_out = Path(self.calibrated_recipe_out.text().strip())
             chart_type = self.profile_chart_type.currentText()
             min_confidence = float(self.profile_min_conf.value())
             allow_fallback_detection = bool(self.profile_allow_fallback.isChecked())
@@ -2246,6 +2269,9 @@ if QtWidgets is not None:
                     profile_out=profile_out,
                     profile_report_out=profile_report,
                     work_dir=workdir,
+                    development_profile_out=development_profile_out,
+                    calibrated_recipe_out=calibrated_recipe_out,
+                    calibrate_development=True,
                     chart_type=chart_type,
                     min_confidence=min_confidence,
                     allow_fallback_detection=allow_fallback_detection,
@@ -2256,11 +2282,14 @@ if QtWidgets is not None:
             def on_success(payload) -> None:
                 self.profile_output.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False))
                 self.path_profile_active.setText(str(profile_out))
-                self._log_preview(f"Perfil generado: {profile_out}")
-                self._set_status(f"Perfil ICC generado: {profile_out}")
+                if payload.get("calibrated_recipe_path"):
+                    self.path_recipe.setText(str(payload["calibrated_recipe_path"]))
+                self._log_preview(f"Perfil de revelado: {payload.get('development_profile_path')}")
+                self._log_preview(f"Perfil ICC generado: {profile_out}")
+                self._set_status(f"Revelado calibrado + ICC generado: {profile_out}")
                 self._save_active_session(silent=True)
 
-            self._start_background_task("Generación de perfil ICC", task, on_success)
+            self._start_background_task("Generación de perfil de revelado + ICC", task, on_success)
 
         def _start_manual_chart_marking(self) -> None:
             if self._original_linear is None:

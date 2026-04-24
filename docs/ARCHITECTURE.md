@@ -4,7 +4,7 @@
 
 Pipeline científico reproducible:
 
-`RAW -> develop controlado -> detect-chart -> sample-chart -> build-profile -> batch-develop -> validate-profile`
+`RAW -> develop base -> detect-chart -> sample-chart -> perfil de revelado -> receta calibrada -> sample-chart calibrado -> build-profile ICC -> batch-develop -> validate-profile`
 
 Gobernanza y licencia:
 
@@ -40,6 +40,7 @@ src/iccraw/
     sampling.py                # muestreo robusto + ReferenceCatalog
 
   profile/                     # perfil ICC y export
+    development.py             # perfil de revelado cientifico: WB + densidad + EV
     builder.py                 # build_profile / validate_profile (ArgyllCMS)
     export.py                  # batch_develop + export ICC/CMM + matriz diagnostica
 ```

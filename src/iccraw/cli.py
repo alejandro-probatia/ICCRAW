@@ -26,7 +26,8 @@ from .chart.sampling import (
     sampleset_from_json,
 )
 from .core.models import to_json_dict, write_json
-from .core.recipe import load_recipe
+from .core.recipe import load_recipe, save_recipe
+from .profile.development import build_development_profile
 from .profile.builder import build_profile, validate_profile, write_samples_cgats
 from .profile.export import batch_develop
 from .raw.metadata import raw_info
@@ -91,6 +92,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("samples")
     s.add_argument("--out", required=True)
 
+    s = sub.add_parser("build-develop-profile")
+    s.add_argument("samples")
+    s.add_argument("--recipe", required=True)
+    s.add_argument("--out", required=True, help="Perfil de revelado JSON")
+    s.add_argument("--calibrated-recipe", required=True, help="Receta calibrada YAML/JSON")
+
     s = sub.add_parser("batch-develop")
     s.add_argument("input")
     s.add_argument("--recipe", required=True)
@@ -111,6 +118,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--profile-report", required=True)
     s.add_argument("--out", required=True, help="Directorio de salida TIFF batch")
     s.add_argument("--workdir", required=True, help="Directorio de artefactos intermedios (detecciones/samples)")
+    s.add_argument("--development-profile-out", default=None)
+    s.add_argument("--calibrated-recipe-out", default=None)
+    s.add_argument("--no-development-calibration", action="store_true")
     s.add_argument("--chart-type", choices=["colorchecker24", "it8"], default="colorchecker24")
     s.add_argument("--min-confidence", type=float, default=0.35)
     s.add_argument("--allow-fallback-detection", action="store_true")
@@ -195,6 +205,15 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"output_cgats": str(Path(args.out))}, indent=2))
             return 0
 
+        if args.command == "build-develop-profile":
+            samples = sampleset_from_json(Path(args.samples))
+            recipe = load_recipe(Path(args.recipe))
+            result = build_development_profile(samples=samples, base_recipe=recipe)
+            write_json(Path(args.out), result)
+            save_recipe(result.calibrated_recipe, Path(args.calibrated_recipe))
+            print(json.dumps(to_json_dict(result), indent=2))
+            return 0
+
         if args.command == "batch-develop":
             recipe = load_recipe(Path(args.recipe))
             manifest = batch_develop(
@@ -227,6 +246,9 @@ def main(argv: list[str] | None = None) -> int:
                 profile_report_out=Path(args.profile_report),
                 batch_out_dir=Path(args.out),
                 work_dir=Path(args.workdir),
+                development_profile_out=Path(args.development_profile_out) if args.development_profile_out else None,
+                calibrated_recipe_out=Path(args.calibrated_recipe_out) if args.calibrated_recipe_out else None,
+                calibrate_development=not bool(args.no_development_calibration),
                 chart_type=args.chart_type,
                 min_confidence=float(args.min_confidence),
                 allow_fallback_detection=bool(args.allow_fallback_detection),

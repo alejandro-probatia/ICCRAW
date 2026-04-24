@@ -98,11 +98,16 @@ iccraw export-cgats /tmp/samples.json \
   --out /tmp/samples.ti3
 ```
 
-## 3.4 Construir y validar perfil ICC
+## 3.4 Construir perfil de revelado y validar perfil ICC
 
 ```bash
-iccraw build-profile /tmp/samples.json \
+iccraw build-develop-profile /tmp/samples.json \
   --recipe testdata/recipes/scientific_recipe.yml \
+  --out /tmp/development_profile.json \
+  --calibrated-recipe /tmp/recipe_calibrated.yml
+
+iccraw build-profile /tmp/samples.json \
+  --recipe /tmp/recipe_calibrated.yml \
   --out /tmp/camera_profile.icc \
   --report /tmp/profile_report.json
 
@@ -115,7 +120,7 @@ iccraw validate-profile /tmp/samples.json \
 
 ```bash
 iccraw batch-develop ./raws \
-  --recipe testdata/recipes/scientific_recipe.yml \
+  --recipe /tmp/recipe_calibrated.yml \
   --profile /tmp/camera_profile.icc \
   --out /tmp/tiffs
 ```
@@ -128,6 +133,8 @@ iccraw auto-profile-batch \
   --targets ./raws_objetivo \
   --recipe testdata/recipes/scientific_recipe.yml \
   --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
+  --development-profile-out /tmp/development_profile.json \
+  --calibrated-recipe-out /tmp/recipe_calibrated.yml \
   --profile-out /tmp/camera_profile.icc \
   --profile-report /tmp/profile_report.json \
   --out /tmp/tiffs \
@@ -182,7 +189,8 @@ Flujo recomendado en GUI:
 
 1. Ir a `Sesión` y crear/abrir sesión con su directorio raíz.
 2. Registrar iluminación y toma para esa sesión.
-3. En `Revelado y Perfil ICC`, generar el perfil ICC con las cartas de `charts/`.
+3. En `Revelado y Perfil ICC`, generar primero el perfil de revelado científico
+   y después el perfil ICC con las cartas de `charts/`.
 4. Activar perfil ICC, ajustar receta y ajustes de preview/revelado.
 5. Revelar RAW individuales o preparar lote.
 6. En `Cola de Revelado`, añadir archivos y ejecutar cola.

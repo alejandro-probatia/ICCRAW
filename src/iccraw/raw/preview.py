@@ -57,7 +57,7 @@ def _develop_raw_fast_preview(input_path: Path, recipe: Recipe) -> np.ndarray:
     if shutil.which("dcraw") is None:
         raise RuntimeError("No se puede previsualizar RAW: 'dcraw' no esta disponible en PATH.")
 
-    embedded = _extract_embedded_preview(input_path)
+    embedded = extract_embedded_preview(input_path)
     if embedded is not None:
         return embedded
 
@@ -106,7 +106,7 @@ def _develop_raw_fast_preview(input_path: Path, recipe: Recipe) -> np.ndarray:
         return read_image(out)
 
 
-def _extract_embedded_preview(input_path: Path) -> np.ndarray | None:
+def extract_embedded_preview(input_path: Path) -> np.ndarray | None:
     cmd = ["dcraw", "-e", "-c", str(input_path)]
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if proc.returncode != 0 or not proc.stdout:

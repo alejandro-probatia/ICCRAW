@@ -10,8 +10,10 @@ import numpy as np
 from .chart.detection import detect_chart, draw_detection_overlay
 from .chart.sampling import ReferenceCatalog, sample_chart
 from .core.models import PatchSample, Recipe, SampleSet, to_json_dict, write_json
+from .core.recipe import load_recipe, save_recipe
 from .core.utils import RAW_EXTENSIONS
 from .profile.builder import build_profile
+from .profile.development import build_development_profile
 from .profile.export import batch_develop
 from .raw.pipeline import develop_controlled
 
@@ -26,6 +28,9 @@ def auto_generate_profile_from_charts(
     profile_out: Path,
     profile_report_out: Path,
     work_dir: Path,
+    development_profile_out: Path | None = None,
+    calibrated_recipe_out: Path | None = None,
+    calibrate_development: bool = True,
     chart_type: str = "colorchecker24",
     min_confidence: float = 0.35,
     allow_fallback_detection: bool = False,
@@ -45,64 +50,21 @@ def auto_generate_profile_from_charts(
     if not chart_files:
         raise RuntimeError(f"No se encontraron capturas de carta en: {chart_captures_dir}")
 
-    accepted_samples: list[SampleSet] = []
-    skipped: list[dict[str, Any]] = []
-
-    for idx, chart_file in enumerate(chart_files, start=1):
-        prefix = f"{idx:03d}_{chart_file.stem}"
-        developed_tiff = chart_dev_dir / f"{prefix}.tiff"
-        detection_path = detect_dir / f"{prefix}.json"
-        overlay_path = overlay_dir / f"{prefix}.png"
-        sample_path = sample_dir / f"{prefix}.json"
-
-        try:
-            develop_controlled(chart_file, recipe, developed_tiff, None)
-            detection = detect_chart(developed_tiff, chart_type=chart_type)
-            write_json(detection_path, detection)
-            draw_detection_overlay(developed_tiff, detection, overlay_path)
-
-            if detection.detection_mode == "fallback" and not allow_fallback_detection:
-                skipped.append(
-                    {
-                        "capture": str(chart_file),
-                        "reason": "fallback_detection",
-                        "confidence": float(detection.confidence_score),
-                        "detection_json": str(detection_path),
-                    }
-                )
-                continue
-
-            if detection.confidence_score < float(min_confidence):
-                skipped.append(
-                    {
-                        "capture": str(chart_file),
-                        "reason": "low_confidence",
-                        "confidence": float(detection.confidence_score),
-                        "min_confidence": float(min_confidence),
-                        "detection_json": str(detection_path),
-                    }
-                )
-                continue
-
-            samples = sample_chart(
-                developed_tiff,
-                detection,
-                reference,
-                strategy=recipe.sampling_strategy,
-                trim_percent=recipe.sampling_trim_percent,
-                reject_saturated=recipe.sampling_reject_saturated,
-            )
-            write_json(sample_path, samples)
-            accepted_samples.append(samples)
-
-        except Exception as exc:
-            skipped.append(
-                {
-                    "capture": str(chart_file),
-                    "reason": "processing_error",
-                    "error": str(exc),
-                }
-            )
+    initial_pass = _collect_chart_samples(
+        chart_files=chart_files,
+        recipe=recipe,
+        reference=reference,
+        chart_type=chart_type,
+        min_confidence=min_confidence,
+        allow_fallback_detection=allow_fallback_detection,
+        chart_dev_dir=chart_dev_dir,
+        detect_dir=detect_dir,
+        sample_dir=sample_dir,
+        overlay_dir=overlay_dir,
+        pass_name="development_profile_source",
+    )
+    accepted_samples = initial_pass["accepted_samples"]
+    skipped: list[dict[str, Any]] = list(initial_pass["skipped"])
 
     if not accepted_samples:
         raise RuntimeError(
@@ -110,13 +72,54 @@ def auto_generate_profile_from_charts(
             "Revisa exposición, encuadre de carta y min_confidence."
         )
 
-    aggregated_samples = _aggregate_samples(accepted_samples, strategy=recipe.sampling_strategy)
+    aggregated_initial = _aggregate_samples(accepted_samples, strategy=recipe.sampling_strategy)
+    write_json(work_dir / "samples_aggregated_development_source.json", aggregated_initial)
+
+    profile_recipe = recipe
+    development_profile_path: str | None = None
+    calibrated_recipe_path: str | None = None
+    development_payload: dict[str, Any] | None = None
+
+    if calibrate_development:
+        development = build_development_profile(samples=aggregated_initial, base_recipe=recipe)
+        development_profile_file = development_profile_out or (work_dir / "development_profile.json")
+        calibrated_recipe_file = calibrated_recipe_out or (work_dir / "recipe_calibrated.yml")
+        write_json(development_profile_file, development)
+        save_recipe(development.calibrated_recipe, calibrated_recipe_file)
+        development_profile_path = str(development_profile_file)
+        calibrated_recipe_path = str(calibrated_recipe_file)
+        development_payload = to_json_dict(development)
+        profile_recipe = development.calibrated_recipe
+
+        calibrated_pass = _collect_chart_samples(
+            chart_files=chart_files,
+            recipe=profile_recipe,
+            reference=reference,
+            chart_type=chart_type,
+            min_confidence=min_confidence,
+            allow_fallback_detection=allow_fallback_detection,
+            existing_detections=initial_pass["detections"],
+            chart_dev_dir=work_dir / "chart_developed_calibrated",
+            detect_dir=work_dir / "detections_calibrated",
+            sample_dir=work_dir / "samples_calibrated",
+            overlay_dir=work_dir / "overlays_calibrated",
+            pass_name="icc_profile_source",
+        )
+        accepted_samples = calibrated_pass["accepted_samples"]
+        skipped.extend(calibrated_pass["skipped"])
+        if not accepted_samples:
+            raise RuntimeError(
+                "No hubo capturas válidas tras aplicar el perfil de revelado. "
+                "Revisa el JSON de desarrollo y los overlays calibrados."
+            )
+
+    aggregated_samples = _aggregate_samples(accepted_samples, strategy=profile_recipe.sampling_strategy)
     aggregated_samples_path = work_dir / "samples_aggregated.json"
     write_json(aggregated_samples_path, aggregated_samples)
 
     profile_result = build_profile(
         samples=aggregated_samples,
-        recipe=recipe,
+        recipe=profile_recipe,
         out_icc=profile_out,
         camera_model=camera_model,
         lens_model=lens_model,
@@ -127,6 +130,9 @@ def auto_generate_profile_from_charts(
         "chart_captures_total": len(chart_files),
         "chart_captures_used": len(accepted_samples),
         "chart_captures_skipped": skipped,
+        "development_profile_path": development_profile_path,
+        "calibrated_recipe_path": calibrated_recipe_path,
+        "development_profile": development_payload,
         "aggregated_samples": str(aggregated_samples_path),
         "profile": to_json_dict(profile_result),
         "profile_report_path": str(profile_report_out),
@@ -142,6 +148,9 @@ def auto_profile_batch(
     profile_report_out: Path,
     batch_out_dir: Path,
     work_dir: Path,
+    development_profile_out: Path | None = None,
+    calibrated_recipe_out: Path | None = None,
+    calibrate_development: bool = True,
     chart_type: str = "colorchecker24",
     min_confidence: float = 0.35,
     allow_fallback_detection: bool = False,
@@ -155,6 +164,9 @@ def auto_profile_batch(
         profile_out=profile_out,
         profile_report_out=profile_report_out,
         work_dir=work_dir,
+        development_profile_out=development_profile_out,
+        calibrated_recipe_out=calibrated_recipe_out,
+        calibrate_development=calibrate_development,
         chart_type=chart_type,
         min_confidence=min_confidence,
         allow_fallback_detection=allow_fallback_detection,
@@ -162,9 +174,14 @@ def auto_profile_batch(
         lens_model=lens_model,
     )
 
+    batch_recipe = recipe
+    calibrated_path = profile_payload.get("calibrated_recipe_path")
+    if isinstance(calibrated_path, str) and calibrated_path:
+        batch_recipe = load_recipe(Path(calibrated_path))
+
     manifest = batch_develop(
         raws_dir=target_captures_dir,
-        recipe=recipe,
+        recipe=batch_recipe,
         profile_path=profile_out,
         out_dir=batch_out_dir,
     )
@@ -175,6 +192,9 @@ def auto_profile_batch(
         "chart_captures_total": profile_payload["chart_captures_total"],
         "chart_captures_used": profile_payload["chart_captures_used"],
         "chart_captures_skipped": profile_payload["chart_captures_skipped"],
+        "development_profile_path": profile_payload.get("development_profile_path"),
+        "calibrated_recipe_path": profile_payload.get("calibrated_recipe_path"),
+        "development_profile": profile_payload.get("development_profile"),
         "aggregated_samples": profile_payload["aggregated_samples"],
         "profile": profile_payload["profile"],
         "profile_report_path": profile_payload["profile_report_path"],
@@ -228,6 +248,97 @@ def _aggregate_samples(sample_sets: list[SampleSet], strategy: str) -> SampleSet
         samples=aggregated_samples,
         missing_reference_patches=missing,
     )
+
+
+def _collect_chart_samples(
+    *,
+    chart_files: list[Path],
+    recipe: Recipe,
+    reference: ReferenceCatalog,
+    chart_type: str,
+    min_confidence: float,
+    allow_fallback_detection: bool,
+    chart_dev_dir: Path,
+    detect_dir: Path,
+    sample_dir: Path,
+    overlay_dir: Path,
+    pass_name: str,
+    existing_detections: dict[Path, Any] | None = None,
+) -> dict[str, Any]:
+    for d in (chart_dev_dir, detect_dir, sample_dir, overlay_dir):
+        d.mkdir(parents=True, exist_ok=True)
+
+    accepted_samples: list[SampleSet] = []
+    skipped: list[dict[str, Any]] = []
+    detections: dict[Path, Any] = {}
+
+    for idx, chart_file in enumerate(chart_files, start=1):
+        prefix = f"{idx:03d}_{chart_file.stem}"
+        developed_tiff = chart_dev_dir / f"{prefix}.tiff"
+        detection_path = detect_dir / f"{prefix}.json"
+        overlay_path = overlay_dir / f"{prefix}.png"
+        sample_path = sample_dir / f"{prefix}.json"
+
+        try:
+            develop_controlled(chart_file, recipe, developed_tiff, None)
+            detection = existing_detections.get(chart_file) if existing_detections else None
+            if detection is None:
+                detection = detect_chart(developed_tiff, chart_type=chart_type)
+            else:
+                detection.warnings = list(detection.warnings) + [
+                    "geometria de carta reutilizada desde pasada de perfil de revelado"
+                ]
+            write_json(detection_path, detection)
+            draw_detection_overlay(developed_tiff, detection, overlay_path)
+            detections[chart_file] = detection
+
+            if detection.detection_mode == "fallback" and not allow_fallback_detection:
+                skipped.append(
+                    {
+                        "pass": pass_name,
+                        "capture": str(chart_file),
+                        "reason": "fallback_detection",
+                        "confidence": float(detection.confidence_score),
+                        "detection_json": str(detection_path),
+                    }
+                )
+                continue
+
+            if detection.confidence_score < float(min_confidence):
+                skipped.append(
+                    {
+                        "pass": pass_name,
+                        "capture": str(chart_file),
+                        "reason": "low_confidence",
+                        "confidence": float(detection.confidence_score),
+                        "min_confidence": float(min_confidence),
+                        "detection_json": str(detection_path),
+                    }
+                )
+                continue
+
+            samples = sample_chart(
+                developed_tiff,
+                detection,
+                reference,
+                strategy=recipe.sampling_strategy,
+                trim_percent=recipe.sampling_trim_percent,
+                reject_saturated=recipe.sampling_reject_saturated,
+            )
+            write_json(sample_path, samples)
+            accepted_samples.append(samples)
+
+        except Exception as exc:
+            skipped.append(
+                {
+                    "pass": pass_name,
+                    "capture": str(chart_file),
+                    "reason": "processing_error",
+                    "error": str(exc),
+                }
+            )
+
+    return {"accepted_samples": accepted_samples, "skipped": skipped, "detections": detections}
 
 
 def _patch_sort_key(patch_id: str) -> tuple[int, str]:

@@ -291,6 +291,32 @@ Criterios de aceptacion:
 - dos DNG reales con ColorChecker Passport detectan la carta inferior de forma
   automatica con confianza alta.
 
+### H-005b Perfil de revelado cientifico previo al ICC
+
+Criticidad: alta.
+
+Estado de implementacion:
+
+- mitigado: `build-develop-profile` calcula WB fijo y compensacion EV desde la
+  fila neutra de la carta.
+- mitigado: la compensacion EV se limita por preservacion de altas luces de la
+  carta para evitar clipping.
+- mitigado: `auto-profile-batch` ejecuta doble pasada:
+  receta base -> perfil de revelado -> receta calibrada -> ICC.
+- mitigado: la geometria detectada se reutiliza en la pasada calibrada para que
+  el muestreo no dependa del renderizado.
+
+Riesgo:
+
+- si el ICC absorbe errores de exposición, densidad o neutralidad, el perfil
+  deja de describir solo la respuesta cromatica de cámara + iluminante.
+
+Direccion tecnica:
+
+1. Separar perfil de revelado y perfil ICC como artefactos distintos.
+2. Usar carta para normalizar neutralidad y densidad antes de perfilar.
+3. Mantener nitidez/contraste local como QA medible, no como ajuste creativo.
+
 ### H-006 Parametros de receta ignorados por el muestreo
 
 Criticidad: media.

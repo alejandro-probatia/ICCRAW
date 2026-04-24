@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import asdict, fields
 from pathlib import Path
 import json
 import yaml
@@ -27,6 +27,16 @@ def load_recipe(path: Path) -> Recipe:
     filtered = {k: v for k, v in payload.items() if k in allowed}
     recipe = Recipe(**filtered)
     return recipe
+
+
+def save_recipe(recipe: Recipe, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = asdict(recipe)
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    else:
+        path.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
 def scientific_guard(recipe: Recipe) -> ScientificGuard:
