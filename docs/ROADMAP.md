@@ -49,7 +49,7 @@ aparentemente validos.
 - flujo GUI en dos pasos: calibrar sesion y aplicar esa sesion a imagenes objetivo,
 - parametros de muestreo completos desde receta,
 - deteccion de saturacion, bajo nivel e iluminacion irregular,
-- reportes de outliers por parche,
+- reportes de outliers por parche en QA de sesion,
 - integracion de detecciones manuales por captura en el flujo batch automatico.
 
 ## Fase 4 - Validacion colorimetrica (P1)

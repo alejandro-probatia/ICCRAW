@@ -256,8 +256,9 @@ if QtWidgets is not None:
             layout_restored = self._restore_window_settings()
             if not layout_restored:
                 self._reset_layout_splitters()
-            self._set_current_directory(self._current_dir)
             self._initialize_session_tab_defaults()
+            if not self._restore_startup_context():
+                self._set_current_directory(self._current_dir)
             self._refresh_queue_table()
             self.statusBar().showMessage("Listo")
 
@@ -417,6 +418,25 @@ if QtWidgets is not None:
             if isinstance(value, (bytes, bytearray)):
                 return QtCore.QByteArray(bytes(value))
             return None
+
+        def _restore_startup_context(self) -> bool:
+            last_session = str(self._settings.value("session/last_root") or "").strip()
+            if last_session:
+                root = Path(last_session).expanduser()
+                try:
+                    if session_file_path(root).exists():
+                        self._activate_session(root, load_session(root))
+                        return True
+                except Exception as exc:
+                    self._set_status(f"No se pudo restaurar la última sesión: {exc}")
+
+            last_dir = str(self._settings.value("browser/last_dir") or "").strip()
+            if last_dir:
+                folder = Path(last_dir).expanduser()
+                if folder.exists() and folder.is_dir():
+                    self._set_current_directory(folder)
+                    return True
+            return False
 
         def closeEvent(self, event) -> None:  # noqa: N802
             self._save_window_settings()
@@ -1176,6 +1196,108 @@ if QtWidgets is not None:
             self.session_dir_config.setText(str(paths["config"]))
             self.session_dir_work.setText(str(paths["work"]))
 
+        def _path_is_inside(self, path: Path, root: Path) -> bool:
+            try:
+                path.expanduser().resolve(strict=False).relative_to(root.expanduser().resolve(strict=False))
+                return True
+            except Exception:
+                return False
+
+        def _folder_has_browsable_files(self, folder: Path) -> bool:
+            try:
+                return any(
+                    p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
+                    for p in folder.iterdir()
+                )
+            except OSError:
+                return False
+
+        def _session_state_path_or_default(self, value: Any, default: Path) -> Path:
+            text = str(value or "").strip()
+            default = default.expanduser()
+            if not text:
+                return default
+
+            candidate = Path(text).expanduser()
+            try:
+                if candidate.resolve(strict=False) == Path.home().resolve(strict=False):
+                    return default
+            except Exception:
+                return default
+
+            if not candidate.exists() and default.exists():
+                return default
+            return candidate
+
+        def _preferred_session_start_directory(self, directories: dict[str, Any], state: dict[str, Any]) -> Path:
+            root = self._active_session_root or Path.cwd()
+            paths = {
+                k: Path(str(v)).expanduser()
+                for k, v in directories.items()
+                if isinstance(v, (str, Path)) and str(v).strip()
+            }
+
+            charts_default = paths.get("charts", root)
+            raw_default = paths.get("raw", root)
+            charts_state = self._session_state_path_or_default(state.get("profile_charts_dir"), charts_default)
+            raw_state = self._session_state_path_or_default(state.get("batch_input_dir"), raw_default)
+
+            candidates: list[Path] = []
+            for chart_file in self._selected_chart_files:
+                if chart_file.exists() and chart_file.is_file():
+                    candidates.append(chart_file.parent)
+                    break
+            candidates.extend([charts_state, raw_state, charts_default, raw_default, root])
+
+            seen: set[str] = set()
+            unique_candidates: list[Path] = []
+            for candidate in candidates:
+                try:
+                    key = str(candidate.expanduser().resolve(strict=False))
+                except Exception:
+                    key = str(candidate.expanduser())
+                if key not in seen:
+                    seen.add(key)
+                    unique_candidates.append(candidate)
+
+            for candidate in unique_candidates:
+                if candidate.exists() and candidate.is_dir() and self._folder_has_browsable_files(candidate):
+                    return candidate
+            for candidate in unique_candidates:
+                if candidate.exists() and candidate.is_dir():
+                    return candidate
+            return root
+
+        def _should_replace_operational_dir(self, current_value: str, new_folder: Path) -> bool:
+            text = current_value.strip()
+            if not text:
+                return True
+
+            current = Path(text).expanduser()
+            try:
+                if current.resolve(strict=False) == Path.home().resolve(strict=False):
+                    return True
+            except Exception:
+                return True
+
+            if not current.exists():
+                return True
+
+            if self._active_session_root is not None:
+                inside_current_session = self._path_is_inside(current, self._active_session_root)
+                inside_new_session = self._path_is_inside(new_folder, self._active_session_root)
+                if inside_new_session and not inside_current_session:
+                    return True
+            return False
+
+        def _sync_operational_dirs_from_browser(self, folder: Path) -> None:
+            if not self._folder_has_browsable_files(folder):
+                return
+            if self._should_replace_operational_dir(self.profile_charts_dir.text(), folder):
+                self.profile_charts_dir.setText(str(folder))
+            if self._should_replace_operational_dir(self.batch_input_dir.text(), folder):
+                self.batch_input_dir.setText(str(folder))
+
         def _use_current_dir_as_session_root(self) -> None:
             self.session_root_path.setText(str(self._current_dir))
             self.session_name_edit.setText(self._current_dir.name)
@@ -1231,8 +1353,14 @@ if QtWidgets is not None:
             session_name: str,
         ) -> None:
             paths = {k: Path(v) for k, v in directories.items() if isinstance(v, str)}
-            charts_dir = state.get("profile_charts_dir") or str(paths.get("charts", Path.cwd()))
-            raw_dir = state.get("batch_input_dir") or str(paths.get("raw", Path.cwd()))
+            charts_dir = self._session_state_path_or_default(
+                state.get("profile_charts_dir"),
+                paths.get("charts", Path.cwd()),
+            )
+            raw_dir = self._session_state_path_or_default(
+                state.get("batch_input_dir"),
+                paths.get("raw", Path.cwd()),
+            )
             exports_dir = paths.get("exports", Path.cwd())
             profiles_dir = paths.get("profiles", Path.cwd())
             config_dir = paths.get("config", Path.cwd())
@@ -1344,6 +1472,7 @@ if QtWidgets is not None:
                 directories=directories if isinstance(directories, dict) else {},
                 session_name=session_name,
             )
+            self._settings.setValue("session/last_root", str(self._active_session_root))
 
             self._develop_queue = [
                 {
@@ -1357,11 +1486,11 @@ if QtWidgets is not None:
             ]
             self._refresh_queue_table()
 
-            raw_dir = Path(directories.get("raw", self._active_session_root))
-            if raw_dir.exists() and raw_dir.is_dir():
-                self._set_current_directory(raw_dir)
-            else:
-                self._set_current_directory(self._active_session_root)
+            start_dir = self._preferred_session_start_directory(
+                directories if isinstance(directories, dict) else {},
+                state if isinstance(state, dict) else {},
+            )
+            self._set_current_directory(start_dir)
 
             self.session_active_label.setText(
                 f"Sesión activa: {session_name}\n"
@@ -1459,6 +1588,7 @@ if QtWidgets is not None:
             saved = save_session(root, payload)
             self._active_session_payload = saved
             self._active_session_root = root.resolve()
+            self._settings.setValue("session/last_root", str(self._active_session_root))
             self.session_active_label.setText(
                 f"Sesión activa: {saved['metadata']['name']}\n"
                 f"Raíz: {self._active_session_root}\n"
@@ -1718,8 +1848,18 @@ if QtWidgets is not None:
         def _set_current_directory(self, folder: Path) -> None:
             if not folder.exists() or not folder.is_dir():
                 return
+            folder = folder.expanduser().resolve()
             self._current_dir = folder
             self.current_dir_label.setText(str(folder))
+            self._settings.setValue("browser/last_dir", str(folder))
+            self._refresh_storage_roots()
+            index = self._dir_model.index(str(folder))
+            if index.isValid():
+                self.dir_tree.blockSignals(True)
+                self.dir_tree.setCurrentIndex(index)
+                self.dir_tree.scrollTo(index)
+                self.dir_tree.blockSignals(False)
+            self._sync_operational_dirs_from_browser(folder)
             self._populate_file_list(folder)
             self._set_status(f"Directorio actual: {folder}")
 

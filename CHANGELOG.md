@@ -23,6 +23,8 @@ Para mantener trazabilidad completa, cada cambio debe:
 - `batch-develop` separa gestion ICC en modos explicitos:
   - RGB de camara con perfil ICC de entrada incrustado,
   - conversion a sRGB mediante LittleCMS (`tificc`) con perfil sRGB incrustado.
+- La GUI reabre la ultima sesion usada y posiciona el explorador en el
+  directorio operativo de la sesion en lugar de arrancar siempre en `$HOME`.
 - `validate-profile` valida el perfil ICC real con ArgyllCMS (`xicclu`/`icclu`)
   en lugar de calcular DeltaE con la matriz lateral del sidecar.
 - La deteccion de carta por fallback queda marcada como modo `fallback`, con
@@ -64,6 +66,8 @@ Para mantener trazabilidad completa, cada cambio debe:
   parametros de receta.
 - Tests P1 para rechazo de referencias de carta incompletas/incompatibles.
 - Tests P1 para exportacion CGATS/CTI3 de muestras.
+- El reporte QA de sesion incluye peores parches y outliers DeltaE2000 por
+  parche para diagnosticar desviaciones cromaticas localizadas.
 - Plantilla de mantenimiento continuo del changelog y política de actualización.
 - Módulo `preview` para carga de imagen/RAW en previsualización, ajustes técnicos y análisis lineal.
 - GUI nueva basada en Qt/PySide6 (`app-ui`, `app-ui-qt`) con:

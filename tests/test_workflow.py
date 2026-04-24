@@ -7,7 +7,7 @@ import tifffile
 
 from iccraw.chart.detection import detect_chart_from_corners
 from iccraw.chart.sampling import ReferenceCatalog
-from iccraw.core.models import ErrorSummary, ValidationResult
+from iccraw.core.models import ErrorSummary, PatchError, ValidationResult
 from iccraw.core.recipe import load_recipe
 from iccraw.workflow import auto_generate_profile_from_charts, auto_profile_batch
 import iccraw.workflow as workflow
@@ -264,7 +264,10 @@ def test_auto_generate_profile_writes_holdout_qa_report(tmp_path: Path, monkeypa
                 p95_delta_e2000=2.1,
                 max_delta_e2000=2.8,
             ),
-            patch_errors=[],
+            patch_errors=[
+                PatchError(patch_id="P01", delta_e76=1.1, delta_e2000=0.8),
+                PatchError(patch_id="P02", delta_e76=3.5, delta_e2000=2.8),
+            ],
         )
 
     monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
@@ -303,6 +306,7 @@ def test_auto_generate_profile_writes_holdout_qa_report(tmp_path: Path, monkeypa
     assert result["validation_captures_total"] == 1
     assert result["validation_captures_used"] == 1
     assert result["validation"]["qa_report"]["status"] == "validated"
+    assert result["validation"]["qa_report"]["validation_worst_patches"][0]["patch_id"] == "P02"
     assert (work_dir / "samples_aggregated_validation.json").exists()
 
 

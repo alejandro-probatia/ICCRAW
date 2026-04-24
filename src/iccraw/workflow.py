@@ -372,6 +372,10 @@ def _build_session_qa_report(
 
     training_quality = _sample_quality(training_samples)
     validation_quality = _sample_quality(validation_samples) if validation_samples else None
+    training_worst_patches = _rank_patch_errors(getattr(training_profile_result, "patch_errors", []))
+    validation_worst_patches = _rank_patch_errors(validation_result.get("patch_errors", [])) if validation_result else []
+    training_patch_outliers = _patch_error_outliers(training_worst_patches, qa_max_delta_e2000_max)
+    validation_patch_outliers = _patch_error_outliers(validation_worst_patches, qa_max_delta_e2000_max)
     for label, quality in (("training", training_quality), ("validation", validation_quality)):
         if not quality:
             continue
@@ -383,6 +387,20 @@ def _build_session_qa_report(
                 "value": max_sat,
                 "limit": 0.02,
                 "passed": max_sat <= 0.02,
+            }
+        )
+
+    for label, outliers in (("training", training_patch_outliers), ("validation", validation_patch_outliers)):
+        if not outliers:
+            continue
+        checks.append(
+            {
+                "id": f"{label}_patch_delta_e2000_outliers",
+                "severity": "warning",
+                "value": len(outliers),
+                "limit": float(qa_max_delta_e2000_max),
+                "passed": False,
+                "patch_ids": [str(item["patch_id"]) for item in outliers],
             }
         )
 
@@ -406,9 +424,47 @@ def _build_session_qa_report(
         "validation_error_summary": validation_error,
         "training_sample_quality": training_quality,
         "validation_sample_quality": validation_quality,
+        "training_worst_patches": training_worst_patches[:8],
+        "validation_worst_patches": validation_worst_patches[:8],
+        "training_patch_outliers": training_patch_outliers,
+        "validation_patch_outliers": validation_patch_outliers,
         "validation_skipped": validation_skipped,
         "checks": checks,
     }
+
+
+def _rank_patch_errors(errors: Any) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    raw_errors = errors if isinstance(errors, list) else []
+    for error in raw_errors:
+        if hasattr(error, "__dataclass_fields__"):
+            data = asdict(error)
+        elif isinstance(error, dict):
+            data = error
+        else:
+            continue
+
+        patch_id = str(data.get("patch_id") or "").strip()
+        if not patch_id:
+            continue
+        try:
+            delta_e76 = float(data.get("delta_e76", 0.0))
+            delta_e2000 = float(data.get("delta_e2000", 0.0))
+        except (TypeError, ValueError):
+            continue
+        records.append(
+            {
+                "patch_id": patch_id,
+                "delta_e76": delta_e76,
+                "delta_e2000": delta_e2000,
+            }
+        )
+    return sorted(records, key=lambda item: item["delta_e2000"], reverse=True)
+
+
+def _patch_error_outliers(records: list[dict[str, Any]], delta_e2000_limit: float) -> list[dict[str, Any]]:
+    limit = float(delta_e2000_limit)
+    return [record for record in records if float(record["delta_e2000"]) > limit]
 
 
 def _sample_quality(samples: SampleSet) -> dict[str, Any]:
