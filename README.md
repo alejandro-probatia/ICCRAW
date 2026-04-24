@@ -49,7 +49,21 @@ Opcional pero recomendado para perfilado con ArgyllCMS y conversion ICC real:
 # Debian/Ubuntu
 sudo apt-get install dcraw argyll liblcms2-utils exiftool
 bash scripts/check_tools.sh
+iccraw check-tools --out tools_report.json
 ```
+
+## Paquete Debian beta
+
+La beta `0.1` puede construirse como paquete `.deb` instalable:
+
+```bash
+bash packaging/debian/build_deb.sh
+sudo apt install ./dist/iccraw_0.1.0~beta1_amd64.deb
+```
+
+El paquete instala la aplicacion en `/opt/iccraw`, crea los lanzadores
+`iccraw`/`iccraw-ui` y declara las dependencias externas del pipeline. Ver
+[Paquete Debian beta](docs/DEBIAN_PACKAGE.md).
 
 ## CLI
 
@@ -114,6 +128,15 @@ iccraw auto-profile-batch \
 ```bash
 iccraw compare-qa-reports session_a/qa_session_report.json session_b/qa_session_report.json \
   --out qa_comparison.json
+
+iccraw check-tools --strict --out tools_report.json
+```
+
+## Verificación
+
+```bash
+bash scripts/run_checks.sh
+iccraw check-tools --strict --out tools_report.json
 ```
 
 ## Interfaz Gráfica Qt
@@ -163,6 +186,9 @@ Compatibilidad prevista de GUI:
 
 La GUI usa los mismos módulos de la CLI y escribe los mismos artefactos JSON/TIFF/ICC, manteniendo trazabilidad.
 Además, conserva tamaño/estado de ventana y splitters entre sesiones.
+Las salidas de sesión se normalizan dentro del directorio raíz: perfiles en
+`profiles/`, recetas/reportes en `config/`, artefactos de trabajo en `work/` y
+TIFF/preview en `exports/`.
 
 ## Receta reproducible
 
@@ -204,6 +230,7 @@ Campos clave:
 - [Changelog](CHANGELOG.md)
 - [Manual de Usuario](docs/MANUAL_USUARIO.md)
 - [Integración dcraw + ArgyllCMS](docs/INTEGRACION_DCRAW_ARGYLL.md)
+- [Paquete Debian beta](docs/DEBIAN_PACKAGE.md)
 - [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
 - [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)
 - [Decisiones](docs/DECISIONS.md)

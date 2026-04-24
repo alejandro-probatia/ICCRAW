@@ -1,6 +1,9 @@
 /target
+/build/
+/dist/
 .venv/
 *.egg-info/
+*.deb
 __pycache__/
 .pytest_cache/
 **/*.rs.bk

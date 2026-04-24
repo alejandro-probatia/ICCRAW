@@ -28,7 +28,17 @@ sudo apt-get install -y dcraw argyll liblcms2-utils exiftool
 
 ```bash
 bash scripts/check_tools.sh
+iccraw check-tools --strict --out tools_report.json
 ```
+
+`iccraw check-tools` genera un JSON auditable con disponibilidad, ruta,
+comando de versión y primera línea de versión detectada para `dcraw`,
+`colprof`, `xicclu`/`icclu`, `tificc` y `exiftool`. La misma comprobación está
+disponible en la GUI desde `Ayuda -> Diagnóstico herramientas...`.
+
+El paquete Debian beta declara estas herramientas como dependencias de sistema,
+pero sigue siendo recomendable ejecutar `iccraw check-tools --strict` tras la
+instalacion para dejar registro auditable del entorno real.
 
 ## Integración `dcraw` (módulo `raw.pipeline`)
 

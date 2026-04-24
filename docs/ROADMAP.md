@@ -68,7 +68,9 @@ Objetivo: validar el ICC real y la aptitud del perfil para una sesion.
 Objetivo: hacer que el comportamiento sea sostenible por la comunidad.
 
 - CI con tests unitarios e integracion con herramientas externas,
-- checks de versiones de `dcraw`, ArgyllCMS y `exiftool`,
+- checks de versiones de `dcraw`, ArgyllCMS, LittleCMS y `exiftool` mediante
+  CLI/GUI,
+- paquete Debian beta reproducible para instalacion local,
 - contenedor o entorno reproducible,
 - benchmarks de determinismo y rendimiento,
 - auditoria de licencias para releases AGPL.

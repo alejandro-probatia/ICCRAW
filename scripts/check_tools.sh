@@ -22,8 +22,12 @@ missing=0
 
 check_cmd "dcraw" "dcraw" || missing=1
 check_cmd "colprof" "colprof -? " || missing=1
-check_cmd "xicclu" "xicclu" || missing=1
-check_cmd "tificc" "tificc" || missing=1
+if command -v xicclu >/dev/null 2>&1; then
+  check_cmd "xicclu" "xicclu" || missing=1
+else
+  check_cmd "icclu" "icclu" || missing=1
+fi
+check_cmd "tificc" "tificc -v" || missing=1
 check_cmd "exiftool" "exiftool -ver" || missing=1
 
 if [[ "$missing" -ne 0 ]]; then

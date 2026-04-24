@@ -42,6 +42,7 @@ from .raw.preview import (
     load_image_for_preview,
     preview_analysis_text,
 )
+from .reporting import check_external_tools
 from .session import create_session, ensure_session_structure, load_session, save_session, session_file_path
 from .workflow import auto_generate_profile_from_charts
 
@@ -116,6 +117,17 @@ PROFILE_QUALITY_OPTIONS = [
 ]
 
 PROFILE_FORMAT_OPTIONS = [".icc", ".icm"]
+
+LEGACY_TEMP_OUTPUT_NAMES = {
+    "camera_profile.icc",
+    "camera_profile_gui.icc",
+    "profile_report_gui.json",
+    "iccraw_profile_work",
+    "development_profile_gui.json",
+    "recipe_calibrated_gui.yml",
+    "iccraw_preview.png",
+    "iccraw_batch_tiffs",
+}
 
 
 if QtWidgets is not None:
@@ -335,6 +347,7 @@ if QtWidgets is not None:
             menu_view.addAction(self._action("Restablecer distribución", self._reset_layout_splitters))
 
             menu_help = mb.addMenu("Ayuda")
+            menu_help.addAction(self._action("Diagnóstico herramientas...", self._menu_check_tools))
             menu_help.addAction(self._action("Acerca de ICCRAW", self._menu_about))
 
         def _go_to_nitidez_tab(self) -> None:
@@ -1157,18 +1170,19 @@ if QtWidgets is not None:
                 widget.hide()
 
         def _browse_for_path(self, target, *, file_mode: bool, save_mode: bool, dir_mode: bool) -> None:
+            start = target.text().strip() or str(self._current_dir)
             if dir_mode:
-                path = QtWidgets.QFileDialog.getExistingDirectory(self, "Selecciona directorio")
+                path = QtWidgets.QFileDialog.getExistingDirectory(self, "Selecciona directorio", start)
                 if path:
                     target.setText(path)
                 return
             if save_mode:
-                path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Guardar como")
+                path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Guardar como", start)
                 if path:
                     target.setText(path)
                 return
             if file_mode:
-                path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Selecciona archivo")
+                path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Selecciona archivo", start)
                 if path:
                     target.setText(path)
 
@@ -1230,6 +1244,93 @@ if QtWidgets is not None:
             if not candidate.exists() and default.exists():
                 return default
             return candidate
+
+        def _is_legacy_temp_output_path(self, value: Any) -> bool:
+            text = str(value or "").strip()
+            if not text:
+                return False
+            candidate = Path(text).expanduser()
+            try:
+                resolved = candidate.resolve(strict=False)
+                temp_root = Path(tempfile.gettempdir()).resolve(strict=False)
+                if resolved == temp_root or temp_root in resolved.parents:
+                    return True
+            except Exception:
+                pass
+            return candidate.name in LEGACY_TEMP_OUTPUT_NAMES
+
+        def _session_output_path_or_default(self, value: Any, default: Path) -> Path:
+            text = str(value or "").strip()
+            default = default.expanduser()
+            if not text or self._is_legacy_temp_output_path(text):
+                return default
+
+            candidate = Path(text).expanduser()
+            try:
+                if candidate.resolve(strict=False) == Path.home().resolve(strict=False):
+                    return default
+            except Exception:
+                return default
+            return candidate
+
+        def _session_default_outputs(
+            self,
+            *,
+            paths: dict[str, Path] | None = None,
+            session_name: str | None = None,
+        ) -> dict[str, Path]:
+            if paths is None:
+                if isinstance(self._active_session_payload, dict) and isinstance(
+                    self._active_session_payload.get("directories"),
+                    dict,
+                ):
+                    paths = {
+                        k: Path(v)
+                        for k, v in self._active_session_payload["directories"].items()
+                        if isinstance(v, str)
+                    }
+                elif self._active_session_root is not None:
+                    paths = self._session_paths_from_root(self._active_session_root)
+                else:
+                    paths = {}
+
+            root = paths.get("root", self._active_session_root or Path.cwd())
+            exports_dir = paths.get("exports", root / "exports")
+            profiles_dir = paths.get("profiles", root / "profiles")
+            config_dir = paths.get("config", root / "config")
+            work_dir = paths.get("work", root / "work")
+
+            safe_name = (session_name or self.session_name_edit.text().strip() or root.name or "session").strip()
+            return {
+                "profile_out": profiles_dir / f"{safe_name}.icc",
+                "profile_report": config_dir / "profile_report.json",
+                "workdir": work_dir / "profile_generation",
+                "development_profile": config_dir / "development_profile.json",
+                "calibrated_recipe": config_dir / "recipe_calibrated.yml",
+                "recipe": config_dir / "recipe.yml",
+                "preview": exports_dir / "preview" / "preview.png",
+                "tiff_dir": exports_dir / "tiff",
+            }
+
+        def _ensure_session_output_controls(self) -> None:
+            defaults = self._session_default_outputs()
+            replacements = [
+                (self.profile_out_path_edit, defaults["profile_out"]),
+                (self.path_profile_out, defaults["profile_out"]),
+                (self.profile_report_out, defaults["profile_report"]),
+                (self.profile_workdir, defaults["workdir"]),
+                (self.develop_profile_out, defaults["development_profile"]),
+                (self.calibrated_recipe_out, defaults["calibrated_recipe"]),
+                (self.path_recipe, defaults["calibrated_recipe"]),
+                (self.path_preview_png, defaults["preview"]),
+                (self.batch_out_dir, defaults["tiff_dir"]),
+            ]
+            for widget, default in replacements:
+                current = widget.text().strip()
+                if not current or self._is_legacy_temp_output_path(current):
+                    widget.setText(str(default))
+            if self.path_profile_out.text().strip() != self.profile_out_path_edit.text().strip():
+                self.path_profile_out.setText(self.profile_out_path_edit.text().strip())
 
         def _preferred_session_start_directory(self, directories: dict[str, Any], state: dict[str, Any]) -> Path:
             root = self._active_session_root or Path.cwd()
@@ -1363,20 +1464,7 @@ if QtWidgets is not None:
                 state.get("batch_input_dir"),
                 paths.get("raw", Path.cwd()),
             )
-            exports_dir = paths.get("exports", Path.cwd())
-            profiles_dir = paths.get("profiles", Path.cwd())
-            config_dir = paths.get("config", Path.cwd())
-            work_dir = paths.get("work", Path.cwd())
-
-            safe_name = session_name.strip() or "session"
-            default_profile_out = profiles_dir / f"{safe_name}.icc"
-            default_report = config_dir / "profile_report.json"
-            default_workdir = work_dir / "profile_generation"
-            default_development_profile = config_dir / "development_profile.json"
-            default_calibrated_recipe = config_dir / "recipe_calibrated.yml"
-            default_recipe = config_dir / "recipe.yml"
-            default_preview = exports_dir / "preview" / "preview.png"
-            default_tiff_out = exports_dir / "tiff"
+            defaults = self._session_default_outputs(paths=paths, session_name=session_name)
 
             self.profile_charts_dir.setText(str(charts_dir))
             chart_files_state = state.get("profile_chart_files")
@@ -1390,20 +1478,52 @@ if QtWidgets is not None:
                 self._selected_chart_files = []
             self._sync_profile_chart_selection_label()
             self.path_reference.setText(str(state.get("reference_path") or self.path_reference.text().strip()))
-            self.profile_out_path_edit.setText(str(state.get("profile_output_path") or default_profile_out))
+            self.profile_out_path_edit.setText(
+                str(self._session_output_path_or_default(state.get("profile_output_path"), defaults["profile_out"]))
+            )
             self.path_profile_out.setText(self.profile_out_path_edit.text().strip())
-            self.profile_report_out.setText(str(state.get("profile_report_path") or default_report))
-            self.profile_workdir.setText(str(state.get("profile_workdir") or default_workdir))
-            self.develop_profile_out.setText(str(state.get("development_profile_path") or default_development_profile))
-            self.calibrated_recipe_out.setText(str(state.get("calibrated_recipe_path") or default_calibrated_recipe))
+            self.profile_report_out.setText(
+                str(self._session_output_path_or_default(state.get("profile_report_path"), defaults["profile_report"]))
+            )
+            self.profile_workdir.setText(
+                str(self._session_output_path_or_default(state.get("profile_workdir"), defaults["workdir"]))
+            )
+            self.develop_profile_out.setText(
+                str(
+                    self._session_output_path_or_default(
+                        state.get("development_profile_path"),
+                        defaults["development_profile"],
+                    )
+                )
+            )
+            self.calibrated_recipe_out.setText(
+                str(
+                    self._session_output_path_or_default(
+                        state.get("calibrated_recipe_path"),
+                        defaults["calibrated_recipe"],
+                    )
+                )
+            )
             self.batch_input_dir.setText(str(raw_dir))
-            self.batch_out_dir.setText(str(state.get("batch_output_dir") or default_tiff_out))
-            self.path_preview_png.setText(str(state.get("preview_png_path") or default_preview))
-            self.path_recipe.setText(str(state.get("recipe_path") or default_recipe))
+            self.batch_out_dir.setText(
+                str(self._session_output_path_or_default(state.get("batch_output_dir"), defaults["tiff_dir"]))
+            )
+            self.path_preview_png.setText(
+                str(self._session_output_path_or_default(state.get("preview_png_path"), defaults["preview"]))
+            )
+            recipe_path = state.get("recipe_path")
+            if recipe_path and self._is_legacy_temp_output_path(recipe_path):
+                self.path_recipe.setText(str(defaults["calibrated_recipe"]))
+            else:
+                self.path_recipe.setText(str(recipe_path or defaults["recipe"]))
 
             profile_active = str(state.get("profile_active_path") or "").strip()
-            if profile_active:
+            if profile_active and not self._is_legacy_temp_output_path(profile_active):
                 self.path_profile_active.setText(profile_active)
+            elif defaults["profile_out"].exists():
+                self.path_profile_active.setText(str(defaults["profile_out"]))
+            else:
+                self.path_profile_active.clear()
 
             chart_type = str(state.get("profile_chart_type") or "colorchecker24")
             self._set_combo_text(self.profile_chart_type, chart_type)
@@ -1500,6 +1620,7 @@ if QtWidgets is not None:
                 f"Configuración: {session_file_path(self._active_session_root)}"
             )
             self._set_status(f"Sesión activa: {session_name}")
+            self._save_active_session(silent=True)
 
         def _on_create_session(self) -> None:
             root_text = self.session_root_path.text().strip()
@@ -1730,6 +1851,7 @@ if QtWidgets is not None:
                     item["output_tiff"] = ""
             self._refresh_queue_table()
 
+            self._ensure_session_output_controls()
             out_dir = Path(self.batch_out_dir.text().strip())
             recipe = self._build_effective_recipe()
             apply_adjust = bool(self.batch_apply_adjustments.isChecked())
@@ -1980,6 +2102,27 @@ if QtWidgets is not None:
                 "ICCRAW\n\nRevelado RAW tecnico y perfilado ICC reproducible.\n"
                 "Backend: dcraw + ArgyllCMS.\nGUI: Qt/PySide6.",
             )
+
+        def _menu_check_tools(self) -> None:
+            result = check_external_tools()
+            self.profile_output.setPlainText(json.dumps(result, indent=2, ensure_ascii=False))
+            missing = result.get("missing_required", [])
+            if hasattr(self, "profile_summary_label"):
+                if missing:
+                    self.profile_summary_label.setText(
+                        "Diagnostico herramientas: faltan " + ", ".join(str(name) for name in missing)
+                    )
+                else:
+                    self.profile_summary_label.setText("Diagnostico herramientas: entorno externo completo")
+            if missing:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Diagnostico herramientas",
+                    "Faltan herramientas requeridas en PATH: " + ", ".join(str(name) for name in missing),
+                )
+                self._set_status("Faltan herramientas externas requeridas")
+            else:
+                self._set_status("Herramientas externas disponibles")
 
         def _menu_load_profile(self) -> None:
             path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -2233,7 +2376,10 @@ if QtWidgets is not None:
             return list(fallback)
 
         def _normalized_profile_out_path(self) -> Path:
-            current = self.path_profile_out.text().strip() or "/tmp/camera_profile_gui.icc"
+            self._ensure_session_output_controls()
+            current = self.path_profile_out.text().strip()
+            if not current or self._is_legacy_temp_output_path(current):
+                current = str(self._session_default_outputs()["profile_out"])
             ext = self.combo_profile_format.currentText().strip().lower() or ".icc"
             p = Path(current)
             if p.suffix.lower() != ext:
@@ -2399,7 +2545,8 @@ if QtWidgets is not None:
             if self._preview_srgb is None:
                 QtWidgets.QMessageBox.information(self, "Info", "No hay preview para guardar.")
                 return
-            out = Path(self.path_preview_png.text().strip() or "/tmp/iccraw_preview.png")
+            self._ensure_session_output_controls()
+            out = Path(self.path_preview_png.text().strip())
             out.parent.mkdir(parents=True, exist_ok=True)
             bgr = np.clip(np.round(self._preview_srgb[..., ::-1] * 255.0), 0, 255).astype(np.uint8)
             ok = cv2.imwrite(str(out), bgr)
@@ -2416,7 +2563,8 @@ if QtWidgets is not None:
                 return
 
             in_path = self._selected_file
-            default_out = str(in_path.with_suffix(".tiff"))
+            defaults = self._session_default_outputs()
+            default_out = str(defaults["tiff_dir"] / f"{in_path.stem}.tiff")
             out_text, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self,
                 "Guardar TIFF revelado",
@@ -2545,6 +2693,7 @@ if QtWidgets is not None:
             self._save_active_session(silent=True)
 
         def _on_generate_profile(self) -> None:
+            self._ensure_session_output_controls()
             charts = Path(self.profile_charts_dir.text().strip())
             chart_capture_files = self._infer_profile_chart_files()
             if chart_capture_files is None and not self._directory_has_chart_captures(charts):
@@ -2888,6 +3037,7 @@ if QtWidgets is not None:
             }
 
         def _start_batch_develop(self, files: list[Path], task_label: str) -> None:
+            self._ensure_session_output_controls()
             out_dir = Path(self.batch_out_dir.text().strip())
             recipe = self._build_effective_recipe()
             apply_adjust = bool(self.batch_apply_adjustments.isChecked())

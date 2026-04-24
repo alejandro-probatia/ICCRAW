@@ -18,8 +18,15 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+_Sin cambios registrados._
+
+## [0.1.0-beta.1] - 2026-04-24
+
 ### Changed
 
+- La GUI migra rutas heredadas de `/tmp` a la estructura de la sesión:
+  perfiles en `profiles/`, reportes/recetas en `config/`, trabajo en `work/`
+  y TIFF/preview en `exports/`.
 - `batch-develop` separa gestion ICC en modos explicitos:
   - RGB de camara con perfil ICC de entrada incrustado,
   - conversion a sRGB mediante LittleCMS (`tificc`) con perfil sRGB incrustado.
@@ -53,6 +60,11 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Added
 
+- Paquete Debian beta `0.1.0~beta1` con instalacion en `/opt/iccraw`,
+  lanzadores `/usr/bin/iccraw` y `/usr/bin/iccraw-ui`, y dependencias externas
+  declaradas para `dcraw`, ArgyllCMS, LittleCMS y `exiftool`.
+- Script reproducible `packaging/debian/build_deb.sh` para construir el `.deb`
+  desde el arbol de trabajo.
 - Validacion estricta de `demosaic_algorithm` para backend `dcraw`; una receta
   con algoritmo no soportado falla antes de procesar.
 - Integracion de LittleCMS (`tificc`) como CMM externo para conversion ICC a
@@ -78,6 +90,8 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Nuevo comparador de reportes QA entre sesiones (`compare-qa-reports`) con
   resumen de estados, DeltaE, outliers, checks nuevos/resueltos y acceso desde
   la GUI.
+- Nuevo diagnostico de herramientas externas (`check-tools`) con salida JSON y
+  acceso desde GUI para comprobar `dcraw`, ArgyllCMS, LittleCMS y `exiftool`.
 - Plantilla de mantenimiento continuo del changelog y política de actualización.
 - Módulo `preview` para carga de imagen/RAW en previsualización, ajustes técnicos y análisis lineal.
 - GUI nueva basada en Qt/PySide6 (`app-ui`, `app-ui-qt`) con:

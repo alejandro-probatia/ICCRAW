@@ -33,7 +33,7 @@ from .profile.export import batch_develop
 from .qa_compare import compare_qa_reports
 from .raw.metadata import raw_info
 from .raw.pipeline import develop_controlled
-from .reporting import gather_run_context
+from .reporting import check_external_tools, gather_run_context
 from .version import __version__
 from .workflow import auto_profile_batch
 
@@ -49,7 +49,8 @@ def _parse_corner_arg(value: str) -> tuple[float, float]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="app", description="CLI para perfilado ICC reproducible")
+    p = argparse.ArgumentParser(prog="iccraw", description="CLI para perfilado ICC reproducible")
+    p.add_argument("--version", action="version", version=f"%(prog)s {APP_VERSION}")
     sub = p.add_subparsers(dest="command", required=True)
 
     s = sub.add_parser("raw-info")
@@ -146,6 +147,14 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("compare-qa-reports")
     s.add_argument("reports", nargs="+", help="Reportes qa_session_report.json a comparar")
     s.add_argument("--out", default=None, help="JSON de salida opcional")
+
+    s = sub.add_parser("check-tools")
+    s.add_argument("--out", default=None, help="JSON de salida opcional")
+    s.add_argument(
+        "--strict",
+        action="store_true",
+        help="Devuelve codigo 2 si falta una herramienta externa requerida",
+    )
 
     return p
 
@@ -288,6 +297,15 @@ def main(argv: list[str] | None = None) -> int:
             if args.out:
                 write_json(Path(args.out), result)
             print(json.dumps(result, indent=2))
+            return 0
+
+        if args.command == "check-tools":
+            result = check_external_tools()
+            if args.out:
+                write_json(Path(args.out), result)
+            print(json.dumps(result, indent=2))
+            if args.strict and result.get("status") != "ok":
+                return 2
             return 0
 
     except Exception as exc:

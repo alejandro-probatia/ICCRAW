@@ -1,4 +1,5 @@
 from iccraw.cli import build_parser
+from iccraw.version import __version__
 
 
 def test_parser_has_expected_commands():
@@ -10,3 +11,15 @@ def test_parser_has_expected_commands():
     assert "batch-develop" in text
     assert "auto-profile-batch" in text
     assert "compare-qa-reports" in text
+    assert "check-tools" in text
+
+
+def test_parser_has_version_option(capsys):
+    parser = build_parser()
+    try:
+        parser.parse_args(["--version"])
+    except SystemExit as exc:
+        assert exc.code == 0
+
+    captured = capsys.readouterr()
+    assert __version__ in captured.out

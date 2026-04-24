@@ -159,6 +159,12 @@ iccraw compare-qa-reports \
   --out /tmp/qa_comparison.json
 ```
 
+Para comprobar que el entorno externo está listo antes de calibrar:
+
+```bash
+iccraw check-tools --strict --out config/iccraw_tools.json
+```
+
 ## 4. Flujo con interfaz grafica Qt
 
 Arranque:
@@ -171,6 +177,14 @@ o:
 
 ```bash
 bash scripts/run_ui.sh
+```
+
+Instalacion beta con paquete Debian:
+
+```bash
+sudo apt install ./dist/iccraw_0.1.0~beta1_amd64.deb
+iccraw check-tools --strict
+iccraw-ui
 ```
 
 Para rescatar una carta no detectada automaticamente desde la GUI:
@@ -218,6 +232,12 @@ Notas de uso de preview:
 - La exposición, densidad, balance de blancos y base colorimétrica se derivan de la carta; no se editan como ajustes creativos.
 - Si el perfil activo no tiene sidecar `.profile.json` válido o genera clipping extremo en preview, la aplicación muestra la vista sin perfil y registra aviso.
 - `Vista -> Pantalla completa` (`F11`) y `Vista -> Restablecer distribución` permiten adaptar la interfaz a cualquier tamaño de pantalla.
+- Al abrir una sesión, las salidas operativas se fuerzan al árbol de sesión:
+  `profiles/` para ICC, `config/` para reportes/recetas, `work/` para
+  intermedios y `exports/` para TIFF/preview. Los temporales internos siguen
+  usándose solo como scratch transitorio.
+- `Ayuda -> Diagnóstico herramientas...` muestra versiones/rutas de `dcraw`,
+  ArgyllCMS, LittleCMS y `exiftool`.
 
 ## 5. Artefactos que genera el sistema
 
