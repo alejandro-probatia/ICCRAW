@@ -145,30 +145,35 @@ Estructura de la interfaz:
 
 Pestañas principales:
 
-1. `Generación Perfil ICC`
-   - genera perfil ICC a partir de capturas de carta,
-   - guarda perfil y reporte para reutilización en sesiones posteriores.
-2. `Revelado RAW`
+1. `Sesión`
+   - crear o abrir sesión,
+   - guardar metadatos de iluminación y toma,
+   - crear estructura persistente en el directorio raíz:
+     - `charts/`, `raw/`, `profiles/`, `exports/`, `config/`, `work/`,
+   - persistir configuración y cola en `config/session.json`.
+2. `Revelado y Perfil ICC`
    - navegación completa de unidades y directorios,
    - selección visual por miniaturas,
    - preview RAW rápida,
    - ajustes de nitidez y ruido,
+   - generación de perfil ICC desde cartas,
    - revelado individual y por lotes,
    - aplicación opcional de perfil ICC en preview/export.
-3. `Monitoreo Flujo`
-   - estado de tareas,
-   - tabla de ejecución,
+3. `Cola de Revelado`
+   - cola de archivos para revelar,
+   - estado por archivo (pendiente/completado/error),
+   - monitoreo de tareas,
    - log de eventos del pipeline.
 
 Flujo recomendado en GUI:
 
-1. Navegar a la carpeta de trabajo en el panel izquierdo.
-2. Ir a `Generación Perfil ICC`, asignar carpeta de cartas y generar el perfil.
-3. Guardar y activar el perfil generado para sesiones posteriores.
-4. Ir a `Revelado RAW`, seleccionar visualmente RAW objetivo y cargar preview.
-5. Ajustar nitidez y ruido (luminancia/color) en panel derecho.
-6. Ejecutar revelado individual o por lote y exportar TIFF 16-bit.
-7. Revisar `Monitoreo Flujo` para estado de tareas, incidencias y trazas.
+1. Ir a `Sesión` y crear/abrir sesión con su directorio raíz.
+2. Registrar iluminación y toma para esa sesión.
+3. En `Revelado y Perfil ICC`, generar el perfil ICC con las cartas de `charts/`.
+4. Activar perfil ICC, ajustar receta y ajustes de preview/revelado.
+5. Revelar RAW individuales o preparar lote.
+6. En `Cola de Revelado`, añadir archivos y ejecutar cola.
+7. Revisar estado de cola y monitoreo para trazabilidad e incidencias.
 
 Notas de uso de preview:
 

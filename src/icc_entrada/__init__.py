@@ -8,6 +8,7 @@ __all__ = [
     "export",
     "reporting",
     "recipe",
+    "session",
     "gui",
     "preview",
     "workflow",

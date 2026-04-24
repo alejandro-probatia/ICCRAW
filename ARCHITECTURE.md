@@ -22,11 +22,11 @@ Gobernanza y licencia:
 - `icc_entrada.reporting`: contexto de ejecución y trazabilidad.
 - `icc_entrada.cli`: interfaz de línea de comandos.
 - `icc_entrada.preview`: utilidades de previsualización técnica, análisis lineal y ajustes (nitidez + ruido luminancia/color).
+- `icc_entrada.session`: modelo y persistencia de sesiones (estructura de directorios, estado de sesión y cola de revelado).
 - `icc_entrada.gui`: interfaz gráfica Qt/PySide6 con:
-  - menu superior de operaciones/configuracion,
-  - explorador multiunidad (arbol completo del sistema),
-  - visor amplio con comparacion,
-  - paneles completos de configuracion RAW y perfil ICC.
+  - pestaña `Sesión` (crear/abrir/guardar sesión + metadatos + estructura persistente),
+  - pestaña `Revelado y Perfil ICC` (explorador multiunidad, visor, receta, perfil y lote),
+  - pestaña `Cola de Revelado` (cola por archivo + monitoreo y logs).
 - `icc_entrada.workflow`: orquestación automática de pipeline completo (chart captures -> perfil -> batch TIFF ICC).
 
 ## Perfil ICC

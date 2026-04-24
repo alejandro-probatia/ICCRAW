@@ -106,20 +106,23 @@ Diseño de trabajo:
 
 La interfaz principal se organiza en 3 pestañas:
 
-- `1. Generación Perfil ICC`:
-  - selecciona directorio de cartas,
-  - genera perfil ICC y reporte para guardar/reutilizar más adelante,
-  - usa configuración RAW compartida para mantener consistencia científica.
-- `2. Revelado RAW`:
+- `1. Sesión`:
+  - crear o abrir sesión de trabajo,
+  - guardar metadatos de iluminación y toma,
+  - definir un directorio raíz y crear automáticamente estructura persistente:
+    - `charts/`, `raw/`, `profiles/`, `exports/`, `config/`, `work/`,
+  - persistir estado de la sesión (`config/session.json`) con configuración y cola.
+- `2. Revelado y Perfil ICC`:
   - explorador visual completo del sistema (unidades + árbol + miniaturas),
   - preview rápido RAW/DNG (miniatura embebida / half-size) y resolución configurable,
-  - pestaña `Nitidez` con nitidez + ruido luminancia/color,
-  - revelado individual y por lotes (selección o directorio completo),
+  - configuración de revelado y perfil ICC por sesión,
+  - generación de perfil ICC desde cartas dentro del mismo flujo de trabajo,
+  - revelado individual y por lotes a TIFF 16-bit,
   - aplicación opcional de perfil ICC activo (desactivada por defecto en preview para evitar dominantes por perfil no válido).
-- `3. Monitoreo Flujo`:
-  - estado de tareas en ejecución,
-  - tabla de operaciones (en curso/completadas/error),
-  - log técnico centralizado del pipeline.
+- `3. Cola de Revelado`:
+  - cola de imágenes para revelar (añadir/quitar/limpiar),
+  - ejecución de cola con estado por archivo (pendiente/ok/error),
+  - monitoreo de tareas y log técnico centralizado del pipeline.
 
 Menu superior:
 

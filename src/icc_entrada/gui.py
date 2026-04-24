@@ -7,6 +7,7 @@ import shlex
 import sys
 import tempfile
 import traceback
+from typing import Any
 import warnings
 
 import cv2
@@ -38,6 +39,7 @@ from .preview import (
 from .profiling import load_profile_model
 from .recipe import load_recipe
 from .sampling import ReferenceCatalog
+from .session import create_session, ensure_session_structure, load_session, save_session, session_file_path
 from .utils import RAW_EXTENSIONS, read_image, write_tiff16
 from .workflow import auto_generate_profile_from_charts
 
@@ -188,6 +190,9 @@ if QtWidgets is not None:
             self._storage_roots: list[Path] = []
             self._task_counter = 0
             self._active_tasks = 0
+            self._active_session_root: Path | None = None
+            self._active_session_payload: dict[str, Any] | None = None
+            self._develop_queue: list[dict[str, str]] = []
 
             self._original_linear: np.ndarray | None = None
             self._adjusted_linear: np.ndarray | None = None
@@ -202,6 +207,8 @@ if QtWidgets is not None:
             if not layout_restored:
                 self._reset_layout_splitters()
             self._set_current_directory(self._current_dir)
+            self._initialize_session_tab_defaults()
+            self._refresh_queue_table()
             self.statusBar().showMessage("Listo")
 
         def _build_ui(self) -> None:
@@ -224,13 +231,13 @@ if QtWidgets is not None:
             root_layout.addLayout(header)
 
             self.main_tabs = QtWidgets.QTabWidget()
+            session_tab = self._build_tab_session()
             raw_tab = self._build_tab_raw_develop()
-            profile_tab = self._build_tab_profile_generation()
-            monitor_tab = self._build_tab_monitor()
+            queue_tab = self._build_tab_queue()
 
-            self.main_tabs.addTab(profile_tab, "1. Generación Perfil ICC")
-            self.main_tabs.addTab(raw_tab, "2. Revelado RAW")
-            self.main_tabs.addTab(monitor_tab, "3. Monitoreo Flujo")
+            self.main_tabs.addTab(session_tab, "1. Sesión")
+            self.main_tabs.addTab(raw_tab, "2. Revelado y Perfil ICC")
+            self.main_tabs.addTab(queue_tab, "3. Cola de Revelado")
 
             root_layout.addWidget(self.main_tabs, 1)
 
@@ -240,6 +247,10 @@ if QtWidgets is not None:
             mb = self.menuBar()
 
             menu_file = mb.addMenu("Archivo")
+            menu_file.addAction(self._action("Crear sesión...", self._on_create_session))
+            menu_file.addAction(self._action("Abrir sesión...", self._on_open_session))
+            menu_file.addAction(self._action("Guardar sesión", self._on_save_session, "Ctrl+Shift+S"))
+            menu_file.addSeparator()
             menu_file.addAction(self._action("Abrir carpeta...", self._pick_directory, "Ctrl+O"))
             menu_file.addAction(self._action("Cargar seleccion", self._on_load_selected, "Ctrl+L"))
             menu_file.addAction(self._action("Guardar preview PNG", self._on_save_preview, "Ctrl+S"))
@@ -252,9 +263,9 @@ if QtWidgets is not None:
             menu_cfg.addAction(self._action("Guardar receta...", self._menu_save_recipe))
             menu_cfg.addAction(self._action("Receta por defecto", self._menu_reset_recipe))
             menu_cfg.addSeparator()
-            menu_cfg.addAction(self._action("Ir a pestaña Generación Perfil", lambda: self.main_tabs.setCurrentIndex(0)))
-            menu_cfg.addAction(self._action("Ir a pestaña Revelado RAW", lambda: self.main_tabs.setCurrentIndex(1)))
-            menu_cfg.addAction(self._action("Ir a pestaña Monitoreo", lambda: self.main_tabs.setCurrentIndex(2)))
+            menu_cfg.addAction(self._action("Ir a pestaña Sesión", lambda: self.main_tabs.setCurrentIndex(0)))
+            menu_cfg.addAction(self._action("Ir a pestaña Revelado", lambda: self.main_tabs.setCurrentIndex(1)))
+            menu_cfg.addAction(self._action("Ir a pestaña Cola", lambda: self.main_tabs.setCurrentIndex(2)))
 
             menu_profile = mb.addMenu("Perfil ICC")
             menu_profile.addAction(self._action("Cargar perfil activo...", self._menu_load_profile))
@@ -275,7 +286,7 @@ if QtWidgets is not None:
 
         def _go_to_nitidez_tab(self) -> None:
             self.main_tabs.setCurrentIndex(1)
-            self.config_tabs.setCurrentIndex(0)
+            self.config_tabs.setCurrentIndex(1)
 
         def _menu_toggle_fullscreen(self, _checked: bool = False) -> None:
             if self.isFullScreen():
@@ -347,6 +358,78 @@ if QtWidgets is not None:
         def closeEvent(self, event) -> None:  # noqa: N802
             self._save_window_settings()
             super().closeEvent(event)
+
+        def _build_tab_session(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            outer = QtWidgets.QVBoxLayout(tab)
+            outer.setContentsMargins(8, 8, 8, 8)
+            outer.setSpacing(8)
+
+            session_box = QtWidgets.QGroupBox("Gestión de sesión")
+            grid = QtWidgets.QGridLayout(session_box)
+
+            self.session_root_path = QtWidgets.QLineEdit(str(self._current_dir / "iccraw_session"))
+            self._add_path_row(grid, 0, "Directorio raíz de sesión", self.session_root_path, file_mode=False, save_mode=False, dir_mode=True)
+            self.session_root_path.editingFinished.connect(self._on_session_root_edited)
+
+            grid.addWidget(QtWidgets.QLabel("Nombre de sesión"), 1, 0)
+            self.session_name_edit = QtWidgets.QLineEdit("")
+            grid.addWidget(self.session_name_edit, 1, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Condiciones de iluminación"), 2, 0)
+            self.session_illumination_edit = QtWidgets.QLineEdit("")
+            grid.addWidget(self.session_illumination_edit, 2, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Notas de toma"), 3, 0)
+            self.session_capture_edit = QtWidgets.QLineEdit("")
+            grid.addWidget(self.session_capture_edit, 3, 1, 1, 2)
+
+            row = QtWidgets.QHBoxLayout()
+            row.addWidget(self._button("Usar carpeta actual", self._use_current_dir_as_session_root))
+            row.addWidget(self._button("Crear sesión", self._on_create_session))
+            row.addWidget(self._button("Abrir sesión", self._on_open_session))
+            row.addWidget(self._button("Guardar sesión", self._on_save_session))
+            grid.addLayout(row, 4, 0, 1, 3)
+
+            self.session_active_label = QtWidgets.QLabel("Sin sesión activa")
+            self.session_active_label.setWordWrap(True)
+            self.session_active_label.setStyleSheet("font-size: 12px; color: #1f2937;")
+            grid.addWidget(self.session_active_label, 5, 0, 1, 3)
+
+            outer.addWidget(session_box)
+
+            dirs_box = QtWidgets.QGroupBox("Estructura persistente de la sesión")
+            dirs_grid = QtWidgets.QGridLayout(dirs_box)
+
+            self.session_dir_charts = QtWidgets.QLineEdit("")
+            self.session_dir_charts.setReadOnly(True)
+            self.session_dir_raw = QtWidgets.QLineEdit("")
+            self.session_dir_raw.setReadOnly(True)
+            self.session_dir_profiles = QtWidgets.QLineEdit("")
+            self.session_dir_profiles.setReadOnly(True)
+            self.session_dir_exports = QtWidgets.QLineEdit("")
+            self.session_dir_exports.setReadOnly(True)
+            self.session_dir_config = QtWidgets.QLineEdit("")
+            self.session_dir_config.setReadOnly(True)
+            self.session_dir_work = QtWidgets.QLineEdit("")
+            self.session_dir_work.setReadOnly(True)
+
+            dirs_grid.addWidget(QtWidgets.QLabel("Cartas de color"), 0, 0)
+            dirs_grid.addWidget(self.session_dir_charts, 0, 1)
+            dirs_grid.addWidget(QtWidgets.QLabel("RAW de sesión"), 1, 0)
+            dirs_grid.addWidget(self.session_dir_raw, 1, 1)
+            dirs_grid.addWidget(QtWidgets.QLabel("Perfiles ICC"), 2, 0)
+            dirs_grid.addWidget(self.session_dir_profiles, 2, 1)
+            dirs_grid.addWidget(QtWidgets.QLabel("Exportaciones"), 3, 0)
+            dirs_grid.addWidget(self.session_dir_exports, 3, 1)
+            dirs_grid.addWidget(QtWidgets.QLabel("Configuración"), 4, 0)
+            dirs_grid.addWidget(self.session_dir_config, 4, 1)
+            dirs_grid.addWidget(QtWidgets.QLabel("Artefactos/work"), 5, 0)
+            dirs_grid.addWidget(self.session_dir_work, 5, 1)
+
+            outer.addWidget(dirs_box)
+            outer.addStretch(1)
+            return tab
 
         def _build_tab_raw_develop(self) -> QtWidgets.QWidget:
             tab = QtWidgets.QWidget()
@@ -426,11 +509,40 @@ if QtWidgets is not None:
             outer.addWidget(self.profile_output, 1)
             return tab
 
-        def _build_tab_monitor(self) -> QtWidgets.QWidget:
+        def _build_tab_queue(self) -> QtWidgets.QWidget:
             tab = QtWidgets.QWidget()
             outer = QtWidgets.QVBoxLayout(tab)
             outer.setContentsMargins(8, 8, 8, 8)
             outer.setSpacing(8)
+
+            queue_box = QtWidgets.QGroupBox("Cola de imágenes para revelado")
+            queue_layout = QtWidgets.QVBoxLayout(queue_box)
+
+            queue_actions = QtWidgets.QHBoxLayout()
+            queue_actions.addWidget(self._button("Añadir selección", self._queue_add_selected))
+            queue_actions.addWidget(self._button("Añadir RAW de sesión", self._queue_add_session_raws))
+            queue_actions.addWidget(self._button("Quitar seleccionados", self._queue_remove_selected))
+            queue_actions.addWidget(self._button("Limpiar cola", self._queue_clear))
+            queue_actions.addWidget(self._button("Revelar cola", self._queue_process))
+            queue_layout.addLayout(queue_actions)
+
+            self.queue_status_label = QtWidgets.QLabel("Cola vacía")
+            self.queue_status_label.setStyleSheet("font-size: 12px; color: #374151;")
+            queue_layout.addWidget(self.queue_status_label)
+
+            self.queue_table = QtWidgets.QTableWidget(0, 4)
+            self.queue_table.setHorizontalHeaderLabels(["Archivo", "Estado", "TIFF salida", "Mensaje"])
+            self.queue_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+            self.queue_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
+            self.queue_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+            self.queue_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+            self.queue_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+            queue_layout.addWidget(self.queue_table, 1)
+
+            outer.addWidget(queue_box, 2)
+
+            monitor_box = QtWidgets.QGroupBox("Monitoreo de ejecución")
+            monitor_layout = QtWidgets.QVBoxLayout(monitor_box)
 
             top = QtWidgets.QHBoxLayout()
             self.monitor_status_label = QtWidgets.QLabel("Sin tareas en ejecución")
@@ -439,7 +551,7 @@ if QtWidgets is not None:
             self.monitor_progress.setValue(0)
             top.addWidget(self.monitor_status_label, 1)
             top.addWidget(self.monitor_progress, 1)
-            outer.addLayout(top)
+            monitor_layout.addLayout(top)
 
             self.monitor_tasks = QtWidgets.QTableWidget(0, 4)
             self.monitor_tasks.setHorizontalHeaderLabels(["ID", "Tarea", "Estado", "Detalle"])
@@ -447,12 +559,14 @@ if QtWidgets is not None:
             self.monitor_tasks.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
             self.monitor_tasks.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
             self.monitor_tasks.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-            outer.addWidget(self.monitor_tasks, 1)
+            monitor_layout.addWidget(self.monitor_tasks, 1)
 
             self.monitor_log = QtWidgets.QPlainTextEdit()
             self.monitor_log.setReadOnly(True)
             self.monitor_log.setPlaceholderText("Eventos y trazas de flujo")
-            outer.addWidget(self.monitor_log, 1)
+            monitor_layout.addWidget(self.monitor_log, 1)
+
+            outer.addWidget(monitor_box, 2)
             return tab
 
         def _build_left_pane(self) -> QtWidgets.QWidget:
@@ -589,6 +703,7 @@ if QtWidgets is not None:
             layout.setSpacing(6)
 
             self.config_tabs = QtWidgets.QTabWidget()
+            self.config_tabs.addTab(self._build_tab_profile_generation(), "Generación ICC")
             self.config_tabs.addTab(self._build_tab_preview_settings(), "Nitidez")
             self.config_tabs.addTab(self._build_tab_raw_config(), "Revelado RAW")
             self.config_tabs.addTab(self._build_tab_profile_config(), "Perfil ICC")
@@ -911,6 +1026,485 @@ if QtWidgets is not None:
                 if path:
                     target.setText(path)
 
+        def _initialize_session_tab_defaults(self) -> None:
+            suggested = (self._current_dir / "iccraw_session").resolve()
+            self.session_root_path.setText(str(suggested))
+            self.session_name_edit.setText(suggested.name)
+            self._populate_session_directory_fields(self._session_paths_from_root(suggested))
+
+        def _session_paths_from_root(self, root: Path) -> dict[str, Path]:
+            absolute = root.expanduser().resolve()
+            return {
+                "root": absolute,
+                "charts": absolute / "charts",
+                "raw": absolute / "raw",
+                "profiles": absolute / "profiles",
+                "exports": absolute / "exports",
+                "config": absolute / "config",
+                "work": absolute / "work",
+            }
+
+        def _populate_session_directory_fields(self, paths: dict[str, Path]) -> None:
+            self.session_dir_charts.setText(str(paths["charts"]))
+            self.session_dir_raw.setText(str(paths["raw"]))
+            self.session_dir_profiles.setText(str(paths["profiles"]))
+            self.session_dir_exports.setText(str(paths["exports"]))
+            self.session_dir_config.setText(str(paths["config"]))
+            self.session_dir_work.setText(str(paths["work"]))
+
+        def _use_current_dir_as_session_root(self) -> None:
+            self.session_root_path.setText(str(self._current_dir))
+            self.session_name_edit.setText(self._current_dir.name)
+            self._populate_session_directory_fields(self._session_paths_from_root(self._current_dir))
+            self._set_status(f"Raíz de sesión: {self._current_dir}")
+
+        def _on_session_root_edited(self) -> None:
+            text = self.session_root_path.text().strip()
+            if not text:
+                return
+            root = Path(text).expanduser()
+            self._populate_session_directory_fields(self._session_paths_from_root(root))
+
+        def _session_state_snapshot(self) -> dict[str, Any]:
+            return {
+                "profile_charts_dir": self.profile_charts_dir.text().strip(),
+                "reference_path": self.path_reference.text().strip(),
+                "profile_output_path": self.profile_out_path_edit.text().strip(),
+                "profile_report_path": self.profile_report_out.text().strip(),
+                "profile_workdir": self.profile_workdir.text().strip(),
+                "profile_chart_type": self.profile_chart_type.currentText().strip(),
+                "profile_min_confidence": float(self.profile_min_conf.value()),
+                "profile_camera": self.profile_camera.text().strip(),
+                "profile_lens": self.profile_lens.text().strip(),
+                "recipe_path": self.path_recipe.text().strip(),
+                "profile_active_path": self.path_profile_active.text().strip(),
+                "batch_input_dir": self.batch_input_dir.text().strip(),
+                "batch_output_dir": self.batch_out_dir.text().strip(),
+                "preview_png_path": self.path_preview_png.text().strip(),
+                "preview_apply_profile": bool(self.chk_apply_profile.isChecked()),
+                "batch_embed_profile": bool(self.batch_embed_profile.isChecked()),
+                "batch_apply_adjustments": bool(self.batch_apply_adjustments.isChecked()),
+                "fast_raw_preview": bool(self.check_fast_raw_preview.isChecked()),
+                "preview_max_side": int(self.spin_preview_max_side.value()),
+                "adjustments": {
+                    "sharpen": int(self.slider_sharpen.value()),
+                    "radius": int(self.slider_radius.value()),
+                    "noise_luma": int(self.slider_noise_luma.value()),
+                    "noise_color": int(self.slider_noise_color.value()),
+                },
+                "recipe": asdict(self._build_effective_recipe()),
+            }
+
+        def _apply_state_to_ui_from_session(
+            self,
+            *,
+            state: dict[str, Any],
+            directories: dict[str, str],
+            session_name: str,
+        ) -> None:
+            paths = {k: Path(v) for k, v in directories.items() if isinstance(v, str)}
+            charts_dir = state.get("profile_charts_dir") or str(paths.get("charts", Path.cwd()))
+            raw_dir = state.get("batch_input_dir") or str(paths.get("raw", Path.cwd()))
+            exports_dir = paths.get("exports", Path.cwd())
+            profiles_dir = paths.get("profiles", Path.cwd())
+            config_dir = paths.get("config", Path.cwd())
+            work_dir = paths.get("work", Path.cwd())
+
+            safe_name = session_name.strip() or "session"
+            default_profile_out = profiles_dir / f"{safe_name}.icc"
+            default_report = config_dir / "profile_report.json"
+            default_workdir = work_dir / "profile_generation"
+            default_recipe = config_dir / "recipe.yml"
+            default_preview = exports_dir / "preview" / "preview.png"
+            default_tiff_out = exports_dir / "tiff"
+
+            self.profile_charts_dir.setText(str(charts_dir))
+            self.path_reference.setText(str(state.get("reference_path") or self.path_reference.text().strip()))
+            self.profile_out_path_edit.setText(str(state.get("profile_output_path") or default_profile_out))
+            self.path_profile_out.setText(self.profile_out_path_edit.text().strip())
+            self.profile_report_out.setText(str(state.get("profile_report_path") or default_report))
+            self.profile_workdir.setText(str(state.get("profile_workdir") or default_workdir))
+            self.batch_input_dir.setText(str(raw_dir))
+            self.batch_out_dir.setText(str(state.get("batch_output_dir") or default_tiff_out))
+            self.path_preview_png.setText(str(state.get("preview_png_path") or default_preview))
+            self.path_recipe.setText(str(state.get("recipe_path") or default_recipe))
+
+            profile_active = str(state.get("profile_active_path") or "").strip()
+            if profile_active:
+                self.path_profile_active.setText(profile_active)
+
+            chart_type = str(state.get("profile_chart_type") or "colorchecker24")
+            self._set_combo_text(self.profile_chart_type, chart_type)
+            try:
+                self.profile_min_conf.setValue(float(state.get("profile_min_confidence", 0.35)))
+            except Exception:
+                self.profile_min_conf.setValue(0.35)
+
+            self.profile_camera.setText(str(state.get("profile_camera") or ""))
+            self.profile_lens.setText(str(state.get("profile_lens") or ""))
+
+            self.chk_apply_profile.setChecked(bool(state.get("preview_apply_profile", self.chk_apply_profile.isChecked())))
+            self.batch_embed_profile.setChecked(bool(state.get("batch_embed_profile", self.batch_embed_profile.isChecked())))
+            self.batch_apply_adjustments.setChecked(bool(state.get("batch_apply_adjustments", self.batch_apply_adjustments.isChecked())))
+            self.check_fast_raw_preview.setChecked(bool(state.get("fast_raw_preview", self.check_fast_raw_preview.isChecked())))
+
+            try:
+                self.spin_preview_max_side.setValue(int(state.get("preview_max_side", self.spin_preview_max_side.value())))
+            except Exception:
+                pass
+
+            adjustments = state.get("adjustments") if isinstance(state.get("adjustments"), dict) else {}
+            try:
+                self.slider_sharpen.setValue(int(adjustments.get("sharpen", self.slider_sharpen.value())))
+                self.slider_radius.setValue(int(adjustments.get("radius", self.slider_radius.value())))
+                self.slider_noise_luma.setValue(int(adjustments.get("noise_luma", self.slider_noise_luma.value())))
+                self.slider_noise_color.setValue(int(adjustments.get("noise_color", self.slider_noise_color.value())))
+            except Exception:
+                pass
+
+            recipe_payload = state.get("recipe")
+            if isinstance(recipe_payload, dict):
+                try:
+                    allowed_keys = set(Recipe.__dataclass_fields__.keys())
+                    filtered = {k: v for k, v in recipe_payload.items() if k in allowed_keys}
+                    self._apply_recipe_to_controls(Recipe(**filtered))
+                except Exception:
+                    pass
+
+        def _activate_session(self, root: Path, payload: dict[str, Any]) -> None:
+            self._active_session_root = root.expanduser().resolve()
+            self._active_session_payload = payload
+
+            metadata = payload.get("metadata", {})
+            directories = payload.get("directories", {})
+            state = payload.get("state", {})
+            queue = payload.get("queue", [])
+
+            session_name = str(metadata.get("name") or self._active_session_root.name)
+            self.session_root_path.setText(str(self._active_session_root))
+            self.session_name_edit.setText(session_name)
+            self.session_illumination_edit.setText(str(metadata.get("illumination_notes") or ""))
+            self.session_capture_edit.setText(str(metadata.get("capture_notes") or ""))
+
+            if isinstance(directories, dict) and directories:
+                self.session_dir_charts.setText(str(directories.get("charts") or ""))
+                self.session_dir_raw.setText(str(directories.get("raw") or ""))
+                self.session_dir_profiles.setText(str(directories.get("profiles") or ""))
+                self.session_dir_exports.setText(str(directories.get("exports") or ""))
+                self.session_dir_config.setText(str(directories.get("config") or ""))
+                self.session_dir_work.setText(str(directories.get("work") or ""))
+            else:
+                self._populate_session_directory_fields(self._session_paths_from_root(self._active_session_root))
+
+            self._apply_state_to_ui_from_session(
+                state=state if isinstance(state, dict) else {},
+                directories=directories if isinstance(directories, dict) else {},
+                session_name=session_name,
+            )
+
+            self._develop_queue = [
+                {
+                    "source": str(item.get("source") or ""),
+                    "status": str(item.get("status") or "pending"),
+                    "output_tiff": str(item.get("output_tiff") or ""),
+                    "message": str(item.get("message") or ""),
+                }
+                for item in queue
+                if isinstance(item, dict) and str(item.get("source") or "").strip()
+            ]
+            self._refresh_queue_table()
+
+            raw_dir = Path(directories.get("raw", self._active_session_root))
+            if raw_dir.exists() and raw_dir.is_dir():
+                self._set_current_directory(raw_dir)
+            else:
+                self._set_current_directory(self._active_session_root)
+
+            self.session_active_label.setText(
+                f"Sesión activa: {session_name}\n"
+                f"Raíz: {self._active_session_root}\n"
+                f"Configuración: {session_file_path(self._active_session_root)}"
+            )
+            self._set_status(f"Sesión activa: {session_name}")
+
+        def _on_create_session(self) -> None:
+            root_text = self.session_root_path.text().strip()
+            if not root_text:
+                QtWidgets.QMessageBox.information(self, "Info", "Indica un directorio raíz para la sesión.")
+                return
+
+            root = Path(root_text).expanduser()
+            existing_session = session_file_path(root)
+            if existing_session.exists():
+                resp = QtWidgets.QMessageBox.question(
+                    self,
+                    "Sesión existente",
+                    "Ya existe una sesión en ese directorio. ¿Sobrescribir configuración?",
+                )
+                if resp != QtWidgets.QMessageBox.Yes:
+                    return
+            name = self.session_name_edit.text().strip() or root.name
+            illumination = self.session_illumination_edit.text().strip()
+            capture = self.session_capture_edit.text().strip()
+            payload = create_session(
+                root,
+                name=name,
+                illumination_notes=illumination,
+                capture_notes=capture,
+                state=self._session_state_snapshot(),
+                queue=self._develop_queue,
+            )
+            self._activate_session(root, payload)
+
+        def _on_open_session(self) -> None:
+            start = self.session_root_path.text().strip() or str(self._current_dir)
+            selected = QtWidgets.QFileDialog.getExistingDirectory(
+                self,
+                "Abrir sesión (directorio raíz)",
+                start,
+            )
+            if not selected:
+                return
+            root = Path(selected)
+            try:
+                payload = load_session(root)
+            except FileNotFoundError:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Info",
+                    f"No se encontró configuración de sesión en:\n{session_file_path(root)}",
+                )
+                return
+            self._activate_session(root, payload)
+
+        def _save_active_session(self, *, silent: bool) -> bool:
+            if self._active_session_root is None and silent:
+                return False
+
+            root_text = self.session_root_path.text().strip()
+            if not root_text:
+                if not silent:
+                    QtWidgets.QMessageBox.information(self, "Info", "Define un directorio de sesión.")
+                return False
+
+            root = Path(root_text).expanduser()
+            ensure_session_structure(root)
+
+            metadata_existing = {}
+            directories_existing = {}
+            if isinstance(self._active_session_payload, dict):
+                metadata_existing = self._active_session_payload.get("metadata", {})
+                directories_existing = self._active_session_payload.get("directories", {})
+            if isinstance(directories_existing, dict):
+                current_root = str(directories_existing.get("root") or "")
+                if current_root and Path(current_root).expanduser().resolve() != root.resolve():
+                    directories_existing = {}
+
+            payload = {
+                "version": 1,
+                "metadata": {
+                    "name": self.session_name_edit.text().strip() or root.name,
+                    "illumination_notes": self.session_illumination_edit.text().strip(),
+                    "capture_notes": self.session_capture_edit.text().strip(),
+                    "created_at": metadata_existing.get("created_at", ""),
+                    "updated_at": metadata_existing.get("updated_at", ""),
+                },
+                "directories": directories_existing if isinstance(directories_existing, dict) else {},
+                "state": self._session_state_snapshot(),
+                "queue": self._develop_queue,
+            }
+            saved = save_session(root, payload)
+            self._active_session_payload = saved
+            self._active_session_root = root.resolve()
+            self.session_active_label.setText(
+                f"Sesión activa: {saved['metadata']['name']}\n"
+                f"Raíz: {self._active_session_root}\n"
+                f"Configuración: {session_file_path(self._active_session_root)}"
+            )
+            if not silent:
+                self._set_status(f"Sesión guardada: {session_file_path(self._active_session_root)}")
+            return True
+
+        def _on_save_session(self) -> None:
+            if self._active_session_root is None:
+                self._on_create_session()
+                return
+            self._save_active_session(silent=False)
+
+        def _queue_add_files(self, files: list[Path]) -> int:
+            existing = {item["source"] for item in self._develop_queue if item.get("source")}
+            added = 0
+            for src in files:
+                source = str(src)
+                if source in existing:
+                    continue
+                self._develop_queue.append(
+                    {
+                        "source": source,
+                        "status": "pending",
+                        "output_tiff": "",
+                        "message": "",
+                    }
+                )
+                existing.add(source)
+                added += 1
+
+            if added:
+                self._refresh_queue_table()
+                self._save_active_session(silent=True)
+            return added
+
+        def _queue_add_selected(self) -> None:
+            files = self._collect_selected_file_paths()
+            if not files:
+                QtWidgets.QMessageBox.information(self, "Info", "No hay selección para añadir a la cola.")
+                return
+            added = self._queue_add_files(files)
+            self._set_status(f"Cola actualizada: {added} elementos añadidos")
+
+        def _queue_add_session_raws(self) -> None:
+            source_dir = Path(self.batch_input_dir.text().strip() or self._current_dir)
+            if not source_dir.exists() or not source_dir.is_dir():
+                QtWidgets.QMessageBox.information(self, "Info", f"Directorio inválido: {source_dir}")
+                return
+            files = [
+                p for p in sorted(source_dir.iterdir())
+                if p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
+            ]
+            if not files:
+                QtWidgets.QMessageBox.information(self, "Info", "No hay RAW/imágenes compatibles en el directorio.")
+                return
+            added = self._queue_add_files(files)
+            self._set_status(f"Cola actualizada: {added} archivos añadidos desde {source_dir}")
+
+        def _queue_remove_selected(self) -> None:
+            if not self._develop_queue:
+                return
+            rows = sorted({i.row() for i in self.queue_table.selectionModel().selectedRows()}, reverse=True)
+            if not rows:
+                QtWidgets.QMessageBox.information(self, "Info", "Selecciona filas de la cola para quitar.")
+                return
+            for row in rows:
+                if 0 <= row < len(self._develop_queue):
+                    self._develop_queue.pop(row)
+            self._refresh_queue_table()
+            self._save_active_session(silent=True)
+
+        def _queue_clear(self) -> None:
+            self._develop_queue = []
+            self._refresh_queue_table()
+            self._save_active_session(silent=True)
+            self._set_status("Cola vaciada")
+
+        def _refresh_queue_table(self) -> None:
+            if not hasattr(self, "queue_table"):
+                return
+
+            self.queue_table.setRowCount(0)
+            pending = 0
+            done = 0
+            errors = 0
+
+            for item in self._develop_queue:
+                status = str(item.get("status") or "pending")
+                if status == "done":
+                    done += 1
+                elif status == "error":
+                    errors += 1
+                else:
+                    pending += 1
+
+                row = self.queue_table.rowCount()
+                self.queue_table.insertRow(row)
+                self.queue_table.setItem(row, 0, QtWidgets.QTableWidgetItem(str(item.get("source") or "")))
+                self.queue_table.setItem(row, 1, QtWidgets.QTableWidgetItem(status))
+                self.queue_table.setItem(row, 2, QtWidgets.QTableWidgetItem(str(item.get("output_tiff") or "")))
+                self.queue_table.setItem(row, 3, QtWidgets.QTableWidgetItem(str(item.get("message") or "")))
+
+            self.queue_status_label.setText(
+                f"Elementos: {len(self._develop_queue)} | Pendientes: {pending} | OK: {done} | Error: {errors}"
+            )
+
+        def _queue_process(self) -> None:
+            if not self._develop_queue:
+                QtWidgets.QMessageBox.information(self, "Info", "No hay elementos en cola.")
+                return
+
+            files: list[Path] = []
+            for item in self._develop_queue:
+                src = Path(str(item.get("source") or ""))
+                if src.exists() and src.is_file() and src.suffix.lower() in BROWSABLE_EXTENSIONS:
+                    files.append(src)
+                else:
+                    item["status"] = "error"
+                    item["message"] = "Archivo no encontrado o extensión incompatible"
+                    item["output_tiff"] = ""
+
+            if not files:
+                self._refresh_queue_table()
+                self._save_active_session(silent=True)
+                QtWidgets.QMessageBox.information(self, "Info", "No hay archivos válidos para procesar en la cola.")
+                return
+
+            valid_sources = {str(p) for p in files}
+            for item in self._develop_queue:
+                source = str(item.get("source") or "")
+                if source and source in valid_sources:
+                    item["status"] = "pending"
+                    item["message"] = ""
+                    item["output_tiff"] = ""
+            self._refresh_queue_table()
+
+            out_dir = Path(self.batch_out_dir.text().strip())
+            recipe = self._build_effective_recipe()
+            apply_adjust = bool(self.batch_apply_adjustments.isChecked())
+            use_profile = bool(self.batch_embed_profile.isChecked()) and self.path_profile_active.text().strip() != ""
+            profile_path = Path(self.path_profile_active.text().strip()) if use_profile else None
+
+            nl = self.slider_noise_luma.value() / 100.0
+            nc = self.slider_noise_color.value() / 100.0
+            sharpen = self.slider_sharpen.value() / 100.0
+            radius = self.slider_radius.value() / 10.0
+
+            def task():
+                payload = self._process_batch_files(
+                    files=files,
+                    out_dir=out_dir,
+                    recipe=recipe,
+                    apply_adjust=apply_adjust,
+                    use_profile=use_profile,
+                    profile_path=profile_path,
+                    denoise_luma=nl,
+                    denoise_color=nc,
+                    sharpen_amount=sharpen,
+                    sharpen_radius=radius,
+                )
+                payload["task"] = "Cola de revelado"
+                return payload
+
+            def on_success(payload) -> None:
+                ok_by_source = {str(o["source"]): str(o["output"]) for o in payload.get("outputs", [])}
+                err_by_source = {str(e["source"]): str(e["error"]) for e in payload.get("errors", [])}
+
+                for item in self._develop_queue:
+                    source = str(item.get("source") or "")
+                    if source in ok_by_source:
+                        item["status"] = "done"
+                        item["output_tiff"] = ok_by_source[source]
+                        item["message"] = "OK"
+                    elif source in err_by_source:
+                        item["status"] = "error"
+                        item["output_tiff"] = ""
+                        item["message"] = err_by_source[source]
+
+                self._refresh_queue_table()
+                self._save_active_session(silent=True)
+                self._set_status(
+                    f"Cola procesada: {len(payload.get('outputs', []))} OK / {len(payload.get('errors', []))} errores"
+                )
+
+            self._start_background_task("Procesar cola de revelado", task, on_success)
+
         def _pick_directory(self) -> None:
             p = QtWidgets.QFileDialog.getExistingDirectory(self, "Selecciona directorio")
             if not p:
@@ -1107,6 +1701,7 @@ if QtWidgets is not None:
             self.path_profile_active.setText(path)
             self._set_status(f"Perfil activo: {path}")
             self._refresh_preview()
+            self._save_active_session(silent=True)
 
         def _menu_load_recipe(self) -> None:
             start = self.path_recipe.text().strip() or str(Path.cwd())
@@ -1123,6 +1718,7 @@ if QtWidgets is not None:
             self.path_recipe.setText(str(recipe_path))
             self._apply_recipe_to_controls(recipe)
             self._set_status(f"Receta cargada: {recipe_path}")
+            self._save_active_session(silent=True)
 
         def _menu_save_recipe(self) -> None:
             start = self.path_recipe.text().strip() or str(Path.cwd() / "recipe.yml")
@@ -1145,10 +1741,12 @@ if QtWidgets is not None:
                 out.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
             self.path_recipe.setText(str(out))
             self._set_status(f"Receta guardada: {out}")
+            self._save_active_session(silent=True)
 
         def _menu_reset_recipe(self) -> None:
             self._apply_recipe_to_controls(Recipe())
             self._set_status("Receta restablecida a valores por defecto")
+            self._save_active_session(silent=True)
 
         def _apply_recipe_to_controls(self, recipe: Recipe) -> None:
             self._set_combo_data(self.combo_demosaic, recipe.demosaic_algorithm)
@@ -1479,6 +2077,7 @@ if QtWidgets is not None:
                 return
             self._log_preview(f"Preview guardada en: {out}")
             self._set_status(f"Preview guardada: {out}")
+            self._save_active_session(silent=True)
 
         def _on_develop_selected(self) -> None:
             if self._selected_file is None:
@@ -1520,16 +2119,19 @@ if QtWidgets is not None:
             def on_success(payload) -> None:
                 self._log_preview(f"TIFF revelado: {payload['output_tiff']}")
                 self._set_status(f"Revelado completado: {payload['output_tiff']}")
+                self._save_active_session(silent=True)
 
             self._start_background_task("Revelado a TIFF", task, on_success)
 
         def _use_current_dir_as_profile_charts(self) -> None:
             self.profile_charts_dir.setText(str(self._current_dir))
             self._set_status(f"Directorio cartas: {self._current_dir}")
+            self._save_active_session(silent=True)
 
         def _use_current_dir_as_batch_input(self) -> None:
             self.batch_input_dir.setText(str(self._current_dir))
             self._set_status(f"Directorio lote: {self._current_dir}")
+            self._save_active_session(silent=True)
 
         def _on_generate_profile(self) -> None:
             charts = Path(self.profile_charts_dir.text().strip())
@@ -1570,6 +2172,7 @@ if QtWidgets is not None:
                 self.path_profile_active.setText(str(profile_out))
                 self._log_preview(f"Perfil generado: {profile_out}")
                 self._set_status(f"Perfil ICC generado: {profile_out}")
+                self._save_active_session(silent=True)
 
             self._start_background_task("Generación de perfil ICC", task, on_success)
 
@@ -1606,6 +2209,69 @@ if QtWidgets is not None:
                 return
             self._start_batch_develop(files, "Lote desde directorio")
 
+        def _process_batch_files(
+            self,
+            *,
+            files: list[Path],
+            out_dir: Path,
+            recipe: Recipe,
+            apply_adjust: bool,
+            use_profile: bool,
+            profile_path: Path | None,
+            denoise_luma: float,
+            denoise_color: float,
+            sharpen_amount: float,
+            sharpen_radius: float,
+        ) -> dict[str, Any]:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            outputs: list[dict[str, str]] = []
+            errors: list[dict[str, str]] = []
+
+            with tempfile.TemporaryDirectory(prefix="iccraw_gui_batch_") as tmp:
+                tmpdir = Path(tmp)
+                matrix = None
+                icc_bytes: bytes | None = None
+                if profile_path is not None and profile_path.exists():
+                    model = load_profile_model(profile_path)
+                    matrix = np.asarray(model["matrix_camera_to_xyz"], dtype=np.float64)
+                    icc_bytes = profile_path.read_bytes()
+                elif profile_path is not None:
+                    raise RuntimeError(f"No existe perfil ICC activo: {profile_path}")
+
+                for idx, src in enumerate(files, start=1):
+                    try:
+                        if src.suffix.lower() in RAW_EXTENSIONS:
+                            temp_linear = tmpdir / f"{idx:04d}_{src.stem}.tiff"
+                            develop_controlled(src, recipe, temp_linear, None)
+                            image = read_image(temp_linear)
+                        else:
+                            image = read_image(src)
+
+                        if apply_adjust:
+                            image = apply_adjustments(
+                                image,
+                                denoise_luminance=denoise_luma,
+                                denoise_color=denoise_color,
+                                sharpen_amount=sharpen_amount,
+                                sharpen_radius=sharpen_radius,
+                            )
+
+                        if matrix is not None:
+                            image = apply_profile_matrix(image, matrix, recipe.output_space, recipe.output_linear)
+
+                        out_path = out_dir / f"{src.stem}.tiff"
+                        write_tiff16(out_path, image, icc_profile=icc_bytes if use_profile else None)
+                        outputs.append({"source": str(src), "output": str(out_path)})
+                    except Exception as exc:
+                        errors.append({"source": str(src), "error": str(exc)})
+
+            return {
+                "input_files": len(files),
+                "output_dir": str(out_dir),
+                "outputs": outputs,
+                "errors": errors,
+            }
+
         def _start_batch_develop(self, files: list[Path], task_label: str) -> None:
             out_dir = Path(self.batch_out_dir.text().strip())
             recipe = self._build_effective_recipe()
@@ -1619,55 +2285,34 @@ if QtWidgets is not None:
             radius = self.slider_radius.value() / 10.0
 
             def task():
-                out_dir.mkdir(parents=True, exist_ok=True)
-                outputs: list[dict[str, str]] = []
-
-                with tempfile.TemporaryDirectory(prefix="iccraw_gui_batch_") as tmp:
-                    tmpdir = Path(tmp)
-                    matrix = None
-                    icc_bytes: bytes | None = None
-                    if profile_path is not None and profile_path.exists():
-                        model = load_profile_model(profile_path)
-                        matrix = np.asarray(model["matrix_camera_to_xyz"], dtype=np.float64)
-                        icc_bytes = profile_path.read_bytes()
-                    elif profile_path is not None:
-                        raise RuntimeError(f"No existe perfil ICC activo: {profile_path}")
-
-                    for idx, src in enumerate(files, start=1):
-                        if src.suffix.lower() in RAW_EXTENSIONS:
-                            temp_linear = tmpdir / f"{idx:04d}_{src.stem}.tiff"
-                            develop_controlled(src, recipe, temp_linear, None)
-                            image = read_image(temp_linear)
-                        else:
-                            image = read_image(src)
-
-                        if apply_adjust:
-                            image = apply_adjustments(
-                                image,
-                                denoise_luminance=nl,
-                                denoise_color=nc,
-                                sharpen_amount=sharpen,
-                                sharpen_radius=radius,
-                            )
-
-                        if matrix is not None:
-                            image = apply_profile_matrix(image, matrix, recipe.output_space, recipe.output_linear)
-
-                        out_path = out_dir / f"{src.stem}.tiff"
-                        write_tiff16(out_path, image, icc_profile=icc_bytes if use_profile else None)
-                        outputs.append({"source": str(src), "output": str(out_path)})
-
-                return {
-                    "task": task_label,
-                    "input_files": len(files),
-                    "output_dir": str(out_dir),
-                    "outputs": outputs,
-                }
+                payload = self._process_batch_files(
+                    files=files,
+                    out_dir=out_dir,
+                    recipe=recipe,
+                    apply_adjust=apply_adjust,
+                    use_profile=use_profile,
+                    profile_path=profile_path,
+                    denoise_luma=nl,
+                    denoise_color=nc,
+                    sharpen_amount=sharpen,
+                    sharpen_radius=radius,
+                )
+                payload["task"] = task_label
+                return payload
 
             def on_success(payload) -> None:
                 self.batch_output.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False))
-                self._log_preview(f"Lote completado: {payload['input_files']} archivos")
-                self._set_status(f"Lote completado en {payload['output_dir']}")
+                ok_count = len(payload.get("outputs", []))
+                error_count = len(payload.get("errors", []))
+                self._log_preview(
+                    f"Lote finalizado: {ok_count}/{payload['input_files']} completados "
+                    f"({error_count} errores)"
+                )
+                self._set_status(
+                    f"Lote finalizado en {payload['output_dir']} "
+                    f"(OK={ok_count}, errores={error_count})"
+                )
+                self._save_active_session(silent=True)
 
             self._start_background_task(task_label, task, on_success)
 
@@ -1678,6 +2323,7 @@ if QtWidgets is not None:
                 return
             self.path_profile_active.setText(str(p))
             self._set_status(f"Perfil activo: {p}")
+            self._save_active_session(silent=True)
 
         def _start_background_task(self, label: str, task, on_success) -> None:
             self._set_status(f"Ejecutando: {label}")

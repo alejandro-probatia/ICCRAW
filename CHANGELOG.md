@@ -45,6 +45,16 @@ Para mantener trazabilidad completa, cada cambio debe:
   - Revelado RAW,
   - Monitoreo Flujo.
 - Revelado por lotes integrado en pestaña de Revelado RAW (selección o directorio completo).
+- Nuevo módulo `session` para gestión persistente de sesiones con creación de estructura de directorios:
+  - `charts/`, `raw/`, `profiles/`, `exports/`, `config/`, `work/`.
+- Nueva pestaña `1. Sesión` para crear/abrir/guardar sesión con metadatos de iluminación y toma.
+- Nueva pestaña `3. Cola de Revelado` con cola de archivos, estado por imagen y ejecución de lote desde cola.
+- Persistencia de estado por sesión en `config/session.json`:
+  - rutas operativas,
+  - configuración de revelado/perfil,
+  - perfil activo,
+  - cola de revelado.
+- Test unitario `tests_py/test_session.py` para estructura, carga y normalización de sesión.
 
 ### Changed
 
@@ -57,6 +67,11 @@ Para mantener trazabilidad completa, cada cambio debe:
 - El flujo de perfilado y el flujo de revelado por lotes se separan explícitamente para mayor claridad operativa.
 - La previsualización aplica perfil ICC desactivado por defecto para evitar dominantes cuando el perfil no corresponde al set cámara+iluminación+recipe activo.
 - La ventana Qt guarda/restaura tamaño y distribución de paneles para mejorar trabajo en pantallas de distinto tamaño.
+- Reorganización de pestañas principales para flujo centrado en sesión:
+  - `Sesión`,
+  - `Revelado y Perfil ICC`,
+  - `Cola de Revelado`.
+- El procesamiento por lote en GUI ahora tolera errores por archivo y devuelve resumen `OK/errores` sin abortar todo el lote.
 
 ### Docs
 
