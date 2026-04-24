@@ -1,6 +1,16 @@
 # ICCRAW
 
-Aplicación open source para fotografía técnico-científica:
+ICCRAW es una aplicación open source para fotografía técnico-científica,
+documental y forense. Su objetivo es transformar una captura RAW en un flujo
+reproducible y auditable, donde cada decisión técnica queda declarada,
+registrada y puede repetirse con las mismas condiciones.
+
+El proyecto nace para cubrir un espacio que los reveladores fotográficos
+convencionales no suelen priorizar: separar el ajuste creativo de la medición
+colorimétrica, controlar el revelado RAW, generar perfiles de cámara por sesión
+y conservar evidencia técnica suficiente para revisar el proceso después.
+
+En términos prácticos, ICCRAW implementa:
 
 1. revelado RAW controlado y reproducible,
 2. detección automática de carta de color,
@@ -8,6 +18,97 @@ Aplicación open source para fotografía técnico-científica:
 4. generación de perfil de revelado científico + perfil ICC específico de sesión,
 5. aplicación de ese paquete de sesión a RAW/TIFF seleccionados,
 6. trazabilidad y auditoría (JSON sidecars + hashes + manifiestos).
+
+## Objetivo del proyecto
+
+El objetivo principal es construir una herramienta comunitaria que permita
+trabajar con imágenes RAW bajo criterios de reproducibilidad, control
+colorimétrico y trazabilidad. ICCRAW no busca ser un editor generalista ni una
+alternativa creativa a Lightroom, Darktable o RawTherapee. Su foco es más
+estrecho:
+
+- revelar RAW con parámetros explícitos y compatibles con auditoría,
+- calibrar una sesión a partir de capturas de carta bajo un iluminante concreto,
+- generar una receta de revelado científica antes de construir el ICC,
+- producir perfiles ICC específicos para cámara, óptica, iluminante y receta,
+- aplicar ese paquete de sesión a imágenes objetivo sin mezclar decisiones
+  estéticas con decisiones de medición,
+- documentar comandos, versiones, rutas, estados de QA y artefactos generados.
+
+El caso de uso natural es un entorno donde importa poder justificar cómo se
+obtuvo una imagen: fotografía científica, conservación y patrimonio,
+laboratorio, documentación técnica, inspección, reproducción de obra, análisis
+forense o proyectos comunitarios que necesiten una cadena de procesado abierta.
+
+## Metodología aplicada
+
+La metodología de ICCRAW parte de una idea simple: un perfil ICC de cámara no
+debe esconder problemas básicos de captura o revelado. Antes de perfilar, el
+sistema intenta fijar una base técnica coherente: balance de blancos,
+exposición/densidad y salida lineal. El perfil ICC queda reservado para describir
+la respuesta colorimétrica restante de la cámara en esa sesión.
+
+El flujo metodológico es:
+
+1. **Contrato RAW explícito**: la receta declara motor RAW, demosaicing, balance
+   de blancos, niveles, curva tonal y espacio de trabajo. Si un parámetro no se
+   puede ejecutar con el backend activo, el proceso debe fallar en vez de
+   sustituirlo silenciosamente.
+2. **Captura de carta**: una o varias imágenes de carta de color documentan las
+   condiciones reales de iluminación, cámara, óptica y exposición de la sesión.
+3. **Detección y muestreo**: la carta se detecta geométricamente y cada parche se
+   mide con estrategias robustas, evitando saturación y reduciendo el impacto de
+   ruido, bordes o muestras contaminadas.
+4. **Perfil de revelado científico**: la fila neutra de la carta se usa para
+   derivar correcciones de balance, densidad y exposición. Esta fase genera una
+   receta calibrada que sigue siendo reproducible y legible.
+5. **Segunda medición calibrada**: la carta se mide de nuevo con la receta ya
+   calibrada, reutilizando la geometría cuando corresponde para no depender de
+   cambios de renderizado.
+6. **Perfil ICC de sesión**: ArgyllCMS genera el perfil ICC a partir de muestras
+   medidas y referencias normalizadas. El perfil describe la sesión; no es
+   universal.
+7. **Validación colorimétrica**: cuando hay muestras independientes, el ICC real
+   se valida con CMM/ArgyllCMS y se informa DeltaE 76/2000, outliers y estado
+   operacional (`draft`, `validated`, `rejected`, `expired`).
+8. **Aplicación controlada**: las imágenes objetivo se revelan con la receta
+   calibrada y el modo de gestión de color declarado: asignar perfil de entrada
+   de cámara o convertir a un espacio de salida mediante CMM.
+9. **Trazabilidad**: cada ejecución produce artefactos revisables: JSON,
+   manifiestos, reportes QA, rutas, versiones de herramientas externas y estado
+   de perfil.
+
+Principios de diseño:
+
+- **Reproducibilidad antes que apariencia**: el modo científico evita curvas
+  creativas, automatismos opacos y ajustes manuales no documentados.
+- **Separación de responsabilidades**: la receta corrige revelado base; el ICC
+  describe color; el CMM convierte entre perfiles; la GUI solo orquesta esos
+  módulos.
+- **Fallo temprano**: una receta incompatible, una carta no fiable o una
+  herramienta externa ausente deben producir un error claro.
+- **Auditoría continua**: los resultados no se consideran solo imágenes finales,
+  sino también evidencia técnica que debe poder revisarse.
+- **Validez contextual**: un perfil solo es válido para condiciones comparables
+  de cámara, óptica, iluminante, receta y versión del software.
+
+## Alcance y límites
+
+ICCRAW trabaja por sesiones. Una sesión agrupa capturas de carta, RAW objetivo,
+recetas, perfiles, exportaciones, reportes y artefactos de trabajo. Esto evita
+tratar el perfil ICC como una propiedad permanente de la cámara: el perfil se
+entiende como una descripción operativa de una configuración concreta.
+
+ICCRAW no pretende:
+
+- mejorar fotografías con criterios estéticos,
+- reemplazar un laboratorio de validación colorimétrica,
+- garantizar validez forense por sí solo,
+- generar un perfil universal para cualquier luz o escena,
+- ocultar dependencias externas críticas como `dcraw`, ArgyllCMS o LittleCMS.
+
+La meta de la beta es ofrecer una base instalable y verificable para pruebas
+controladas, discusión técnica y ampliación comunitaria.
 
 Mantenimiento comunitario:
 

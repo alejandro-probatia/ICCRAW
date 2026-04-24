@@ -168,6 +168,8 @@ _Sin cambios registrados._
 
 ### Docs
 
+- README ampliado con objetivo del proyecto, alcance, límites y metodología
+  aplicada al flujo RAW -> carta -> perfil de revelado -> ICC -> lote.
 - Nuevo documento `docs/OPERATIVE_REVIEW_PLAN.md` con hallazgos tecnicos,
   criterios de aceptacion y plan profesional por fases para convertir el
   prototipo en pipeline operativo y auditable.
