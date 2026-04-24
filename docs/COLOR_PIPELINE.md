@@ -41,7 +41,7 @@ Reglas:
 3. [x] La gestion ICC debe separar:
    - asignacion de perfil de entrada,
    - conversion mediante CMM a perfil de salida.
-4. [ ] La validacion debe comprobar el ICC real generado, no solo artefactos
+4. [x] La validacion debe comprobar el ICC real generado, no solo artefactos
    numericos auxiliares.
 5. [ ] El fallback de deteccion de carta no debe producir perfiles automaticamente
    sin confirmacion o modo explicito.

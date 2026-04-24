@@ -22,6 +22,7 @@ missing=0
 
 check_cmd "dcraw" "dcraw" || missing=1
 check_cmd "colprof" "colprof -? " || missing=1
+check_cmd "xicclu" "xicclu" || missing=1
 check_cmd "tificc" "tificc" || missing=1
 check_cmd "exiftool" "exiftool -ver" || missing=1
 

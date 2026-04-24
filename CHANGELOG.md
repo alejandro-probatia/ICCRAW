@@ -23,8 +23,11 @@ Para mantener trazabilidad completa, cada cambio debe:
 - `batch-develop` separa gestion ICC en modos explicitos:
   - RGB de camara con perfil ICC de entrada incrustado,
   - conversion a sRGB mediante LittleCMS (`tificc`) con perfil sRGB incrustado.
+- `validate-profile` valida el perfil ICC real con ArgyllCMS (`xicclu`/`icclu`)
+  en lugar de calcular DeltaE con la matriz lateral del sidecar.
 - La matriz `matrix_camera_to_xyz` queda como artefacto diagnostico/compatibilidad,
-  no como sustituto de la conversion ICC en exportacion de lote.
+  no como sustituto de la conversion ICC en exportacion de lote ni de la
+  validacion del perfil.
 - Las recetas de ejemplo pasan de `demosaic_algorithm: rcd` a `ahd`, el modo
   soportado por `dcraw`.
 - La GUI deja de ofrecer algoritmos de demosaicing que el backend `dcraw` no
@@ -48,6 +51,8 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Metadatos de modo de gestion de color en manifiestos de lote.
 - Tests P0 para demosaicing no soportado, `audit_linear_tiff` realmente lineal y
   exportacion ICC/CMM.
+- Tests P0 que demuestran que `validate-profile` usa el ICC real aunque exista
+  un sidecar con matriz incorrecta.
 - Plantilla de mantenimiento continuo del changelog y política de actualización.
 - Módulo `preview` para carga de imagen/RAW en previsualización, ajustes técnicos y análisis lineal.
 - GUI nueva basada en Qt/PySide6 (`app-ui`, `app-ui-qt`) con:

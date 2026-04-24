@@ -16,7 +16,7 @@ criterios de aceptacion completos estan en:
    - convertir con CMM real a un perfil de salida.
 4. [x] Integrar un CMM real para conversiones ICC y dejar la matriz lateral como
    diagnostico, no como salida principal.
-5. [ ] Validar el perfil ICC real generado por ArgyllCMS, no solo la matriz del
+5. [x] Validar el perfil ICC real generado por ArgyllCMS, no solo la matriz del
    sidecar `.profile.json`.
 6. [ ] Añadir dataset RAW/DNG real con licencia clara y checksums para tests de
    integracion.

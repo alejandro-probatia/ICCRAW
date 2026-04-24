@@ -199,7 +199,14 @@ Criterios de aceptacion:
 
 Criticidad: alta.
 
-Situacion:
+Estado de implementacion:
+
+- mitigado: `validate-profile` consulta el ICC real con ArgyllCMS (`xicclu` o
+  `icclu`) y ya no depende de la matriz del sidecar `.profile.json`.
+- pendiente: separar formalmente muestras de entrenamiento y validacion cuando
+  exista dataset de capturas reales suficiente.
+
+Situacion detectada en la revision inicial:
 
 - `validate-profile` carga `.profile.json` y aplica la matriz propia.
 - No valida la transformacion ICC generada por `colprof`.

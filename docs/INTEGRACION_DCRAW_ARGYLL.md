@@ -88,6 +88,13 @@ Personalización:
 - Si no existe, se usa `ICC_ARGYLL_COLPROF_ARGS` (variable de entorno).
 - Si tampoco existe, se usan `-qm -as`.
 
+Validacion:
+
+- `validate-profile` usa `xicclu` (o `icclu` como fallback) para consultar el
+  perfil ICC real en modo forward hacia Lab PCS.
+- La matriz `matrix_camera_to_xyz` del sidecar ya no se usa para calcular DeltaE
+  en validacion.
+
 ## Integración `LittleCMS` (módulo `profile.export`)
 
 Archivo clave:

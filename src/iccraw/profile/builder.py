@@ -111,18 +111,11 @@ def build_profile(
 
 
 def validate_profile(samples: SampleSet, profile_path: Path) -> ValidationResult:
-    profile_json = profile_path.with_suffix(".profile.json")
-    if not profile_json.exists():
-        raise FileNotFoundError(
-            f"No se encontro sidecar de perfil: {profile_json}. Genera el perfil con app build-profile primero."
-        )
-
-    payload = read_json(profile_json)
-    matrix = np.asarray(payload["matrix_camera_to_xyz"], dtype=np.float64)
+    if not profile_path.exists():
+        raise FileNotFoundError(f"No existe perfil ICC: {profile_path}")
 
     measured_rgb, _reference_xyz, reference_lab, patch_ids = _samples_to_arrays(samples)
-    predicted_xyz = measured_rgb @ matrix
-    predicted_lab = colour.XYZ_to_Lab(predicted_xyz, illuminant=D50_XYZ)
+    predicted_lab = _lookup_lab_with_icc(profile_path, measured_rgb)
 
     de76 = np.asarray(delta_e76(predicted_lab, reference_lab), dtype=np.float64)
     de00 = np.asarray(delta_e2000(predicted_lab, reference_lab), dtype=np.float64)
@@ -146,6 +139,50 @@ def validate_profile(samples: SampleSet, profile_path: Path) -> ValidationResult
     )
 
     return ValidationResult(profile_path=str(profile_path), error_summary=summary, patch_errors=patch_errors)
+
+
+def _lookup_lab_with_icc(profile_path: Path, measured_rgb: np.ndarray) -> np.ndarray:
+    xicclu = shutil.which("xicclu") or shutil.which("icclu")
+    if xicclu is None:
+        raise RuntimeError("No se puede validar ICC: 'xicclu'/'icclu' no esta disponible en PATH.")
+
+    rgb = np.asarray(measured_rgb, dtype=np.float64)
+    if rgb.ndim != 2 or rgb.shape[1] != 3:
+        raise RuntimeError("measured_rgb debe tener forma Nx3")
+
+    stdin = "\n".join(" ".join(f"{float(v):.10g}" for v in row) for row in rgb) + "\n"
+    cmd = [
+        xicclu,
+        "-v0",
+        "-ff",
+        "-ir",
+        "-pl",
+        str(profile_path),
+    ]
+    proc = subprocess.run(cmd, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0:
+        stderr_tail = (proc.stderr or proc.stdout)[-500:]
+        raise RuntimeError(f"Fallo validando ICC con {Path(xicclu).name}: {stderr_tail}")
+
+    rows: list[list[float]] = []
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        try:
+            rows.append([float(parts[0]), float(parts[1]), float(parts[2])])
+        except ValueError as exc:
+            raise RuntimeError(f"Salida inesperada de {Path(xicclu).name}: {line}") from exc
+
+    if len(rows) != len(rgb):
+        raise RuntimeError(
+            f"{Path(xicclu).name} devolvio {len(rows)} muestras Lab para {len(rgb)} entradas RGB"
+        )
+
+    return np.asarray(rows, dtype=np.float64)
 
 
 def load_profile_model(profile_path: Path) -> dict:
