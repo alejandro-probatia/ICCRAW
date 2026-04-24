@@ -36,6 +36,7 @@ def auto_generate_profile_from_charts(
     allow_fallback_detection: bool = False,
     camera_model: str | None = None,
     lens_model: str | None = None,
+    chart_capture_files: list[Path] | None = None,
 ) -> dict[str, Any]:
     work_dir.mkdir(parents=True, exist_ok=True)
     chart_dev_dir = work_dir / "chart_developed"
@@ -46,9 +47,14 @@ def auto_generate_profile_from_charts(
     for d in (chart_dev_dir, detect_dir, sample_dir, overlay_dir):
         d.mkdir(parents=True, exist_ok=True)
 
-    chart_files = _list_chart_capture_files(chart_captures_dir)
+    chart_files = (
+        _normalize_chart_capture_files(chart_capture_files)
+        if chart_capture_files is not None
+        else _list_chart_capture_files(chart_captures_dir)
+    )
     if not chart_files:
-        raise RuntimeError(f"No se encontraron capturas de carta en: {chart_captures_dir}")
+        source = "la selección explícita" if chart_capture_files is not None else str(chart_captures_dir)
+        raise RuntimeError(f"No se encontraron capturas de carta en: {source}")
 
     initial_pass = _collect_chart_samples(
         chart_files=chart_files,
@@ -156,6 +162,7 @@ def auto_profile_batch(
     allow_fallback_detection: bool = False,
     camera_model: str | None = None,
     lens_model: str | None = None,
+    chart_capture_files: list[Path] | None = None,
 ) -> dict[str, Any]:
     profile_payload = auto_generate_profile_from_charts(
         chart_captures_dir=chart_captures_dir,
@@ -172,6 +179,7 @@ def auto_profile_batch(
         allow_fallback_detection=allow_fallback_detection,
         camera_model=camera_model,
         lens_model=lens_model,
+        chart_capture_files=chart_capture_files,
     )
 
     batch_recipe = recipe
@@ -359,3 +367,23 @@ def _list_chart_capture_files(folder: Path) -> list[Path]:
     ]
     files.sort()
     return files
+
+
+def _normalize_chart_capture_files(files: list[Path]) -> list[Path]:
+    supported = RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
+    normalized: list[Path] = []
+    invalid: list[str] = []
+
+    for item in files:
+        p = Path(item).expanduser()
+        if not p.exists() or not p.is_file() or p.suffix.lower() not in supported:
+            invalid.append(str(p))
+            continue
+        normalized.append(p)
+
+    if invalid:
+        preview = ", ".join(invalid[:5])
+        suffix = "" if len(invalid) <= 5 else f" (+{len(invalid) - 5} más)"
+        raise RuntimeError(f"Capturas de carta inválidas o incompatibles: {preview}{suffix}")
+
+    return sorted(set(normalized), key=lambda p: str(p))

@@ -5,8 +5,8 @@ Aplicación open source para fotografía técnico-científica:
 1. revelado RAW controlado y reproducible,
 2. detección automática de carta de color,
 3. muestreo robusto por parche,
-4. generación de perfil ICC específico de sesión,
-5. aplicación del mismo flujo + perfil a lotes RAW,
+4. generación de perfil de revelado científico + perfil ICC específico de sesión,
+5. aplicación de ese paquete de sesión a RAW/TIFF seleccionados,
 6. trazabilidad y auditoría (JSON sidecars + hashes + manifiestos).
 
 Mantenimiento comunitario:
@@ -87,14 +87,14 @@ iccraw batch-develop ./raws --recipe recipe_calibrated.yml --profile camera_prof
 
 iccraw validate-profile samples.json --profile camera_profile.icc --out validation.json
 
-# Flujo completo automático:
+# Flujo completo automático de sesión:
 # 1) develop de capturas de carta
 # 2) detección automática de carta
 # 3) muestreo y agregación multi-captura
 # 4) perfil de revelado: neutralidad + densidad/exposicion desde carta
 # 5) segunda medicion con receta calibrada
 # 6) build-profile ICC
-# 7) batch-develop con receta calibrada y perfil ICC embebido en TIFF 16-bit
+# 7) aplicacion posterior a imagenes objetivo con receta calibrada + ICC
 iccraw auto-profile-batch \
   --charts ./charts_raw \
   --targets ./raws \
@@ -132,13 +132,12 @@ La interfaz principal se organiza en 3 pestañas:
   - definir un directorio raíz y crear automáticamente estructura persistente:
     - `charts/`, `raw/`, `profiles/`, `exports/`, `config/`, `work/`,
   - persistir estado de la sesión (`config/session.json`) con configuración y cola.
-- `2. Revelado y Perfil ICC`:
+- `2. Calibrar / Aplicar`:
   - explorador visual completo del sistema (unidades + árbol + miniaturas),
   - preview rápido RAW/DNG (miniatura embebida / half-size) y resolución configurable,
-  - configuración de revelado y perfil ICC por sesión,
-  - generación de perfil ICC desde cartas dentro del mismo flujo de trabajo,
-  - revelado individual y por lotes a TIFF 16-bit,
-  - aplicación opcional de perfil ICC activo (desactivada por defecto en preview para evitar dominantes por perfil no válido).
+  - `1. Calibrar sesión`: selección de una o varias capturas de carta y generación conjunta de perfil de revelado + ICC,
+  - `Nitidez`: único ajuste manual previsto para el usuario final,
+  - `2. Aplicar sesión`: exportación de RAW seleccionados o carpetas con la receta calibrada y el ICC de sesión.
 - `3. Cola de Revelado`:
   - cola de imágenes para revelar (añadir/quitar/limpiar),
   - ejecución de cola con estado por archivo (pendiente/ok/error),

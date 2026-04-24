@@ -46,6 +46,7 @@ aparentemente validos.
 - referencia ColorChecker 2005 D50 para uso operativo,
 - perfil de revelado cientifico derivado de fila neutra: WB, densidad y EV,
 - doble pasada carta -> receta calibrada -> ICC,
+- flujo GUI en dos pasos: calibrar sesion y aplicar esa sesion a imagenes objetivo,
 - parametros de muestreo completos desde receta,
 - deteccion de saturacion, bajo nivel e iluminacion irregular,
 - reportes de outliers por parche,

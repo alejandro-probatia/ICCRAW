@@ -7,8 +7,8 @@ ICCRAW implementa un flujo reproducible para:
 1. revelar RAW con control técnico,
 2. detectar automáticamente carta ColorChecker,
 3. muestrear parches,
-4. crear perfil ICC de cámara con ArgyllCMS,
-5. aplicar el mismo flujo + perfil a lotes RAW/TIFF,
+4. crear un perfil de revelado científico y un perfil ICC de cámara con ArgyllCMS,
+5. aplicar ese paquete de sesión a RAW/TIFF seleccionados,
 6. generar trazabilidad (JSON, hashes y manifiestos).
 
 ## Estado actual (importante)
@@ -98,7 +98,7 @@ iccraw export-cgats /tmp/samples.json \
   --out /tmp/samples.ti3
 ```
 
-## 3.4 Construir perfil de revelado y validar perfil ICC
+## 3.4 Calibrar sesión: perfil de revelado + ICC
 
 ```bash
 iccraw build-develop-profile /tmp/samples.json \
@@ -116,7 +116,7 @@ iccraw validate-profile /tmp/samples.json \
   --out /tmp/validation.json
 ```
 
-## 3.5 Aplicar a lote
+## 3.5 Aplicar perfil de sesión a lote
 
 ```bash
 iccraw batch-develop ./raws \
@@ -149,17 +149,17 @@ Arranque:
 iccraw-ui
 ```
 
-Para rescatar una carta no detectada automaticamente desde la GUI:
-
-1. Cargar la captura de carta en el visor.
-2. En `Generación ICC`, usar `Marcar en visor` y hacer clic en cuatro esquinas.
-3. Guardar la deteccion manual y revisar el PNG de overlay generado.
-
 o:
 
 ```bash
 bash scripts/run_ui.sh
 ```
+
+Para rescatar una carta no detectada automaticamente desde la GUI:
+
+1. Cargar la captura de carta en el visor.
+2. En `1. Calibrar sesión`, usar `Marcar en visor` y hacer clic en cuatro esquinas.
+3. Guardar la deteccion manual y revisar el PNG de overlay generado.
 
 Estructura de la interfaz:
 
@@ -171,14 +171,13 @@ Pestañas principales:
    - crear estructura persistente en el directorio raíz:
      - `charts/`, `raw/`, `profiles/`, `exports/`, `config/`, `work/`,
    - persistir configuración y cola en `config/session.json`.
-2. `Revelado y Perfil ICC`
+2. `Calibrar / Aplicar`
    - navegación completa de unidades y directorios,
    - selección visual por miniaturas,
    - preview RAW rápida,
-   - ajustes de nitidez y ruido,
-   - generación de perfil ICC desde cartas,
-   - revelado individual y por lotes,
-   - aplicación opcional de perfil ICC en preview/export.
+   - `1. Calibrar sesión`: usar la selección de miniaturas o una carpeta de cartas para generar perfil de revelado + ICC,
+   - `Nitidez`: único ajuste manual expuesto al usuario,
+   - `2. Aplicar sesión`: revelar selección o carpeta con receta calibrada + ICC.
 3. `Cola de Revelado`
    - cola de archivos para revelar,
    - estado por archivo (pendiente/completado/error),
@@ -189,16 +188,16 @@ Flujo recomendado en GUI:
 
 1. Ir a `Sesión` y crear/abrir sesión con su directorio raíz.
 2. Registrar iluminación y toma para esa sesión.
-3. En `Revelado y Perfil ICC`, generar primero el perfil de revelado científico
-   y después el perfil ICC con las cartas de `charts/`.
-4. Activar perfil ICC, ajustar receta y ajustes de preview/revelado.
-5. Revelar RAW individuales o preparar lote.
-6. En `Cola de Revelado`, añadir archivos y ejecutar cola.
-7. Revisar estado de cola y monitoreo para trazabilidad e incidencias.
+3. En `Calibrar / Aplicar`, seleccionar una o varias capturas RAW/DNG con carta y ejecutar `Generar perfil de sesión`.
+4. Ajustar solo `Nitidez` si el criterio de salida lo requiere.
+5. En `2. Aplicar sesión`, revelar RAW individuales, una selección de miniaturas o una carpeta.
+6. En `Cola de Revelado`, añadir archivos y ejecutar cola cuando se necesite procesado diferido.
+7. Revisar estado, artefactos JSON y monitoreo para trazabilidad e incidencias.
 
 Notas de uso de preview:
 
 - El checkbox `Aplicar perfil ICC en resultado` se inicia desactivado para evitar dominantes si el perfil activo no corresponde al flujo actual.
+- La exposición, densidad, balance de blancos y base colorimétrica se derivan de la carta; no se editan como ajustes creativos.
 - Si el perfil activo no tiene sidecar `.profile.json` válido o genera clipping extremo en preview, la aplicación muestra la vista sin perfil y registra aviso.
 - `Vista -> Pantalla completa` (`F11`) y `Vista -> Restablecer distribución` permiten adaptar la interfaz a cualquier tamaño de pantalla.
 

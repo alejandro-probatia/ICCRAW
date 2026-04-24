@@ -115,7 +115,15 @@ Para mantener trazabilidad completa, cada cambio debe:
   - `Sesión`,
   - `Revelado y Perfil ICC`,
   - `Cola de Revelado`.
+- La GUI de trabajo se reorganiza en dos fases operativas:
+  - `1. Calibrar sesión`: capturas de carta -> perfil de revelado + ICC,
+  - `2. Aplicar sesión`: RAW/TIFF objetivo -> TIFF con receta calibrada + ICC.
+- El ajuste manual visible queda limitado a nitidez; exposición, densidad,
+  balance de blancos y base colorimétrica proceden de la carta.
 - El procesamiento por lote en GUI ahora tolera errores por archivo y devuelve resumen `OK/errores` sin abortar todo el lote.
+- `auto_generate_profile_from_charts` acepta una lista explícita de capturas de
+  carta para que la GUI pueda usar una selección de miniaturas en vez de todo
+  un directorio.
 
 ### Docs
 

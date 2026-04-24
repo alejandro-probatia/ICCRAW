@@ -38,8 +38,9 @@ criterios de aceptacion completos estan en:
 9. [x] Añadir referencia ColorChecker 2005 D50 no sintetica para flujo operativo.
 10. [x] Añadir perfil de revelado científico previo al ICC.
 11. [x] Ejecutar `auto-profile-batch` en doble pasada: receta base -> receta calibrada -> ICC.
-12. [ ] Integrar detecciones manuales guardadas por captura en `auto-profile-batch`.
-13. [ ] Añadir QA de nitidez/MTF y contraste local con criterio medible, no slider subjetivo.
+12. [x] Reorganizar GUI como flujo de sesión: calibrar con cartas y aplicar a imágenes objetivo.
+13. [ ] Integrar detecciones manuales guardadas por captura en `auto-profile-batch`.
+14. [ ] Añadir QA de nitidez/MTF y contraste local con criterio medible, no slider subjetivo.
 
 ## P2
 

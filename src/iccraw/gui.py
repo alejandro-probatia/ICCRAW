@@ -241,6 +241,7 @@ if QtWidgets is not None:
             self._active_session_root: Path | None = None
             self._active_session_payload: dict[str, Any] | None = None
             self._develop_queue: list[dict[str, str]] = []
+            self._selected_chart_files: list[Path] = []
 
             self._original_linear: np.ndarray | None = None
             self._adjusted_linear: np.ndarray | None = None
@@ -268,7 +269,7 @@ if QtWidgets is not None:
             header = QtWidgets.QHBoxLayout()
             title = QtWidgets.QLabel("ICCRAW")
             title.setStyleSheet("font-size: 22px; font-weight: 700;")
-            subtitle = QtWidgets.QLabel("Flujo tecnico reproducible: RAW -> carta -> perfil ICC -> TIFF 16-bit")
+            subtitle = QtWidgets.QLabel("Flujo tecnico reproducible: RAW -> carta -> perfil de revelado + ICC -> TIFF 16-bit")
             subtitle.setStyleSheet("font-size: 12px; color: #4b5563;")
             header.addWidget(title)
             header.addWidget(subtitle)
@@ -284,7 +285,7 @@ if QtWidgets is not None:
             queue_tab = self._build_tab_queue()
 
             self.main_tabs.addTab(session_tab, "1. Sesión")
-            self.main_tabs.addTab(raw_tab, "2. Revelado y Perfil ICC")
+            self.main_tabs.addTab(raw_tab, "2. Calibrar / Aplicar")
             self.main_tabs.addTab(queue_tab, "3. Cola de Revelado")
 
             root_layout.addWidget(self.main_tabs, 1)
@@ -521,56 +522,65 @@ if QtWidgets is not None:
             grid = QtWidgets.QGridLayout(box)
 
             self.profile_charts_dir = QtWidgets.QLineEdit(str(self._current_dir))
-            self._add_path_row(grid, 0, "Directorio capturas carta", self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 0, "Carpeta de cartas (respaldo)", self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
+
+            self.profile_chart_selection_label = QtWidgets.QLabel("Cartas: todas las compatibles de la carpeta indicada")
+            self.profile_chart_selection_label.setWordWrap(True)
+            self.profile_chart_selection_label.setStyleSheet("font-size: 12px; color: #374151;")
+            grid.addWidget(self.profile_chart_selection_label, 1, 0, 1, 3)
 
             self.path_reference = QtWidgets.QLineEdit("testdata/references/colorchecker24_colorchecker2005_d50.json")
-            self._add_path_row(grid, 1, "Referencia carta JSON", self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
+            self._add_path_row(grid, 2, "Referencia carta JSON", self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
 
             self.profile_out_path_edit = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
-            self._add_path_row(grid, 2, "Perfil ICC de salida", self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
+            self._add_path_row(grid, 3, "Perfil ICC de salida", self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
 
             self.profile_report_out = QtWidgets.QLineEdit("/tmp/profile_report_gui.json")
-            self._add_path_row(grid, 3, "Reporte perfil JSON", self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False)
+            self._add_path_row(grid, 4, "Reporte perfil JSON", self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False)
 
             self.profile_workdir = QtWidgets.QLineEdit("/tmp/iccraw_profile_work")
-            self._add_path_row(grid, 4, "Directorio artefactos", self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 5, "Directorio artefactos", self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True)
 
             self.develop_profile_out = QtWidgets.QLineEdit("/tmp/development_profile_gui.json")
-            self._add_path_row(grid, 5, "1. Perfil de revelado JSON", self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False)
+            self._add_path_row(grid, 6, "Perfil de revelado JSON", self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False)
 
             self.calibrated_recipe_out = QtWidgets.QLineEdit("/tmp/recipe_calibrated_gui.yml")
-            self._add_path_row(grid, 6, "1. Receta calibrada", self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False)
+            self._add_path_row(grid, 7, "Receta calibrada", self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False)
 
-            grid.addWidget(QtWidgets.QLabel("2. Tipo de carta"), 7, 0)
+            grid.addWidget(QtWidgets.QLabel("Tipo de carta"), 8, 0)
             self.profile_chart_type = QtWidgets.QComboBox()
             self.profile_chart_type.addItems(["colorchecker24", "it8"])
-            grid.addWidget(self.profile_chart_type, 7, 1, 1, 2)
+            grid.addWidget(self.profile_chart_type, 8, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Confianza mínima"), 8, 0)
+            grid.addWidget(QtWidgets.QLabel("Confianza mínima"), 9, 0)
             self.profile_min_conf = QtWidgets.QDoubleSpinBox()
             self.profile_min_conf.setRange(0.0, 1.0)
             self.profile_min_conf.setSingleStep(0.05)
             self.profile_min_conf.setDecimals(2)
             self.profile_min_conf.setValue(0.35)
-            grid.addWidget(self.profile_min_conf, 8, 1, 1, 2)
+            grid.addWidget(self.profile_min_conf, 9, 1, 1, 2)
 
             self.profile_allow_fallback = QtWidgets.QCheckBox("Permitir fallback")
             self.profile_allow_fallback.setChecked(False)
-            grid.addWidget(self.profile_allow_fallback, 9, 1, 1, 2)
+            grid.addWidget(self.profile_allow_fallback, 10, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Cámara (opcional)"), 10, 0)
+            grid.addWidget(QtWidgets.QLabel("Cámara (opcional)"), 11, 0)
             self.profile_camera = QtWidgets.QLineEdit("")
-            grid.addWidget(self.profile_camera, 10, 1, 1, 2)
+            grid.addWidget(self.profile_camera, 11, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Lente (opcional)"), 11, 0)
+            grid.addWidget(QtWidgets.QLabel("Lente (opcional)"), 12, 0)
             self.profile_lens = QtWidgets.QLineEdit("")
-            grid.addWidget(self.profile_lens, 11, 1, 1, 2)
+            grid.addWidget(self.profile_lens, 12, 1, 1, 2)
 
-            row = QtWidgets.QHBoxLayout()
-            row.addWidget(self._button("Usar directorio actual como cartas", self._use_current_dir_as_profile_charts))
-            row.addWidget(self._button("Generar revelado + ICC", self._on_generate_profile))
-            row.addWidget(self._button("Usar perfil generado en revelado", self._use_generated_profile_as_active))
-            grid.addLayout(row, 12, 0, 1, 3)
+            row_select = QtWidgets.QHBoxLayout()
+            row_select.addWidget(self._button("Usar selección como cartas", self._use_selected_files_as_profile_charts))
+            row_select.addWidget(self._button("Usar carpeta actual", self._use_current_dir_as_profile_charts))
+            grid.addLayout(row_select, 13, 0, 1, 3)
+
+            row_generate = QtWidgets.QHBoxLayout()
+            row_generate.addWidget(self._button("Generar perfil de sesión", self._on_generate_profile))
+            row_generate.addWidget(self._button("Usar perfil generado", self._use_generated_profile_as_active))
+            grid.addLayout(row_generate, 14, 0, 1, 3)
 
             outer.addWidget(box)
 
@@ -706,8 +716,8 @@ if QtWidgets is not None:
 
             row = QtWidgets.QHBoxLayout()
             row.addWidget(self._button("Cargar seleccion", self._on_load_selected))
-            row.addWidget(self._button("Usar como cartas", self._use_current_dir_as_profile_charts))
-            row.addWidget(self._button("Usar como lote", self._use_current_dir_as_batch_input))
+            row.addWidget(self._button("Usar selección como cartas", self._use_selected_files_as_profile_charts))
+            row.addWidget(self._button("Añadir selección a cola", self._queue_add_selected))
             layout.addLayout(row)
             return pane
 
@@ -801,11 +811,11 @@ if QtWidgets is not None:
             layout.setSpacing(6)
 
             self.config_tabs = QtWidgets.QTabWidget()
-            self.config_tabs.addTab(self._build_tab_profile_generation(), "Generación ICC")
+            self.config_tabs.addTab(self._build_tab_profile_generation(), "1. Calibrar sesión")
             self.config_tabs.addTab(self._build_tab_preview_settings(), "Nitidez")
-            self.config_tabs.addTab(self._build_tab_raw_config(), "Revelado RAW")
-            self.config_tabs.addTab(self._build_tab_profile_config(), "Perfil ICC")
-            self.config_tabs.addTab(self._build_tab_batch_config(), "Lote RAW")
+            self.config_tabs.addTab(self._build_tab_batch_config(), "2. Aplicar sesión")
+            self._advanced_raw_config = self._build_tab_raw_config()
+            self._advanced_profile_config = self._build_tab_profile_config()
             layout.addWidget(self.config_tabs, 1)
 
             return pane
@@ -853,6 +863,10 @@ if QtWidgets is not None:
             )
             grid.addWidget(self.label_noise_color, 6, 0, 1, 3)
             grid.addWidget(self.slider_noise_color, 7, 0, 1, 3)
+            self.label_noise_luma.hide()
+            self.slider_noise_luma.hide()
+            self.label_noise_color.hide()
+            self.slider_noise_color.hide()
 
             self.check_fast_raw_preview = QtWidgets.QCheckBox("Preview RAW rapida (recomendado)")
             self.check_fast_raw_preview.setChecked(True)
@@ -870,7 +884,7 @@ if QtWidgets is not None:
 
             self.path_preview_png = QtWidgets.QLineEdit("/tmp/iccraw_preview.png")
             self._add_path_row(grid, 10, "Guardar preview PNG", self.path_preview_png, file_mode=False, save_mode=True, dir_mode=False)
-            grid.addWidget(self._button("Restablecer ajustes", self._reset_adjustments), 11, 0, 1, 3)
+            grid.addWidget(self._button("Restablecer nitidez", self._reset_adjustments), 11, 0, 1, 3)
             return tab
 
         def _build_tab_raw_config(self) -> QtWidgets.QWidget:
@@ -1024,27 +1038,28 @@ if QtWidgets is not None:
             grid = QtWidgets.QGridLayout()
 
             self.batch_input_dir = QtWidgets.QLineEdit(str(self._current_dir))
-            self._add_path_row(grid, 0, "Directorio entrada lote", self.batch_input_dir, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 0, "RAW a revelar (carpeta)", self.batch_input_dir, file_mode=False, save_mode=False, dir_mode=True)
 
             self.batch_out_dir = QtWidgets.QLineEdit("/tmp/iccraw_batch_tiffs")
-            self._add_path_row(grid, 1, "Directorio salida TIFF", self.batch_out_dir, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 1, "Salida TIFF de sesión", self.batch_out_dir, file_mode=False, save_mode=False, dir_mode=True)
 
-            self.batch_embed_profile = QtWidgets.QCheckBox("Embeber perfil ICC activo en TIFF")
+            self.batch_embed_profile = QtWidgets.QCheckBox("Aplicar perfil de sesión (ICC) en TIFF")
             self.batch_embed_profile.setChecked(True)
+            self.batch_embed_profile.setEnabled(False)
             grid.addWidget(self.batch_embed_profile, 2, 0, 1, 3)
 
-            self.batch_apply_adjustments = QtWidgets.QCheckBox("Aplicar ajustes de Nitidez/Ruido del panel")
+            self.batch_apply_adjustments = QtWidgets.QCheckBox("Aplicar nitidez del panel")
             self.batch_apply_adjustments.setChecked(True)
             grid.addWidget(self.batch_apply_adjustments, 3, 0, 1, 3)
 
             row_1 = QtWidgets.QHBoxLayout()
-            row_1.addWidget(self._button("Usar directorio actual como entrada", self._use_current_dir_as_batch_input))
-            row_1.addWidget(self._button("Revelar selección (lote)", self._on_batch_develop_selected))
-            row_1.addWidget(self._button("Revelar directorio completo", self._on_batch_develop_directory))
+            row_1.addWidget(self._button("Usar carpeta actual", self._use_current_dir_as_batch_input))
+            row_1.addWidget(self._button("Aplicar a selección", self._on_batch_develop_selected))
+            row_1.addWidget(self._button("Aplicar a carpeta", self._on_batch_develop_directory))
 
             self.batch_output = QtWidgets.QPlainTextEdit()
             self.batch_output.setReadOnly(True)
-            self.batch_output.setPlaceholderText("Salida JSON de lote RAW")
+            self.batch_output.setPlaceholderText("Salida JSON de aplicación de sesión")
 
             layout.addLayout(grid)
             layout.addLayout(row_1)
@@ -1166,6 +1181,7 @@ if QtWidgets is not None:
         def _session_state_snapshot(self) -> dict[str, Any]:
             return {
                 "profile_charts_dir": self.profile_charts_dir.text().strip(),
+                "profile_chart_files": [str(p) for p in self._selected_chart_files],
                 "reference_path": self.path_reference.text().strip(),
                 "profile_output_path": self.profile_out_path_edit.text().strip(),
                 "profile_report_path": self.profile_report_out.text().strip(),
@@ -1183,7 +1199,7 @@ if QtWidgets is not None:
                 "batch_output_dir": self.batch_out_dir.text().strip(),
                 "preview_png_path": self.path_preview_png.text().strip(),
                 "preview_apply_profile": bool(self.chk_apply_profile.isChecked()),
-                "batch_embed_profile": bool(self.batch_embed_profile.isChecked()),
+                "batch_embed_profile": True,
                 "batch_apply_adjustments": bool(self.batch_apply_adjustments.isChecked()),
                 "fast_raw_preview": bool(self.check_fast_raw_preview.isChecked()),
                 "preview_max_side": int(self.spin_preview_max_side.value()),
@@ -1222,6 +1238,16 @@ if QtWidgets is not None:
             default_tiff_out = exports_dir / "tiff"
 
             self.profile_charts_dir.setText(str(charts_dir))
+            chart_files_state = state.get("profile_chart_files")
+            if isinstance(chart_files_state, list):
+                self._selected_chart_files = [
+                    Path(str(p)).expanduser()
+                    for p in chart_files_state
+                    if str(p).strip() and Path(str(p)).expanduser().exists()
+                ]
+            else:
+                self._selected_chart_files = []
+            self._sync_profile_chart_selection_label()
             self.path_reference.setText(str(state.get("reference_path") or self.path_reference.text().strip()))
             self.profile_out_path_edit.setText(str(state.get("profile_output_path") or default_profile_out))
             self.path_profile_out.setText(self.profile_out_path_edit.text().strip())
@@ -1250,7 +1276,7 @@ if QtWidgets is not None:
             self.profile_lens.setText(str(state.get("profile_lens") or ""))
 
             self.chk_apply_profile.setChecked(bool(state.get("preview_apply_profile", self.chk_apply_profile.isChecked())))
-            self.batch_embed_profile.setChecked(bool(state.get("batch_embed_profile", self.batch_embed_profile.isChecked())))
+            self.batch_embed_profile.setChecked(True)
             self.batch_apply_adjustments.setChecked(bool(state.get("batch_apply_adjustments", self.batch_apply_adjustments.isChecked())))
             self.check_fast_raw_preview.setChecked(bool(state.get("fast_raw_preview", self.check_fast_raw_preview.isChecked())))
 
@@ -1567,8 +1593,8 @@ if QtWidgets is not None:
             use_profile = bool(self.batch_embed_profile.isChecked()) and self.path_profile_active.text().strip() != ""
             profile_path = Path(self.path_profile_active.text().strip()) if use_profile else None
 
-            nl = self.slider_noise_luma.value() / 100.0
-            nc = self.slider_noise_color.value() / 100.0
+            nl = 0.0
+            nc = 0.0
             sharpen = self.slider_sharpen.value() / 100.0
             radius = self.slider_radius.value() / 10.0
 
@@ -2121,8 +2147,8 @@ if QtWidgets is not None:
             if self._original_linear is None:
                 return
             try:
-                nl = self.slider_noise_luma.value() / 100.0
-                nc = self.slider_noise_color.value() / 100.0
+                nl = 0.0
+                nc = 0.0
                 sharpen = self.slider_sharpen.value() / 100.0
                 radius = self.slider_radius.value() / 10.0
 
@@ -2230,8 +2256,46 @@ if QtWidgets is not None:
 
         def _use_current_dir_as_profile_charts(self) -> None:
             self.profile_charts_dir.setText(str(self._current_dir))
+            self._selected_chart_files = []
+            self._sync_profile_chart_selection_label()
             self._set_status(f"Directorio cartas: {self._current_dir}")
             self._save_active_session(silent=True)
+
+        def _use_selected_files_as_profile_charts(self) -> None:
+            files = [
+                p for p in self._collect_selected_file_paths()
+                if p.suffix.lower() in BROWSABLE_EXTENSIONS
+            ]
+            if not files:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Info",
+                    "Selecciona una o más capturas RAW/DNG/TIFF con carta ColorChecker.",
+                )
+                return
+            self._selected_chart_files = sorted(set(files), key=lambda p: str(p))
+            parents = {p.parent for p in self._selected_chart_files}
+            if len(parents) == 1:
+                self.profile_charts_dir.setText(str(next(iter(parents))))
+            self._sync_profile_chart_selection_label()
+            self._set_status(f"Cartas seleccionadas: {len(self._selected_chart_files)}")
+            self._save_active_session(silent=True)
+
+        def _sync_profile_chart_selection_label(self) -> None:
+            if not hasattr(self, "profile_chart_selection_label"):
+                return
+            if not self._selected_chart_files:
+                self.profile_chart_selection_label.setText("Cartas: todas las compatibles de la carpeta indicada")
+                return
+            preview = ", ".join(p.name for p in self._selected_chart_files[:4])
+            if len(self._selected_chart_files) > 4:
+                preview += f" (+{len(self._selected_chart_files) - 4} más)"
+            self.profile_chart_selection_label.setText(
+                f"Cartas seleccionadas: {len(self._selected_chart_files)} - {preview}"
+            )
+
+        def _profile_chart_files_or_none(self) -> list[Path] | None:
+            return list(self._selected_chart_files) if self._selected_chart_files else None
 
         def _use_current_dir_as_batch_input(self) -> None:
             self.batch_input_dir.setText(str(self._current_dir))
@@ -2240,6 +2304,7 @@ if QtWidgets is not None:
 
         def _on_generate_profile(self) -> None:
             charts = Path(self.profile_charts_dir.text().strip())
+            chart_capture_files = self._profile_chart_files_or_none()
             reference_path = Path(self.path_reference.text().strip())
             profile_out = Path(self.profile_out_path_edit.text().strip())
             ext = self.combo_profile_format.currentText().strip().lower() or ".icc"
@@ -2264,6 +2329,7 @@ if QtWidgets is not None:
                 reference = ReferenceCatalog.from_path(reference_path)
                 return auto_generate_profile_from_charts(
                     chart_captures_dir=charts,
+                    chart_capture_files=chart_capture_files,
                     recipe=recipe,
                     reference=reference,
                     profile_out=profile_out,
@@ -2492,8 +2558,8 @@ if QtWidgets is not None:
             use_profile = bool(self.batch_embed_profile.isChecked()) and self.path_profile_active.text().strip() != ""
             profile_path = Path(self.path_profile_active.text().strip()) if use_profile else None
 
-            nl = self.slider_noise_luma.value() / 100.0
-            nc = self.slider_noise_color.value() / 100.0
+            nl = 0.0
+            nc = 0.0
             sharpen = self.slider_sharpen.value() / 100.0
             radius = self.slider_radius.value() / 10.0
 
