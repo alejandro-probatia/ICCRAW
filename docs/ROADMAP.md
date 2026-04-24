@@ -79,6 +79,8 @@ Objetivo: hacer que el comportamiento sea sostenible por la comunidad.
 
 Objetivo: ampliar capacidades sin comprometer trazabilidad.
 
+- sidecars por imagen para separar ajustes globales de sesión y ajustes
+  particulares de captura, evaluando interoperabilidad parcial con `.pp3`,
 - soporte IT8 completo,
 - perfiles LUT si el caso de uso lo justifica,
 - comparador automatico de perfiles entre sesiones/iluminantes,

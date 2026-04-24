@@ -206,10 +206,18 @@ Pestañas principales:
 2. `Calibrar / Aplicar`
    - navegación completa de unidades y directorios,
    - selección visual por miniaturas,
+   - carga automática en visor al seleccionar una miniatura RAW/TIFF compatible,
    - preview RAW rápida,
-   - `1. Calibrar sesión`: usar la selección de miniaturas o una carpeta de cartas para generar perfil de revelado + ICC,
-   - `Nitidez`: único ajuste manual expuesto al usuario,
-   - `2. Aplicar sesión`: revelar selección o carpeta con receta calibrada + ICC.
+   - comparación original/resultado,
+   - zoom, rotación y reencuadre por arrastre en el visor,
+   - paneles verticales de procesado: calibración, corrección básica, detalle,
+     RAW global, perfil ICC y aplicación de sesión,
+   - `Calibrar sesión`: usar la selección de miniaturas o una carpeta de cartas para generar perfil de revelado + ICC,
+   - `Corrección básica`: iluminante final, temperatura, matiz, brillo, niveles,
+     contraste y curva de medios,
+   - `Detalle`: eliminación de ruido de luminancia/color, nitidez y corrección
+     de aberración cromática lateral,
+   - `Aplicar sesión`: revelar selección o carpeta con receta calibrada + ICC.
 3. `Cola de Revelado`
    - cola de archivos para revelar,
    - estado por archivo (pendiente/completado/error),
@@ -221,8 +229,8 @@ Flujo recomendado en GUI:
 1. Ir a `Sesión` y crear/abrir sesión con su directorio raíz.
 2. Registrar iluminación y toma para esa sesión.
 3. En `Calibrar / Aplicar`, seleccionar una o varias capturas RAW/DNG con carta y ejecutar `Generar perfil de sesión`.
-4. Ajustar solo `Nitidez` si el criterio de salida lo requiere.
-5. En `2. Aplicar sesión`, revelar RAW individuales, una selección de miniaturas o una carpeta.
+4. Ajustar `Corrección básica` y `Detalle` si el criterio de salida lo requiere.
+5. En `Aplicar sesión`, revelar RAW individuales, una selección de miniaturas o una carpeta.
 6. En `Cola de Revelado`, añadir archivos y ejecutar cola cuando se necesite procesado diferido.
 7. Revisar estado, artefactos JSON y monitoreo para trazabilidad e incidencias.
 
@@ -231,6 +239,10 @@ Notas de uso de preview:
 - El checkbox `Aplicar perfil ICC en resultado` se inicia desactivado para evitar dominantes si el perfil activo no corresponde al flujo actual.
 - La exposición, densidad, balance de blancos y base colorimétrica se derivan de la carta; no se editan como ajustes creativos.
 - Si el perfil activo no tiene sidecar `.profile.json` válido o genera clipping extremo en preview, la aplicación muestra la vista sin perfil y registra aviso.
+- La barra superior muestra progreso indeterminado durante carga, generación de
+  perfil y revelado por lote.
+- Con `dcraw`, la mayor calidad de interpolación disponible es AHD (`-q 3`);
+  AMaZE no forma parte del motor `dcraw`.
 - `Vista -> Pantalla completa` (`F11`) y `Vista -> Restablecer distribución` permiten adaptar la interfaz a cualquier tamaño de pantalla.
 - Al abrir una sesión, las salidas operativas se fuerzan al árbol de sesión:
   `profiles/` para ICC, `config/` para reportes/recetas, `work/` para

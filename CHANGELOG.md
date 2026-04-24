@@ -18,7 +18,24 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
-_Sin cambios registrados._
+### Added
+
+- La GUI carga automáticamente la previsualización al seleccionar miniaturas y
+  añade una barra superior de progreso para tareas largas.
+- El visor permite zoom, reencuadre por arrastre y rotación de 90 grados.
+- Nuevos paneles verticales de procesado: corrección básica, detalle, RAW
+  global, perfil ICC y aplicación de sesión.
+- Corrección básica de preview/lote: iluminante final, temperatura, matiz,
+  brillo, niveles, contraste y curva de medios.
+- Ajustes de detalle de preview/lote: reducción de ruido de luminancia/color,
+  nitidez y corrección de aberración cromática lateral.
+
+### Changed
+
+- La GUI aclara que `dcraw` usa AHD (`-q 3`) como máxima calidad disponible y no
+  ofrece AMaZE.
+- Se eliminan botones redundantes de carga manual en el visor; la selección de
+  miniatura pasa a ser la acción principal.
 
 ## [0.1.0-beta.2] - 2026-04-25
 

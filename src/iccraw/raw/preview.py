@@ -181,6 +181,8 @@ def apply_adjustments(
     denoise_strength: float | None = None,
     sharpen_amount: float = 0.0,
     sharpen_radius: float = 1.0,
+    lateral_ca_red_scale: float = 1.0,
+    lateral_ca_blue_scale: float = 1.0,
 ) -> np.ndarray:
     out = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
 
@@ -208,6 +210,13 @@ def apply_adjustments(
 
         out = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2RGB)
 
+    if abs(float(lateral_ca_red_scale) - 1.0) > 1e-5 or abs(float(lateral_ca_blue_scale) - 1.0) > 1e-5:
+        out = apply_lateral_chromatic_aberration(
+            out,
+            red_scale=float(lateral_ca_red_scale),
+            blue_scale=float(lateral_ca_blue_scale),
+        )
+
     s = float(max(0.0, sharpen_amount))
     if s > 0.0:
         radius = max(0.1, float(sharpen_radius))
@@ -216,6 +225,109 @@ def apply_adjustments(
         out = out + s * detail
 
     return np.clip(out, 0.0, 1.0).astype(np.float32)
+
+
+def apply_lateral_chromatic_aberration(
+    image_linear_rgb: np.ndarray,
+    *,
+    red_scale: float = 1.0,
+    blue_scale: float = 1.0,
+) -> np.ndarray:
+    """Apply a simple radial red/blue scale correction around the image centre."""
+    out = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0).copy()
+    if out.ndim != 3 or out.shape[2] < 3:
+        return out
+
+    if abs(float(red_scale) - 1.0) > 1e-5:
+        out[..., 0] = _scale_channel_radially(out[..., 0], float(red_scale))
+    if abs(float(blue_scale) - 1.0) > 1e-5:
+        out[..., 2] = _scale_channel_radially(out[..., 2], float(blue_scale))
+    return np.clip(out, 0.0, 1.0).astype(np.float32)
+
+
+def apply_render_adjustments(
+    image_linear_rgb: np.ndarray,
+    *,
+    temperature_kelvin: float = 5003.0,
+    neutral_kelvin: float = 5003.0,
+    tint: float = 0.0,
+    brightness_ev: float = 0.0,
+    black_point: float = 0.0,
+    white_point: float = 1.0,
+    contrast: float = 0.0,
+    midtone: float = 1.0,
+) -> np.ndarray:
+    out = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
+
+    out = _apply_temperature_tint(
+        out,
+        temperature_kelvin=float(temperature_kelvin),
+        neutral_kelvin=float(neutral_kelvin),
+        tint=float(tint),
+    )
+
+    if abs(float(brightness_ev)) > 1e-6:
+        out = out * (2.0 ** float(brightness_ev))
+
+    bp = float(np.clip(black_point, 0.0, 0.95))
+    wp = float(np.clip(white_point, bp + 1e-4, 1.0))
+    if bp > 0.0 or wp < 1.0:
+        out = (out - bp) / max(1e-4, wp - bp)
+
+    c = float(np.clip(contrast, -0.95, 2.0))
+    if abs(c) > 1e-6:
+        factor = 1.0 + c
+        out = (out - 0.5) * factor + 0.5
+
+    m = float(np.clip(midtone, 0.25, 4.0))
+    if abs(m - 1.0) > 1e-6:
+        gamma = 1.0 / m
+        out = np.power(np.clip(out, 0.0, 1.0), gamma)
+
+    return np.clip(out, 0.0, 1.0).astype(np.float32)
+
+
+def _scale_channel_radially(channel: np.ndarray, scale: float) -> np.ndarray:
+    if scale <= 0.0 or abs(scale - 1.0) <= 1e-5:
+        return channel.astype(np.float32)
+
+    h, w = channel.shape[:2]
+    y, x = np.indices((h, w), dtype=np.float32)
+    cx = (w - 1) / 2.0
+    cy = (h - 1) / 2.0
+    map_x = ((x - cx) / scale + cx).astype(np.float32)
+    map_y = ((y - cy) / scale + cy).astype(np.float32)
+    return cv2.remap(
+        channel.astype(np.float32),
+        map_x,
+        map_y,
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REFLECT,
+    )
+
+
+def _apply_temperature_tint(
+    image_linear_rgb: np.ndarray,
+    *,
+    temperature_kelvin: float,
+    neutral_kelvin: float,
+    tint: float,
+) -> np.ndarray:
+    temp = float(np.clip(temperature_kelvin, 2000.0, 12000.0))
+    neutral = float(np.clip(neutral_kelvin, 2000.0, 12000.0))
+    warm = float(np.clip(np.log(temp / neutral), -1.2, 1.2))
+    tint_n = float(np.clip(tint / 100.0, -1.0, 1.0))
+
+    multipliers = np.array(
+        [
+            1.0 + 0.22 * warm + 0.08 * tint_n,
+            1.0 - 0.16 * tint_n,
+            1.0 - 0.22 * warm + 0.08 * tint_n,
+        ],
+        dtype=np.float32,
+    )
+    multipliers = np.clip(multipliers, 0.55, 1.65)
+    return image_linear_rgb * multipliers.reshape((1, 1, 3))
 
 
 def apply_profile_preview(image_linear_rgb: np.ndarray, profile_path: Path) -> np.ndarray:

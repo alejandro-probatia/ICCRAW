@@ -10,7 +10,9 @@ from iccraw.core.models import write_json
 from iccraw.profile.export import apply_profile_matrix
 from iccraw.raw.preview import (
     apply_adjustments,
+    apply_lateral_chromatic_aberration,
     apply_profile_preview,
+    apply_render_adjustments,
     linear_to_srgb_display,
     load_image_for_preview,
     preview_analysis_text,
@@ -43,6 +45,30 @@ def test_apply_adjustments_changes_image_with_luma_and_chroma():
     )
     assert out.shape == img.shape
     assert not np.allclose(out, img)
+
+
+def test_apply_render_adjustments_changes_tone_and_white_balance():
+    img = np.full((10, 12, 3), 0.25, dtype=np.float32)
+    out = apply_render_adjustments(
+        img,
+        temperature_kelvin=6504,
+        tint=25,
+        brightness_ev=0.5,
+        black_point=0.02,
+        white_point=0.95,
+        contrast=0.2,
+        midtone=1.1,
+    )
+    assert out.shape == img.shape
+    assert np.isfinite(out).all()
+    assert not np.allclose(out, img)
+
+
+def test_lateral_chromatic_aberration_identity_at_neutral_scales():
+    img = np.random.default_rng(7).uniform(0.0, 1.0, size=(16, 18, 3)).astype(np.float32)
+    out = apply_lateral_chromatic_aberration(img, red_scale=1.0, blue_scale=1.0)
+    assert out.shape == img.shape
+    assert np.allclose(out, img)
 
 
 def test_linear_to_srgb_display_range():

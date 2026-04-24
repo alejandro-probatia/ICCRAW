@@ -266,14 +266,26 @@ La interfaz principal se organiza en 3 pestañas:
   - persistir estado de la sesión (`config/session.json`) con configuración y cola.
 - `2. Calibrar / Aplicar`:
   - explorador visual completo del sistema (unidades + árbol + miniaturas),
+  - selección directa desde miniaturas: al elegir un RAW/TIFF compatible se
+    carga automáticamente en el visor,
   - preview rápido RAW/DNG (miniatura embebida / half-size) y resolución configurable,
-  - `1. Calibrar sesión`: selección de una o varias capturas de carta y generación conjunta de perfil de revelado + ICC,
-  - `Nitidez`: único ajuste manual previsto para el usuario final,
-  - `2. Aplicar sesión`: exportación de RAW seleccionados o carpetas con la receta calibrada y el ICC de sesión.
+  - visor con zoom, arrastre de reencuadre, rotación y comparación original/resultado,
+  - panel lateral por secciones verticales: calibración, corrección básica,
+    detalle, RAW global, perfil ICC y aplicación de sesión,
+  - `Calibrar sesión`: selección de una o varias capturas de carta y generación conjunta de perfil de revelado + ICC,
+  - `Corrección básica`: iluminante final, temperatura, matiz, brillo, niveles,
+    contraste y curva de medios,
+  - `Detalle`: ruido de luminancia, ruido cromático, nitidez y corrección de
+    aberración cromática lateral,
+  - `Aplicar sesión`: exportación de RAW seleccionados o carpetas con la receta calibrada y el ICC de sesión.
 - `3. Cola de Revelado`:
   - cola de imágenes para revelar (añadir/quitar/limpiar),
   - ejecución de cola con estado por archivo (pendiente/ok/error),
   - monitoreo de tareas y log técnico centralizado del pipeline.
+
+La cabecera muestra una barra de progreso global para cargas, generación de
+perfil y revelado por lote, de modo que las tareas largas siempre dejan un
+estado visible.
 
 Menú superior:
 
@@ -306,6 +318,10 @@ Campos clave:
 - `tone_curve`
 - `profiling_mode`
 - `profile_engine` (`argyll`, único motor soportado)
+
+Con el backend actual `dcraw`, los valores válidos de `demosaic_algorithm` son
+`linear`, `vng`, `ppg` y `ahd`. `ahd` corresponde a `dcraw -q 3` y es el modo de
+interpolación de mayor calidad disponible en este motor.
 
 ## Reproducibilidad y límites
 

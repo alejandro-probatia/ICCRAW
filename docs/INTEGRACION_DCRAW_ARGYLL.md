@@ -66,6 +66,11 @@ Mapeo de `recipe`:
 - `white_balance_mode` + `wb_multipliers`: `-w` o `-r`.
 - `black_level_mode`: opcional `-k` o `-S`.
 
+Nota sobre calidad de interpolación: en `dcraw` el rango disponible es `-q 0..3`.
+ICCRAW expone AHD (`ahd`, `-q 3`) como preset de máxima calidad para este
+backend. AMaZE no está disponible en `dcraw`, por lo que no se ofrece como valor
+de receta mientras el backend activo sea `dcraw`.
+
 Regla operativa:
 
 - no se permiten mapeos silenciosos de algoritmos no soportados; una receta que

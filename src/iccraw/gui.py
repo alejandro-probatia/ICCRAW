@@ -36,6 +36,7 @@ from .qa_compare import compare_qa_reports
 from .raw.pipeline import develop_controlled
 from .raw.preview import (
     apply_adjustments,
+    apply_render_adjustments,
     apply_profile_preview,
     extract_embedded_preview,
     linear_to_srgb_display,
@@ -57,13 +58,24 @@ except Exception:  # pragma: no cover - entorno sin GUI
 IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 BROWSABLE_EXTENSIONS = RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
 
-LAYOUT_VERSION = 2
+LAYOUT_VERSION = 3
 
 DEMOSAIC_OPTIONS = [
-    "linear",
-    "vng",
-    "ppg",
-    "ahd",
+    ("Lineal dcraw (-q 0)", "linear"),
+    ("VNG dcraw (-q 1)", "vng"),
+    ("PPG dcraw (-q 2)", "ppg"),
+    ("AHD dcraw - máxima calidad (-q 3)", "ahd"),
+]
+
+ILLUMINANT_OPTIONS = [
+    ("A / tungsteno (2856 K)", 2856, 0),
+    ("D50 (5003 K)", 5003, 0),
+    ("D55 (5503 K)", 5503, 0),
+    ("Flash / D55 (5500 K)", 5500, 0),
+    ("D60 (6000 K)", 6000, 0),
+    ("D65 (6504 K)", 6504, 0),
+    ("D75 (7504 K)", 7504, 0),
+    ("Personalizado", None, None),
 ]
 
 WB_MODE_OPTIONS = [
@@ -155,8 +167,15 @@ if QtWidgets is not None:
             self._base_pixmap: QtGui.QPixmap | None = None
             self._image_size: tuple[int, int] | None = None
             self._overlay_points: list[tuple[float, float]] = []
+            self._view_zoom = 1.0
+            self._view_rotation = 0
+            self._pan = QtCore.QPointF(0.0, 0.0)
+            self._drag_start: QtCore.QPointF | None = None
+            self._drag_last: QtCore.QPointF | None = None
+            self._drag_moved = False
             self.setAlignment(QtCore.Qt.AlignCenter)
             self.setMinimumSize(220, 160)
+            self.setMouseTracking(True)
             self.setText(title)
             self.setStyleSheet(
                 "QLabel {"
@@ -180,35 +199,83 @@ if QtWidgets is not None:
             self._overlay_points = list(points)
             self._refresh_scaled_pixmap()
 
+        def set_view_transform(self, *, zoom: float, rotation: int) -> None:
+            self._view_zoom = float(np.clip(zoom, 0.2, 8.0))
+            self._view_rotation = int(rotation) % 360
+            if self._view_zoom <= 1.0:
+                self._pan = QtCore.QPointF(0.0, 0.0)
+            self._refresh_scaled_pixmap()
+
         def mousePressEvent(self, event) -> None:  # noqa: N802
-            mapped = self._map_widget_to_image(event.position())
-            if mapped is not None and event.button() == QtCore.Qt.LeftButton:
-                self.imageClicked.emit(float(mapped[0]), float(mapped[1]))
+            if event.button() == QtCore.Qt.LeftButton and self._base_pixmap is not None:
+                self._drag_start = event.position()
+                self._drag_last = event.position()
+                self._drag_moved = False
+                self.setCursor(QtCore.Qt.ClosedHandCursor)
                 return
             super().mousePressEvent(event)
+
+        def mouseMoveEvent(self, event) -> None:  # noqa: N802
+            if self._drag_last is not None and self._drag_start is not None:
+                delta = event.position() - self._drag_last
+                distance = event.position() - self._drag_start
+                if self._view_zoom > 1.0 and (abs(distance.x()) > 3.0 or abs(distance.y()) > 3.0):
+                    self._pan += delta
+                    self._drag_moved = True
+                    self._refresh_scaled_pixmap()
+                self._drag_last = event.position()
+                return
+            if self._view_zoom > 1.0:
+                self.setCursor(QtCore.Qt.OpenHandCursor)
+            else:
+                self.unsetCursor()
+            super().mouseMoveEvent(event)
+
+        def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+            if event.button() == QtCore.Qt.LeftButton and self._drag_start is not None:
+                mapped = self._map_widget_to_image(event.position())
+                if mapped is not None and not self._drag_moved:
+                    self.imageClicked.emit(float(mapped[0]), float(mapped[1]))
+                self._drag_start = None
+                self._drag_last = None
+                self._drag_moved = False
+                self.setCursor(QtCore.Qt.OpenHandCursor if self._view_zoom > 1.0 else QtCore.Qt.ArrowCursor)
+                return
+            super().mouseReleaseEvent(event)
+
+        def wheelEvent(self, event) -> None:  # noqa: N802
+            if self._base_pixmap is None:
+                return super().wheelEvent(event)
+            factor = 1.15 if event.angleDelta().y() > 0 else 1.0 / 1.15
+            self.set_view_transform(zoom=self._view_zoom * factor, rotation=self._view_rotation)
+            event.accept()
 
         def resizeEvent(self, event) -> None:  # noqa: N802
             super().resizeEvent(event)
             self._refresh_scaled_pixmap()
 
-        def _refresh_scaled_pixmap(self) -> None:
+        def paintEvent(self, event) -> None:  # noqa: N802
             if self._base_pixmap is None:
-                return
-            scaled = self._base_pixmap.scaled(
-                self.size(),
-                QtCore.Qt.KeepAspectRatio,
-                QtCore.Qt.SmoothTransformation,
-            )
+                return super().paintEvent(event)
+
+            geometry = self._display_geometry()
+            if geometry is None:
+                return super().paintEvent(event)
+
+            pixmap, rect, scale, transform, bounds = geometry
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform)
+            painter.fillRect(self.rect(), QtGui.QColor("#111827"))
+            painter.drawPixmap(rect, pixmap, QtCore.QRectF(pixmap.rect()))
+
             if self._overlay_points and self._image_size is not None:
-                scaled = QtGui.QPixmap(scaled)
-                painter = QtGui.QPainter(scaled)
                 painter.setRenderHint(QtGui.QPainter.Antialiasing)
                 painter.setPen(QtGui.QPen(QtGui.QColor("#22c55e"), 2))
                 painter.setBrush(QtGui.QBrush(QtGui.QColor(34, 197, 94, 96)))
-                image_w, image_h = self._image_size
-                sx = scaled.width() / max(1, image_w)
-                sy = scaled.height() / max(1, image_h)
-                qpoints = [QtCore.QPointF(x * sx, y * sy) for x, y in self._overlay_points]
+                qpoints = [
+                    self._map_image_to_widget(x, y, rect, scale, transform, bounds)
+                    for x, y in self._overlay_points
+                ]
                 if len(qpoints) >= 2:
                     painter.drawPolyline(QtGui.QPolygonF(qpoints))
                 if len(qpoints) == 4:
@@ -216,21 +283,84 @@ if QtWidgets is not None:
                 for idx, point in enumerate(qpoints, start=1):
                     painter.drawEllipse(point, 6, 6)
                     painter.drawText(point + QtCore.QPointF(8, -8), str(idx))
-                painter.end()
-            self.setPixmap(scaled)
+
+            painter.setPen(QtGui.QPen(QtGui.QColor("#4b5563"), 1))
+            painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
+            painter.end()
+
+        def _refresh_scaled_pixmap(self) -> None:
+            self.update()
 
         def _map_widget_to_image(self, pos: QtCore.QPointF) -> tuple[float, float] | None:
-            if self._base_pixmap is None or self._image_size is None or self.pixmap() is None:
+            if self._base_pixmap is None or self._image_size is None:
                 return None
-            displayed = self.pixmap()
-            offset_x = (self.width() - displayed.width()) / 2.0
-            offset_y = (self.height() - displayed.height()) / 2.0
-            x = float(pos.x()) - offset_x
-            y = float(pos.y()) - offset_y
-            if x < 0 or y < 0 or x > displayed.width() or y > displayed.height():
+            geometry = self._display_geometry()
+            if geometry is None:
                 return None
+            _pixmap, rect, scale, transform, bounds = geometry
+            if not rect.contains(pos):
+                return None
+            tx = (float(pos.x()) - rect.left()) / max(1e-6, scale)
+            ty = (float(pos.y()) - rect.top()) / max(1e-6, scale)
+            inv, ok = transform.inverted()
+            if not ok:
+                return None
+            mapped = inv.map(QtCore.QPointF(tx + bounds.left(), ty + bounds.top()))
             image_w, image_h = self._image_size
-            return x * image_w / max(1, displayed.width()), y * image_h / max(1, displayed.height())
+            if mapped.x() < 0 or mapped.y() < 0 or mapped.x() > image_w or mapped.y() > image_h:
+                return None
+            return float(mapped.x()), float(mapped.y())
+
+        def _display_geometry(self):
+            if self._base_pixmap is None:
+                return None
+            transform = QtGui.QTransform()
+            transform.rotate(self._view_rotation)
+            bounds = transform.mapRect(
+                QtCore.QRectF(
+                    0.0,
+                    0.0,
+                    float(self._base_pixmap.width()),
+                    float(self._base_pixmap.height()),
+                )
+            )
+            pixmap = (
+                self._base_pixmap
+                if self._view_rotation == 0
+                else self._base_pixmap.transformed(transform, QtCore.Qt.SmoothTransformation)
+            )
+            pw = max(1.0, float(pixmap.width()))
+            ph = max(1.0, float(pixmap.height()))
+            fit = min(max(1.0, self.width()) / pw, max(1.0, self.height()) / ph)
+            scale = fit * self._view_zoom
+            draw_w = pw * scale
+            draw_h = ph * scale
+            max_pan_x = max(0.0, (draw_w - self.width()) / 2.0)
+            max_pan_y = max(0.0, (draw_h - self.height()) / 2.0)
+            pan_x = float(np.clip(self._pan.x(), -max_pan_x, max_pan_x))
+            pan_y = float(np.clip(self._pan.y(), -max_pan_y, max_pan_y))
+            self._pan = QtCore.QPointF(pan_x, pan_y)
+            rect = QtCore.QRectF(
+                (self.width() - draw_w) / 2.0 + pan_x,
+                (self.height() - draw_h) / 2.0 + pan_y,
+                draw_w,
+                draw_h,
+            )
+            return pixmap, rect, scale, transform, bounds
+
+        def _map_image_to_widget(
+            self,
+            x: float,
+            y: float,
+            rect: QtCore.QRectF,
+            scale: float,
+            transform: QtGui.QTransform,
+            bounds: QtCore.QRectF,
+        ) -> QtCore.QPointF:
+            mapped = transform.map(QtCore.QPointF(float(x), float(y)))
+            tx = mapped.x() - bounds.left()
+            ty = mapped.y() - bounds.top()
+            return QtCore.QPointF(rect.left() + tx * scale, rect.top() + ty * scale)
 
 
     class ICCRawMainWindow(QtWidgets.QMainWindow):
@@ -260,6 +390,12 @@ if QtWidgets is not None:
             self._original_linear: np.ndarray | None = None
             self._adjusted_linear: np.ndarray | None = None
             self._preview_srgb: np.ndarray | None = None
+            self._last_loaded_preview_key: str | None = None
+            self._viewer_zoom = 1.0
+            self._viewer_rotation = 0
+            self._selection_load_timer = QtCore.QTimer(self)
+            self._selection_load_timer.setSingleShot(True)
+            self._selection_load_timer.timeout.connect(self._load_selected_from_timer)
 
             self._build_ui()
             self._build_menu_bar()
@@ -294,6 +430,18 @@ if QtWidgets is not None:
             header.addWidget(self._button("Pantalla completa", self._menu_toggle_fullscreen))
             root_layout.addLayout(header)
 
+            task_bar = QtWidgets.QHBoxLayout()
+            self.global_status_label = QtWidgets.QLabel("Listo")
+            self.global_status_label.setStyleSheet("font-size: 12px; color: #374151;")
+            self.global_progress = QtWidgets.QProgressBar()
+            self.global_progress.setRange(0, 1)
+            self.global_progress.setValue(0)
+            self.global_progress.setTextVisible(False)
+            self.global_progress.setMaximumHeight(8)
+            task_bar.addWidget(self.global_status_label, 1)
+            task_bar.addWidget(self.global_progress, 2)
+            root_layout.addLayout(task_bar)
+
             self.main_tabs = QtWidgets.QTabWidget()
             session_tab = self._build_tab_session()
             raw_tab = self._build_tab_raw_develop()
@@ -316,7 +464,6 @@ if QtWidgets is not None:
             menu_file.addAction(self._action("Guardar sesión", self._on_save_session, "Ctrl+Shift+S"))
             menu_file.addSeparator()
             menu_file.addAction(self._action("Abrir carpeta...", self._pick_directory, "Ctrl+O"))
-            menu_file.addAction(self._action("Cargar seleccion", self._on_load_selected, "Ctrl+L"))
             menu_file.addAction(self._action("Guardar preview PNG", self._on_save_preview, "Ctrl+S"))
             menu_file.addAction(self._action("Aplicar sesión a selección", self._on_batch_develop_selected, "Ctrl+R"))
             menu_file.addSeparator()
@@ -352,7 +499,7 @@ if QtWidgets is not None:
 
         def _go_to_nitidez_tab(self) -> None:
             self.main_tabs.setCurrentIndex(1)
-            self.config_tabs.setCurrentIndex(1)
+            self.config_tabs.setCurrentIndex(2)
 
         def _menu_toggle_fullscreen(self, _checked: bool = False) -> None:
             if self.isFullScreen():
@@ -757,7 +904,6 @@ if QtWidgets is not None:
             layout.addWidget(self.file_list, 1)
 
             row = QtWidgets.QHBoxLayout()
-            row.addWidget(self._button("Cargar seleccion", self._on_load_selected))
             row.addWidget(self._button("Usar selección como cartas", self._use_selected_files_as_profile_charts))
             row.addWidget(self._button("Añadir selección a cola", self._queue_add_selected))
             layout.addLayout(row)
@@ -792,8 +938,18 @@ if QtWidgets is not None:
             self.chk_apply_profile.toggled.connect(lambda _v: self._refresh_preview())
             g.addWidget(self.chk_apply_profile, 1, 2, 1, 2)
 
-            g.addWidget(self._button("Cargar seleccion", self._on_load_selected), 2, 0, 1, 2)
-            g.addWidget(self._button("Recargar directorio", self._reload_current_directory), 2, 2, 1, 2)
+            view_tools = QtWidgets.QHBoxLayout()
+            view_tools.addWidget(self._button("−", self._viewer_zoom_out))
+            self.viewer_zoom_label = QtWidgets.QLabel("100%")
+            self.viewer_zoom_label.setAlignment(QtCore.Qt.AlignCenter)
+            self.viewer_zoom_label.setMinimumWidth(52)
+            view_tools.addWidget(self.viewer_zoom_label)
+            view_tools.addWidget(self._button("+", self._viewer_zoom_in))
+            view_tools.addWidget(self._button("1:1", self._viewer_zoom_100))
+            view_tools.addWidget(self._button("↺", self._viewer_rotate_left))
+            view_tools.addWidget(self._button("↻", self._viewer_rotate_right))
+            view_tools.addWidget(self._button("Encajar", self._viewer_fit))
+            g.addLayout(view_tools, 2, 0, 1, 4)
 
             layout.addWidget(controls)
 
@@ -850,15 +1006,106 @@ if QtWidgets is not None:
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(6)
 
-            self.config_tabs = QtWidgets.QTabWidget()
-            self.config_tabs.addTab(self._build_tab_profile_generation(), "1. Calibrar sesión")
-            self.config_tabs.addTab(self._build_tab_preview_settings(), "Nitidez")
-            self.config_tabs.addTab(self._build_tab_batch_config(), "2. Aplicar sesión")
+            self.config_tabs = QtWidgets.QToolBox()
+            self.config_tabs.addItem(self._scrollable_panel(self._build_tab_profile_generation()), "Calibrar sesión")
+            self.config_tabs.addItem(self._scrollable_panel(self._build_tab_basic_adjustments()), "Corrección básica")
+            self.config_tabs.addItem(self._scrollable_panel(self._build_tab_preview_settings()), "Detalle")
             self._advanced_raw_config = self._build_tab_raw_config()
             self._advanced_profile_config = self._build_tab_profile_config()
+            self.config_tabs.addItem(self._scrollable_panel(self._advanced_raw_config), "RAW global")
+            self.config_tabs.addItem(self._scrollable_panel(self._advanced_profile_config), "Perfil ICC")
+            self.config_tabs.addItem(self._scrollable_panel(self._build_tab_batch_config()), "Aplicar sesión")
             layout.addWidget(self.config_tabs, 1)
 
             return pane
+
+        def _scrollable_panel(self, widget: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
+            scroll = QtWidgets.QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+            scroll.setWidget(widget)
+            return scroll
+
+        def _build_tab_basic_adjustments(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            grid = QtWidgets.QGridLayout(tab)
+
+            grid.addWidget(QtWidgets.QLabel("Iluminante final"), 0, 0)
+            self.combo_illuminant_render = QtWidgets.QComboBox()
+            for label, temp, tint in ILLUMINANT_OPTIONS:
+                self.combo_illuminant_render.addItem(label, {"temperature": temp, "tint": tint})
+            self.combo_illuminant_render.setCurrentIndex(1)
+            self.combo_illuminant_render.currentIndexChanged.connect(self._on_illuminant_changed)
+            grid.addWidget(self.combo_illuminant_render, 0, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Temperatura (K)"), 1, 0)
+            self.spin_render_temperature = QtWidgets.QSpinBox()
+            self.spin_render_temperature.setRange(2000, 12000)
+            self.spin_render_temperature.setSingleStep(50)
+            self.spin_render_temperature.setValue(5003)
+            self.spin_render_temperature.valueChanged.connect(lambda _v: self._on_render_control_change())
+            grid.addWidget(self.spin_render_temperature, 1, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Matiz"), 2, 0)
+            self.spin_render_tint = QtWidgets.QDoubleSpinBox()
+            self.spin_render_tint.setRange(-100.0, 100.0)
+            self.spin_render_tint.setSingleStep(1.0)
+            self.spin_render_tint.setDecimals(1)
+            self.spin_render_tint.valueChanged.connect(lambda _v: self._on_render_control_change())
+            grid.addWidget(self.spin_render_tint, 2, 1, 1, 2)
+
+            self.slider_brightness, self.label_brightness = self._slider(
+                minimum=-200,
+                maximum=200,
+                value=0,
+                on_change=self._on_render_control_change,
+                formatter=lambda v: f"Brillo: {v / 100:+.2f} EV",
+            )
+            grid.addWidget(self.label_brightness, 3, 0, 1, 3)
+            grid.addWidget(self.slider_brightness, 4, 0, 1, 3)
+
+            self.slider_black_point, self.label_black_point = self._slider(
+                minimum=0,
+                maximum=300,
+                value=0,
+                on_change=self._on_render_control_change,
+                formatter=lambda v: f"Nivel negro: {v / 1000:.3f}",
+            )
+            grid.addWidget(self.label_black_point, 5, 0, 1, 3)
+            grid.addWidget(self.slider_black_point, 6, 0, 1, 3)
+
+            self.slider_white_point, self.label_white_point = self._slider(
+                minimum=500,
+                maximum=1000,
+                value=1000,
+                on_change=self._on_render_control_change,
+                formatter=lambda v: f"Nivel blanco: {v / 1000:.3f}",
+            )
+            grid.addWidget(self.label_white_point, 7, 0, 1, 3)
+            grid.addWidget(self.slider_white_point, 8, 0, 1, 3)
+
+            self.slider_contrast, self.label_contrast = self._slider(
+                minimum=-100,
+                maximum=100,
+                value=0,
+                on_change=self._on_render_control_change,
+                formatter=lambda v: f"Contraste: {v / 100:+.2f}",
+            )
+            grid.addWidget(self.label_contrast, 9, 0, 1, 3)
+            grid.addWidget(self.slider_contrast, 10, 0, 1, 3)
+
+            self.slider_midtone, self.label_midtone = self._slider(
+                minimum=50,
+                maximum=200,
+                value=100,
+                on_change=self._on_render_control_change,
+                formatter=lambda v: f"Curva medios: {v / 100:.2f}",
+            )
+            grid.addWidget(self.label_midtone, 11, 0, 1, 3)
+            grid.addWidget(self.slider_midtone, 12, 0, 1, 3)
+
+            grid.addWidget(self._button("Restablecer corrección básica", self._reset_basic_adjustments), 13, 0, 1, 3)
+            return tab
 
         def _build_tab_preview_settings(self) -> QtWidgets.QWidget:
             tab = QtWidgets.QWidget()
@@ -903,28 +1150,44 @@ if QtWidgets is not None:
             )
             grid.addWidget(self.label_noise_color, 6, 0, 1, 3)
             grid.addWidget(self.slider_noise_color, 7, 0, 1, 3)
-            self.label_noise_luma.hide()
-            self.slider_noise_luma.hide()
-            self.label_noise_color.hide()
-            self.slider_noise_color.hide()
+
+            self.slider_ca_red, self.label_ca_red = self._slider(
+                minimum=-100,
+                maximum=100,
+                value=0,
+                on_change=self._on_slider_change,
+                formatter=lambda v: f"CA lateral rojo/cian: {1.0 + v / 10000:.4f}",
+            )
+            grid.addWidget(self.label_ca_red, 8, 0, 1, 3)
+            grid.addWidget(self.slider_ca_red, 9, 0, 1, 3)
+
+            self.slider_ca_blue, self.label_ca_blue = self._slider(
+                minimum=-100,
+                maximum=100,
+                value=0,
+                on_change=self._on_slider_change,
+                formatter=lambda v: f"CA lateral azul/amarillo: {1.0 + v / 10000:.4f}",
+            )
+            grid.addWidget(self.label_ca_blue, 10, 0, 1, 3)
+            grid.addWidget(self.slider_ca_blue, 11, 0, 1, 3)
 
             self.check_fast_raw_preview = QtWidgets.QCheckBox("Preview RAW rapida (recomendado)")
             self.check_fast_raw_preview.setChecked(True)
             self.check_fast_raw_preview.setToolTip(
                 "Usa miniatura embebida o revelado RAW half-size para acelerar carga y previsualizacion."
             )
-            grid.addWidget(self.check_fast_raw_preview, 8, 0, 1, 3)
+            grid.addWidget(self.check_fast_raw_preview, 12, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Lado maximo preview (px)"), 9, 0)
+            grid.addWidget(QtWidgets.QLabel("Lado maximo preview (px)"), 13, 0)
             self.spin_preview_max_side = QtWidgets.QSpinBox()
             self.spin_preview_max_side.setRange(900, 6000)
             self.spin_preview_max_side.setSingleStep(100)
             self.spin_preview_max_side.setValue(2600)
-            grid.addWidget(self.spin_preview_max_side, 9, 1, 1, 2)
+            grid.addWidget(self.spin_preview_max_side, 13, 1, 1, 2)
 
             self.path_preview_png = QtWidgets.QLineEdit("/tmp/iccraw_preview.png")
-            self._add_path_row(grid, 10, "Guardar preview PNG", self.path_preview_png, file_mode=False, save_mode=True, dir_mode=False)
-            grid.addWidget(self._button("Restablecer nitidez", self._reset_adjustments), 11, 0, 1, 3)
+            self._add_path_row(grid, 14, "Guardar preview PNG", self.path_preview_png, file_mode=False, save_mode=True, dir_mode=False)
+            grid.addWidget(self._button("Restablecer detalle", self._reset_adjustments), 15, 0, 1, 3)
             return tab
 
         def _build_tab_raw_config(self) -> QtWidgets.QWidget:
@@ -948,89 +1211,94 @@ if QtWidgets is not None:
 
             grid.addWidget(QtWidgets.QLabel("Demosaic/interpolacion"), 3, 0)
             self.combo_demosaic = QtWidgets.QComboBox()
-            for opt in DEMOSAIC_OPTIONS:
-                self.combo_demosaic.addItem(opt, opt)
+            for label, opt in DEMOSAIC_OPTIONS:
+                self.combo_demosaic.addItem(label, opt)
             grid.addWidget(self.combo_demosaic, 3, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Balance de blancos"), 4, 0)
+            note = QtWidgets.QLabel("Con dcraw, AHD (-q 3) es el modo de interpolación de mayor calidad disponible.")
+            note.setWordWrap(True)
+            note.setStyleSheet("font-size: 12px; color: #6b7280;")
+            grid.addWidget(note, 4, 0, 1, 3)
+
+            grid.addWidget(QtWidgets.QLabel("Balance de blancos"), 5, 0)
             self.combo_wb_mode = QtWidgets.QComboBox()
             for label, val in WB_MODE_OPTIONS:
                 self.combo_wb_mode.addItem(label, val)
-            grid.addWidget(self.combo_wb_mode, 4, 1, 1, 2)
+            grid.addWidget(self.combo_wb_mode, 5, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("WB multiplicadores"), 5, 0)
+            grid.addWidget(QtWidgets.QLabel("WB multiplicadores"), 6, 0)
             self.edit_wb_multipliers = QtWidgets.QLineEdit("1,1,1,1")
             self.edit_wb_multipliers.setToolTip("Formato: R,G,B,G (o R,G,B)")
-            grid.addWidget(self.edit_wb_multipliers, 5, 1, 1, 2)
+            grid.addWidget(self.edit_wb_multipliers, 6, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Black level mode"), 6, 0)
+            grid.addWidget(QtWidgets.QLabel("Black level mode"), 7, 0)
             self.combo_black_mode = QtWidgets.QComboBox()
             for label, val in BLACK_MODE_OPTIONS:
                 self.combo_black_mode.addItem(label, val)
-            grid.addWidget(self.combo_black_mode, 6, 1)
+            grid.addWidget(self.combo_black_mode, 7, 1)
             self.spin_black_value = QtWidgets.QSpinBox()
             self.spin_black_value.setRange(0, 65535)
             self.spin_black_value.setValue(0)
-            grid.addWidget(self.spin_black_value, 6, 2)
+            grid.addWidget(self.spin_black_value, 7, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Exposure compensation (EV)"), 7, 0)
+            grid.addWidget(QtWidgets.QLabel("Exposure compensation (EV)"), 8, 0)
             self.spin_exposure = QtWidgets.QDoubleSpinBox()
             self.spin_exposure.setRange(-8.0, 8.0)
             self.spin_exposure.setDecimals(2)
             self.spin_exposure.setSingleStep(0.1)
-            grid.addWidget(self.spin_exposure, 7, 1, 1, 2)
+            grid.addWidget(self.spin_exposure, 8, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Tone curve"), 8, 0)
+            grid.addWidget(QtWidgets.QLabel("Tone curve"), 9, 0)
             self.combo_tone_curve = QtWidgets.QComboBox()
             for label, val in TONE_OPTIONS:
                 self.combo_tone_curve.addItem(label, val)
-            grid.addWidget(self.combo_tone_curve, 8, 1)
+            grid.addWidget(self.combo_tone_curve, 9, 1)
             self.spin_gamma = QtWidgets.QDoubleSpinBox()
             self.spin_gamma.setRange(0.8, 4.0)
             self.spin_gamma.setDecimals(2)
             self.spin_gamma.setValue(2.2)
-            grid.addWidget(self.spin_gamma, 8, 2)
+            grid.addWidget(self.spin_gamma, 9, 2)
 
             self.check_output_linear = QtWidgets.QCheckBox("Salida lineal")
             self.check_output_linear.setChecked(True)
-            grid.addWidget(self.check_output_linear, 9, 0, 1, 3)
+            grid.addWidget(self.check_output_linear, 10, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Denoise modo receta"), 10, 0)
+            grid.addWidget(QtWidgets.QLabel("Denoise modo receta"), 11, 0)
             self.combo_recipe_denoise = QtWidgets.QComboBox()
             self.combo_recipe_denoise.addItems(FILTER_MODE_OPTIONS)
-            grid.addWidget(self.combo_recipe_denoise, 10, 1, 1, 2)
+            grid.addWidget(self.combo_recipe_denoise, 11, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Sharpen modo receta"), 11, 0)
+            grid.addWidget(QtWidgets.QLabel("Sharpen modo receta"), 12, 0)
             self.combo_recipe_sharpen = QtWidgets.QComboBox()
             self.combo_recipe_sharpen.addItems(FILTER_MODE_OPTIONS)
-            grid.addWidget(self.combo_recipe_sharpen, 11, 1, 1, 2)
+            grid.addWidget(self.combo_recipe_sharpen, 12, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Working space"), 12, 0)
+            grid.addWidget(QtWidgets.QLabel("Working space"), 13, 0)
             self.combo_working_space = QtWidgets.QComboBox()
             self.combo_working_space.addItems(SPACE_OPTIONS)
-            grid.addWidget(self.combo_working_space, 12, 1, 1, 2)
+            grid.addWidget(self.combo_working_space, 13, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Output space"), 13, 0)
+            grid.addWidget(QtWidgets.QLabel("Output space"), 14, 0)
             self.combo_output_space = QtWidgets.QComboBox()
             self.combo_output_space.addItems(SPACE_OPTIONS)
-            grid.addWidget(self.combo_output_space, 13, 1, 1, 2)
+            grid.addWidget(self.combo_output_space, 14, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Sampling strategy"), 14, 0)
+            grid.addWidget(QtWidgets.QLabel("Sampling strategy"), 15, 0)
             self.combo_sampling = QtWidgets.QComboBox()
             self.combo_sampling.addItems(SAMPLE_OPTIONS)
-            grid.addWidget(self.combo_sampling, 14, 1, 1, 2)
+            grid.addWidget(self.combo_sampling, 15, 1, 1, 2)
 
             self.check_profiling_mode = QtWidgets.QCheckBox("Profiling mode")
             self.check_profiling_mode.setChecked(True)
-            grid.addWidget(self.check_profiling_mode, 15, 0, 1, 3)
+            grid.addWidget(self.check_profiling_mode, 16, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Input color assumption"), 16, 0)
+            grid.addWidget(QtWidgets.QLabel("Input color assumption"), 17, 0)
             self.edit_input_color = QtWidgets.QLineEdit("camera_native")
-            grid.addWidget(self.edit_input_color, 16, 1, 1, 2)
+            grid.addWidget(self.edit_input_color, 17, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Illuminant metadata"), 17, 0)
+            grid.addWidget(QtWidgets.QLabel("Illuminant metadata"), 18, 0)
             self.edit_illuminant = QtWidgets.QLineEdit("")
-            grid.addWidget(self.edit_illuminant, 17, 1, 1, 2)
+            grid.addWidget(self.edit_illuminant, 18, 1, 1, 2)
             return tab
 
         def _build_tab_profile_config(self) -> QtWidgets.QWidget:
@@ -1088,7 +1356,7 @@ if QtWidgets is not None:
             self.batch_embed_profile.setEnabled(False)
             grid.addWidget(self.batch_embed_profile, 2, 0, 1, 3)
 
-            self.batch_apply_adjustments = QtWidgets.QCheckBox("Aplicar nitidez del panel")
+            self.batch_apply_adjustments = QtWidgets.QCheckBox("Aplicar ajustes básicos y de detalle")
             self.batch_apply_adjustments.setChecked(True)
             grid.addWidget(self.batch_apply_adjustments, 3, 0, 1, 3)
 
@@ -1137,6 +1405,67 @@ if QtWidgets is not None:
             slider.valueChanged.connect(lambda v: label.setText(formatter(v)))
             slider.valueChanged.connect(on_change)
             return slider, label
+
+        def _render_adjustment_state(self) -> dict[str, Any]:
+            return {
+                "illuminant": self.combo_illuminant_render.currentText().strip(),
+                "temperature_kelvin": int(self.spin_render_temperature.value()),
+                "tint": float(self.spin_render_tint.value()),
+                "brightness_ev": self.slider_brightness.value() / 100.0,
+                "black_point": self.slider_black_point.value() / 1000.0,
+                "white_point": self.slider_white_point.value() / 1000.0,
+                "contrast": self.slider_contrast.value() / 100.0,
+                "midtone": self.slider_midtone.value() / 100.0,
+            }
+
+        def _render_adjustment_kwargs(self) -> dict[str, float]:
+            state = self._render_adjustment_state()
+            return {
+                "temperature_kelvin": float(state["temperature_kelvin"]),
+                "neutral_kelvin": 5003.0,
+                "tint": float(state["tint"]),
+                "brightness_ev": float(state["brightness_ev"]),
+                "black_point": float(state["black_point"]),
+                "white_point": float(max(state["black_point"] + 0.001, state["white_point"])),
+                "contrast": float(state["contrast"]),
+                "midtone": float(state["midtone"]),
+            }
+
+        def _detail_adjustment_state(self) -> dict[str, Any]:
+            return {
+                "sharpen": int(self.slider_sharpen.value()),
+                "radius": int(self.slider_radius.value()),
+                "noise_luma": int(self.slider_noise_luma.value()),
+                "noise_color": int(self.slider_noise_color.value()),
+                "ca_red": int(self.slider_ca_red.value()),
+                "ca_blue": int(self.slider_ca_blue.value()),
+            }
+
+        def _ca_scale_factors(self) -> tuple[float, float]:
+            return 1.0 + self.slider_ca_red.value() / 10000.0, 1.0 + self.slider_ca_blue.value() / 10000.0
+
+        def _apply_output_adjustments(
+            self,
+            image: np.ndarray,
+            *,
+            denoise_luma: float,
+            denoise_color: float,
+            sharpen_amount: float,
+            sharpen_radius: float,
+            lateral_ca_red_scale: float,
+            lateral_ca_blue_scale: float,
+            render_adjustments: dict[str, float],
+        ) -> np.ndarray:
+            adjusted = apply_adjustments(
+                image,
+                denoise_luminance=denoise_luma,
+                denoise_color=denoise_color,
+                sharpen_amount=sharpen_amount,
+                sharpen_radius=sharpen_radius,
+                lateral_ca_red_scale=lateral_ca_red_scale,
+                lateral_ca_blue_scale=lateral_ca_blue_scale,
+            )
+            return apply_render_adjustments(adjusted, **render_adjustments)
 
         def _add_path_row(
             self,
@@ -1439,12 +1768,8 @@ if QtWidgets is not None:
                 "batch_apply_adjustments": bool(self.batch_apply_adjustments.isChecked()),
                 "fast_raw_preview": bool(self.check_fast_raw_preview.isChecked()),
                 "preview_max_side": int(self.spin_preview_max_side.value()),
-                "adjustments": {
-                    "sharpen": int(self.slider_sharpen.value()),
-                    "radius": int(self.slider_radius.value()),
-                    "noise_luma": int(self.slider_noise_luma.value()),
-                    "noise_color": int(self.slider_noise_color.value()),
-                },
+                "adjustments": self._detail_adjustment_state(),
+                "render_adjustments": self._render_adjustment_state(),
                 "recipe": asdict(self._build_effective_recipe()),
             }
 
@@ -1552,6 +1877,32 @@ if QtWidgets is not None:
                 self.slider_radius.setValue(int(adjustments.get("radius", self.slider_radius.value())))
                 self.slider_noise_luma.setValue(int(adjustments.get("noise_luma", self.slider_noise_luma.value())))
                 self.slider_noise_color.setValue(int(adjustments.get("noise_color", self.slider_noise_color.value())))
+                self.slider_ca_red.setValue(int(adjustments.get("ca_red", self.slider_ca_red.value())))
+                self.slider_ca_blue.setValue(int(adjustments.get("ca_blue", self.slider_ca_blue.value())))
+            except Exception:
+                pass
+
+            render_adjustments = state.get("render_adjustments") if isinstance(state.get("render_adjustments"), dict) else {}
+            try:
+                self._set_combo_text(
+                    self.combo_illuminant_render,
+                    str(render_adjustments.get("illuminant") or self.combo_illuminant_render.currentText()),
+                )
+                self.spin_render_temperature.setValue(
+                    int(render_adjustments.get("temperature_kelvin", self.spin_render_temperature.value()))
+                )
+                self.spin_render_tint.setValue(float(render_adjustments.get("tint", self.spin_render_tint.value())))
+                self.slider_brightness.setValue(
+                    int(round(float(render_adjustments.get("brightness_ev", 0.0)) * 100))
+                )
+                self.slider_black_point.setValue(
+                    int(round(float(render_adjustments.get("black_point", 0.0)) * 1000))
+                )
+                self.slider_white_point.setValue(
+                    int(round(float(render_adjustments.get("white_point", 1.0)) * 1000))
+                )
+                self.slider_contrast.setValue(int(round(float(render_adjustments.get("contrast", 0.0)) * 100)))
+                self.slider_midtone.setValue(int(round(float(render_adjustments.get("midtone", 1.0)) * 100)))
             except Exception:
                 pass
 
@@ -1858,10 +2209,12 @@ if QtWidgets is not None:
             use_profile = bool(self.batch_embed_profile.isChecked()) and self.path_profile_active.text().strip() != ""
             profile_path = Path(self.path_profile_active.text().strip()) if use_profile else None
 
-            nl = 0.0
-            nc = 0.0
+            nl = self.slider_noise_luma.value() / 100.0
+            nc = self.slider_noise_color.value() / 100.0
             sharpen = self.slider_sharpen.value() / 100.0
             radius = self.slider_radius.value() / 10.0
+            ca_red, ca_blue = self._ca_scale_factors()
+            render_adjustments = self._render_adjustment_kwargs()
 
             def task():
                 payload = self._process_batch_files(
@@ -1875,6 +2228,9 @@ if QtWidgets is not None:
                     denoise_color=nc,
                     sharpen_amount=sharpen,
                     sharpen_radius=radius,
+                    lateral_ca_red_scale=ca_red,
+                    lateral_ca_blue_scale=ca_blue,
+                    render_adjustments=render_adjustments,
                 )
                 payload["task"] = "Cola de revelado"
                 return payload
@@ -1991,8 +2347,10 @@ if QtWidgets is not None:
             self._populate_file_list(self._current_dir)
 
         def _populate_file_list(self, folder: Path) -> None:
+            self._selection_load_timer.stop()
             self.file_list.clear()
             self._selected_file = None
+            self._last_loaded_preview_key = None
             self.selected_file_label.setText("Sin archivo seleccionado")
 
             files = [
@@ -2073,15 +2431,21 @@ if QtWidgets is not None:
             if item is None:
                 self._selected_file = None
                 self.selected_file_label.setText("Sin archivo seleccionado")
+                self._selection_load_timer.stop()
                 return
             raw_path = item.data(QtCore.Qt.UserRole)
             if not raw_path:
                 self._selected_file = None
+                self._selection_load_timer.stop()
                 return
             self._selected_file = Path(raw_path)
             self.selected_file_label.setText(str(self._selected_file))
+            if self._selected_file.suffix.lower() in BROWSABLE_EXTENSIONS:
+                self._set_status(f"Seleccionado: {self._selected_file.name}. Cargando preview...")
+                self._selection_load_timer.start(250)
 
         def _on_file_double_clicked(self, _item) -> None:
+            self._selection_load_timer.stop()
             self._on_load_selected()
 
         def _toggle_compare(self, enabled: bool) -> None:
@@ -2308,6 +2672,74 @@ if QtWidgets is not None:
             if idx >= 0:
                 combo.setCurrentIndex(idx)
 
+        def _on_illuminant_changed(self) -> None:
+            data = self.combo_illuminant_render.currentData()
+            if isinstance(data, dict) and data.get("temperature") is not None:
+                self.spin_render_temperature.blockSignals(True)
+                self.spin_render_tint.blockSignals(True)
+                self.spin_render_temperature.setValue(int(data["temperature"]))
+                self.spin_render_tint.setValue(float(data.get("tint") or 0.0))
+                self.spin_render_temperature.blockSignals(False)
+                self.spin_render_tint.blockSignals(False)
+                if hasattr(self, "edit_illuminant"):
+                    self.edit_illuminant.setText(self.combo_illuminant_render.currentText().split("(", 1)[0].strip())
+            self._on_render_control_change()
+
+        def _on_render_control_change(self) -> None:
+            if self._original_linear is not None:
+                self._refresh_preview()
+
+        def _reset_basic_adjustments(self) -> None:
+            self.combo_illuminant_render.setCurrentIndex(1)
+            self.spin_render_temperature.setValue(5003)
+            self.spin_render_tint.setValue(0.0)
+            self.slider_brightness.setValue(0)
+            self.slider_black_point.setValue(0)
+            self.slider_white_point.setValue(1000)
+            self.slider_contrast.setValue(0)
+            self.slider_midtone.setValue(100)
+            if self._original_linear is not None:
+                self._refresh_preview()
+
+        def _sync_viewer_transform(self) -> None:
+            for panel_name in (
+                "image_result_single",
+                "image_original_compare",
+                "image_result_compare",
+            ):
+                if hasattr(self, panel_name):
+                    getattr(self, panel_name).set_view_transform(
+                        zoom=self._viewer_zoom,
+                        rotation=self._viewer_rotation,
+                    )
+            if hasattr(self, "viewer_zoom_label"):
+                self.viewer_zoom_label.setText(f"{int(round(self._viewer_zoom * 100))}%")
+
+        def _viewer_zoom_in(self) -> None:
+            self._viewer_zoom = float(np.clip(self._viewer_zoom * 1.25, 0.2, 8.0))
+            self._sync_viewer_transform()
+
+        def _viewer_zoom_out(self) -> None:
+            self._viewer_zoom = float(np.clip(self._viewer_zoom / 1.25, 0.2, 8.0))
+            self._sync_viewer_transform()
+
+        def _viewer_zoom_100(self) -> None:
+            self._viewer_zoom = 1.0
+            self._sync_viewer_transform()
+
+        def _viewer_fit(self) -> None:
+            self._viewer_zoom = 1.0
+            self._viewer_rotation = 0
+            self._sync_viewer_transform()
+
+        def _viewer_rotate_left(self) -> None:
+            self._viewer_rotation = (self._viewer_rotation - 90) % 360
+            self._sync_viewer_transform()
+
+        def _viewer_rotate_right(self) -> None:
+            self._viewer_rotation = (self._viewer_rotation + 90) % 360
+            self._sync_viewer_transform()
+
         def _build_effective_recipe(self) -> Recipe:
             recipe = Recipe()
             path_text = self.path_recipe.text().strip()
@@ -2426,9 +2858,15 @@ if QtWidgets is not None:
                 old = self._preview_cache_order.pop(0)
                 self._preview_cache.pop(old, None)
 
-        def _on_load_selected(self) -> None:
+        def _load_selected_from_timer(self) -> None:
             if self._selected_file is None:
-                QtWidgets.QMessageBox.information(self, "Info", "Selecciona primero un archivo.")
+                return
+            self._on_load_selected(show_message=False)
+
+        def _on_load_selected(self, _checked: bool = False, *, show_message: bool = True) -> None:
+            if self._selected_file is None:
+                if show_message:
+                    QtWidgets.QMessageBox.information(self, "Info", "Selecciona primero un archivo.")
                 return
 
             selected = self._selected_file
@@ -2442,10 +2880,14 @@ if QtWidgets is not None:
                 max_preview_side=max_preview_side,
             )
 
+            if cache_key == self._last_loaded_preview_key and self._original_linear is not None:
+                return
+
             cached = self._preview_cache.get(cache_key)
             if cached is not None:
                 self._original_linear = cached.copy()
                 self._adjusted_linear = self._original_linear.copy()
+                self._last_loaded_preview_key = cache_key
                 self._refresh_preview()
                 self._log_preview(f"Preview cargada desde cache: {selected.name}")
                 self._set_status(f"Preview en cache: {selected.name}")
@@ -2460,9 +2902,12 @@ if QtWidgets is not None:
                 )
 
             def on_success(payload) -> None:
+                if self._selected_file != selected:
+                    return
                 image_linear, msg = payload
                 self._original_linear = np.asarray(image_linear, dtype=np.float32)
                 self._adjusted_linear = self._original_linear.copy()
+                self._last_loaded_preview_key = cache_key
                 self._cache_preview_image(cache_key, self._original_linear)
                 self._refresh_preview()
                 self._log_preview(msg)
@@ -2478,6 +2923,8 @@ if QtWidgets is not None:
             self.slider_radius.setValue(10)
             self.slider_noise_luma.setValue(0)
             self.slider_noise_color.setValue(0)
+            self.slider_ca_red.setValue(0)
+            self.slider_ca_blue.setValue(0)
             if self._original_linear is not None:
                 self._refresh_preview()
 
@@ -2485,17 +2932,21 @@ if QtWidgets is not None:
             if self._original_linear is None:
                 return
             try:
-                nl = 0.0
-                nc = 0.0
+                nl = self.slider_noise_luma.value() / 100.0
+                nc = self.slider_noise_color.value() / 100.0
                 sharpen = self.slider_sharpen.value() / 100.0
                 radius = self.slider_radius.value() / 10.0
+                ca_red, ca_blue = self._ca_scale_factors()
 
-                adjusted = apply_adjustments(
+                adjusted = self._apply_output_adjustments(
                     self._original_linear,
-                    denoise_luminance=nl,
+                    denoise_luma=nl,
                     denoise_color=nc,
                     sharpen_amount=sharpen,
                     sharpen_radius=radius,
+                    lateral_ca_red_scale=ca_red,
+                    lateral_ca_blue_scale=ca_blue,
+                    render_adjustments=self._render_adjustment_kwargs(),
                 )
                 self._adjusted_linear = adjusted
 
@@ -2578,12 +3029,28 @@ if QtWidgets is not None:
             recipe = self._build_effective_recipe()
             use_profile = self.chk_apply_profile.isChecked() and self.path_profile_active.text().strip() != ""
             profile_path = Path(self.path_profile_active.text().strip()) if use_profile else None
+            nl = self.slider_noise_luma.value() / 100.0
+            nc = self.slider_noise_color.value() / 100.0
+            sharpen = self.slider_sharpen.value() / 100.0
+            radius = self.slider_radius.value() / 10.0
+            ca_red, ca_blue = self._ca_scale_factors()
+            render_adjustments = self._render_adjustment_kwargs()
 
             def task():
                 with tempfile.TemporaryDirectory(prefix="iccraw_gui_develop_") as tmp:
                     temp_linear = Path(tmp) / "develop_linear.tiff"
                     develop_controlled(in_path, recipe, temp_linear, None)
                     image = read_image(temp_linear)
+                    image = self._apply_output_adjustments(
+                        image,
+                        denoise_luma=nl,
+                        denoise_color=nc,
+                        sharpen_amount=sharpen,
+                        sharpen_radius=radius,
+                        lateral_ca_red_scale=ca_red,
+                        lateral_ca_blue_scale=ca_blue,
+                        render_adjustments=render_adjustments,
+                    )
                     write_profiled_tiff(out_path, image, recipe=recipe, profile_path=profile_path)
                 return {"output_tiff": str(out_path)}
 
@@ -2990,6 +3457,9 @@ if QtWidgets is not None:
             denoise_color: float,
             sharpen_amount: float,
             sharpen_radius: float,
+            lateral_ca_red_scale: float,
+            lateral_ca_blue_scale: float,
+            render_adjustments: dict[str, float],
         ) -> dict[str, Any]:
             out_dir.mkdir(parents=True, exist_ok=True)
             outputs: list[dict[str, str]] = []
@@ -3010,12 +3480,15 @@ if QtWidgets is not None:
                             image = read_image(src)
 
                         if apply_adjust:
-                            image = apply_adjustments(
+                            image = self._apply_output_adjustments(
                                 image,
-                                denoise_luminance=denoise_luma,
+                                denoise_luma=denoise_luma,
                                 denoise_color=denoise_color,
                                 sharpen_amount=sharpen_amount,
                                 sharpen_radius=sharpen_radius,
+                                lateral_ca_red_scale=lateral_ca_red_scale,
+                                lateral_ca_blue_scale=lateral_ca_blue_scale,
+                                render_adjustments=render_adjustments,
                             )
 
                         out_path = out_dir / f"{src.stem}.tiff"
@@ -3044,10 +3517,12 @@ if QtWidgets is not None:
             use_profile = bool(self.batch_embed_profile.isChecked()) and self.path_profile_active.text().strip() != ""
             profile_path = Path(self.path_profile_active.text().strip()) if use_profile else None
 
-            nl = 0.0
-            nc = 0.0
+            nl = self.slider_noise_luma.value() / 100.0
+            nc = self.slider_noise_color.value() / 100.0
             sharpen = self.slider_sharpen.value() / 100.0
             radius = self.slider_radius.value() / 10.0
+            ca_red, ca_blue = self._ca_scale_factors()
+            render_adjustments = self._render_adjustment_kwargs()
 
             def task():
                 payload = self._process_batch_files(
@@ -3061,6 +3536,9 @@ if QtWidgets is not None:
                     denoise_color=nc,
                     sharpen_amount=sharpen,
                     sharpen_radius=radius,
+                    lateral_ca_red_scale=ca_red,
+                    lateral_ca_blue_scale=ca_blue,
+                    render_adjustments=render_adjustments,
                 )
                 payload["task"] = task_label
                 return payload
@@ -3145,6 +3623,9 @@ if QtWidgets is not None:
 
             self.monitor_status_label.setText(f"Ejecutando: {label}")
             self.monitor_progress.setRange(0, 0)
+            if hasattr(self, "global_status_label"):
+                self.global_status_label.setText(f"Ejecutando: {label}")
+                self.global_progress.setRange(0, 0)
             return row
 
         def _monitor_task_finish(self, row: int, status: str, detail: str) -> None:
@@ -3157,6 +3638,18 @@ if QtWidgets is not None:
                 self.monitor_progress.setRange(0, 1)
                 self.monitor_progress.setValue(1 if status == "Completado" else 0)
                 self.monitor_status_label.setText("Sin tareas en ejecución")
+                if hasattr(self, "global_status_label"):
+                    self.global_progress.setRange(0, 1)
+                    self.global_progress.setValue(1 if status == "Completado" else 0)
+                    self.global_status_label.setText(f"{status}: {detail}")
+                    QtCore.QTimer.singleShot(1800, self._reset_global_progress_if_idle)
+
+        def _reset_global_progress_if_idle(self) -> None:
+            if self._active_tasks != 0 or not hasattr(self, "global_status_label"):
+                return
+            self.global_status_label.setText("Listo")
+            self.global_progress.setRange(0, 1)
+            self.global_progress.setValue(0)
 
         def _set_status(self, text: str) -> None:
             self.statusBar().showMessage(text, 8000)
