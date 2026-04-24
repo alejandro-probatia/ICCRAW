@@ -28,6 +28,7 @@ Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas control
 - Colorimetría y DeltaE: `colour-science`.
 - Export TIFF 16-bit: `tifffile`.
 - Motor de perfil ICC: **ArgyllCMS (`colprof`)**.
+- Conversion ICC de salida: **LittleCMS (`tificc`)**.
 - GUI (opcional): **Qt for Python (`PySide6`)**.
 
 ## Instalación
@@ -42,11 +43,11 @@ pip install -e .
 # pip install -e .[gui]
 ```
 
-Opcional pero recomendado para perfilado con ArgyllCMS:
+Opcional pero recomendado para perfilado con ArgyllCMS y conversion ICC real:
 
 ```bash
 # Debian/Ubuntu
-sudo apt-get install dcraw argyll exiftool
+sudo apt-get install dcraw argyll liblcms2-utils exiftool
 bash scripts/check_tools.sh
 ```
 

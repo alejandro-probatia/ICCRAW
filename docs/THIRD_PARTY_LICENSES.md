@@ -36,7 +36,17 @@ Fecha de revision: 2026-04-23.
   - dependencia opcional (`pip install -e .[gui]`),
   - mantener avisos de licencia al redistribuir builds con GUI.
 
-## 5) Dependencias Python relevantes
+## 5) LittleCMS (`tificc`)
+
+- Uso en ICCRAW: CMM externo para convertir TIFFs desde perfil ICC de entrada a
+  perfil de salida, actualmente sRGB.
+- Licencia: MIT-like open source segun proyecto LittleCMS.
+- Politica en ICCRAW:
+  - se invoca como herramienta externa,
+  - no se redistribuyen binarios dentro del repositorio,
+  - se comprueba con `scripts/check_tools.sh`.
+
+## 6) Dependencias Python relevantes
 
 - `opencv-python-headless`: BSD-3-Clause (OpenCV).
 - `tifffile`: BSD.
@@ -47,7 +57,7 @@ Fecha de revision: 2026-04-23.
 - `Pillow`: HPND-like (PIL Software License).
 - `rawpy` (opcional): licencia dual LGPL-2.1/CDDL (segun LibRaw/rawpy).
 
-## 6) Regla de distribucion del proyecto
+## 7) Regla de distribucion del proyecto
 
 Antes de publicar release/binarios/contenedor:
 

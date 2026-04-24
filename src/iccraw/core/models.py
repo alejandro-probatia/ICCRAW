@@ -179,11 +179,15 @@ class BatchManifestEntry:
     output_tiff: str
     output_sha256: str
     profile_path: str
+    color_management_mode: str
+    output_color_space: str
 
 
 @dataclass
 class BatchManifest:
     recipe_sha256: str
     profile_path: str
+    color_management_mode: str
+    output_color_space: str
     software_version: str
     entries: list[BatchManifestEntry]

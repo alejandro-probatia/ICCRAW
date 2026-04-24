@@ -19,11 +19,6 @@ DCRAW_QUALITY_MAP = {
     "vng": "1",
     "ppg": "2",
     "ahd": "3",
-    # Unsupported names map to closest reproducible mode.
-    "dcb": "3",
-    "dht": "3",
-    "aa_hd": "3",
-    "rcd": "3",
 }
 
 
@@ -36,6 +31,11 @@ def develop_controlled(input_path: Path, recipe: Recipe, out_tiff: Path, audit_l
 
     image = _develop_image(input_path, recipe)
 
+    audit_path_str: str | None = None
+    if audit_linear_tiff is not None:
+        write_tiff16(audit_linear_tiff, image)
+        audit_path_str = str(audit_linear_tiff)
+
     if recipe.exposure_compensation != 0.0:
         image = np.clip(image * (2.0 ** float(recipe.exposure_compensation)), 0.0, 1.0)
 
@@ -46,11 +46,6 @@ def develop_controlled(input_path: Path, recipe: Recipe, out_tiff: Path, audit_l
         image = np.clip(np.power(np.clip(image, 0.0, 1.0), 1.0 / gamma), 0.0, 1.0)
 
     write_tiff16(out_tiff, image)
-
-    audit_path_str: str | None = None
-    if audit_linear_tiff is not None:
-        write_tiff16(audit_linear_tiff, image)
-        audit_path_str = str(audit_linear_tiff)
 
     return DevelopResult(
         raw_metadata=metadata,
@@ -92,7 +87,7 @@ def _develop_with_dcraw(input_path: Path, recipe: Recipe) -> np.ndarray:
 
 
 def _build_dcraw_command(input_path: Path, recipe: Recipe) -> list[str]:
-    q = DCRAW_QUALITY_MAP.get(recipe.demosaic_algorithm.strip().lower(), "3")
+    q = dcraw_quality_value(recipe.demosaic_algorithm)
     cmd = [
         "dcraw",
         "-T",
@@ -124,6 +119,17 @@ def _build_dcraw_command(input_path: Path, recipe: Recipe) -> list[str]:
 
     cmd.extend(["-c", str(input_path)])
     return cmd
+
+
+def dcraw_quality_value(demosaic_algorithm: str) -> str:
+    name = str(demosaic_algorithm or "").strip().lower()
+    if name not in DCRAW_QUALITY_MAP:
+        supported = ", ".join(sorted(DCRAW_QUALITY_MAP))
+        raise RuntimeError(
+            "demosaic_algorithm no soportado por dcraw: "
+            f"{demosaic_algorithm!r}. Valores soportados: {supported}."
+        )
+    return DCRAW_QUALITY_MAP[name]
 
 
 def _dcraw_wb(values: list[float] | None) -> list[float] | None:

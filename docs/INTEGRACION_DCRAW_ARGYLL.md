@@ -1,4 +1,4 @@
-# Integración de `dcraw` y `ArgyllCMS` en ICCRAW
+# Integración de `dcraw`, ArgyllCMS y LittleCMS en ICCRAW
 
 ## Objetivo
 
@@ -6,6 +6,7 @@ Este documento describe cómo ICCRAW integra:
 
 - `dcraw` como motor único de revelado RAW.
 - `ArgyllCMS` (`colprof`) como motor único de generación de perfiles ICC.
+- `LittleCMS` (`tificc`) como CMM para conversiones ICC de salida.
 
 La meta es mantener un flujo científico reproducible y auditable.
 
@@ -20,7 +21,7 @@ Marco legal:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y dcraw argyll exiftool
+sudo apt-get install -y dcraw argyll liblcms2-utils exiftool
 ```
 
 ### Verificación rápida
@@ -51,9 +52,14 @@ Para entradas RAW, ICCRAW construye un comando `dcraw` determinista:
 Mapeo de `recipe`:
 
 - `raw_developer`: debe ser `dcraw`.
-- `demosaic_algorithm`: mapea a `-q`.
+- `demosaic_algorithm`: debe ser uno de `linear`, `vng`, `ppg`, `ahd`.
 - `white_balance_mode` + `wb_multipliers`: `-w` o `-r`.
 - `black_level_mode`: opcional `-k` o `-S`.
+
+Regla operativa:
+
+- no se permiten mapeos silenciosos de algoritmos no soportados; una receta que
+  pida un demosaicing que `dcraw` no puede ejecutar debe fallar antes de procesar.
 
 ## Integración `ArgyllCMS` (módulo `profile.builder`)
 
@@ -81,6 +87,30 @@ Personalización:
 - `recipe.argyll_colprof_args` tiene prioridad.
 - Si no existe, se usa `ICC_ARGYLL_COLPROF_ARGS` (variable de entorno).
 - Si tampoco existe, se usan `-qm -as`.
+
+## Integración `LittleCMS` (módulo `profile.export`)
+
+Archivo clave:
+
+- `src/iccraw/profile/export.py`
+
+ICCRAW separa dos modos de salida:
+
+1. `camera_rgb_with_input_icc`:
+   - mantiene los pixeles en RGB de camara,
+   - incrusta el perfil ICC de entrada generado para la sesion,
+   - no realiza conversion colorimetrica.
+2. `converted_srgb`:
+   - usa `tificc` como CMM real,
+   - transforma desde el perfil ICC de entrada a un perfil sRGB generado con
+     LittleCMS/Pillow,
+   - incrusta el perfil sRGB resultante en el TIFF de salida.
+
+Regla operativa:
+
+- la matriz `matrix_camera_to_xyz` del sidecar se conserva como diagnostico y
+  compatibilidad interna, pero no se usa como sustituto de una conversion ICC en
+  la exportacion de lote.
 
 ## Validación de integración en local
 
@@ -115,6 +145,9 @@ iccraw auto-profile-batch \
 
 - `colprof no esta en PATH`
   - Solución: instalar `argyll`.
+
+- `No se puede convertir ICC: 'tificc' no esta disponible en PATH.`
+  - Solución: instalar `liblcms2-utils` o equivalente de LittleCMS.
 
 - `colprof retorno ...`
   - Revisar `argyll_colprof_args` y consistencia de muestras/carta/referencia.

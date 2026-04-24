@@ -20,6 +20,15 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Changed
 
+- `batch-develop` separa gestion ICC en modos explicitos:
+  - RGB de camara con perfil ICC de entrada incrustado,
+  - conversion a sRGB mediante LittleCMS (`tificc`) con perfil sRGB incrustado.
+- La matriz `matrix_camera_to_xyz` queda como artefacto diagnostico/compatibilidad,
+  no como sustituto de la conversion ICC en exportacion de lote.
+- Las recetas de ejemplo pasan de `demosaic_algorithm: rcd` a `ahd`, el modo
+  soportado por `dcraw`.
+- La GUI deja de ofrecer algoritmos de demosaicing que el backend `dcraw` no
+  puede ejecutar.
 - Reorganización estructural del proyecto para crecer como base Python única:
   - eliminada la capa Rust (`Cargo.toml`, `Cargo.lock`, `core/`, `cli/` Rust, `tests/` Rust) que ya no se usaba,
   - paquete renombrado `icc_entrada` → `iccraw` alineado con el nombre del repo y del proyecto,
@@ -32,6 +41,13 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Added
 
+- Validacion estricta de `demosaic_algorithm` para backend `dcraw`; una receta
+  con algoritmo no soportado falla antes de procesar.
+- Integracion de LittleCMS (`tificc`) como CMM externo para conversion ICC a
+  sRGB.
+- Metadatos de modo de gestion de color en manifiestos de lote.
+- Tests P0 para demosaicing no soportado, `audit_linear_tiff` realmente lineal y
+  exportacion ICC/CMM.
 - Plantilla de mantenimiento continuo del changelog y política de actualización.
 - Módulo `preview` para carga de imagen/RAW en previsualización, ajustes técnicos y análisis lineal.
 - GUI nueva basada en Qt/PySide6 (`app-ui`, `app-ui-qt`) con:
@@ -101,6 +117,8 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Fixed
 
+- `audit_linear_tiff` se escribe antes de compensacion de exposicion y curvas de
+  salida, conservando el estado lineal desarrollado.
 - Corrección de previsualización RAW rápida:
   - salida de `dcraw` para preview en espacio sRGB (`-o 1`) en lugar de cámara nativa sin conversión,
   - normalización de miniatura embebida a lineal para evitar doble corrección gamma.

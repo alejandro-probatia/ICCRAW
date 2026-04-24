@@ -21,7 +21,7 @@ La version actual esta en desarrollo. Existe funcionalidad base para ejecutar fl
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y dcraw argyll exiftool
+sudo apt-get install -y dcraw argyll liblcms2-utils exiftool
 ```
 
 Comprobación:

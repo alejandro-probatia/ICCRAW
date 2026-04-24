@@ -1,9 +1,12 @@
 from pathlib import Path
 
 import pytest
+import numpy as np
+import tifffile
 
 from iccraw.core.models import Recipe
-from iccraw.raw.pipeline import _build_dcraw_command, _develop_image, _parse_int_mode_value
+from iccraw.core.utils import read_image
+from iccraw.raw.pipeline import _build_dcraw_command, _develop_image, _parse_int_mode_value, develop_controlled
 
 
 def test_build_dcraw_command_with_fixed_wb_and_black_level():
@@ -43,7 +46,39 @@ def test_parse_int_mode_value_rejects_invalid():
         _parse_int_mode_value("fixed:abc", "fixed")
 
 
+def test_build_dcraw_command_rejects_unsupported_demosaic():
+    recipe = Recipe(demosaic_algorithm="rcd")
+    with pytest.raises(RuntimeError, match="demosaic_algorithm no soportado"):
+        _build_dcraw_command(Path("/tmp/capture.nef"), recipe)
+
+
 def test_develop_image_rejects_unknown_raw_developer():
     recipe = Recipe(raw_developer="rawpy")
     with pytest.raises(RuntimeError, match="raw_developer no soportado"):
         _develop_image(Path("/tmp/capture.nef"), recipe)
+
+
+def test_develop_controlled_writes_audit_before_output_adjustments(tmp_path: Path):
+    source = tmp_path / "input.tiff"
+    out = tmp_path / "out.tiff"
+    audit = tmp_path / "audit_linear.tiff"
+
+    image = np.zeros((8, 10, 3), dtype=np.uint16)
+    image[..., 0] = 9000
+    image[..., 1] = 14000
+    image[..., 2] = 22000
+    tifffile.imwrite(str(source), image, photometric="rgb", metadata=None)
+
+    recipe = Recipe(
+        exposure_compensation=1.0,
+        tone_curve="srgb",
+        output_linear=False,
+    )
+    develop_controlled(source, recipe, out, audit)
+
+    source_linear = read_image(source)
+    audit_linear = read_image(audit)
+    rendered = read_image(out)
+
+    assert np.allclose(audit_linear, source_linear, atol=1 / 65535)
+    assert not np.allclose(rendered, audit_linear, atol=1e-3)

@@ -13,7 +13,7 @@ from ..core.recipe import load_recipe
 from ..core.utils import RAW_EXTENSIONS, read_image
 from ..profile.builder import load_profile_model
 from ..profile.export import apply_profile_matrix
-from .pipeline import DCRAW_QUALITY_MAP, develop_controlled
+from .pipeline import dcraw_quality_value, develop_controlled
 
 
 def load_image_for_preview(
@@ -61,7 +61,7 @@ def _develop_raw_fast_preview(input_path: Path, recipe: Recipe) -> np.ndarray:
     if embedded is not None:
         return embedded
 
-    q = DCRAW_QUALITY_MAP.get(recipe.demosaic_algorithm.strip().lower(), "2")
+    q = dcraw_quality_value(recipe.demosaic_algorithm)
     cmd = [
         "dcraw",
         "-T",

@@ -20,6 +20,7 @@ ICCRAW utiliza herramientas externas ejecutadas por subprocess:
 
 - `dcraw` para revelado RAW.
 - `ArgyllCMS` (`colprof`) para construccion de perfiles ICC.
+- `LittleCMS` (`tificc`) para conversiones ICC de salida.
 - `exiftool` para metadatos.
 - `PySide6` (Qt for Python, opcional) para GUI.
 
@@ -27,7 +28,8 @@ Notas de licencia relevantes:
 
 1. ArgyllCMS publica su paquete principal bajo AGPL (segun documentacion oficial del proyecto).
 2. `dcraw.c` incluye condiciones propias del autor; ICCRAW lo usa como herramienta externa y no redistribuye el codigo/binario dentro de este repositorio.
-3. PySide6 comunitario se distribuye bajo LGPLv3/GPLv3; en ICCRAW se usa como dependencia opcional de GUI.
+3. LittleCMS se distribuye como software open source permisivo; ICCRAW lo invoca como herramienta externa.
+4. PySide6 comunitario se distribuye bajo LGPLv3/GPLv3; en ICCRAW se usa como dependencia opcional de GUI.
 
 Politica de integracion:
 

@@ -1,7 +1,7 @@
 # Recipe científica de ejemplo para perfilado
 # Mantener sin operaciones creativas.
 raw_developer: dcraw
-demosaic_algorithm: rcd
+demosaic_algorithm: ahd
 black_level_mode:
   mode: metadata
 white_balance_mode: fixed

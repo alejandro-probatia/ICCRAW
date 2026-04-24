@@ -1,0 +1,66 @@
+from pathlib import Path
+import shutil
+
+import numpy as np
+import pytest
+import tifffile
+from PIL import ImageCms
+
+from iccraw.core.models import Recipe
+from iccraw.profile.export import color_management_mode, write_profiled_tiff
+
+
+def test_color_management_mode_assigns_camera_profile_by_default():
+    recipe = Recipe(output_space="scene_linear_camera_rgb", output_linear=True)
+    assert color_management_mode(recipe) == "camera_rgb_with_input_icc"
+
+
+def test_color_management_mode_requires_non_linear_srgb_output():
+    recipe = Recipe(output_space="srgb", output_linear=True)
+    with pytest.raises(RuntimeError, match="output_space=srgb requiere output_linear=false"):
+        color_management_mode(recipe)
+
+
+def test_write_profiled_tiff_assigns_input_profile_without_conversion(tmp_path: Path):
+    profile = tmp_path / "camera.icc"
+    profile.write_bytes(b"camera-profile-placeholder")
+    out = tmp_path / "camera_rgb.tiff"
+    image = np.full((6, 8, 3), 0.25, dtype=np.float32)
+
+    mode = write_profiled_tiff(
+        out,
+        image,
+        recipe=Recipe(output_space="camera_rgb", output_linear=True),
+        profile_path=profile,
+    )
+
+    assert mode == "camera_rgb_with_input_icc"
+    with tifffile.TiffFile(out) as tif:
+        tags = tif.pages[0].tags
+        assert 34675 in tags
+        assert bytes(tags[34675].value) == b"camera-profile-placeholder"
+
+
+@pytest.mark.skipif(shutil.which("tificc") is None, reason="requiere tificc/LittleCMS")
+def test_write_profiled_tiff_converts_to_srgb_with_cmm(tmp_path: Path):
+    profile = tmp_path / "source_srgb.icc"
+    profile.write_bytes(ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes())
+    out = tmp_path / "converted_srgb.tiff"
+    image = np.zeros((10, 12, 3), dtype=np.float32)
+    image[..., 0] = 0.2
+    image[..., 1] = 0.3
+    image[..., 2] = 0.4
+
+    mode = write_profiled_tiff(
+        out,
+        image,
+        recipe=Recipe(output_space="srgb", output_linear=False),
+        profile_path=profile,
+    )
+
+    assert mode == "converted_srgb"
+    arr = tifffile.imread(out)
+    assert arr.dtype == np.uint16
+    assert arr.shape == image.shape
+    with tifffile.TiffFile(out) as tif:
+        assert 34675 in tif.pages[0].tags

@@ -41,7 +41,7 @@ src/iccraw/
 
   profile/                     # perfil ICC y export
     builder.py                 # build_profile / validate_profile (ArgyllCMS)
-    export.py                  # batch_develop + apply_profile_matrix
+    export.py                  # batch_develop + export ICC/CMM + matriz diagnostica
 ```
 
 ## Reglas de dependencia

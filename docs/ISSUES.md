@@ -7,20 +7,20 @@ criterios de aceptacion completos estan en:
 
 ## P0
 
-1. Validar recetas de forma estricta y eliminar mapeos silenciosos de algoritmos
+1. [x] Validar recetas de forma estricta y eliminar mapeos silenciosos de algoritmos
    RAW no soportados por el backend activo.
-2. Corregir `audit_linear_tiff` para que se escriba antes de curvas tonales,
+2. [x] Corregir `audit_linear_tiff` para que se escriba antes de curvas tonales,
    conversiones o renderizado de salida.
-3. Separar en `batch-develop` los modos:
+3. [x] Separar en `batch-develop` los modos:
    - asignar perfil ICC de entrada a RGB camara,
    - convertir con CMM real a un perfil de salida.
-4. Integrar un CMM real para conversiones ICC y dejar la matriz lateral como
+4. [x] Integrar un CMM real para conversiones ICC y dejar la matriz lateral como
    diagnostico, no como salida principal.
-5. Validar el perfil ICC real generado por ArgyllCMS, no solo la matriz del
+5. [ ] Validar el perfil ICC real generado por ArgyllCMS, no solo la matriz del
    sidecar `.profile.json`.
-6. Añadir dataset RAW/DNG real con licencia clara y checksums para tests de
+6. [ ] Añadir dataset RAW/DNG real con licencia clara y checksums para tests de
    integracion.
-7. Garantizar ArgyllCMS (`colprof`) y herramientas externas en CI para tests
+7. [ ] Garantizar ArgyllCMS (`colprof`) y herramientas externas en CI para tests
    de integracion reales.
 
 ## P1

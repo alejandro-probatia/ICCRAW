@@ -70,7 +70,14 @@ El desarrollo debe alinearse, como minimo, con estas referencias:
 
 Criticidad: critica.
 
-Situacion:
+Estado de implementacion:
+
+- mitigacion inicial implementada: la exportacion de lote ya separa RGB de camara
+  con perfil de entrada incrustado y conversion a sRGB mediante LittleCMS
+  (`tificc`).
+- pendiente: validacion cruzada externa mas amplia de perfiles ICC reales.
+
+Situacion detectada en la revision inicial:
 
 - `batch_develop` revela a TIFF lineal, aplica una matriz propia
   `camera_to_xyz -> sRGB` y despues incrusta el ICC generado.
@@ -113,7 +120,12 @@ Criterios de aceptacion:
 
 Criticidad: critica.
 
-Situacion:
+Estado de implementacion:
+
+- mitigado: recetas de ejemplo actualizadas a `ahd` y validacion estricta para
+  rechazar algoritmos no soportados por `dcraw`.
+
+Situacion detectada en la revision inicial:
 
 - La receta de ejemplo usa `demosaic_algorithm: rcd`.
 - `dcraw` solo soporta los modos `-q 0..3` principales.
@@ -147,7 +159,12 @@ Criterios de aceptacion:
 
 Criticidad: alta.
 
-Situacion:
+Estado de implementacion:
+
+- mitigado: `audit_linear_tiff` se escribe antes de compensacion de exposicion y
+  curvas de salida.
+
+Situacion detectada en la revision inicial:
 
 - El TIFF de auditoria se escribe despues de aplicar compensacion de exposicion y
   posible curva tonal.

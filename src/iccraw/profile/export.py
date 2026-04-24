@@ -4,14 +4,17 @@ from dataclasses import asdict
 from pathlib import Path
 import hashlib
 import json
+import shutil
+import subprocess
+import tempfile
 import numpy as np
 import colour
+from PIL import ImageCms
 
 from ..core.models import BatchManifest, BatchManifestEntry, Recipe
 from ..core.utils import list_raw_files, read_image, sha256_file, write_tiff16
 from ..raw.pipeline import develop_controlled
 from ..version import __version__
-from .builder import load_profile_model
 
 
 def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: Path) -> BatchManifest:
@@ -28,9 +31,10 @@ def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: P
     if not files:
         raise RuntimeError(f"No se encontraron RAWs ni imagenes compatibles en: {raws_dir}")
 
-    profile_model = load_profile_model(profile_path)
-    matrix = np.asarray(profile_model["matrix_camera_to_xyz"], dtype=np.float64)
-    icc_bytes = profile_path.read_bytes() if profile_path.exists() else None
+    if not profile_path.exists():
+        raise FileNotFoundError(f"No existe perfil ICC: {profile_path}")
+
+    color_mode = color_management_mode(recipe)
 
     recipe_sha = hashlib.sha256(json.dumps(asdict(recipe), sort_keys=True).encode("utf-8")).hexdigest()
 
@@ -42,8 +46,7 @@ def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: P
 
         develop_controlled(raw, recipe, out_linear, None)
         image = read_image(out_linear)
-        corrected = apply_profile_matrix(image, matrix, recipe.output_space, recipe.output_linear)
-        write_tiff16(out_final, corrected, icc_profile=icc_bytes)
+        write_profiled_tiff(out_final, image, recipe=recipe, profile_path=profile_path)
 
         entries.append(
             BatchManifestEntry(
@@ -52,15 +55,101 @@ def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: P
                 output_tiff=str(out_final),
                 output_sha256=sha256_file(out_final),
                 profile_path=str(profile_path),
+                color_management_mode=color_mode,
+                output_color_space=recipe.output_space,
             )
         )
 
     return BatchManifest(
         recipe_sha256=recipe_sha,
         profile_path=str(profile_path),
+        color_management_mode=color_mode,
+        output_color_space=recipe.output_space,
         software_version=__version__,
         entries=entries,
     )
+
+
+def color_management_mode(recipe: Recipe) -> str:
+    space = recipe.output_space.strip().lower()
+    if space in {"scene_linear_camera_rgb", "camera_rgb", "camera"}:
+        return "camera_rgb_with_input_icc"
+    if space in {"srgb", "s_rgb", "s-rgb"}:
+        if recipe.output_linear:
+            raise RuntimeError(
+                "output_space=srgb requiere output_linear=false para conversion ICC "
+                "con perfil sRGB estandar. Linear sRGB necesita un perfil de salida "
+                "explicito que aun no esta implementado."
+            )
+        return "converted_srgb"
+    raise RuntimeError(
+        f"output_space no soportado para export ICC: {recipe.output_space!r}. "
+        "Valores soportados: scene_linear_camera_rgb, camera_rgb, camera, srgb."
+    )
+
+
+def write_profiled_tiff(
+    out_tiff: Path,
+    image_linear_rgb: np.ndarray,
+    *,
+    recipe: Recipe,
+    profile_path: Path | None,
+) -> str:
+    if profile_path is None:
+        write_tiff16(out_tiff, image_linear_rgb)
+        return "no_profile"
+
+    if not profile_path.exists():
+        raise FileNotFoundError(f"No existe perfil ICC: {profile_path}")
+
+    mode = color_management_mode(recipe)
+    if mode == "camera_rgb_with_input_icc":
+        write_tiff16(out_tiff, image_linear_rgb, icc_profile=profile_path.read_bytes())
+        return mode
+
+    if mode == "converted_srgb":
+        _write_converted_srgb_tiff(out_tiff, image_linear_rgb, input_profile=profile_path)
+        return mode
+
+    raise RuntimeError(f"Modo de gestion de color no soportado: {mode}")
+
+
+def _write_converted_srgb_tiff(out_tiff: Path, image_linear_rgb: np.ndarray, *, input_profile: Path) -> None:
+    tificc = shutil.which("tificc")
+    if tificc is None:
+        raise RuntimeError(
+            "No se puede convertir ICC: 'tificc' no esta disponible en PATH. "
+            "Instala LittleCMS tools (por ejemplo, paquete liblcms2-utils)."
+        )
+
+    out_tiff.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="iccraw_lcms_") as tmp:
+        tmpdir = Path(tmp)
+        source_tiff = tmpdir / "camera_rgb_input.tiff"
+        srgb_icc = tmpdir / "srgb.icc"
+
+        write_tiff16(source_tiff, image_linear_rgb)
+        _write_srgb_profile(srgb_icc)
+
+        cmd = [
+            tificc,
+            f"-i{input_profile}",
+            f"-o{srgb_icc}",
+            "-t1",
+            "-b",
+            "-w16",
+            "-e",
+            str(source_tiff),
+            str(out_tiff),
+        ]
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(f"tificc retorno {proc.returncode}: {proc.stdout[-500:]}")
+
+
+def _write_srgb_profile(path: Path) -> None:
+    profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
+    path.write_bytes(profile.tobytes())
 
 
 def apply_profile_matrix(

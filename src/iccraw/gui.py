@@ -29,9 +29,8 @@ except Exception:
 from .chart.sampling import ReferenceCatalog
 from .core.models import Recipe
 from .core.recipe import load_recipe
-from .core.utils import RAW_EXTENSIONS, read_image, write_tiff16
-from .profile.builder import load_profile_model
-from .profile.export import apply_profile_matrix
+from .core.utils import RAW_EXTENSIONS, read_image
+from .profile.export import write_profiled_tiff
 from .raw.pipeline import develop_controlled
 from .raw.preview import (
     apply_adjustments,
@@ -61,10 +60,6 @@ DEMOSAIC_OPTIONS = [
     "vng",
     "ppg",
     "ahd",
-    "dcb",
-    "dht",
-    "aa_hd",
-    "rcd",
 ]
 
 WB_MODE_OPTIONS = [
@@ -2131,15 +2126,7 @@ if QtWidgets is not None:
                     temp_linear = Path(tmp) / "develop_linear.tiff"
                     develop_controlled(in_path, recipe, temp_linear, None)
                     image = read_image(temp_linear)
-
-                    icc_bytes: bytes | None = None
-                    if profile_path is not None and profile_path.exists():
-                        model = load_profile_model(profile_path)
-                        matrix = np.asarray(model["matrix_camera_to_xyz"], dtype=np.float64)
-                        image = apply_profile_matrix(image, matrix, recipe.output_space, recipe.output_linear)
-                        icc_bytes = profile_path.read_bytes()
-
-                    write_tiff16(out_path, image, icc_profile=icc_bytes)
+                    write_profiled_tiff(out_path, image, recipe=recipe, profile_path=profile_path)
                 return {"output_tiff": str(out_path)}
 
             def on_success(payload) -> None:
@@ -2255,13 +2242,7 @@ if QtWidgets is not None:
 
             with tempfile.TemporaryDirectory(prefix="iccraw_gui_batch_") as tmp:
                 tmpdir = Path(tmp)
-                matrix = None
-                icc_bytes: bytes | None = None
-                if profile_path is not None and profile_path.exists():
-                    model = load_profile_model(profile_path)
-                    matrix = np.asarray(model["matrix_camera_to_xyz"], dtype=np.float64)
-                    icc_bytes = profile_path.read_bytes()
-                elif profile_path is not None:
+                if profile_path is not None and not profile_path.exists():
                     raise RuntimeError(f"No existe perfil ICC activo: {profile_path}")
 
                 for idx, src in enumerate(files, start=1):
@@ -2282,11 +2263,13 @@ if QtWidgets is not None:
                                 sharpen_radius=sharpen_radius,
                             )
 
-                        if matrix is not None:
-                            image = apply_profile_matrix(image, matrix, recipe.output_space, recipe.output_linear)
-
                         out_path = out_dir / f"{src.stem}.tiff"
-                        write_tiff16(out_path, image, icc_profile=icc_bytes if use_profile else None)
+                        write_profiled_tiff(
+                            out_path,
+                            image,
+                            recipe=recipe,
+                            profile_path=profile_path if use_profile else None,
+                        )
                         outputs.append({"source": str(src), "output": str(out_path)})
                     except Exception as exc:
                         errors.append({"source": str(src), "error": str(exc)})

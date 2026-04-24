@@ -32,18 +32,18 @@ Reglas:
 6. `validate-profile`: DeltaE 76/2000.
 7. `batch-develop`: mismo recipe + mismo perfil sobre lote RAW.
 
-## Invariantes pendientes de implementacion estricta
+## Invariantes criticas
 
-1. La receta ejecutada debe coincidir con la receta declarada; no se permiten
+1. [x] La receta ejecutada debe coincidir con la receta declarada; no se permiten
    mapeos silenciosos de algoritmos o parametros.
-2. El TIFF de auditoria lineal debe escribirse antes de cualquier curva tonal o
+2. [x] El TIFF de auditoria lineal debe escribirse antes de cualquier curva tonal o
    conversion de salida.
-3. La gestion ICC debe separar:
+3. [x] La gestion ICC debe separar:
    - asignacion de perfil de entrada,
    - conversion mediante CMM a perfil de salida.
-4. La validacion debe comprobar el ICC real generado, no solo artefactos
+4. [ ] La validacion debe comprobar el ICC real generado, no solo artefactos
    numericos auxiliares.
-5. El fallback de deteccion de carta no debe producir perfiles automaticamente
+5. [ ] El fallback de deteccion de carta no debe producir perfiles automaticamente
    sin confirmacion o modo explicito.
 
 ## Validez del perfil

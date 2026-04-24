@@ -22,12 +22,13 @@ missing=0
 
 check_cmd "dcraw" "dcraw" || missing=1
 check_cmd "colprof" "colprof -? " || missing=1
+check_cmd "tificc" "tificc" || missing=1
 check_cmd "exiftool" "exiftool -ver" || missing=1
 
 if [[ "$missing" -ne 0 ]]; then
   echo
   echo "Faltan dependencias del sistema. Instala (Debian/Ubuntu):"
-  echo "  sudo apt-get install dcraw argyll exiftool"
+  echo "  sudo apt-get install dcraw argyll liblcms2-utils exiftool"
   exit 2
 fi
 
