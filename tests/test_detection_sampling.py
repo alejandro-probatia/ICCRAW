@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 import tifffile
 
 from iccraw.chart.detection import detect_chart
@@ -87,3 +88,43 @@ def test_sample_chart_honors_trim_percent_and_saturation_rejection(tmp_path: Pat
     assert saturated_kept.samples[0].measured_rgb[0] > untrimmed.samples[0].measured_rgb[0]
     assert "trim_percent=0.25" in trimmed.strategy
     assert "reject_saturated=true" in trimmed.strategy
+
+
+def test_reference_catalog_from_path_validates_required_metadata(tmp_path: Path):
+    path = tmp_path / "bad_reference.json"
+    path.write_text(
+        """
+{
+  "chart_name": "ColorChecker 24",
+  "chart_version": "dev",
+  "illuminant": "D65",
+  "observer": "10",
+  "patches": [
+    {"patch_id": "P01", "reference_lab": [50, 0, 0]}
+  ]
+}
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="Referencia de carta invalida"):
+        ReferenceCatalog.from_path(path)
+
+
+def test_reference_catalog_accepts_strict_colorchecker_reference():
+    payload = {
+        "chart_name": "ColorChecker 24",
+        "chart_version": "unit",
+        "reference_source": "unit-test",
+        "illuminant": "D50",
+        "observer": "2",
+        "patches": [
+            {"patch_id": f"P{i:02d}", "reference_lab": [50.0, 0.0, 0.0]}
+            for i in range(1, 25)
+        ],
+    }
+
+    catalog = ReferenceCatalog(payload, strict=True)
+
+    assert catalog.reference_source == "unit-test"
+    assert len(catalog.patch_map) == 24

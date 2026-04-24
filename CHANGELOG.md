@@ -29,6 +29,8 @@ Para mantener trazabilidad completa, cada cambio debe:
   confianza baja y bloqueo por defecto en flujos automaticos.
 - El muestreo de carta aplica `sampling_trim_percent` y
   `sampling_reject_saturated` desde la receta.
+- Las referencias de carta cargadas desde JSON se validan en modo estricto
+  (fuente, D50, observador 2 grados, ids únicos y Lab completo).
 - La matriz `matrix_camera_to_xyz` queda como artefacto diagnostico/compatibilidad,
   no como sustituto de la conversion ICC en exportacion de lote ni de la
   validacion del perfil.
@@ -59,6 +61,7 @@ Para mantener trazabilidad completa, cada cambio debe:
   un sidecar con matriz incorrecta.
 - Tests P1 para deteccion fallback de baja confianza y muestreo controlado por
   parametros de receta.
+- Tests P1 para rechazo de referencias de carta incompletas/incompatibles.
 - Plantilla de mantenimiento continuo del changelog y política de actualización.
 - Módulo `preview` para carga de imagen/RAW en previsualización, ajustes técnicos y análisis lineal.
 - GUI nueva basada en Qt/PySide6 (`app-ui`, `app-ui-qt`) con:

@@ -323,7 +323,15 @@ Criterios de aceptacion:
 
 Criticidad: media.
 
-Situacion:
+Estado de implementacion:
+
+- mitigado: `ReferenceCatalog.from_path()` valida metadatos obligatorios,
+  iluminante D50, observador 2 grados, fuente de referencia, ids de parche y
+  valores Lab.
+- pendiente: soportar adaptacion cromatica documentada para referencias no D50
+  si se decide ampliar el pipeline.
+
+Situacion detectada en la revision inicial:
 
 - El catalogo lee `observer`, pero el perfilado fija internamente D50.
 - No se valida que `reference_lab` corresponda al iluminante/observador esperado.

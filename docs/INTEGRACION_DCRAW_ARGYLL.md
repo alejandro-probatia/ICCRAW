@@ -121,6 +121,15 @@ Regla operativa:
 
 ## Validación de integración en local
 
+Las referencias de carta cargadas desde JSON se validan en modo estricto:
+
+- `reference_source`/`source` obligatorio,
+- `illuminant: D50`,
+- `observer: 2`,
+- ids de parche únicos,
+- `reference_lab` numerico de tres componentes por parche,
+- 24 parches para ColorChecker.
+
 ### Prueba de revelado RAW real (`dcraw`)
 
 ```bash

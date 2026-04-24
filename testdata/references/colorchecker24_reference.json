@@ -1,6 +1,7 @@
 {
   "chart_name": "ColorChecker 24",
   "chart_version": "2005",
+  "reference_source": "ICCRAW synthetic development reference; not certified for production colorimetry",
   "illuminant": "D50",
   "observer": "2",
   "patches": [

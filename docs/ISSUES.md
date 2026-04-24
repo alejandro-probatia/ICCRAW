@@ -30,7 +30,7 @@ criterios de aceptacion completos estan en:
 2. [ ] Añadir modo manual asistido para marcar esquinas de carta.
 3. [x] Aplicar parametros completos de muestreo desde receta (`trim_percent`,
    `reject_saturated`, margen de parche, criterios de exclusion).
-4. [ ] Validar iluminante, observador, fuente y version de la referencia de carta.
+4. [x] Validar iluminante, observador, fuente y version de la referencia de carta.
 5. [ ] Implementar validacion cruzada con capturas no usadas para construir perfil.
 6. [ ] Mejorar deteccion automatica de ColorChecker24 en condiciones no ideales.
 7. [ ] Completar soporte IT8 (deteccion + referencia + validacion).

@@ -84,6 +84,7 @@ iccraw detect-chart /tmp/captura_revelada.tiff \
 iccraw sample-chart /tmp/captura_revelada.tiff \
   --detection /tmp/detection.json \
   --reference testdata/references/colorchecker24_reference.json \
+  --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/samples.json
 ```
 
@@ -219,6 +220,9 @@ Durante el proceso, ICCRAW produce:
   - el flujo automático la rechaza por defecto para evitar perfiles inválidos,
   - usar `--allow-fallback-detection` solo en pruebas controladas o con revisión
     manual del overlay.
+- Referencia de carta inválida:
+  - comprobar que declara `reference_source`, `illuminant: D50`, `observer: 2`
+    y valores `reference_lab` para todos los parches.
 
 ## 9. C2PA/CAI (propuesta)
 

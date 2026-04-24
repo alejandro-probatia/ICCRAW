@@ -9,17 +9,71 @@ from ..core.utils import read_image, robust_trimmed_mean
 
 
 class ReferenceCatalog:
-    def __init__(self, payload: dict):
+    def __init__(self, payload: dict, *, strict: bool = False):
         self.chart_name: str = payload.get("chart_name", "unknown")
         self.chart_version: str = payload.get("chart_version", "unknown")
         self.illuminant: str = payload.get("illuminant", "unknown")
         self.observer: str = payload.get("observer", "2")
-        patches = payload.get("patches", [])
-        self.patch_map = {p["patch_id"]: p for p in patches if "patch_id" in p}
+        self.reference_source: str | None = payload.get("reference_source") or payload.get("source")
+        self.patches: list[dict] = payload.get("patches", [])
+        self.patch_map = {p["patch_id"]: p for p in self.patches if "patch_id" in p}
+        if strict:
+            self.validate()
 
     @classmethod
-    def from_path(cls, path: Path) -> "ReferenceCatalog":
-        return cls(read_json(path))
+    def from_path(cls, path: Path, *, strict: bool = True) -> "ReferenceCatalog":
+        return cls(read_json(path), strict=strict)
+
+    def validate(self) -> None:
+        errors: list[str] = []
+        if self.chart_name == "unknown":
+            errors.append("chart_name ausente")
+        if self.chart_version == "unknown":
+            errors.append("chart_version ausente")
+        if self.illuminant.strip().upper() != "D50":
+            errors.append(f"illuminant debe ser D50 para el pipeline ICC actual: {self.illuminant!r}")
+        if _normalize_observer(self.observer) != "2":
+            errors.append(f"observer debe ser 2 grados para el pipeline actual: {self.observer!r}")
+        if not self.reference_source:
+            errors.append("reference_source/source ausente")
+
+        patch_ids = [str(p.get("patch_id")) for p in self.patches if "patch_id" in p]
+        if len(patch_ids) != len(set(patch_ids)):
+            errors.append("patch_id duplicado")
+        if len(patch_ids) != len(self.patches):
+            errors.append("todos los parches deben incluir patch_id")
+        if "colorchecker" in self.chart_name.lower() and len(self.patches) != 24:
+            errors.append(f"ColorChecker requiere 24 parches de referencia, encontrados {len(self.patches)}")
+
+        for patch_id, patch in self.patch_map.items():
+            lab = patch.get("reference_lab")
+            if lab is None:
+                errors.append(f"{patch_id}: reference_lab ausente")
+                continue
+            if not isinstance(lab, list) or len(lab) != 3:
+                errors.append(f"{patch_id}: reference_lab debe tener 3 valores")
+                continue
+            try:
+                l_val, a_val, b_val = [float(v) for v in lab]
+            except Exception:
+                errors.append(f"{patch_id}: reference_lab contiene valores no numericos")
+                continue
+            if not (0.0 <= l_val <= 100.0):
+                errors.append(f"{patch_id}: L* fuera de rango 0..100")
+            if not (-160.0 <= a_val <= 160.0 and -160.0 <= b_val <= 160.0):
+                errors.append(f"{patch_id}: a*/b* fuera de rango esperado")
+
+        if errors:
+            raise RuntimeError("Referencia de carta invalida: " + "; ".join(errors))
+
+
+def _normalize_observer(observer: str) -> str:
+    raw = str(observer or "").strip().lower().replace(" ", "")
+    if raw in {"2", "2deg", "2degree", "2degrees", "2°"}:
+        return "2"
+    if raw in {"10", "10deg", "10degree", "10degrees", "10°"}:
+        return "10"
+    return raw
 
 
 def sample_chart(
