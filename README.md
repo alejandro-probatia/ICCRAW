@@ -111,6 +111,11 @@ iccraw auto-profile-batch \
   --workdir ./work_auto
 ```
 
+```bash
+iccraw compare-qa-reports session_a/qa_session_report.json session_b/qa_session_report.json \
+  --out qa_comparison.json
+```
+
 ## Interfaz Gráfica Qt
 
 La aplicación incluye una GUI basada en **Qt/PySide6** optimizada para flujo de revelado técnico:

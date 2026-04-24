@@ -30,6 +30,7 @@ from .core.recipe import load_recipe, save_recipe
 from .profile.development import build_development_profile
 from .profile.builder import build_profile, validate_profile, write_samples_cgats
 from .profile.export import batch_develop
+from .qa_compare import compare_qa_reports
 from .raw.metadata import raw_info
 from .raw.pipeline import develop_controlled
 from .reporting import gather_run_context
@@ -141,6 +142,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     s.add_argument("--camera", default=None)
     s.add_argument("--lens", default=None)
+
+    s = sub.add_parser("compare-qa-reports")
+    s.add_argument("reports", nargs="+", help="Reportes qa_session_report.json a comparar")
+    s.add_argument("--out", default=None, help="JSON de salida opcional")
 
     return p
 
@@ -275,6 +280,13 @@ def main(argv: list[str] | None = None) -> int:
                 camera_model=args.camera,
                 lens_model=args.lens,
             )
+            print(json.dumps(result, indent=2))
+            return 0
+
+        if args.command == "compare-qa-reports":
+            result = compare_qa_reports([Path(p) for p in args.reports])
+            if args.out:
+                write_json(Path(args.out), result)
             print(json.dumps(result, indent=2))
             return 0
 

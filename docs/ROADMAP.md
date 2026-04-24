@@ -61,7 +61,7 @@ Objetivo: validar el ICC real y la aptitud del perfil para una sesion.
 - reporte QA de sesion con estado `validated`, `rejected` o `not_validated`,
 - umbrales DeltaE por disciplina o preset,
 - estados operacionales de perfil: `draft`, `validated`, `rejected`, `expired`,
-- reportes comparables entre sesiones.
+- reportes comparables entre sesiones mediante CLI/GUI.
 
 ## Fase 5 - Reproducibilidad, CI y distribucion (P2)
 

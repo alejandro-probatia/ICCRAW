@@ -150,6 +150,15 @@ El resultado incluye `profile_status.status`: `draft` sin validación
 independiente, `validated` si supera QA, `rejected` si falla los umbrales
 DeltaE y `expired` cuando se supera la vigencia declarada.
 
+Para comparar sesiones ya generadas:
+
+```bash
+iccraw compare-qa-reports \
+  /ruta/sesion_a/qa_session_report.json \
+  /ruta/sesion_b/qa_session_report.json \
+  --out /tmp/qa_comparison.json
+```
+
 ## 4. Flujo con interfaz grafica Qt
 
 Arranque:

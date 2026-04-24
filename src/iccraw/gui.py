@@ -32,6 +32,7 @@ from .core.models import Recipe, to_json_dict, write_json
 from .core.recipe import load_recipe
 from .core.utils import RAW_EXTENSIONS, read_image
 from .profile.export import write_profiled_tiff
+from .qa_compare import compare_qa_reports
 from .raw.pipeline import develop_controlled
 from .raw.preview import (
     apply_adjustments,
@@ -321,6 +322,7 @@ if QtWidgets is not None:
             menu_profile = mb.addMenu("Perfil ICC")
             menu_profile.addAction(self._action("Cargar perfil activo...", self._menu_load_profile))
             menu_profile.addAction(self._action("Usar perfil generado", self._use_generated_profile_as_active))
+            menu_profile.addAction(self._action("Comparar reportes QA...", self._menu_compare_qa_reports))
 
             menu_view = mb.addMenu("Vista")
             a_compare = self._action("Comparar original/resultado", self._menu_toggle_compare)
@@ -1992,6 +1994,45 @@ if QtWidgets is not None:
             self._set_status(f"Perfil activo: {path}")
             self._refresh_preview()
             self._save_active_session(silent=True)
+
+        def _menu_compare_qa_reports(self) -> None:
+            paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
+                self,
+                "Comparar reportes QA de sesión",
+                str(self._current_dir),
+                "Reportes JSON (*.json);;Todos (*)",
+            )
+            if not paths:
+                return
+            try:
+                comparison = compare_qa_reports([Path(path) for path in paths])
+            except Exception as exc:
+                QtWidgets.QMessageBox.warning(self, "Comparación QA", str(exc))
+                return
+            self.profile_output.setPlainText(json.dumps(comparison, indent=2, ensure_ascii=False))
+            if hasattr(self, "profile_summary_label"):
+                self.profile_summary_label.setText(self._qa_comparison_summary(comparison))
+            self._set_status(f"Comparados {comparison.get('report_count', len(paths))} reportes QA")
+
+        def _qa_comparison_summary(self, comparison: dict[str, Any]) -> str:
+            status_counts = comparison.get("status_counts") if isinstance(comparison.get("status_counts"), dict) else {}
+            best = comparison.get("best_validation_mean_delta_e2000")
+            worst = comparison.get("worst_validation_mean_delta_e2000")
+            parts = [
+                f"Reportes QA comparados: {comparison.get('report_count', 0)}",
+                "Estados: " + ", ".join(f"{key}={value}" for key, value in sorted(status_counts.items())),
+            ]
+            if isinstance(best, dict) and best.get("validation_mean_delta_e2000") is not None:
+                parts.append(
+                    f"Mejor validación: {best.get('label')} "
+                    f"media {float(best['validation_mean_delta_e2000']):.2f}"
+                )
+            if isinstance(worst, dict) and worst.get("validation_mean_delta_e2000") is not None:
+                parts.append(
+                    f"Peor validación: {worst.get('label')} "
+                    f"media {float(worst['validation_mean_delta_e2000']):.2f}"
+                )
+            return "\n".join(parts)
 
         def _menu_load_recipe(self) -> None:
             start = self.path_recipe.text().strip() or str(Path.cwd())

@@ -9,3 +9,4 @@ def test_parser_has_expected_commands():
     assert "export-cgats" in text
     assert "batch-develop" in text
     assert "auto-profile-batch" in text
+    assert "compare-qa-reports" in text

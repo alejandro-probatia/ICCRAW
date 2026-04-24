@@ -75,6 +75,9 @@ Para mantener trazabilidad completa, cada cambio debe:
   `rejected` o `expired`, con vigencia opcional desde CLI.
 - `auto-profile-batch` no aplica a lote perfiles de sesion `rejected` o
   `expired`.
+- Nuevo comparador de reportes QA entre sesiones (`compare-qa-reports`) con
+  resumen de estados, DeltaE, outliers, checks nuevos/resueltos y acceso desde
+  la GUI.
 - Plantilla de mantenimiento continuo del changelog y política de actualización.
 - Módulo `preview` para carga de imagen/RAW en previsualización, ajustes técnicos y análisis lineal.
 - GUI nueva basada en Qt/PySide6 (`app-ui`, `app-ui-qt`) con:
