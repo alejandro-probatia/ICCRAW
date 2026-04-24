@@ -87,6 +87,11 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Docs
 
+- Nuevo documento `docs/OPERATIVE_REVIEW_PLAN.md` con hallazgos tecnicos,
+  criterios de aceptacion y plan profesional por fases para convertir el
+  prototipo en pipeline operativo y auditable.
+- `ROADMAP.md`, `ISSUES.md`, `COLOR_PIPELINE.md` y `README.md` enlazados al
+  plan operativo y actualizados con prioridades P0-P3.
 - Política legal ampliada para:
   - compatibilidad AGPL con objetivo comunitario no comercial,
   - notas de licencia de ArgyllCMS, dcraw y PySide6,

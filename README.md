@@ -171,6 +171,7 @@ Campos clave:
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Color Pipeline](docs/COLOR_PIPELINE.md)
+- [Revision operativa y plan de profesionalizacion](docs/OPERATIVE_REVIEW_PLAN.md)
 - [Changelog](CHANGELOG.md)
 - [Manual de Usuario](docs/MANUAL_USUARIO.md)
 - [Integración dcraw + ArgyllCMS](docs/INTEGRACION_DCRAW_ARGYLL.md)
