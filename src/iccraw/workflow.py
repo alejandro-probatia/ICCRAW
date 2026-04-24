@@ -9,7 +9,16 @@ import numpy as np
 
 from .chart.detection import detect_chart, draw_detection_overlay
 from .chart.sampling import ReferenceCatalog, sample_chart
-from .core.models import PatchSample, Recipe, SampleSet, to_json_dict, write_json
+from .core.models import (
+    ChartDetectionResult,
+    PatchDetection,
+    PatchSample,
+    Point2,
+    Recipe,
+    SampleSet,
+    to_json_dict,
+    write_json,
+)
 from .core.recipe import load_recipe, save_recipe
 from .core.utils import RAW_EXTENSIONS
 from .profile.builder import build_profile
@@ -37,6 +46,7 @@ def auto_generate_profile_from_charts(
     camera_model: str | None = None,
     lens_model: str | None = None,
     chart_capture_files: list[Path] | None = None,
+    manual_detections: dict[Path, Any] | None = None,
 ) -> dict[str, Any]:
     work_dir.mkdir(parents=True, exist_ok=True)
     chart_dev_dir = work_dir / "chart_developed"
@@ -55,6 +65,7 @@ def auto_generate_profile_from_charts(
     if not chart_files:
         source = "la selección explícita" if chart_capture_files is not None else str(chart_captures_dir)
         raise RuntimeError(f"No se encontraron capturas de carta en: {source}")
+    manual_detection_map = _normalize_detection_map(manual_detections)
 
     initial_pass = _collect_chart_samples(
         chart_files=chart_files,
@@ -68,6 +79,8 @@ def auto_generate_profile_from_charts(
         sample_dir=sample_dir,
         overlay_dir=overlay_dir,
         pass_name="development_profile_source",
+        existing_detections=manual_detection_map,
+        existing_detection_note="geometria de carta desde deteccion manual guardada",
     )
     accepted_samples = initial_pass["accepted_samples"]
     skipped: list[dict[str, Any]] = list(initial_pass["skipped"])
@@ -163,6 +176,7 @@ def auto_profile_batch(
     camera_model: str | None = None,
     lens_model: str | None = None,
     chart_capture_files: list[Path] | None = None,
+    manual_detections: dict[Path, Any] | None = None,
 ) -> dict[str, Any]:
     profile_payload = auto_generate_profile_from_charts(
         chart_captures_dir=chart_captures_dir,
@@ -180,6 +194,7 @@ def auto_profile_batch(
         camera_model=camera_model,
         lens_model=lens_model,
         chart_capture_files=chart_capture_files,
+        manual_detections=manual_detections,
     )
 
     batch_recipe = recipe
@@ -272,6 +287,7 @@ def _collect_chart_samples(
     overlay_dir: Path,
     pass_name: str,
     existing_detections: dict[Path, Any] | None = None,
+    existing_detection_note: str = "geometria de carta reutilizada desde pasada de perfil de revelado",
 ) -> dict[str, Any]:
     for d in (chart_dev_dir, detect_dir, sample_dir, overlay_dir):
         d.mkdir(parents=True, exist_ok=True)
@@ -289,16 +305,18 @@ def _collect_chart_samples(
 
         try:
             develop_controlled(chart_file, recipe, developed_tiff, None)
-            detection = existing_detections.get(chart_file) if existing_detections else None
+            detection_key = chart_file.expanduser().resolve()
+            detection = existing_detections.get(detection_key) if existing_detections else None
             if detection is None:
                 detection = detect_chart(developed_tiff, chart_type=chart_type)
             else:
+                detection = _coerce_chart_detection(detection)
                 detection.warnings = list(detection.warnings) + [
-                    "geometria de carta reutilizada desde pasada de perfil de revelado"
+                    existing_detection_note
                 ]
             write_json(detection_path, detection)
             draw_detection_overlay(developed_tiff, detection, overlay_path)
-            detections[chart_file] = detection
+            detections[detection_key] = detection
 
             if detection.detection_mode == "fallback" and not allow_fallback_detection:
                 skipped.append(
@@ -387,3 +405,44 @@ def _normalize_chart_capture_files(files: list[Path]) -> list[Path]:
         raise RuntimeError(f"Capturas de carta inválidas o incompatibles: {preview}{suffix}")
 
     return sorted(set(normalized), key=lambda p: str(p))
+
+
+def _normalize_detection_map(detections: dict[Path, Any] | None) -> dict[Path, Any] | None:
+    if not detections:
+        return None
+    return {Path(path).expanduser().resolve(): detection for path, detection in detections.items()}
+
+
+def _coerce_chart_detection(value: Any) -> ChartDetectionResult:
+    if isinstance(value, ChartDetectionResult):
+        return value
+    if not isinstance(value, dict):
+        raise RuntimeError("Deteccion de carta manual no compatible")
+
+    return ChartDetectionResult(
+        chart_type=str(value["chart_type"]),
+        confidence_score=float(value["confidence_score"]),
+        valid_patch_ratio=float(value["valid_patch_ratio"]),
+        homography=[float(v) for v in value["homography"]],
+        chart_polygon=[_coerce_point(p) for p in value["chart_polygon"]],
+        patches=[
+            PatchDetection(
+                patch_id=str(patch["patch_id"]),
+                polygon=[_coerce_point(p) for p in patch["polygon"]],
+                sample_region=[_coerce_point(p) for p in patch["sample_region"]],
+            )
+            for patch in value["patches"]
+        ],
+        warnings=[str(w) for w in value.get("warnings", [])],
+        detection_mode=str(value.get("detection_mode", "manual")),
+    )
+
+
+def _coerce_point(value: Any) -> Point2:
+    if isinstance(value, Point2):
+        return value
+    if isinstance(value, dict):
+        return Point2(x=float(value["x"]), y=float(value["y"]))
+    if isinstance(value, (list, tuple)) and len(value) >= 2:
+        return Point2(x=float(value[0]), y=float(value[1]))
+    raise RuntimeError("Punto de deteccion de carta no compatible")

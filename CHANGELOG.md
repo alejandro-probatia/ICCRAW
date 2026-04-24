@@ -127,6 +127,11 @@ Para mantener trazabilidad completa, cada cambio debe:
 - La pestaña de calibración de sesión oculta rutas internas de artefactos y
   botones redundantes; el perfil generado se activa automáticamente junto con
   su receta calibrada.
+- `Generar perfil de sesión` infiere las cartas desde la selección de miniaturas
+  o desde el archivo cargado antes de recurrir a la carpeta, evitando búsquedas
+  accidentales en directorios genéricos como `$HOME`.
+- Las detecciones manuales guardadas desde la GUI quedan asociadas al RAW de
+  carta y se reutilizan durante la generación del perfil de sesión.
 
 ### Docs
 

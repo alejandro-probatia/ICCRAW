@@ -28,7 +28,7 @@ except Exception:
 
 from .chart.detection import detect_chart_from_corners, draw_detection_overlay
 from .chart.sampling import ReferenceCatalog
-from .core.models import Recipe, write_json
+from .core.models import Recipe, to_json_dict, write_json
 from .core.recipe import load_recipe
 from .core.utils import RAW_EXTENSIONS, read_image
 from .profile.export import write_profiled_tiff
@@ -242,6 +242,7 @@ if QtWidgets is not None:
             self._active_session_payload: dict[str, Any] | None = None
             self._develop_queue: list[dict[str, str]] = []
             self._selected_chart_files: list[Path] = []
+            self._manual_chart_detections: dict[str, dict[str, Any]] = {}
 
             self._original_linear: np.ndarray | None = None
             self._adjusted_linear: np.ndarray | None = None
@@ -2307,6 +2308,56 @@ if QtWidgets is not None:
         def _profile_chart_files_or_none(self) -> list[Path] | None:
             return list(self._selected_chart_files) if self._selected_chart_files else None
 
+        def _infer_profile_chart_files(self) -> list[Path] | None:
+            files = self._profile_chart_files_or_none()
+            if files:
+                return files
+
+            selected = [
+                p for p in self._collect_selected_file_paths()
+                if p.suffix.lower() in BROWSABLE_EXTENSIONS
+            ]
+            if selected:
+                self._selected_chart_files = sorted(set(selected), key=lambda p: str(p))
+                self._sync_profile_chart_selection_label()
+                parents = {p.parent for p in self._selected_chart_files}
+                if len(parents) == 1:
+                    self.profile_charts_dir.setText(str(next(iter(parents))))
+                self._set_status(f"Cartas tomadas de la selección: {len(self._selected_chart_files)}")
+                return list(self._selected_chart_files)
+
+            if self._selected_file is not None and self._selected_file.suffix.lower() in BROWSABLE_EXTENSIONS:
+                self._selected_chart_files = [self._selected_file]
+                self.profile_charts_dir.setText(str(self._selected_file.parent))
+                self._sync_profile_chart_selection_label()
+                self._set_status(f"Carta tomada del archivo cargado: {self._selected_file.name}")
+                return list(self._selected_chart_files)
+
+            return None
+
+        def _manual_detections_for_profile(self, chart_files: list[Path] | None) -> dict[Path, Any] | None:
+            if not self._manual_chart_detections:
+                return None
+            if chart_files:
+                selected_keys = {str(p.expanduser().resolve()) for p in chart_files}
+                matches = {
+                    Path(path): detection
+                    for path, detection in self._manual_chart_detections.items()
+                    if path in selected_keys
+                }
+            else:
+                matches = {Path(path): detection for path, detection in self._manual_chart_detections.items()}
+            return matches or None
+
+        def _directory_has_chart_captures(self, folder: Path) -> bool:
+            try:
+                return folder.exists() and folder.is_dir() and any(
+                    p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
+                    for p in folder.iterdir()
+                )
+            except Exception:
+                return False
+
         def _use_current_dir_as_batch_input(self) -> None:
             self.batch_input_dir.setText(str(self._current_dir))
             self._set_status(f"Directorio lote: {self._current_dir}")
@@ -2314,7 +2365,19 @@ if QtWidgets is not None:
 
         def _on_generate_profile(self) -> None:
             charts = Path(self.profile_charts_dir.text().strip())
-            chart_capture_files = self._profile_chart_files_or_none()
+            chart_capture_files = self._infer_profile_chart_files()
+            if chart_capture_files is None and not self._directory_has_chart_captures(charts):
+                if self._directory_has_chart_captures(self._current_dir):
+                    charts = self._current_dir
+                    self.profile_charts_dir.setText(str(charts))
+                else:
+                    QtWidgets.QMessageBox.information(
+                        self,
+                        "Sin capturas de carta",
+                        "Selecciona una o más miniaturas con carta, carga una carta en el visor o abre una carpeta con capturas RAW/DNG/TIFF.",
+                    )
+                    return
+            manual_detections = self._manual_detections_for_profile(chart_capture_files)
             reference_path = Path(self.path_reference.text().strip())
             profile_out = Path(self.profile_out_path_edit.text().strip())
             ext = self.combo_profile_format.currentText().strip().lower() or ".icc"
@@ -2353,6 +2416,7 @@ if QtWidgets is not None:
                     allow_fallback_detection=allow_fallback_detection,
                     camera_model=camera,
                     lens_model=lens,
+                    manual_detections=manual_detections,
                 )
 
             def on_success(payload) -> None:
@@ -2484,12 +2548,21 @@ if QtWidgets is not None:
                     "overlay": str(overlay_path),
                     "image": str(target_image),
                     "corners": corners,
+                    "source_raw": str(selected),
+                    "detection": to_json_dict(detection),
                 }
 
             def on_success(payload) -> None:
                 self.profile_output.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False))
+                source = Path(str(payload["source_raw"])).expanduser().resolve()
+                self._manual_chart_detections[str(source)] = payload["detection"]
+                if source not in {p.expanduser().resolve() for p in self._selected_chart_files}:
+                    self._selected_chart_files.append(source)
+                    self._selected_chart_files = sorted(set(self._selected_chart_files), key=lambda p: str(p))
+                    self._sync_profile_chart_selection_label()
+                self.profile_charts_dir.setText(str(source.parent))
                 self._log_preview(f"Detección manual guardada: {payload['detection_json']}")
-                self._set_status(f"Detección manual guardada: {payload['detection_json']}")
+                self._set_status(f"Detección manual asociada a carta: {source.name}")
 
             self._start_background_task("Detección manual de carta", task, on_success)
 

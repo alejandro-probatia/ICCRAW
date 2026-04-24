@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import tifffile
 
+from iccraw.chart.detection import detect_chart_from_corners
 from iccraw.chart.sampling import ReferenceCatalog
 from iccraw.core.recipe import load_recipe
 from iccraw.workflow import auto_generate_profile_from_charts, auto_profile_batch
@@ -176,6 +177,60 @@ def test_auto_generate_profile_from_explicit_chart_files(tmp_path: Path, monkeyp
     assert profile_report.exists()
     assert result["chart_captures_total"] == 2
     assert result["chart_captures_used"] >= 1
+
+
+def test_auto_generate_profile_uses_manual_detection(tmp_path: Path, monkeypatch):
+    def fake_build_profile_with_argyll(
+        out_icc: Path,
+        measured_rgb: np.ndarray,
+        reference_lab: np.ndarray,
+        patch_ids: list[str],
+        description: str,
+        extra_args: list[str] | None,
+    ) -> None:
+        icc_bytes = profiling.build_matrix_shaper_icc(
+            description=description,
+            matrix_camera_to_xyz=np.eye(3),
+            gamma=1.0,
+        )
+        out_icc.write_bytes(icc_bytes)
+
+    monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+
+    charts_dir = tmp_path / "charts"
+    work_dir = tmp_path / "work_manual"
+    charts_dir.mkdir()
+
+    img = _synthetic_colorchecker_image()
+    chart = charts_dir / "chart_manual.tiff"
+    tifffile.imwrite(str(chart), img, photometric="rgb", metadata=None)
+    manual_detection = detect_chart_from_corners(
+        chart,
+        corners=[(0.0, 0.0), (720.0, 0.0), (720.0, 480.0), (0.0, 480.0)],
+        chart_type="colorchecker24",
+    )
+
+    repo_root = Path(__file__).resolve().parents[1]
+    recipe = load_recipe(repo_root / "testdata/recipes/scientific_recipe.yml")
+    reference = ReferenceCatalog.from_path(repo_root / "testdata/references/colorchecker24_reference.json")
+
+    result = auto_generate_profile_from_charts(
+        chart_captures_dir=tmp_path / "unused",
+        chart_capture_files=[chart],
+        manual_detections={chart: manual_detection},
+        recipe=recipe,
+        reference=reference,
+        profile_out=tmp_path / "manual.icc",
+        profile_report_out=tmp_path / "manual_report.json",
+        work_dir=work_dir,
+        chart_type="colorchecker24",
+        min_confidence=0.95,
+        allow_fallback_detection=False,
+    )
+
+    detection_payload = (work_dir / "detections" / "001_chart_manual.json").read_text(encoding="utf-8")
+    assert result["chart_captures_used"] == 1
+    assert '"detection_mode": "manual"' in detection_payload
 
 
 def _synthetic_colorchecker_image() -> np.ndarray:
