@@ -212,6 +212,7 @@ class BatchManifestEntry:
     profile_path: str
     color_management_mode: str
     output_color_space: str
+    linear_audit_tiff: str | None = None
 
 
 @dataclass

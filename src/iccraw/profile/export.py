@@ -22,6 +22,8 @@ D50_XY = np.asarray(colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"
 
 def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: Path) -> BatchManifest:
     out_dir.mkdir(parents=True, exist_ok=True)
+    linear_audit_dir = out_dir / "_linear_audit"
+    linear_audit_dir.mkdir(parents=True, exist_ok=True)
     files = list_raw_files(raws_dir)
     if not files:
         files = sorted(
@@ -44,7 +46,7 @@ def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: P
     entries: list[BatchManifestEntry] = []
 
     for raw in files:
-        out_linear = out_dir / f"{raw.stem}.linear.tiff"
+        out_linear = linear_audit_dir / f"{raw.stem}.scene_linear.tiff"
         out_final = out_dir / f"{raw.stem}.tiff"
 
         develop_controlled(raw, recipe, out_linear, None)
@@ -60,6 +62,7 @@ def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: P
                 profile_path=str(profile_path),
                 color_management_mode=color_mode,
                 output_color_space=recipe.output_space,
+                linear_audit_tiff=str(out_linear),
             )
         )
 

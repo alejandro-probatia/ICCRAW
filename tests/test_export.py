@@ -7,7 +7,7 @@ import tifffile
 from PIL import ImageCms
 
 from iccraw.core.models import Recipe
-from iccraw.profile.export import color_management_mode, write_profiled_tiff
+from iccraw.profile.export import batch_develop, color_management_mode, write_profiled_tiff
 
 
 def test_color_management_mode_assigns_camera_profile_by_default():
@@ -39,6 +39,28 @@ def test_write_profiled_tiff_assigns_input_profile_without_conversion(tmp_path: 
         tags = tif.pages[0].tags
         assert 34675 in tags
         assert bytes(tags[34675].value) == b"camera-profile-placeholder"
+
+
+def test_batch_develop_keeps_linear_audit_separate_from_final_outputs(tmp_path: Path):
+    raws = tmp_path / "inputs"
+    out_dir = tmp_path / "out"
+    raws.mkdir()
+    profile = tmp_path / "camera.icc"
+    profile.write_bytes(b"camera-profile-placeholder")
+    image = np.full((6, 8, 3), 0.25, dtype=np.float32)
+    tifffile.imwrite(str(raws / "capture_01.tiff"), (image * 65535).astype(np.uint16), photometric="rgb", metadata=None)
+
+    manifest = batch_develop(
+        raws_dir=raws,
+        recipe=Recipe(output_space="camera_rgb", output_linear=True),
+        profile_path=profile,
+        out_dir=out_dir,
+    )
+
+    assert (out_dir / "capture_01.tiff").exists()
+    assert not (out_dir / "capture_01.linear.tiff").exists()
+    assert (out_dir / "_linear_audit" / "capture_01.scene_linear.tiff").exists()
+    assert manifest.entries[0].linear_audit_tiff == str(out_dir / "_linear_audit" / "capture_01.scene_linear.tiff")
 
 
 @pytest.mark.skipif(shutil.which("tificc") is None, reason="requiere tificc/LittleCMS")

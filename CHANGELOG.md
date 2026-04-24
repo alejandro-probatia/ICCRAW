@@ -132,6 +132,8 @@ Para mantener trazabilidad completa, cada cambio debe:
   accidentales en directorios genéricos como `$HOME`.
 - Las detecciones manuales guardadas desde la GUI quedan asociadas al RAW de
   carta y se reutilizan durante la generación del perfil de sesión.
+- `batch-develop` separa los TIFF lineales de auditoría en `_linear_audit/`
+  para que no se confundan con los TIFF finales de inspección o entrega.
 
 ### Docs
 
