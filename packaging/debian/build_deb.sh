@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
-DEB_VERSION="${ICCRAW_DEB_VERSION:-0.1.0~beta1}"
-APP_VERSION="${ICCRAW_APP_VERSION:-0.1.0b1}"
+DEB_VERSION="${ICCRAW_DEB_VERSION:-0.1.0~beta2}"
+APP_VERSION="${ICCRAW_APP_VERSION:-0.1.0b2}"
 ARCH="${ICCRAW_DEB_ARCH:-$(dpkg --print-architecture)}"
 PKG_NAME="iccraw"
 BUILD_ROOT="$ROOT/build/deb/${PKG_NAME}_${DEB_VERSION}_${ARCH}"

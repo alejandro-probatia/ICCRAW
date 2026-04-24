@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from importlib import resources
+import json
 from pathlib import Path
 import numpy as np
 import cv2
@@ -22,7 +24,7 @@ class ReferenceCatalog:
 
     @classmethod
     def from_path(cls, path: Path, *, strict: bool = True) -> "ReferenceCatalog":
-        return cls(read_json(path), strict=strict)
+        return cls(_read_reference_payload(path), strict=strict)
 
     def validate(self) -> None:
         errors: list[str] = []
@@ -74,6 +76,37 @@ def _normalize_observer(observer: str) -> str:
     if raw in {"10", "10deg", "10degree", "10degrees", "10°"}:
         return "10"
     return raw
+
+
+_BUNDLED_REFERENCE_ALIASES = {
+    "colorchecker24_colorchecker2005_d50.json": "colorchecker24_colorchecker2005_d50.json",
+    "colorchecker2005_d50.json": "colorchecker24_colorchecker2005_d50.json",
+}
+
+
+def _read_reference_payload(path: Path) -> dict:
+    candidate = Path(path)
+    if candidate.exists():
+        return read_json(candidate)
+
+    bundled_name = _bundled_reference_name(candidate)
+    if bundled_name is not None:
+        ref = resources.files("iccraw.resources").joinpath("references", bundled_name)
+        return json.loads(ref.read_text(encoding="utf-8"))
+
+    return read_json(candidate)
+
+
+def _bundled_reference_name(path: Path) -> str | None:
+    name = path.name
+    if name in _BUNDLED_REFERENCE_ALIASES:
+        return _BUNDLED_REFERENCE_ALIASES[name]
+
+    normalized = path.as_posix()
+    for suffix, bundled_name in _BUNDLED_REFERENCE_ALIASES.items():
+        if normalized.endswith(f"testdata/references/{suffix}"):
+            return bundled_name
+    return None
 
 
 def sample_chart(

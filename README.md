@@ -159,7 +159,7 @@ La beta `0.1` puede construirse como paquete `.deb` instalable:
 
 ```bash
 bash packaging/debian/build_deb.sh
-sudo apt install ./dist/iccraw_0.1.0~beta1_amd64.deb
+sudo apt install ./dist/iccraw_0.1.0~beta2_amd64.deb
 ```
 
 El paquete instala la aplicacion en `/opt/iccraw`, crea los lanzadores

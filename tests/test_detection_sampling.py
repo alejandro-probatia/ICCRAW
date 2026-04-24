@@ -206,3 +206,12 @@ def test_colorchecker2005_reference_is_strictly_valid():
     assert reference.reference_source.startswith("colour-science")
     assert reference.patch_map["P01"]["patch_name"] == "dark skin"
     assert reference.patch_map["P24"]["patch_name"] == "black 2 (1.5 D)"
+
+
+def test_colorchecker2005_reference_falls_back_to_packaged_resource():
+    reference = ReferenceCatalog.from_path(
+        Path("/tmp/missing/testdata/references/colorchecker24_colorchecker2005_d50.json")
+    )
+
+    assert reference.reference_source.startswith("colour-science")
+    assert reference.patch_map["P01"]["patch_name"] == "dark skin"

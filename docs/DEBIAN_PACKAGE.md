@@ -2,8 +2,8 @@
 
 La beta `0.1` se distribuye como paquete Debian binario:
 
-- version de aplicacion Python: `0.1.0b1`,
-- version Debian: `0.1.0~beta1`,
+- version de aplicacion Python: `0.1.0b2`,
+- version Debian: `0.1.0~beta2`,
 - arquitectura generada: la de la maquina de build (`dpkg --print-architecture`).
 
 El paquete instala:
@@ -34,7 +34,7 @@ bash packaging/debian/build_deb.sh
 El artefacto queda en:
 
 ```text
-dist/iccraw_0.1.0~beta1_amd64.deb
+dist/iccraw_0.1.0~beta2_amd64.deb
 ```
 
 El nombre exacto puede variar si se construye en otra arquitectura.
@@ -42,7 +42,7 @@ El nombre exacto puede variar si se construye en otra arquitectura.
 ## Instalacion local
 
 ```bash
-sudo apt install ./dist/iccraw_0.1.0~beta1_amd64.deb
+sudo apt install ./dist/iccraw_0.1.0~beta2_amd64.deb
 iccraw --version
 iccraw check-tools --strict
 iccraw-ui
@@ -56,7 +56,7 @@ Antes de publicar o entregar una beta:
 .venv/bin/python -m pytest
 bash scripts/check_tools.sh
 bash packaging/debian/build_deb.sh
-dpkg-deb --info dist/iccraw_0.1.0~beta1_amd64.deb
+dpkg-deb --info dist/iccraw_0.1.0~beta2_amd64.deb
 ```
 
 Para una prueba de instalacion aislada, usar una maquina Debian/Ubuntu limpia y

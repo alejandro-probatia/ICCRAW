@@ -46,6 +46,9 @@ version = {attr = "iccraw.version.__version__"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"iccraw.resources" = ["references/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

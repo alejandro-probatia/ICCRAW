@@ -20,6 +20,14 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 _Sin cambios registrados._
 
+## [0.1.0-beta.2] - 2026-04-25
+
+### Fixed
+
+- La referencia ColorChecker 2005 D50 se empaqueta dentro de `iccraw` y se usa
+  como fallback cuando la GUI/CLI se ejecuta desde una instalacion `.deb` sin el
+  arbol `testdata/` del repositorio.
+
 ## [0.1.0-beta.1] - 2026-04-24
 
 ### Changed

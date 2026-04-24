@@ -182,7 +182,7 @@ bash scripts/run_ui.sh
 Instalacion beta con paquete Debian:
 
 ```bash
-sudo apt install ./dist/iccraw_0.1.0~beta1_amd64.deb
+sudo apt install ./dist/iccraw_0.1.0~beta2_amd64.deb
 iccraw check-tools --strict
 iccraw-ui
 ```
