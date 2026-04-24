@@ -497,13 +497,17 @@ if QtWidgets is not None:
             self.profile_min_conf.setValue(0.35)
             grid.addWidget(self.profile_min_conf, 6, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Cámara (opcional)"), 7, 0)
-            self.profile_camera = QtWidgets.QLineEdit("")
-            grid.addWidget(self.profile_camera, 7, 1, 1, 2)
+            self.profile_allow_fallback = QtWidgets.QCheckBox("Permitir fallback")
+            self.profile_allow_fallback.setChecked(False)
+            grid.addWidget(self.profile_allow_fallback, 7, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Lente (opcional)"), 8, 0)
+            grid.addWidget(QtWidgets.QLabel("Cámara (opcional)"), 8, 0)
+            self.profile_camera = QtWidgets.QLineEdit("")
+            grid.addWidget(self.profile_camera, 8, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Lente (opcional)"), 9, 0)
             self.profile_lens = QtWidgets.QLineEdit("")
-            grid.addWidget(self.profile_lens, 8, 1, 1, 2)
+            grid.addWidget(self.profile_lens, 9, 1, 1, 2)
 
             row = QtWidgets.QHBoxLayout()
             row.addWidget(self._button("Usar directorio actual como cartas", self._use_current_dir_as_profile_charts))
@@ -1095,6 +1099,7 @@ if QtWidgets is not None:
                 "profile_workdir": self.profile_workdir.text().strip(),
                 "profile_chart_type": self.profile_chart_type.currentText().strip(),
                 "profile_min_confidence": float(self.profile_min_conf.value()),
+                "profile_allow_fallback_detection": bool(self.profile_allow_fallback.isChecked()),
                 "profile_camera": self.profile_camera.text().strip(),
                 "profile_lens": self.profile_lens.text().strip(),
                 "recipe_path": self.path_recipe.text().strip(),
@@ -1160,6 +1165,7 @@ if QtWidgets is not None:
                 self.profile_min_conf.setValue(float(state.get("profile_min_confidence", 0.35)))
             except Exception:
                 self.profile_min_conf.setValue(0.35)
+            self.profile_allow_fallback.setChecked(bool(state.get("profile_allow_fallback_detection", False)))
 
             self.profile_camera.setText(str(state.get("profile_camera") or ""))
             self.profile_lens.setText(str(state.get("profile_lens") or ""))
@@ -2158,6 +2164,7 @@ if QtWidgets is not None:
             workdir = Path(self.profile_workdir.text().strip())
             chart_type = self.profile_chart_type.currentText()
             min_confidence = float(self.profile_min_conf.value())
+            allow_fallback_detection = bool(self.profile_allow_fallback.isChecked())
             camera = self.profile_camera.text().strip() or None
             lens = self.profile_lens.text().strip() or None
             recipe = self._build_effective_recipe()
@@ -2176,6 +2183,7 @@ if QtWidgets is not None:
                     work_dir=workdir,
                     chart_type=chart_type,
                     min_confidence=min_confidence,
+                    allow_fallback_detection=allow_fallback_detection,
                     camera_model=camera,
                     lens_model=lens,
                 )

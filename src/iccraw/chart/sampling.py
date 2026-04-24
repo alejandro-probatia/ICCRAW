@@ -27,6 +27,8 @@ def sample_chart(
     detection: ChartDetectionResult,
     reference: ReferenceCatalog,
     strategy: str = "trimmed_mean",
+    trim_percent: float = 0.1,
+    reject_saturated: bool = True,
 ) -> SampleSet:
     image = read_image(image_path)
     h, w = image.shape[:2]
@@ -41,7 +43,13 @@ def sample_chart(
             continue
 
         poly = np.array([[p.x, p.y] for p in patch.sample_region], dtype=np.float32)
-        rgb, excluded_ratio, sat_ratio = _sample_patch(image, poly, strategy)
+        rgb, excluded_ratio, sat_ratio = _sample_patch(
+            image,
+            poly,
+            strategy,
+            trim_percent=trim_percent,
+            reject_saturated=reject_saturated,
+        )
 
         samples.append(
             PatchSample(
@@ -61,13 +69,20 @@ def sample_chart(
         chart_name=reference.chart_name,
         chart_version=reference.chart_version,
         illuminant=reference.illuminant,
-        strategy=strategy,
+        strategy=_strategy_label(strategy, trim_percent, reject_saturated),
         samples=samples,
         missing_reference_patches=missing,
     )
 
 
-def _sample_patch(image: np.ndarray, polygon: np.ndarray, strategy: str) -> tuple[np.ndarray, float, float]:
+def _sample_patch(
+    image: np.ndarray,
+    polygon: np.ndarray,
+    strategy: str,
+    *,
+    trim_percent: float = 0.1,
+    reject_saturated: bool = True,
+) -> tuple[np.ndarray, float, float]:
     h, w = image.shape[:2]
     mask = np.zeros((h, w), dtype=np.uint8)
     poly_int = np.round(polygon).astype(np.int32)
@@ -80,21 +95,32 @@ def _sample_patch(image: np.ndarray, polygon: np.ndarray, strategy: str) -> tupl
     saturated = np.any(pixels >= 0.999, axis=1)
     sat_ratio = float(np.mean(saturated))
 
-    valid = pixels[~saturated]
+    valid = pixels[~saturated] if reject_saturated else pixels
     if valid.size == 0:
         valid = pixels
 
     if strategy == "median":
         measured = np.median(valid, axis=0)
-        excluded_ratio = 0.0
+        excluded_ratio = float(np.mean(saturated)) if reject_saturated else 0.0
     else:
+        trim = float(np.clip(trim_percent, 0.0, 0.49))
         measured = np.array(
-            [robust_trimmed_mean(valid[:, c], 0.1) for c in range(3)],
+            [robust_trimmed_mean(valid[:, c], trim) for c in range(3)],
             dtype=np.float32,
         )
-        excluded_ratio = 0.1
+        trimmed_ratio = min(1.0, 2.0 * trim) if valid.shape[0] > 0 else 0.0
+        rejected_ratio = float(np.mean(saturated)) if reject_saturated else 0.0
+        excluded_ratio = float(min(1.0, rejected_ratio + (1.0 - rejected_ratio) * trimmed_ratio))
 
     return measured, excluded_ratio, sat_ratio
+
+
+def _strategy_label(strategy: str, trim_percent: float, reject_saturated: bool) -> str:
+    mode = str(strategy or "trimmed_mean")
+    if mode == "median":
+        return f"median(reject_saturated={str(bool(reject_saturated)).lower()})"
+    trim = float(np.clip(trim_percent, 0.0, 0.49))
+    return f"{mode}(trim_percent={trim:.6g},reject_saturated={str(bool(reject_saturated)).lower()})"
 
 
 def chart_detection_from_json(path: Path) -> ChartDetectionResult:
@@ -119,6 +145,7 @@ def chart_detection_from_json(path: Path) -> ChartDetectionResult:
         chart_polygon=chart_polygon,
         patches=patches,
         warnings=[str(v) for v in payload.get("warnings", [])],
+        detection_mode=str(payload.get("detection_mode", "automatic")),
     )
 
 

@@ -145,6 +145,14 @@ iccraw auto-profile-batch \
   --min-confidence 0.0
 ```
 
+Por defecto, una deteccion de carta por fallback no se acepta para construir
+perfil. Para pruebas controladas con imagenes sinteticas se puede activar de
+forma explicita:
+
+```bash
+iccraw auto-profile-batch ... --allow-fallback-detection
+```
+
 ## Errores comunes
 
 - `No se puede revelar RAW: 'dcraw' no esta disponible en PATH.`

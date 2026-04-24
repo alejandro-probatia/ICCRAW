@@ -43,7 +43,7 @@ Reglas:
    - conversion mediante CMM a perfil de salida.
 4. [x] La validacion debe comprobar el ICC real generado, no solo artefactos
    numericos auxiliares.
-5. [ ] El fallback de deteccion de carta no debe producir perfiles automaticamente
+5. [x] El fallback de deteccion de carta no debe producir perfiles automaticamente
    sin confirmacion o modo explicito.
 
 ## Validez del perfil

@@ -215,6 +215,10 @@ Durante el proceso, ICCRAW produce:
   - revisar que Argyll esté instalado y que la referencia de carta sea correcta.
 - Detección con baja confianza:
   - mejorar encuadre de carta, iluminación y foco.
+- Detección por fallback:
+  - el flujo automático la rechaza por defecto para evitar perfiles inválidos,
+  - usar `--allow-fallback-detection` solo en pruebas controladas o con revisión
+    manual del overlay.
 
 ## 9. C2PA/CAI (propuesta)
 

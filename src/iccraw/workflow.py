@@ -28,6 +28,7 @@ def auto_generate_profile_from_charts(
     work_dir: Path,
     chart_type: str = "colorchecker24",
     min_confidence: float = 0.35,
+    allow_fallback_detection: bool = False,
     camera_model: str | None = None,
     lens_model: str | None = None,
 ) -> dict[str, Any]:
@@ -60,6 +61,17 @@ def auto_generate_profile_from_charts(
             write_json(detection_path, detection)
             draw_detection_overlay(developed_tiff, detection, overlay_path)
 
+            if detection.detection_mode == "fallback" and not allow_fallback_detection:
+                skipped.append(
+                    {
+                        "capture": str(chart_file),
+                        "reason": "fallback_detection",
+                        "confidence": float(detection.confidence_score),
+                        "detection_json": str(detection_path),
+                    }
+                )
+                continue
+
             if detection.confidence_score < float(min_confidence):
                 skipped.append(
                     {
@@ -72,7 +84,14 @@ def auto_generate_profile_from_charts(
                 )
                 continue
 
-            samples = sample_chart(developed_tiff, detection, reference, strategy=recipe.sampling_strategy)
+            samples = sample_chart(
+                developed_tiff,
+                detection,
+                reference,
+                strategy=recipe.sampling_strategy,
+                trim_percent=recipe.sampling_trim_percent,
+                reject_saturated=recipe.sampling_reject_saturated,
+            )
             write_json(sample_path, samples)
             accepted_samples.append(samples)
 
@@ -125,6 +144,7 @@ def auto_profile_batch(
     work_dir: Path,
     chart_type: str = "colorchecker24",
     min_confidence: float = 0.35,
+    allow_fallback_detection: bool = False,
     camera_model: str | None = None,
     lens_model: str | None = None,
 ) -> dict[str, Any]:
@@ -137,6 +157,7 @@ def auto_profile_batch(
         work_dir=work_dir,
         chart_type=chart_type,
         min_confidence=min_confidence,
+        allow_fallback_detection=allow_fallback_detection,
         camera_model=camera_model,
         lens_model=lens_model,
     )
@@ -203,7 +224,7 @@ def _aggregate_samples(sample_sets: list[SampleSet], strategy: str) -> SampleSet
         chart_name=first.chart_name,
         chart_version=first.chart_version,
         illuminant=first.illuminant,
-        strategy=f"aggregate_median({strategy})",
+        strategy=f"aggregate_median({first.strategy or strategy})",
         samples=aggregated_samples,
         missing_reference_patches=missing,
     )

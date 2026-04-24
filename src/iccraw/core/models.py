@@ -70,6 +70,8 @@ class Recipe:
     chart_reference: str | None = None
     illuminant_metadata: str | None = None
     sampling_strategy: str = "trimmed_mean"
+    sampling_trim_percent: float = 0.1
+    sampling_reject_saturated: bool = True
     profiling_mode: bool = True
     profile_engine: str = "argyll"
     argyll_colprof_args: list[str] | None = None
@@ -112,6 +114,7 @@ class ChartDetectionResult:
     chart_polygon: list[Point2]
     patches: list[PatchDetection]
     warnings: list[str]
+    detection_mode: str = "automatic"
 
 
 @dataclass

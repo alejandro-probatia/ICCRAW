@@ -61,6 +61,10 @@ def _normalize_recipe_payload(payload: dict) -> dict:
 
     ss = out.get("sampling_strategy")
     if isinstance(ss, dict):
+        if "trim_percent" in ss and "sampling_trim_percent" not in out:
+            out["sampling_trim_percent"] = ss.get("trim_percent")
+        if "reject_saturated" in ss and "sampling_reject_saturated" not in out:
+            out["sampling_reject_saturated"] = ss.get("reject_saturated")
         out["sampling_strategy"] = str(ss.get("mode", "trimmed_mean"))
 
     for field_name, default in {

@@ -17,12 +17,14 @@ def detect_chart(image_path: Path, chart_type: str = "colorchecker24") -> ChartD
 
     quad = _find_chart_quad(bgr8)
     warnings: list[str] = []
+    detection_mode = "automatic"
 
     if quad is None:
         quad = np.array(
             [[0.05 * w, 0.05 * h], [0.95 * w, 0.05 * h], [0.95 * w, 0.95 * h], [0.05 * w, 0.95 * h]],
             dtype=np.float32,
         )
+        detection_mode = "fallback"
         warnings.append("no se detecto contorno de carta; usando bbox de fallback")
 
     quad = _order_points_clockwise(quad)
@@ -55,16 +57,21 @@ def detect_chart(image_path: Path, chart_type: str = "colorchecker24") -> ChartD
         warnings.append(f"clipping detectado: {clipped_ratio * 100:.2f}% pixeles")
 
     confidence = _confidence_score(quad, w, h, cols / rows)
+    valid_patch_ratio = 1.0
+    if detection_mode == "fallback":
+        confidence = min(confidence, 0.05)
+        valid_patch_ratio = 0.0
 
     chart_polygon = [Point2(float(x), float(y)) for x, y in quad]
     result = ChartDetectionResult(
         chart_type=chart_type,
         confidence_score=confidence,
-        valid_patch_ratio=1.0,
+        valid_patch_ratio=valid_patch_ratio,
         homography=[float(v) for v in H.flatten().tolist()],
         chart_polygon=chart_polygon,
         patches=patches,
         warnings=warnings,
+        detection_mode=detection_mode,
     )
     return result
 

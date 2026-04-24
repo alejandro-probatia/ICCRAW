@@ -62,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--detection", required=True)
     s.add_argument("--reference", required=True)
     s.add_argument("--out", required=True)
+    s.add_argument("--recipe", default=None, help="Receta opcional para parametros de muestreo")
 
     s = sub.add_parser("build-profile")
     s.add_argument("samples")
@@ -93,6 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--workdir", required=True, help="Directorio de artefactos intermedios (detecciones/samples)")
     s.add_argument("--chart-type", choices=["colorchecker24", "it8"], default="colorchecker24")
     s.add_argument("--min-confidence", type=float, default=0.35)
+    s.add_argument("--allow-fallback-detection", action="store_true")
     s.add_argument("--camera", default=None)
     s.add_argument("--lens", default=None)
 
@@ -134,7 +136,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "sample-chart":
             detection = chart_detection_from_json(Path(args.detection))
             reference = ReferenceCatalog.from_path(Path(args.reference))
-            samples = sample_chart(Path(args.input), detection, reference)
+            recipe = load_recipe(Path(args.recipe)) if args.recipe else None
+            samples = sample_chart(
+                Path(args.input),
+                detection,
+                reference,
+                strategy=recipe.sampling_strategy if recipe else "trimmed_mean",
+                trim_percent=recipe.sampling_trim_percent if recipe else 0.1,
+                reject_saturated=recipe.sampling_reject_saturated if recipe else True,
+            )
             write_json(Path(args.out), samples)
             print(json.dumps(to_json_dict(samples), indent=2))
             return 0
@@ -187,6 +197,7 @@ def main(argv: list[str] | None = None) -> int:
                 work_dir=Path(args.workdir),
                 chart_type=args.chart_type,
                 min_confidence=float(args.min_confidence),
+                allow_fallback_detection=bool(args.allow_fallback_detection),
                 camera_model=args.camera,
                 lens_model=args.lens,
             )

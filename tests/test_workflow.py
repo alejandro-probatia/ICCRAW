@@ -60,6 +60,7 @@ def test_auto_profile_batch_end_to_end(tmp_path: Path, monkeypatch):
         work_dir=work_dir,
         chart_type="colorchecker24",
         min_confidence=0.0,
+        allow_fallback_detection=True,
     )
 
     assert profile_out.exists()
@@ -111,6 +112,7 @@ def test_auto_generate_profile_from_charts_only(tmp_path: Path, monkeypatch):
         work_dir=work_dir,
         chart_type="colorchecker24",
         min_confidence=0.0,
+        allow_fallback_detection=True,
     )
 
     assert profile_out.exists()

@@ -242,7 +242,15 @@ Criterios de aceptacion:
 
 Criticidad: alta.
 
-Situacion:
+Estado de implementacion:
+
+- mitigado: la deteccion fallback queda marcada como `detection_mode=fallback`,
+  tiene confianza maxima 0.05 y `valid_patch_ratio=0.0`.
+- mitigado: `auto-profile-batch` y la generacion automatica de perfil rechazan
+  fallback por defecto; solo se acepta con opt-in explicito.
+- pendiente: modo manual asistido para marcar esquinas de carta.
+
+Situacion detectada en la revision inicial:
 
 - Si no se detecta contorno, se usa un bbox de fallback.
 - Ese fallback puede devolver una confianza alta si la geometria aparente encaja.
@@ -276,7 +284,13 @@ Criterios de aceptacion:
 
 Criticidad: media.
 
-Situacion:
+Estado de implementacion:
+
+- mitigado: `sampling_trim_percent` y `sampling_reject_saturated` se cargan desde
+  recetas YAML/JSON y se aplican en el muestreo.
+- pendiente: margen de parche configurable y criterios avanzados de exclusion.
+
+Situacion detectada en la revision inicial:
 
 - La receta declara `trim_percent` y `reject_saturated`.
 - El codigo normaliza `sampling_strategy` a un string y usa `0.1` fijo.

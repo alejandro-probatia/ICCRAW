@@ -22,3 +22,21 @@ def test_recipe_default_raw_developer_is_dcraw(tmp_path: Path):
     recipe_file.write_text("{}", encoding="utf-8")
     recipe = load_recipe(recipe_file)
     assert recipe.raw_developer == "dcraw"
+
+
+def test_recipe_nested_sampling_strategy_preserves_parameters(tmp_path: Path):
+    recipe_file = tmp_path / "recipe.yml"
+    recipe_file.write_text(
+        """
+sampling_strategy:
+  mode: trimmed_mean
+  trim_percent: 0.2
+  reject_saturated: false
+""",
+        encoding="utf-8",
+    )
+    recipe = load_recipe(recipe_file)
+
+    assert recipe.sampling_strategy == "trimmed_mean"
+    assert recipe.sampling_trim_percent == 0.2
+    assert recipe.sampling_reject_saturated is False

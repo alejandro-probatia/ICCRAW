@@ -25,16 +25,16 @@ criterios de aceptacion completos estan en:
 
 ## P1
 
-1. Hacer que el fallback de deteccion de carta sea bloqueante por defecto o tenga
+1. [x] Hacer que el fallback de deteccion de carta sea bloqueante por defecto o tenga
    confianza baja.
-2. Añadir modo manual asistido para marcar esquinas de carta.
-3. Aplicar parametros completos de muestreo desde receta (`trim_percent`,
+2. [ ] Añadir modo manual asistido para marcar esquinas de carta.
+3. [x] Aplicar parametros completos de muestreo desde receta (`trim_percent`,
    `reject_saturated`, margen de parche, criterios de exclusion).
-4. Validar iluminante, observador, fuente y version de la referencia de carta.
-5. Implementar validacion cruzada con capturas no usadas para construir perfil.
-6. Mejorar deteccion automatica de ColorChecker24 en condiciones no ideales.
-7. Completar soporte IT8 (deteccion + referencia + validacion).
-8. Añadir export CGATS completo para interoperabilidad externa.
+4. [ ] Validar iluminante, observador, fuente y version de la referencia de carta.
+5. [ ] Implementar validacion cruzada con capturas no usadas para construir perfil.
+6. [ ] Mejorar deteccion automatica de ColorChecker24 en condiciones no ideales.
+7. [ ] Completar soporte IT8 (deteccion + referencia + validacion).
+8. [ ] Añadir export CGATS completo para interoperabilidad externa.
 
 ## P2
 
