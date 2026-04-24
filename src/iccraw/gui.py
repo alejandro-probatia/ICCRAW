@@ -2565,7 +2565,13 @@ if QtWidgets is not None:
 
             def on_success(payload) -> None:
                 self.profile_output.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False))
-                self.path_profile_active.setText(str(profile_out))
+                profile_status = payload.get("profile_status") if isinstance(payload.get("profile_status"), dict) else {}
+                status = str(profile_status.get("status") or "draft")
+                if status not in {"rejected", "expired"}:
+                    self.path_profile_active.setText(str(profile_out))
+                else:
+                    self.path_profile_active.clear()
+                    self._log_preview(f"Perfil no activado por estado: {status}")
                 if payload.get("calibrated_recipe_path"):
                     calibrated_recipe_path = Path(str(payload["calibrated_recipe_path"]))
                     self.path_recipe.setText(str(calibrated_recipe_path))
@@ -2599,8 +2605,11 @@ if QtWidgets is not None:
             error_summary = profile.get("error_summary") if isinstance(profile.get("error_summary"), dict) else {}
             de00 = error_summary.get("mean_delta_e2000")
             max_de00 = error_summary.get("max_delta_e2000")
+            profile_status = payload.get("profile_status") if isinstance(payload.get("profile_status"), dict) else {}
+            status = str(profile_status.get("status") or "draft")
             parts = [
-                f"Perfil activo: {profile_out}",
+                f"Estado perfil: {status}",
+                f"Perfil generado: {profile_out}",
                 f"Entrenamiento: {payload.get('chart_captures_used', 0)}/{payload.get('training_captures_total', payload.get('chart_captures_total', 0))}",
                 f"Receta calibrada: {payload.get('calibrated_recipe_path') or 'no generada'}",
             ]

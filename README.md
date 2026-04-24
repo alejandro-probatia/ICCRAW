@@ -106,6 +106,7 @@ iccraw auto-profile-batch \
   --profile-report profile_report.json \
   --validation-report qa_session_report.json \
   --validation-holdout-count 1 \
+  --profile-validity-days 30 \
   --out ./tiffs \
   --workdir ./work_auto
 ```

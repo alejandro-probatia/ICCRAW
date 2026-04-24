@@ -71,6 +71,10 @@ Para mantener trazabilidad completa, cada cambio debe:
 - El QA de sesion incorpora diagnostico de captura por carta: luminancia de
   parches, bajo nivel, dispersion densitometrica de la fila neutra y gradiente
   estimado de iluminacion.
+- Los perfiles de sesion declaran estado operacional `draft`, `validated`,
+  `rejected` o `expired`, con vigencia opcional desde CLI.
+- `auto-profile-batch` no aplica a lote perfiles de sesion `rejected` o
+  `expired`.
 - Plantilla de mantenimiento continuo del changelog y política de actualización.
 - Módulo `preview` para carga de imagen/RAW en previsualización, ajustes técnicos y análisis lineal.
 - GUI nueva basada en Qt/PySide6 (`app-ui`, `app-ui-qt`) con:

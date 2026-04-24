@@ -60,7 +60,7 @@ Objetivo: validar el ICC real y la aptitud del perfil para una sesion.
 - validacion con CMM/ArgyllCMS del perfil ICC generado,
 - reporte QA de sesion con estado `validated`, `rejected` o `not_validated`,
 - umbrales DeltaE por disciplina o preset,
-- estados de perfil: `draft`, `validated`, `rejected`, `expired`,
+- estados operacionales de perfil: `draft`, `validated`, `rejected`, `expired`,
 - reportes comparables entre sesiones.
 
 ## Fase 5 - Reproducibilidad, CI y distribucion (P2)

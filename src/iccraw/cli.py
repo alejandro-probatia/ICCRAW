@@ -133,6 +133,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     s.add_argument("--qa-mean-deltae2000-max", type=float, default=5.0)
     s.add_argument("--qa-max-deltae2000-max", type=float, default=10.0)
+    s.add_argument(
+        "--profile-validity-days",
+        type=int,
+        default=None,
+        help="Vigencia opcional del perfil validado; al superarse se marca como expired",
+    )
     s.add_argument("--camera", default=None)
     s.add_argument("--lens", default=None)
 
@@ -265,6 +271,7 @@ def main(argv: list[str] | None = None) -> int:
                 validation_holdout_count=int(args.validation_holdout_count),
                 qa_mean_delta_e2000_max=float(args.qa_mean_deltae2000_max),
                 qa_max_delta_e2000_max=float(args.qa_max_deltae2000_max),
+                profile_validity_days=args.profile_validity_days,
                 camera_model=args.camera,
                 lens_model=args.lens,
             )

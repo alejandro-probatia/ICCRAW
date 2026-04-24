@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,10 @@ LOW_SIGNAL_BRIGHT_NEUTRAL_MIN = 0.25
 LOW_SIGNAL_MEDIAN_LUMA_MIN = 0.05
 NEUTRAL_DENSITY_SPREAD_EV_MAX = 0.35
 NEUTRAL_ILLUMINATION_GRADIENT_EV_MAX = 0.25
+PROFILE_STATUS_DRAFT = "draft"
+PROFILE_STATUS_VALIDATED = "validated"
+PROFILE_STATUS_REJECTED = "rejected"
+PROFILE_STATUS_EXPIRED = "expired"
 
 
 def auto_generate_profile_from_charts(
@@ -57,6 +62,7 @@ def auto_generate_profile_from_charts(
     validation_report_out: Path | None = None,
     qa_mean_delta_e2000_max: float = 5.0,
     qa_max_delta_e2000_max: float = 10.0,
+    profile_validity_days: int | None = None,
 ) -> dict[str, Any]:
     work_dir.mkdir(parents=True, exist_ok=True)
     chart_dev_dir = work_dir / "chart_developed"
@@ -154,7 +160,6 @@ def auto_generate_profile_from_charts(
         camera_model=camera_model,
         lens_model=lens_model,
     )
-    write_json(profile_report_out, profile_result)
 
     validation_payload: dict[str, Any] | None = None
     qa_report_path: str | None = None
@@ -224,6 +229,19 @@ def auto_generate_profile_from_charts(
             "qa_report_path": qa_report_path,
         }
 
+    profile_generated_at = _utc_now_iso()
+    profile_valid_until = _profile_valid_until(profile_generated_at, profile_validity_days)
+    profile_status = _build_profile_status(
+        validation_payload=validation_payload,
+        qa_report_path=qa_report_path,
+        generated_at=profile_generated_at,
+        valid_until=profile_valid_until,
+    )
+    profile_result.metadata["session_profile_status"] = profile_status
+    profile_result.metadata["profile_status"] = profile_status["status"]
+    write_json(Path(profile_result.output_profile_json), profile_result.metadata)
+    write_json(profile_report_out, profile_result)
+
     return {
         "chart_captures_total": len(chart_files),
         "training_captures_total": len(training_files),
@@ -236,6 +254,7 @@ def auto_generate_profile_from_charts(
         "development_profile": development_payload,
         "aggregated_samples": str(aggregated_samples_path),
         "profile": to_json_dict(profile_result),
+        "profile_status": profile_status,
         "profile_report_path": str(profile_report_out),
         "validation": validation_payload,
         "qa_report_path": qa_report_path,
@@ -265,6 +284,7 @@ def auto_profile_batch(
     validation_report_out: Path | None = None,
     qa_mean_delta_e2000_max: float = 5.0,
     qa_max_delta_e2000_max: float = 10.0,
+    profile_validity_days: int | None = None,
 ) -> dict[str, Any]:
     profile_payload = auto_generate_profile_from_charts(
         chart_captures_dir=chart_captures_dir,
@@ -287,12 +307,18 @@ def auto_profile_batch(
         validation_report_out=validation_report_out,
         qa_mean_delta_e2000_max=qa_mean_delta_e2000_max,
         qa_max_delta_e2000_max=qa_max_delta_e2000_max,
+        profile_validity_days=profile_validity_days,
     )
 
     batch_recipe = recipe
     calibrated_path = profile_payload.get("calibrated_recipe_path")
     if isinstance(calibrated_path, str) and calibrated_path:
         batch_recipe = load_recipe(Path(calibrated_path))
+
+    status_payload = profile_payload.get("profile_status") if isinstance(profile_payload.get("profile_status"), dict) else {}
+    status = str(status_payload.get("status") or PROFILE_STATUS_DRAFT)
+    if status in {PROFILE_STATUS_REJECTED, PROFILE_STATUS_EXPIRED}:
+        raise RuntimeError(f"Perfil de sesion no aplicable al lote: estado {status}")
 
     manifest = batch_develop(
         raws_dir=target_captures_dir,
@@ -312,6 +338,7 @@ def auto_profile_batch(
         "development_profile": profile_payload.get("development_profile"),
         "aggregated_samples": profile_payload["aggregated_samples"],
         "profile": profile_payload["profile"],
+        "profile_status": profile_payload.get("profile_status"),
         "profile_report_path": profile_payload["profile_report_path"],
         "validation_captures_total": profile_payload.get("validation_captures_total", 0),
         "validation_captures_used": profile_payload.get("validation_captures_used", 0),
@@ -320,6 +347,68 @@ def auto_profile_batch(
         "batch_manifest": to_json_dict(manifest),
         "batch_manifest_path": str(manifest_path),
     }
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _profile_valid_until(generated_at: str, profile_validity_days: int | None) -> str | None:
+    if profile_validity_days is None:
+        return None
+    generated = _parse_iso_datetime(generated_at)
+    return (generated + timedelta(days=int(profile_validity_days))).replace(microsecond=0).isoformat()
+
+
+def _build_profile_status(
+    *,
+    validation_payload: dict[str, Any] | None,
+    qa_report_path: str | None,
+    generated_at: str,
+    valid_until: str | None,
+    now: str | None = None,
+) -> dict[str, Any]:
+    reasons: list[str] = []
+    validation_status: str | None = None
+
+    if validation_payload is None:
+        status = PROFILE_STATUS_DRAFT
+        reasons.append("sin_validacion_independiente")
+    else:
+        qa_report = validation_payload.get("qa_report") if isinstance(validation_payload.get("qa_report"), dict) else {}
+        validation_status = str(qa_report.get("status") or "not_validated")
+        if validation_status == "validated":
+            status = PROFILE_STATUS_VALIDATED
+            reasons.append("validacion_colorimetrica_superada")
+        elif validation_status == "rejected":
+            status = PROFILE_STATUS_REJECTED
+            reasons.append("validacion_colorimetrica_rechazada")
+        else:
+            status = PROFILE_STATUS_DRAFT
+            reasons.append("validacion_no_concluyente")
+
+    if status == PROFILE_STATUS_VALIDATED and valid_until:
+        now_dt = _parse_iso_datetime(now) if now else datetime.now(timezone.utc)
+        expires_dt = _parse_iso_datetime(valid_until)
+        if expires_dt <= now_dt:
+            status = PROFILE_STATUS_EXPIRED
+            reasons.append("vigencia_expirada")
+
+    return {
+        "status": status,
+        "generated_at": generated_at,
+        "valid_until": valid_until,
+        "validation_status": validation_status,
+        "qa_report_path": qa_report_path,
+        "reasons": reasons,
+    }
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _split_training_validation_files(chart_files: list[Path], validation_holdout_count: int) -> tuple[list[Path], list[Path]]:

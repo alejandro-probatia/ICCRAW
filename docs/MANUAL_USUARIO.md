@@ -139,12 +139,16 @@ iccraw auto-profile-batch \
   --profile-report /tmp/profile_report.json \
   --validation-report /tmp/qa_session_report.json \
   --validation-holdout-count 1 \
+  --profile-validity-days 30 \
   --out /tmp/tiffs \
   --workdir /tmp/work_auto
 ```
 
 Con `--validation-holdout-count 1`, la última captura de carta se reserva para
 validación independiente y no se usa para construir el perfil.
+El resultado incluye `profile_status.status`: `draft` sin validación
+independiente, `validated` si supera QA, `rejected` si falla los umbrales
+DeltaE y `expired` cuando se supera la vigencia declarada.
 
 ## 4. Flujo con interfaz grafica Qt
 
