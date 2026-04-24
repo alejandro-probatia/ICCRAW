@@ -192,6 +192,22 @@ def load_profile_model(profile_path: Path) -> dict:
     return read_json(sidecar)
 
 
+def write_samples_cgats(samples: SampleSet, out_path: Path) -> None:
+    measured_rgb, _reference_xyz, reference_lab, patch_ids = _samples_to_arrays(samples)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_ti3(
+        out_path,
+        measured_rgb,
+        reference_lab,
+        patch_ids,
+        descriptor=f"ICCRAW {samples.chart_name} {samples.chart_version} samples",
+        chart_name=samples.chart_name,
+        chart_version=samples.chart_version,
+        illuminant=samples.illuminant,
+        strategy=samples.strategy,
+    )
+
+
 def _samples_to_arrays(samples: SampleSet):
     patch_ids: list[str] = []
     measured: list[list[float]] = []
@@ -259,12 +275,32 @@ def _build_profile_with_argyll(
         shutil.copy2(produced, out_icc)
 
 
-def _write_ti3(path: Path, measured_rgb: np.ndarray, reference_lab: np.ndarray, patch_ids: list[str]) -> None:
+def _write_ti3(
+    path: Path,
+    measured_rgb: np.ndarray,
+    reference_lab: np.ndarray,
+    patch_ids: list[str],
+    *,
+    descriptor: str = "ICCRAW chart samples",
+    chart_name: str | None = None,
+    chart_version: str | None = None,
+    illuminant: str | None = None,
+    strategy: str | None = None,
+) -> None:
     lines: list[str] = []
     lines.append('CTI3')
-    lines.append('DESCRIPTOR "ICCRAW chart samples"')
+    lines.append('DESCRIPTOR "{}"'.format(_cgats_text(descriptor)))
     lines.append('ORIGINATOR "ICCRAW"')
     lines.append('CREATED "{}"'.format(datetime.now(timezone.utc).isoformat()))
+    for key, value in {
+        "CHART_NAME": chart_name,
+        "CHART_VERSION": chart_version,
+        "ILLUMINANT": illuminant,
+        "SAMPLING_STRATEGY": strategy,
+    }.items():
+        if value:
+            lines.append(f'KEYWORD "{key}"')
+            lines.append(f'{key} "{_cgats_text(str(value))}"')
     lines.append('KEYWORD "DEVICE_CLASS"')
     lines.append('DEVICE_CLASS "INPUT"')
     lines.append('KEYWORD "COLOR_REP"')
@@ -283,6 +319,10 @@ def _write_ti3(path: Path, measured_rgb: np.ndarray, reference_lab: np.ndarray, 
 
     lines.append('END_DATA')
     path.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+
+def _cgats_text(text: str) -> str:
+    return text.replace("\\", "/").replace('"', "'").encode("ascii", "ignore").decode("ascii")
 
 
 def build_matrix_shaper_icc(description: str, matrix_camera_to_xyz: np.ndarray, gamma: float) -> bytes:

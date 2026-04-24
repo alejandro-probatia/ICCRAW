@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from iccraw.core.models import PatchSample, Recipe, SampleSet, write_json
-from iccraw.profile.builder import build_profile, validate_profile
+from iccraw.profile.builder import build_profile, validate_profile, write_samples_cgats
 import iccraw.profile.builder as profiling
 
 
@@ -129,6 +129,35 @@ def test_validate_profile_requires_real_icc_even_if_sidecar_exists(tmp_path: Pat
 
     with pytest.raises(FileNotFoundError, match="No existe perfil ICC"):
         validate_profile(samples, profile)
+
+
+def test_write_samples_cgats_exports_lab_rgb_ti3(tmp_path: Path):
+    samples = SampleSet(
+        chart_name="ColorChecker 24",
+        chart_version="unit",
+        illuminant="D50",
+        strategy="trimmed_mean(trim_percent=0.1,reject_saturated=true)",
+        samples=[
+            PatchSample(
+                patch_id="P01",
+                measured_rgb=[0.1, 0.2, 0.3],
+                reference_rgb=None,
+                reference_lab=[50.0, 1.0, -2.0],
+                excluded_pixel_ratio=0.0,
+                saturated_pixel_ratio=0.0,
+            )
+        ],
+        missing_reference_patches=[],
+    )
+    out = tmp_path / "samples.ti3"
+
+    write_samples_cgats(samples, out)
+
+    text = out.read_text(encoding="ascii")
+    assert text.startswith("CTI3")
+    assert 'COLOR_REP "LAB_RGB"' in text
+    assert 'CHART_NAME "ColorChecker 24"' in text
+    assert "P01 50.000000 1.000000 -2.000000 10.000000 20.000000 30.000000" in text
 
 
 def _lookup_lab_with_xicclu(profile: Path, rgb: list[float]) -> list[float]:

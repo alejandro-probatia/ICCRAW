@@ -86,6 +86,9 @@ iccraw sample-chart /tmp/captura_revelada.tiff \
   --reference testdata/references/colorchecker24_reference.json \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/samples.json
+
+iccraw export-cgats /tmp/samples.json \
+  --out /tmp/samples.ti3
 ```
 
 ## 3.4 Construir y validar perfil ICC

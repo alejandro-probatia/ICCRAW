@@ -64,6 +64,8 @@ iccraw detect-chart chart.tiff --out detection.json --preview overlay.png --char
 
 iccraw sample-chart chart.tiff --detection detection.json --reference target.json --out samples.json
 
+iccraw export-cgats samples.json --out samples.ti3
+
 iccraw build-profile samples.json --recipe recipe.yml --out camera_profile.icc --report report.json
 
 iccraw batch-develop ./raws --recipe recipe.yml --profile camera_profile.icc --out ./tiffs

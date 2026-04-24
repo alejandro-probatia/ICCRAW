@@ -95,6 +95,11 @@ Validacion:
 - La matriz `matrix_camera_to_xyz` del sidecar ya no se usa para calcular DeltaE
   en validacion.
 
+Interoperabilidad:
+
+- `export-cgats` escribe las muestras en formato CGATS/CTI3 (`LAB_RGB`) para
+  auditoria externa o uso con herramientas compatibles.
+
 ## Integración `LittleCMS` (módulo `profile.export`)
 
 Archivo clave:

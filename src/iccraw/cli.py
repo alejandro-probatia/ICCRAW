@@ -27,7 +27,7 @@ from .chart.sampling import (
 )
 from .core.models import to_json_dict, write_json
 from .core.recipe import load_recipe
-from .profile.builder import build_profile, validate_profile
+from .profile.builder import build_profile, validate_profile, write_samples_cgats
 from .profile.export import batch_develop
 from .raw.metadata import raw_info
 from .raw.pipeline import develop_controlled
@@ -71,6 +71,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--report", required=True)
     s.add_argument("--camera", default=None)
     s.add_argument("--lens", default=None)
+
+    s = sub.add_parser("export-cgats")
+    s.add_argument("samples")
+    s.add_argument("--out", required=True)
 
     s = sub.add_parser("batch-develop")
     s.add_argument("input")
@@ -161,6 +165,12 @@ def main(argv: list[str] | None = None) -> int:
             )
             write_json(Path(args.report), result)
             print(json.dumps(to_json_dict(result), indent=2))
+            return 0
+
+        if args.command == "export-cgats":
+            samples = sampleset_from_json(Path(args.samples))
+            write_samples_cgats(samples, Path(args.out))
+            print(json.dumps({"output_cgats": str(Path(args.out))}, indent=2))
             return 0
 
         if args.command == "batch-develop":

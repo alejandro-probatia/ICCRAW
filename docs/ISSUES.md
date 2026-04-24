@@ -34,7 +34,7 @@ criterios de aceptacion completos estan en:
 5. [ ] Implementar validacion cruzada con capturas no usadas para construir perfil.
 6. [ ] Mejorar deteccion automatica de ColorChecker24 en condiciones no ideales.
 7. [ ] Completar soporte IT8 (deteccion + referencia + validacion).
-8. [ ] Añadir export CGATS completo para interoperabilidad externa.
+8. [x] Añadir export CGATS completo para interoperabilidad externa.
 
 ## P2
 
