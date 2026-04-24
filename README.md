@@ -21,7 +21,7 @@ Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas control
 
 ## Stack actual
 
-- Lenguaje principal: **Python**.
+- Lenguaje: **Python** (única toolchain del proyecto).
 - Revelado RAW: `dcraw` (CLI, modo determinista).
 - Metadatos RAW enriquecidos (opcional): `rawpy` (LibRaw) + `exiftool`.
 - Detección geométrica: `OpenCV`.
@@ -52,20 +52,22 @@ bash scripts/check_tools.sh
 
 ## CLI
 
+El entry point es `iccraw` (también invocable como `python -m iccraw`):
+
 ```bash
-app raw-info input.raw
+iccraw raw-info input.raw
 
-app develop input.raw --recipe recipe.yml --out output.tiff --audit-linear output_linear.tiff
+iccraw develop input.raw --recipe recipe.yml --out output.tiff --audit-linear output_linear.tiff
 
-app detect-chart chart.tiff --out detection.json --preview overlay.png --chart-type colorchecker24
+iccraw detect-chart chart.tiff --out detection.json --preview overlay.png --chart-type colorchecker24
 
-app sample-chart chart.tiff --detection detection.json --reference target.json --out samples.json
+iccraw sample-chart chart.tiff --detection detection.json --reference target.json --out samples.json
 
-app build-profile samples.json --recipe recipe.yml --out camera_profile.icc --report report.json
+iccraw build-profile samples.json --recipe recipe.yml --out camera_profile.icc --report report.json
 
-app batch-develop ./raws --recipe recipe.yml --profile camera_profile.icc --out ./tiffs
+iccraw batch-develop ./raws --recipe recipe.yml --profile camera_profile.icc --out ./tiffs
 
-app validate-profile samples.json --profile camera_profile.icc --out validation.json
+iccraw validate-profile samples.json --profile camera_profile.icc --out validation.json
 
 # Flujo completo automático:
 # 1) develop de capturas de carta
@@ -73,7 +75,7 @@ app validate-profile samples.json --profile camera_profile.icc --out validation.
 # 3) muestreo y agregación multi-captura
 # 4) build-profile
 # 5) batch-develop con perfil ICC embebido en TIFF 16-bit
-app auto-profile-batch \
+iccraw auto-profile-batch \
   --charts ./charts_raw \
   --targets ./raws \
   --recipe recipe.yml \
@@ -84,22 +86,18 @@ app auto-profile-batch \
   --workdir ./work_auto
 ```
 
-## Interfaz Grafica Qt
+## Interfaz Gráfica Qt
 
-La aplicacion incluye una GUI basada en **Qt/PySide6** optimizada para flujo de revelado técnico:
+La aplicación incluye una GUI basada en **Qt/PySide6** optimizada para flujo de revelado técnico:
 
 ```bash
-app-ui
-# o:
-app-ui-qt
+iccraw-ui
 ```
 
-o directamente:
+O directamente:
 
 ```bash
 bash scripts/run_ui.sh
-# o:
-bash scripts/run_ui_qt.sh
 ```
 
 Diseño de trabajo:
@@ -124,22 +122,22 @@ La interfaz principal se organiza en 3 pestañas:
   - ejecución de cola con estado por archivo (pendiente/ok/error),
   - monitoreo de tareas y log técnico centralizado del pipeline.
 
-Menu superior:
+Menú superior:
 
 - `Archivo`, `Configuracion`, `Perfil ICC`, `Vista`, `Ayuda`.
-- Acceso rapido a carga/guardado de receta, perfil activo y acciones de revelado.
+- Acceso rápido a carga/guardado de receta, perfil activo y acciones de revelado.
 - `Vista` incluye pantalla completa (`F11`) y restablecer distribución de paneles.
 
 Compatibilidad prevista de GUI:
 
-- Linux, macOS y Windows (Qt/PySide6, selector de raices/unidades por plataforma).
+- Linux, macOS y Windows (Qt/PySide6, selector de raíces/unidades por plataforma).
 
-La GUI usa los mismos modulos de la CLI y escribe los mismos artefactos JSON/TIFF/ICC, manteniendo trazabilidad.
+La GUI usa los mismos módulos de la CLI y escribe los mismos artefactos JSON/TIFF/ICC, manteniendo trazabilidad.
 Además, conserva tamaño/estado de ventana y splitters entre sesiones.
 
 ## Receta reproducible
 
-Ver ejemplo en [testdata/recipes/scientific_recipe.yml](/home/alejandro/Repositorios/ICC-entrada/testdata/recipes/scientific_recipe.yml).
+Ver ejemplo en [testdata/recipes/scientific_recipe.yml](testdata/recipes/scientific_recipe.yml).
 
 Campos clave:
 
@@ -162,21 +160,21 @@ Campos clave:
 ## Licencia
 
 - Licencia del proyecto: `AGPL-3.0-or-later`.
-- Objetivo del proyecto: cientifico, forense y comunitario sin finalidad comercial.
-- Nota legal importante: la AGPL es una licencia libre y **no** restringe el uso comercial por terceros; el objetivo no comercial se expresa como gobernanza del proyecto, no como clausula restrictiva.
-- Para despliegues y redistribucion, seguir:
-  - [Cumplimiento Legal y Licencias](/home/alejandro/Repositorios/ICC-entrada/docs/LEGAL_COMPLIANCE.md)
-  - [Licencias de Terceros](/home/alejandro/Repositorios/ICC-entrada/docs/THIRD_PARTY_LICENSES.md)
+- Objetivo del proyecto: científico, forense y comunitario sin finalidad comercial.
+- Nota legal importante: la AGPL es una licencia libre y **no** restringe el uso comercial por terceros; el objetivo no comercial se expresa como gobernanza del proyecto, no como cláusula restrictiva.
+- Para despliegues y redistribución, seguir:
+  - [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
+  - [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)
 
 ## Documentación
 
-- [Architecture](/home/alejandro/Repositorios/ICC-entrada/ARCHITECTURE.md)
-- [Roadmap](/home/alejandro/Repositorios/ICC-entrada/ROADMAP.md)
-- [Color Pipeline](/home/alejandro/Repositorios/ICC-entrada/COLOR_PIPELINE.md)
-- [Changelog](/home/alejandro/Repositorios/ICC-entrada/CHANGELOG.md)
-- [Manual de Usuario](/home/alejandro/Repositorios/ICC-entrada/docs/MANUAL_USUARIO.md)
-- [Integración dcraw + ArgyllCMS](/home/alejandro/Repositorios/ICC-entrada/docs/INTEGRACION_DCRAW_ARGYLL.md)
-- [Cumplimiento Legal y Licencias](/home/alejandro/Repositorios/ICC-entrada/docs/LEGAL_COMPLIANCE.md)
-- [Licencias de Terceros](/home/alejandro/Repositorios/ICC-entrada/docs/THIRD_PARTY_LICENSES.md)
-- [Decisiones](/home/alejandro/Repositorios/ICC-entrada/docs/DECISIONS.md)
-- [Backlog priorizado](/home/alejandro/Repositorios/ICC-entrada/docs/ISSUES.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Color Pipeline](docs/COLOR_PIPELINE.md)
+- [Changelog](CHANGELOG.md)
+- [Manual de Usuario](docs/MANUAL_USUARIO.md)
+- [Integración dcraw + ArgyllCMS](docs/INTEGRACION_DCRAW_ARGYLL.md)
+- [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
+- [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)
+- [Decisiones](docs/DECISIONS.md)
+- [Backlog priorizado](docs/ISSUES.md)

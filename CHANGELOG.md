@@ -18,6 +18,18 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+### Changed
+
+- Reorganización estructural del proyecto para crecer como base Python única:
+  - eliminada la capa Rust (`Cargo.toml`, `Cargo.lock`, `core/`, `cli/` Rust, `tests/` Rust) que ya no se usaba,
+  - paquete renombrado `icc_entrada` → `iccraw` alineado con el nombre del repo y del proyecto,
+  - código organizado en subpaquetes por dominio: `core/`, `raw/`, `chart/`, `profile/`,
+  - `__version__` centralizado en `iccraw/version.py` y expuesto por `__init__.py`,
+  - entry points CLI/GUI renombrados a `iccraw` y `iccraw-ui`,
+  - `python -m iccraw` operativo vía `__main__.py`,
+  - tests unificados en `tests/` (antes `tests_py/`) con imports actualizados,
+  - docs duplicadas eliminadas de la raíz (canónicas en `docs/`), rutas absolutas Linux sustituidas por relativas en README.
+
 ### Added
 
 - Plantilla de mantenimiento continuo del changelog y política de actualización.

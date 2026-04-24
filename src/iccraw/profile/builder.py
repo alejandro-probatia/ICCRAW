@@ -1,0 +1,364 @@
+from __future__ import annotations
+
+from dataclasses import asdict
+from pathlib import Path
+import os
+import shutil
+import struct
+import subprocess
+import tempfile
+from datetime import datetime, timezone
+import numpy as np
+import colour
+
+from ..core.color import delta_e76, delta_e2000, summarize
+from ..core.models import ErrorSummary, PatchError, ProfileBuildResult, Recipe, SampleSet, ValidationResult
+from ..core.models import read_json, write_json
+from ..version import __version__
+
+
+D50_XYZ = np.array([0.9642, 1.0, 0.8249], dtype=np.float64)
+
+
+def build_profile(
+    samples: SampleSet,
+    recipe: Recipe,
+    out_icc: Path,
+    camera_model: str | None,
+    lens_model: str | None,
+) -> ProfileBuildResult:
+    measured_rgb, reference_xyz, reference_lab, patch_ids = _samples_to_arrays(samples)
+
+    matrix, *_ = np.linalg.lstsq(measured_rgb, reference_xyz, rcond=None)
+
+    predicted_xyz = measured_rgb @ matrix
+    predicted_lab = colour.XYZ_to_Lab(predicted_xyz, illuminant=D50_XYZ)
+
+    de76 = np.asarray(delta_e76(predicted_lab, reference_lab), dtype=np.float64)
+    de00 = np.asarray(delta_e2000(predicted_lab, reference_lab), dtype=np.float64)
+
+    patch_errors = [
+        PatchError(patch_id=pid, delta_e76=float(a), delta_e2000=float(b))
+        for pid, a, b in zip(patch_ids, de76, de00, strict=True)
+    ]
+
+    s76 = summarize(de76)
+    s00 = summarize(de00)
+    summary = ErrorSummary(
+        mean_delta_e76=s76["mean"],
+        median_delta_e76=s76["median"],
+        p95_delta_e76=s76["p95"],
+        max_delta_e76=s76["max"],
+        mean_delta_e2000=s00["mean"],
+        median_delta_e2000=s00["median"],
+        p95_delta_e2000=s00["p95"],
+        max_delta_e2000=s00["max"],
+    )
+
+    out_icc.parent.mkdir(parents=True, exist_ok=True)
+
+    engine_requested = (recipe.profile_engine or "argyll").lower()
+    if engine_requested != "argyll":
+        raise RuntimeError(
+            f"profile_engine no soportado: {recipe.profile_engine}. "
+            "Este proyecto usa exclusivamente ArgyllCMS ('argyll')."
+        )
+
+    _build_profile_with_argyll(
+        out_icc=out_icc,
+        measured_rgb=measured_rgb,
+        reference_lab=reference_lab,
+        patch_ids=patch_ids,
+        description=f"ICCRAW {samples.chart_name} {samples.chart_version}",
+        extra_args=recipe.argyll_colprof_args,
+    )
+
+    engine_used = "argyll"
+    engine_warning = None
+
+    if not out_icc.exists():
+        raise RuntimeError("ArgyllCMS no genero el perfil ICC esperado.")
+
+    profile_json_path = out_icc.with_suffix(".profile.json")
+    metadata = {
+        "camera_model": camera_model,
+        "lens_model": lens_model,
+        "illuminant": samples.illuminant,
+        "chart_name": samples.chart_name,
+        "chart_version": samples.chart_version,
+        "algorithm_version": __version__,
+        "profile_engine_requested": engine_requested,
+        "profile_engine_used": engine_used,
+        "engine_warning": engine_warning,
+        "recipe": asdict(recipe),
+        # Keep matrix sidecar always for reproducible numeric application inside batch pipeline.
+        "matrix_camera_to_xyz": matrix.tolist(),
+        "trc_gamma": 1.0,
+        "error_summary": asdict(summary),
+    }
+    write_json(profile_json_path, metadata)
+
+    return ProfileBuildResult(
+        output_icc=str(out_icc),
+        output_profile_json=str(profile_json_path),
+        model="matrix3x3",
+        matrix_camera_to_xyz=matrix.tolist(),
+        trc_gamma=1.0,
+        error_summary=summary,
+        patch_errors=patch_errors,
+        metadata=metadata,
+    )
+
+
+def validate_profile(samples: SampleSet, profile_path: Path) -> ValidationResult:
+    profile_json = profile_path.with_suffix(".profile.json")
+    if not profile_json.exists():
+        raise FileNotFoundError(
+            f"No se encontro sidecar de perfil: {profile_json}. Genera el perfil con app build-profile primero."
+        )
+
+    payload = read_json(profile_json)
+    matrix = np.asarray(payload["matrix_camera_to_xyz"], dtype=np.float64)
+
+    measured_rgb, _reference_xyz, reference_lab, patch_ids = _samples_to_arrays(samples)
+    predicted_xyz = measured_rgb @ matrix
+    predicted_lab = colour.XYZ_to_Lab(predicted_xyz, illuminant=D50_XYZ)
+
+    de76 = np.asarray(delta_e76(predicted_lab, reference_lab), dtype=np.float64)
+    de00 = np.asarray(delta_e2000(predicted_lab, reference_lab), dtype=np.float64)
+
+    patch_errors = [
+        PatchError(patch_id=pid, delta_e76=float(a), delta_e2000=float(b))
+        for pid, a, b in zip(patch_ids, de76, de00, strict=True)
+    ]
+
+    s76 = summarize(de76)
+    s00 = summarize(de00)
+    summary = ErrorSummary(
+        mean_delta_e76=s76["mean"],
+        median_delta_e76=s76["median"],
+        p95_delta_e76=s76["p95"],
+        max_delta_e76=s76["max"],
+        mean_delta_e2000=s00["mean"],
+        median_delta_e2000=s00["median"],
+        p95_delta_e2000=s00["p95"],
+        max_delta_e2000=s00["max"],
+    )
+
+    return ValidationResult(profile_path=str(profile_path), error_summary=summary, patch_errors=patch_errors)
+
+
+def load_profile_model(profile_path: Path) -> dict:
+    sidecar = profile_path.with_suffix(".profile.json")
+    if not sidecar.exists():
+        raise FileNotFoundError(f"No existe sidecar: {sidecar}")
+    return read_json(sidecar)
+
+
+def _samples_to_arrays(samples: SampleSet):
+    patch_ids: list[str] = []
+    measured: list[list[float]] = []
+    reference_xyz: list[list[float]] = []
+    reference_lab: list[list[float]] = []
+
+    for s in samples.samples:
+        if s.reference_lab is None:
+            continue
+        patch_ids.append(s.patch_id)
+        measured.append([float(v) for v in s.measured_rgb])
+        lab = np.asarray(s.reference_lab, dtype=np.float64)
+        xyz = colour.Lab_to_XYZ(lab, illuminant=D50_XYZ)
+        reference_xyz.append([float(x) for x in xyz])
+        reference_lab.append([float(v) for v in lab])
+
+    if not measured:
+        raise RuntimeError("No hay parches con reference_lab para construir/validar perfil")
+
+    return (
+        np.asarray(measured, dtype=np.float64),
+        np.asarray(reference_xyz, dtype=np.float64),
+        np.asarray(reference_lab, dtype=np.float64),
+        patch_ids,
+    )
+
+
+def _build_profile_with_argyll(
+    out_icc: Path,
+    measured_rgb: np.ndarray,
+    reference_lab: np.ndarray,
+    patch_ids: list[str],
+    description: str,
+    extra_args: list[str] | None,
+) -> None:
+    colprof = shutil.which("colprof")
+    if colprof is None:
+        raise RuntimeError("colprof no esta en PATH")
+
+    with tempfile.TemporaryDirectory(prefix="iccraw_argyll_") as tmp:
+        tmpdir = Path(tmp)
+        base = tmpdir / "camera_profile"
+        ti3 = base.with_suffix(".ti3")
+        _write_ti3(ti3, measured_rgb, reference_lab, patch_ids)
+
+        args = [colprof, "-v", "-D", description]
+        env_args = os.environ.get("ICC_ARGYLL_COLPROF_ARGS", "").strip()
+        if extra_args:
+            args.extend(extra_args)
+        elif env_args:
+            args.extend(env_args.split())
+        else:
+            args.extend(["-qm", "-as"])
+
+        args.append(base.stem)
+
+        proc = subprocess.run(args, cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(f"colprof retorno {proc.returncode}: {proc.stdout[-500:]}")
+
+        produced = base.with_suffix(".icc")
+        if not produced.exists():
+            raise RuntimeError("colprof no produjo fichero .icc")
+
+        shutil.copy2(produced, out_icc)
+
+
+def _write_ti3(path: Path, measured_rgb: np.ndarray, reference_lab: np.ndarray, patch_ids: list[str]) -> None:
+    lines: list[str] = []
+    lines.append('CTI3')
+    lines.append('DESCRIPTOR "ICCRAW chart samples"')
+    lines.append('ORIGINATOR "ICCRAW"')
+    lines.append('CREATED "{}"'.format(datetime.now(timezone.utc).isoformat()))
+    lines.append('KEYWORD "DEVICE_CLASS"')
+    lines.append('DEVICE_CLASS "INPUT"')
+    lines.append('KEYWORD "COLOR_REP"')
+    lines.append('COLOR_REP "LAB_RGB"')
+    lines.append('NUMBER_OF_FIELDS 7')
+    lines.append('BEGIN_DATA_FORMAT')
+    lines.append('SAMPLE_ID LAB_L LAB_A LAB_B RGB_R RGB_G RGB_B')
+    lines.append('END_DATA_FORMAT')
+    lines.append(f'NUMBER_OF_SETS {len(patch_ids)}')
+    lines.append('BEGIN_DATA')
+
+    for pid, rgb, lab in zip(patch_ids, measured_rgb, reference_lab, strict=True):
+        rr, gg, bb = [float(v) * 100.0 for v in rgb]
+        ll, aa, bb_lab = [float(v) for v in lab]
+        lines.append(f'{pid} {ll:.6f} {aa:.6f} {bb_lab:.6f} {rr:.6f} {gg:.6f} {bb:.6f}')
+
+    lines.append('END_DATA')
+    path.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+
+def build_matrix_shaper_icc(description: str, matrix_camera_to_xyz: np.ndarray, gamma: float) -> bytes:
+    matrix = np.asarray(matrix_camera_to_xyz, dtype=np.float64)
+    if matrix.shape != (3, 3):
+        raise ValueError("matrix_camera_to_xyz debe ser 3x3")
+
+    tags: dict[bytes, bytes] = {
+        b"wtpt": _xyz_type(D50_XYZ),
+        b"rXYZ": _xyz_type(matrix[:, 0]),
+        b"gXYZ": _xyz_type(matrix[:, 1]),
+        b"bXYZ": _xyz_type(matrix[:, 2]),
+        b"rTRC": _curve_type_gamma(gamma),
+        b"gTRC": _curve_type_gamma(gamma),
+        b"bTRC": _curve_type_gamma(gamma),
+        b"cprt": _text_type("Generated by ICCRAW"),
+        b"desc": _desc_type(description),
+    }
+
+    table_entries: list[tuple[bytes, int, int]] = []
+    body = bytearray()
+
+    offset = 128 + 4 + len(tags) * 12
+    for sig, data in tags.items():
+        pad = (4 - (offset % 4)) % 4
+        if pad:
+            body.extend(b"\x00" * pad)
+            offset += pad
+        table_entries.append((sig, offset, len(data)))
+        body.extend(data)
+        offset += len(data)
+
+    profile_size = 128 + 4 + len(tags) * 12 + len(body)
+    header = _icc_header(profile_size)
+
+    tag_table = bytearray()
+    tag_table.extend(struct.pack(">I", len(tags)))
+    for sig, off, size in table_entries:
+        tag_table.extend(sig)
+        tag_table.extend(struct.pack(">II", off, size))
+
+    return bytes(header + tag_table + body)
+
+
+def _icc_header(size: int) -> bytearray:
+    h = bytearray(128)
+    now = datetime.now(timezone.utc)
+    struct.pack_into(">I", h, 0, size)
+    h[4:8] = b"pyIC"
+    struct.pack_into(">I", h, 8, 0x02400000)
+    h[12:16] = b"mntr"
+    h[16:20] = b"RGB "
+    h[20:24] = b"XYZ "
+    struct.pack_into(">6H", h, 24, now.year, now.month, now.day, now.hour, now.minute, now.second)
+    h[36:40] = b"acsp"
+    h[40:44] = b"APPL"
+    struct.pack_into(">I", h, 44, 0)
+    h[48:52] = b"    "
+    h[52:56] = b"    "
+    struct.pack_into(">Q", h, 56, 0)
+    struct.pack_into(">I", h, 64, 0)
+    struct.pack_into(">iii", h, 68, _s15f16(D50_XYZ[0]), _s15f16(D50_XYZ[1]), _s15f16(D50_XYZ[2]))
+    h[80:84] = b"pyIC"
+    return h
+
+
+def _xyz_type(xyz: np.ndarray) -> bytes:
+    x, y, z = [float(v) for v in xyz]
+    payload = bytearray()
+    payload.extend(b"XYZ ")
+    payload.extend(b"\x00\x00\x00\x00")
+    payload.extend(struct.pack(">iii", _s15f16(x), _s15f16(y), _s15f16(z)))
+    return bytes(payload)
+
+
+def _curve_type_gamma(gamma: float) -> bytes:
+    g = max(0.01, float(gamma))
+    u8f8 = int(round(g * 256.0))
+    payload = bytearray()
+    payload.extend(b"curv")
+    payload.extend(b"\x00\x00\x00\x00")
+    payload.extend(struct.pack(">I", 1))
+    payload.extend(struct.pack(">H", u8f8))
+    return bytes(payload)
+
+
+def _text_type(text: str) -> bytes:
+    payload = bytearray()
+    payload.extend(b"text")
+    payload.extend(b"\x00\x00\x00\x00")
+    payload.extend(text.encode("ascii", "ignore") + b"\x00")
+    return bytes(payload)
+
+
+def _desc_type(text: str) -> bytes:
+    ascii_text = text.encode("ascii", "ignore")[:200]
+    payload = bytearray()
+    payload.extend(b"desc")
+    payload.extend(b"\x00\x00\x00\x00")
+    payload.extend(struct.pack(">I", len(ascii_text) + 1))
+    payload.extend(ascii_text + b"\x00")
+    payload.extend(struct.pack(">I", 0))
+    payload.extend(struct.pack(">I", 0))
+    payload.extend(struct.pack(">H", 0))
+    payload.extend(struct.pack(">B", 0))
+    payload.extend(b"\x00" * 67)
+    return bytes(payload)
+
+
+def _s15f16(value: float) -> int:
+    v = int(round(float(value) * 65536.0))
+    if v > 0x7FFFFFFF:
+        v = 0x7FFFFFFF
+    if v < -0x80000000:
+        v = -0x80000000
+    return v

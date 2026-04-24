@@ -59,7 +59,7 @@ pip install -e .[gui]
 ## 3.1 Obtener metadatos RAW
 
 ```bash
-app raw-info captura.raw
+iccraw raw-info captura.raw
 ```
 
 Salida: JSON con cámara, lente, ISO, exposición, hash, etc.
@@ -67,7 +67,7 @@ Salida: JSON con cámara, lente, ISO, exposición, hash, etc.
 ## 3.2 Revelado controlado
 
 ```bash
-app develop captura.raw \
+iccraw develop captura.raw \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/captura_revelada.tiff \
   --audit-linear /tmp/captura_linear.tiff
@@ -76,12 +76,12 @@ app develop captura.raw \
 ## 3.3 Detectar carta y muestrear
 
 ```bash
-app detect-chart /tmp/captura_revelada.tiff \
+iccraw detect-chart /tmp/captura_revelada.tiff \
   --out /tmp/detection.json \
   --preview /tmp/overlay.png \
   --chart-type colorchecker24
 
-app sample-chart /tmp/captura_revelada.tiff \
+iccraw sample-chart /tmp/captura_revelada.tiff \
   --detection /tmp/detection.json \
   --reference testdata/references/colorchecker24_reference.json \
   --out /tmp/samples.json
@@ -90,12 +90,12 @@ app sample-chart /tmp/captura_revelada.tiff \
 ## 3.4 Construir y validar perfil ICC
 
 ```bash
-app build-profile /tmp/samples.json \
+iccraw build-profile /tmp/samples.json \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/camera_profile.icc \
   --report /tmp/profile_report.json
 
-app validate-profile /tmp/samples.json \
+iccraw validate-profile /tmp/samples.json \
   --profile /tmp/camera_profile.icc \
   --out /tmp/validation.json
 ```
@@ -103,7 +103,7 @@ app validate-profile /tmp/samples.json \
 ## 3.5 Aplicar a lote
 
 ```bash
-app batch-develop ./raws \
+iccraw batch-develop ./raws \
   --recipe testdata/recipes/scientific_recipe.yml \
   --profile /tmp/camera_profile.icc \
   --out /tmp/tiffs
@@ -112,7 +112,7 @@ app batch-develop ./raws \
 ## 3.6 Flujo automático de extremo a extremo
 
 ```bash
-app auto-profile-batch \
+iccraw auto-profile-batch \
   --charts ./charts_raw \
   --targets ./raws_objetivo \
   --recipe testdata/recipes/scientific_recipe.yml \
@@ -128,17 +128,13 @@ app auto-profile-batch \
 Arranque:
 
 ```bash
-app-ui
-# o:
-app-ui-qt
+iccraw-ui
 ```
 
 o:
 
 ```bash
 bash scripts/run_ui.sh
-# o:
-bash scripts/run_ui_qt.sh
 ```
 
 Estructura de la interfaz:

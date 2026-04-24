@@ -29,11 +29,11 @@ sudo apt-get install -y dcraw argyll exiftool
 bash scripts/check_tools.sh
 ```
 
-## Integración `dcraw` (módulo `pipeline`)
+## Integración `dcraw` (módulo `raw.pipeline`)
 
 Archivo clave:
 
-- `src/icc_entrada/pipeline.py`
+- `src/iccraw/raw/pipeline.py`
 
 Para entradas RAW, ICCRAW construye un comando `dcraw` determinista:
 
@@ -55,11 +55,11 @@ Mapeo de `recipe`:
 - `white_balance_mode` + `wb_multipliers`: `-w` o `-r`.
 - `black_level_mode`: opcional `-k` o `-S`.
 
-## Integración `ArgyllCMS` (módulo `profiling`)
+## Integración `ArgyllCMS` (módulo `profile.builder`)
 
 Archivo clave:
 
-- `src/icc_entrada/profiling.py`
+- `src/iccraw/profile/builder.py`
 
 Flujo:
 
@@ -87,7 +87,7 @@ Personalización:
 ### Prueba de revelado RAW real (`dcraw`)
 
 ```bash
-app develop /ruta/a/captura.dng \
+iccraw develop /ruta/a/captura.dng \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/dev_out.tiff \
   --audit-linear /tmp/dev_linear.tiff
@@ -96,7 +96,7 @@ app develop /ruta/a/captura.dng \
 ### Prueba de perfilado (`colprof`)
 
 ```bash
-app auto-profile-batch \
+iccraw auto-profile-batch \
   --charts testdata/batch_images \
   --targets testdata/batch_images \
   --recipe testdata/recipes/scientific_recipe.yml \

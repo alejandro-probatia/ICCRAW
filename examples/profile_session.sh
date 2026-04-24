@@ -2,12 +2,12 @@
 set -euo pipefail
 
 run_app() {
-  if [ -x ".venv/bin/app" ]; then
-    .venv/bin/app "$@"
-  elif command -v app >/dev/null 2>&1; then
-    app "$@"
+  if [ -x ".venv/bin/iccraw" ]; then
+    .venv/bin/iccraw "$@"
+  elif command -v iccraw >/dev/null 2>&1; then
+    iccraw "$@"
   else
-    python -m icc_entrada.cli "$@"
+    python -m iccraw "$@"
   fi
 }
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iccraw"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Pipeline reproducible para RAW, deteccion de carta y perfilado ICC de camara"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -29,18 +29,23 @@ raw_metadata = [
 gui = [
   "PySide6>=6.8",
 ]
+dev = [
+  "pytest>=8.0",
+]
 
 [project.scripts]
-app = "icc_entrada.cli:main"
-app-ui = "icc_entrada.gui:main"
-app-ui-qt = "icc_entrada.gui:main"
+iccraw = "iccraw.cli:main"
+iccraw-ui = "iccraw.gui:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.setuptools.dynamic]
+version = {attr = "iccraw.version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests_py"]
+testpaths = ["tests"]
 addopts = "-q"
