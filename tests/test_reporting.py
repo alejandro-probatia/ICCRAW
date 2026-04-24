@@ -4,7 +4,7 @@ from iccraw import reporting
 
 
 def test_check_external_tools_reports_available_required_tools(monkeypatch):
-    available = {"dcraw", "colprof", "xicclu", "tificc", "exiftool"}
+    available = {"colprof", "xicclu", "tificc", "exiftool"}
 
     def fake_which(command):
         if command in available:
@@ -27,7 +27,7 @@ def test_check_external_tools_reports_available_required_tools(monkeypatch):
 
 
 def test_check_external_tools_uses_icclu_fallback(monkeypatch):
-    available = {"dcraw", "colprof", "icclu", "tificc", "exiftool"}
+    available = {"colprof", "icclu", "tificc", "exiftool"}
 
     def fake_which(command):
         if command in available:
@@ -54,7 +54,6 @@ def test_check_external_tools_reports_missing_required(monkeypatch):
     result = reporting.check_external_tools()
 
     assert result["status"] == "missing_required"
-    assert "dcraw" in result["missing_required"]
     assert "argyll-colprof" in result["failing_required"]
     assert all(not tool["available"] for tool in result["tools"])
     assert all(not tool["ok"] for tool in result["tools"])

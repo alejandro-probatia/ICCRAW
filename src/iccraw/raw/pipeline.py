@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-import subprocess
-import shutil
-import tempfile
+
 import numpy as np
+
+try:
+    import rawpy
+except Exception:  # pragma: no cover - dependency check emits a clearer runtime error.
+    rawpy = None
 
 from ..core.models import DevelopResult, Recipe
 from ..core.recipe import scientific_guard
@@ -12,13 +15,20 @@ from ..core.utils import read_image, write_tiff16
 from .metadata import raw_info
 
 
-DCRAW_QUALITY_MAP = {
-    # dcraw -q:
-    # 0: linear, 1: VNG, 2: PPG, 3: AHD.
-    "linear": "0",
-    "vng": "1",
-    "ppg": "2",
-    "ahd": "3",
+LIBRAW_DEMOSAIC_MAP = {
+    "linear": "LINEAR",
+    "vng": "VNG",
+    "ppg": "PPG",
+    "ahd": "AHD",
+    "modified_ahd": "MODIFIED_AHD",
+    "aahd": "AAHD",
+    "afd": "AFD",
+    "vcd": "VCD",
+    "vcd_modified_ahd": "VCD_MODIFIED_AHD",
+    "dcb": "DCB",
+    "dht": "DHT",
+    "lmmse": "LMMSE",
+    "amaze": "AMAZE",
 }
 
 
@@ -61,85 +71,78 @@ def _develop_image(input_path: Path, recipe: Recipe) -> np.ndarray:
         return read_image(input_path)
 
     developer = recipe.raw_developer.strip().lower()
-    if developer in {"", "dcraw", "dcraw-cli"}:
-        return _develop_with_dcraw(input_path, recipe)
-    raise RuntimeError(f"raw_developer no soportado: {recipe.raw_developer}. Usa 'dcraw'.")
+    if developer not in {"", "libraw", "rawpy"}:
+        raise RuntimeError(f"raw_developer no soportado: {recipe.raw_developer}. Usa 'libraw'.")
+    return develop_with_libraw(input_path, recipe, half_size=False)
 
 
-def _develop_with_dcraw(input_path: Path, recipe: Recipe) -> np.ndarray:
-    if shutil.which("dcraw") is None:
-        raise RuntimeError("No se puede revelar RAW: 'dcraw' no esta disponible en PATH.")
-    cmd = _build_dcraw_command(input_path, recipe)
+def develop_with_libraw(input_path: Path, recipe: Recipe, *, half_size: bool = False) -> np.ndarray:
+    if rawpy is None:
+        raise RuntimeError("No se puede revelar RAW: dependencia 'rawpy'/'LibRaw' no disponible.")
 
-    with tempfile.TemporaryDirectory(prefix="iccraw_dcraw_") as tmp:
-        out = Path(tmp) / "dcraw_out.tiff"
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if proc.returncode != 0:
-            stderr_tail = proc.stderr.decode("utf-8", errors="ignore")[-400:]
-            raise RuntimeError(
-                "Fallo de decodificacion RAW con dcraw. "
-                f"stderr: {stderr_tail}"
-            )
-        if not proc.stdout:
-            raise RuntimeError("dcraw no devolvio datos TIFF en stdout.")
-        out.write_bytes(proc.stdout)
-        return read_image(out)
+    kwargs = _build_libraw_postprocess_kwargs(recipe, half_size=half_size)
+    try:
+        with rawpy.imread(str(input_path)) as raw:
+            image = raw.postprocess(**kwargs)
+    except Exception as exc:
+        raise RuntimeError(f"Fallo de decodificacion RAW con LibRaw/rawpy: {exc}") from exc
+    return _postprocess_output_to_float(image)
 
 
-def _build_dcraw_command(input_path: Path, recipe: Recipe) -> list[str]:
-    q = dcraw_quality_value(recipe.demosaic_algorithm)
-    cmd = [
-        "dcraw",
-        "-T",
-        "-4",
-        "-W",
-        "-H",
-        "0",
-        "-t",
-        "0",
-        "-o",
-        "0",
-        "-q",
-        q,
-    ]
+def _build_libraw_postprocess_kwargs(recipe: Recipe, *, half_size: bool = False) -> dict:
+    if rawpy is None:
+        raise RuntimeError("No se puede configurar LibRaw: dependencia 'rawpy' no disponible.")
 
     wb_mode = recipe.white_balance_mode.strip().lower()
-    if wb_mode == "camera_metadata":
-        cmd.append("-w")
-    elif wb_mode == "fixed":
-        wb = _dcraw_wb(recipe.wb_multipliers)
-        if wb is not None:
-            cmd.extend(["-r", *(f"{v:.10g}" for v in wb)])
+    use_camera_wb = wb_mode == "camera_metadata"
+    user_wb = _libraw_wb(recipe.wb_multipliers) if wb_mode == "fixed" else None
+
+    kwargs = {
+        "demosaic_algorithm": libraw_demosaic_value(recipe.demosaic_algorithm),
+        "half_size": bool(half_size),
+        "use_camera_wb": use_camera_wb,
+        "use_auto_wb": False,
+        "user_wb": user_wb,
+        "output_color": rawpy.ColorSpace.raw,
+        "output_bps": 16,
+        "user_flip": 0,
+        "no_auto_bright": True,
+        "bright": 1.0,
+        "highlight_mode": rawpy.HighlightMode.Clip,
+        "gamma": (1.0, 1.0),
+    }
 
     black_mode = recipe.black_level_mode.strip().lower()
     if black_mode.startswith("fixed:"):
-        cmd.extend(["-k", str(_parse_int_mode_value(black_mode, "fixed"))])
+        kwargs["user_black"] = _parse_int_mode_value(black_mode, "fixed")
     elif black_mode.startswith("white:"):
-        cmd.extend(["-S", str(_parse_int_mode_value(black_mode, "white"))])
+        kwargs["user_sat"] = _parse_int_mode_value(black_mode, "white")
 
-    cmd.extend(["-c", str(input_path)])
-    return cmd
+    return kwargs
 
 
-def dcraw_quality_value(demosaic_algorithm: str) -> str:
+def libraw_demosaic_value(demosaic_algorithm: str):
+    if rawpy is None:
+        raise RuntimeError("No se puede configurar demosaicing: dependencia 'rawpy' no disponible.")
+
     name = str(demosaic_algorithm or "").strip().lower()
-    if name not in DCRAW_QUALITY_MAP:
-        supported = ", ".join(sorted(DCRAW_QUALITY_MAP))
+    if name not in LIBRAW_DEMOSAIC_MAP:
+        supported = ", ".join(sorted(LIBRAW_DEMOSAIC_MAP))
         raise RuntimeError(
-            "demosaic_algorithm no soportado por dcraw: "
+            "demosaic_algorithm no soportado por LibRaw/rawpy: "
             f"{demosaic_algorithm!r}. Valores soportados: {supported}."
         )
-    return DCRAW_QUALITY_MAP[name]
+    enum_name = LIBRAW_DEMOSAIC_MAP[name]
+    return getattr(rawpy.DemosaicAlgorithm, enum_name)
 
 
-def _dcraw_wb(values: list[float] | None) -> list[float] | None:
+def _libraw_wb(values: list[float] | None) -> list[float] | None:
     if not values:
         return None
     wb = [float(v) for v in values]
     if len(wb) >= 4:
         return [wb[0], wb[1], wb[2], wb[3]]
     if len(wb) == 3:
-        # dcraw expects R G B G.
         return [wb[0], wb[1], wb[2], wb[1]]
     return None
 
@@ -153,6 +156,20 @@ def _parse_int_mode_value(mode: str, prefix: str) -> int:
     if value < 0:
         raise RuntimeError(f"Valor invalido para {prefix} level: {raw}")
     return value
+
+
+def _postprocess_output_to_float(image: np.ndarray) -> np.ndarray:
+    out = np.asarray(image)
+    if out.ndim == 2:
+        out = np.repeat(out[..., None], 3, axis=2)
+    if out.ndim != 3 or out.shape[2] < 3:
+        raise RuntimeError(f"Salida LibRaw inesperada: shape={out.shape}")
+    out = out[..., :3]
+
+    if np.issubdtype(out.dtype, np.integer):
+        maxv = float(np.iinfo(out.dtype).max)
+        return np.clip(out.astype(np.float32) / maxv, 0.0, 1.0)
+    return np.clip(out.astype(np.float32), 0.0, 1.0)
 
 
 def _apply_srgb_oetf(x: np.ndarray) -> np.ndarray:

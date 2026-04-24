@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-import shutil
-import subprocess
 import tempfile
 
 import cv2
 import numpy as np
+import rawpy
 
 from ..core.models import Recipe
 from ..core.recipe import load_recipe
 from ..core.utils import RAW_EXTENSIONS, read_image
 from ..profile.builder import load_profile_model
 from ..profile.export import apply_profile_matrix
-from .pipeline import dcraw_quality_value, develop_controlled
+from .pipeline import develop_controlled, develop_with_libraw
 
 
 def load_image_for_preview(
@@ -54,75 +53,42 @@ def load_image_for_preview(
 
 
 def _develop_raw_fast_preview(input_path: Path, recipe: Recipe) -> np.ndarray:
-    if shutil.which("dcraw") is None:
-        raise RuntimeError("No se puede previsualizar RAW: 'dcraw' no esta disponible en PATH.")
-
     embedded = extract_embedded_preview(input_path)
     if embedded is not None:
         return embedded
 
-    q = dcraw_quality_value(recipe.demosaic_algorithm)
-    cmd = [
-        "dcraw",
-        "-T",
-        "-4",
-        "-W",
-        "-H",
-        "0",
-        "-t",
-        "0",
-        "-o",
-        "1",
-        "-h",  # Half-size decode; much faster for interactive preview.
-        "-q",
-        q,
-    ]
-
-    wb_mode = recipe.white_balance_mode.strip().lower()
-    if wb_mode == "camera_metadata":
-        cmd.append("-w")
-    elif wb_mode == "fixed":
-        wb = _dcraw_wb(recipe.wb_multipliers)
-        if wb is not None:
-            cmd.extend(["-r", *(f"{v:.10g}" for v in wb)])
-
-    black_mode = recipe.black_level_mode.strip().lower()
-    if black_mode.startswith("fixed:"):
-        cmd.extend(["-k", str(_parse_int_mode_value(black_mode, "fixed"))])
-    elif black_mode.startswith("white:"):
-        cmd.extend(["-S", str(_parse_int_mode_value(black_mode, "white"))])
-
-    cmd.extend(["-c", str(input_path)])
-
-    with tempfile.TemporaryDirectory(prefix="iccraw_fast_preview_") as tmp:
-        out = Path(tmp) / "dcraw_fast_preview.tiff"
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if proc.returncode != 0:
-            stderr_tail = proc.stderr.decode("utf-8", errors="ignore")[-400:]
-            raise RuntimeError(f"Fallo de previsualizacion RAW con dcraw: {stderr_tail}")
-        if not proc.stdout:
-            raise RuntimeError("dcraw no devolvio datos para la previsualizacion RAW.")
-        out.write_bytes(proc.stdout)
-        return read_image(out)
+    return develop_with_libraw(input_path, recipe, half_size=True)
 
 
 def extract_embedded_preview(input_path: Path) -> np.ndarray | None:
-    cmd = ["dcraw", "-e", "-c", str(input_path)]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if proc.returncode != 0 or not proc.stdout:
+    try:
+        with rawpy.imread(str(input_path)) as raw:
+            thumb = raw.extract_thumb()
+    except Exception:
         return None
 
-    buf = np.frombuffer(proc.stdout, dtype=np.uint8)
-    decoded = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
-    if decoded is None:
-        return None
-
-    if decoded.ndim == 2:
-        decoded = cv2.cvtColor(decoded, cv2.COLOR_GRAY2RGB)
-    elif decoded.ndim == 3:
-        decoded = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+    if thumb.format == rawpy.ThumbFormat.JPEG:
+        buf = np.frombuffer(thumb.data, dtype=np.uint8)
+        decoded = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
+        if decoded is None:
+            return None
+        if decoded.ndim == 2:
+            decoded = cv2.cvtColor(decoded, cv2.COLOR_GRAY2RGB)
+        elif decoded.ndim == 3:
+            decoded = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
+        else:
+            return None
+    elif thumb.format == rawpy.ThumbFormat.BITMAP:
+        decoded = np.asarray(thumb.data)
+        if decoded.ndim == 2:
+            decoded = np.repeat(decoded[..., None], 3, axis=2)
+        elif decoded.ndim == 3 and decoded.shape[2] >= 3:
+            decoded = decoded[..., :3]
+        else:
+            return None
     else:
         return None
+
 
     if np.issubdtype(decoded.dtype, np.integer):
         maxv = float(np.iinfo(decoded.dtype).max)
@@ -149,28 +115,6 @@ def _downscale_for_preview(image: np.ndarray, *, max_preview_side: int) -> np.nd
     nh = max(1, int(round(h * scale)))
     resized = cv2.resize(image.astype(np.float32), (nw, nh), interpolation=cv2.INTER_AREA)
     return np.clip(resized, 0.0, 1.0).astype(np.float32)
-
-
-def _dcraw_wb(values: list[float] | None) -> list[float] | None:
-    if not values:
-        return None
-    wb = [float(v) for v in values]
-    if len(wb) >= 4:
-        return [wb[0], wb[1], wb[2], wb[3]]
-    if len(wb) == 3:
-        return [wb[0], wb[1], wb[2], wb[1]]
-    return None
-
-
-def _parse_int_mode_value(mode: str, prefix: str) -> int:
-    raw = mode.split(":", 1)[1]
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise RuntimeError(f"Valor invalido para {prefix} level: {raw}") from exc
-    if value < 0:
-        raise RuntimeError(f"Valor invalido para {prefix} level: {raw}")
-    return value
 
 
 def apply_adjustments(

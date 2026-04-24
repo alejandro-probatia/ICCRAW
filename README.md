@@ -105,7 +105,7 @@ ICCRAW no pretende:
 - reemplazar un laboratorio de validación colorimétrica,
 - garantizar validez forense por sí solo,
 - generar un perfil universal para cualquier luz o escena,
-- ocultar dependencias externas críticas como `dcraw`, ArgyllCMS o LittleCMS.
+- ocultar dependencias críticas como LibRaw/rawpy, ArgyllCMS o LittleCMS.
 
 La meta de la beta es ofrecer una base instalable y verificable para pruebas
 controladas, discusión técnica y ampliación comunitaria.
@@ -123,8 +123,8 @@ Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas control
 ## Stack actual
 
 - Lenguaje: **Python** (única toolchain del proyecto).
-- Revelado RAW: `dcraw` (CLI, modo determinista).
-- Metadatos RAW enriquecidos (opcional): `rawpy` (LibRaw) + `exiftool`.
+- Revelado RAW: **LibRaw** mediante `rawpy`, con DCB por defecto.
+- Metadatos RAW enriquecidos: `rawpy` (LibRaw) + `exiftool`.
 - Detección geométrica: `OpenCV`.
 - Colorimetría y DeltaE: `colour-science`.
 - Export TIFF 16-bit: `tifffile`.
@@ -138,8 +138,6 @@ Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas control
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .
-# Opcional (metadatos RAW enriquecidos con rawpy/LibRaw):
-# pip install -e .[raw_metadata]
 # Opcional (interfaz grafica Qt):
 # pip install -e .[gui]
 ```
@@ -148,7 +146,7 @@ Opcional pero recomendado para perfilado con ArgyllCMS y conversion ICC real:
 
 ```bash
 # Debian/Ubuntu
-sudo apt-get install dcraw argyll liblcms2-utils exiftool
+sudo apt-get install argyll liblcms2-utils exiftool
 bash scripts/check_tools.sh
 iccraw check-tools --out tools_report.json
 ```
@@ -310,7 +308,7 @@ Ver ejemplo en [testdata/recipes/scientific_recipe.yml](testdata/recipes/scienti
 Campos clave:
 
 - `demosaic_algorithm`
-- `raw_developer` (`dcraw`)
+- `raw_developer` (`libraw`)
 - `black_level_mode`
 - `white_balance_mode`
 - `wb_multipliers`
@@ -319,9 +317,10 @@ Campos clave:
 - `profiling_mode`
 - `profile_engine` (`argyll`, único motor soportado)
 
-Con el backend actual `dcraw`, los valores válidos de `demosaic_algorithm` son
-`linear`, `vng`, `ppg` y `ahd`. `ahd` corresponde a `dcraw -q 3` y es el modo de
-interpolación de mayor calidad disponible en este motor.
+Con el backend actual LibRaw/rawpy, `demosaic_algorithm` acepta valores como
+`dcb`, `dht`, `ahd`, `vng`, `ppg`, `linear` y, si la build de LibRaw/rawpy lo
+incluye, `amaze`. `dcb` es el valor por defecto porque funciona con los wheels
+estandar de `rawpy`; AMaZE requiere el demosaic pack GPL3.
 
 ## Reproducibilidad y límites
 
@@ -346,7 +345,7 @@ interpolación de mayor calidad disponible en este motor.
 - [Revision operativa y plan de profesionalizacion](docs/OPERATIVE_REVIEW_PLAN.md)
 - [Changelog](CHANGELOG.md)
 - [Manual de Usuario](docs/MANUAL_USUARIO.md)
-- [Integración dcraw + ArgyllCMS](docs/INTEGRACION_DCRAW_ARGYLL.md)
+- [Integración LibRaw + ArgyllCMS](docs/INTEGRACION_LIBRAW_ARGYLL.md)
 - [Paquete Debian beta](docs/DEBIAN_PACKAGE.md)
 - [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
 - [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)

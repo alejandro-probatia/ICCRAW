@@ -18,15 +18,14 @@ Fecha de revision: 2026-04-23.
   - se exige instalacion desde fuente oficial o paquete del sistema,
   - se registran version y contexto en trazabilidad.
 
-## 3) dcraw
+## 3) LibRaw / rawpy
 
-- Uso en ICCRAW: herramienta externa por subprocess para revelado RAW tecnico.
-- Nota de licencia:
-  - `dcraw.c` declara terminos especificos del autor (incluyendo secciones RESTRICTED/Foveon en revisiones historicas),
-  - ICCRAW evita incorporar o redistribuir `dcraw` en el repositorio para reducir riesgo legal.
+- Uso en ICCRAW: motor único de revelado RAW mediante dependencia Python
+  `rawpy`, vinculada a LibRaw.
+- Licencia declarada: dual LGPL-2.1/CDDL (segun LibRaw/rawpy).
 - Politica en ICCRAW:
-  - instalacion por parte del usuario desde su distribucion/sistema,
-  - no modificamos ni embebemos el codigo fuente de `dcraw`.
+  - se registra version de `rawpy` y LibRaw en contexto de ejecucion,
+  - se incluyen avisos de licencia al publicar builds que redistribuyan wheels.
 
 ## 4) PySide6 / Qt (GUI opcional)
 
@@ -55,7 +54,7 @@ Fecha de revision: 2026-04-23.
 - `PyYAML`: MIT.
 - `colour-science`: BSD-3-Clause.
 - `Pillow`: HPND-like (PIL Software License).
-- `rawpy` (opcional): licencia dual LGPL-2.1/CDDL (segun LibRaw/rawpy).
+- `rawpy`: licencia dual LGPL-2.1/CDDL (segun LibRaw/rawpy).
 
 ## 7) Regla de distribucion del proyecto
 

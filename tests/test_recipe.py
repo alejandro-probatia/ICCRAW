@@ -17,11 +17,12 @@ def test_recipe_warns_non_neutral():
     assert len(g.warnings) >= 3
 
 
-def test_recipe_default_raw_developer_is_dcraw(tmp_path: Path):
+def test_recipe_default_raw_developer_is_libraw(tmp_path: Path):
     recipe_file = tmp_path / "recipe.yml"
     recipe_file.write_text("{}", encoding="utf-8")
     recipe = load_recipe(recipe_file)
-    assert recipe.raw_developer == "dcraw"
+    assert recipe.raw_developer == "libraw"
+    assert recipe.demosaic_algorithm == "dcb"
 
 
 def test_recipe_nested_sampling_strategy_preserves_parameters(tmp_path: Path):

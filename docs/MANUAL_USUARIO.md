@@ -21,7 +21,7 @@ La version actual esta en desarrollo. Existe funcionalidad base para ejecutar fl
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y dcraw argyll liblcms2-utils exiftool
+sudo apt-get install -y argyll liblcms2-utils exiftool
 ```
 
 Comprobación:
@@ -36,8 +36,6 @@ bash scripts/check_tools.sh
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .
-# Opcional para metadatos RAW enriquecidos:
-pip install -e .[raw_metadata]
 # Opcional para GUI Qt:
 pip install -e .[gui]
 ```
@@ -241,15 +239,17 @@ Notas de uso de preview:
 - Si el perfil activo no tiene sidecar `.profile.json` válido o genera clipping extremo en preview, la aplicación muestra la vista sin perfil y registra aviso.
 - La barra superior muestra progreso indeterminado durante carga, generación de
   perfil y revelado por lote.
-- Con `dcraw`, la mayor calidad de interpolación disponible es AHD (`-q 3`);
-  AMaZE no forma parte del motor `dcraw`.
+- LibRaw/rawpy es el único motor RAW; DCB es el valor por defecto instalable de
+  alta calidad. AMaZE requiere una build de `rawpy`/LibRaw con demosaic pack
+  GPL3.
 - `Vista -> Pantalla completa` (`F11`) y `Vista -> Restablecer distribución` permiten adaptar la interfaz a cualquier tamaño de pantalla.
 - Al abrir una sesión, las salidas operativas se fuerzan al árbol de sesión:
   `profiles/` para ICC, `config/` para reportes/recetas, `work/` para
   intermedios y `exports/` para TIFF/preview. Los temporales internos siguen
   usándose solo como scratch transitorio.
-- `Ayuda -> Diagnóstico herramientas...` muestra versiones/rutas de `dcraw`,
-  ArgyllCMS, LittleCMS y `exiftool`.
+- `Ayuda -> Diagnóstico herramientas...` muestra versiones/rutas de ArgyllCMS,
+  LittleCMS y `exiftool`; `rawpy`/LibRaw queda registrado en el contexto de
+  ejecución.
 
 ## 5. Artefactos que genera el sistema
 
@@ -283,8 +283,9 @@ Durante el proceso, ICCRAW produce:
 
 ## 8. Problemas frecuentes
 
-- Error `dcraw`:
-  - comprobar que la ruta es RAW real y no fichero de ejemplo truncado.
+- Error LibRaw/rawpy:
+  - comprobar que la ruta es RAW real y no fichero de ejemplo truncado,
+  - reinstalar dependencias Python con `pip install -e .`.
 - Error `colprof`:
   - revisar que Argyll esté instalado y que la referencia de carta sea correcta.
 - Detección con baja confianza:
@@ -309,4 +310,4 @@ Recomendación de implantación:
 
 Ver detalles técnicos en:
 
-- `docs/INTEGRACION_DCRAW_ARGYLL.md`
+- `docs/INTEGRACION_LIBRAW_ARGYLL.md`

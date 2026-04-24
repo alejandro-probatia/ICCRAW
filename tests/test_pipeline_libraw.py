@@ -1,44 +1,53 @@
 from pathlib import Path
 
-import pytest
 import numpy as np
+import pytest
+import rawpy
 import tifffile
 
 from iccraw.core.models import Recipe
 from iccraw.core.utils import read_image
-from iccraw.raw.pipeline import _build_dcraw_command, _develop_image, _parse_int_mode_value, develop_controlled
+from iccraw.raw.pipeline import (
+    _build_libraw_postprocess_kwargs,
+    _develop_image,
+    _parse_int_mode_value,
+    develop_controlled,
+    libraw_demosaic_value,
+)
 
 
-def test_build_dcraw_command_with_fixed_wb_and_black_level():
+def test_build_libraw_kwargs_with_amaze_fixed_wb_and_black_level():
     recipe = Recipe(
-        raw_developer="dcraw",
-        demosaic_algorithm="vng",
+        raw_developer="libraw",
+        demosaic_algorithm="amaze",
         white_balance_mode="fixed",
         wb_multipliers=[2.0, 1.0, 1.5],
         black_level_mode="fixed:64",
     )
-    cmd = _build_dcraw_command(Path("/tmp/capture.nef"), recipe)
+    kwargs = _build_libraw_postprocess_kwargs(recipe)
 
-    assert cmd[:3] == ["dcraw", "-T", "-4"]
-    assert cmd[cmd.index("-q") + 1] == "1"
-    assert cmd[cmd.index("-r") + 1 : cmd.index("-r") + 5] == ["2", "1", "1.5", "1"]
-    assert cmd[cmd.index("-k") + 1] == "64"
-    assert cmd[-2:] == ["-c", "/tmp/capture.nef"]
+    assert kwargs["demosaic_algorithm"] == rawpy.DemosaicAlgorithm.AMAZE
+    assert kwargs["user_wb"] == [2.0, 1.0, 1.5, 1.0]
+    assert kwargs["user_black"] == 64
+    assert kwargs["output_color"] == rawpy.ColorSpace.raw
+    assert kwargs["output_bps"] == 16
+    assert kwargs["gamma"] == (1.0, 1.0)
+    assert kwargs["no_auto_bright"] is True
 
 
-def test_build_dcraw_command_with_camera_wb_and_white_level():
+def test_build_libraw_kwargs_with_camera_wb_and_white_level():
     recipe = Recipe(
-        raw_developer="dcraw",
+        raw_developer="libraw",
         demosaic_algorithm="ahd",
         white_balance_mode="camera_metadata",
         black_level_mode="white:15000",
     )
-    cmd = _build_dcraw_command(Path("/tmp/capture.cr3"), recipe)
+    kwargs = _build_libraw_postprocess_kwargs(recipe)
 
-    assert "-w" in cmd
-    assert "-r" not in cmd
-    assert cmd[cmd.index("-S") + 1] == "15000"
-    assert cmd[-2:] == ["-c", "/tmp/capture.cr3"]
+    assert kwargs["demosaic_algorithm"] == rawpy.DemosaicAlgorithm.AHD
+    assert kwargs["use_camera_wb"] is True
+    assert kwargs["user_wb"] is None
+    assert kwargs["user_sat"] == 15000
 
 
 def test_parse_int_mode_value_rejects_invalid():
@@ -46,14 +55,13 @@ def test_parse_int_mode_value_rejects_invalid():
         _parse_int_mode_value("fixed:abc", "fixed")
 
 
-def test_build_dcraw_command_rejects_unsupported_demosaic():
-    recipe = Recipe(demosaic_algorithm="rcd")
+def test_libraw_demosaic_rejects_unsupported():
     with pytest.raises(RuntimeError, match="demosaic_algorithm no soportado"):
-        _build_dcraw_command(Path("/tmp/capture.nef"), recipe)
+        libraw_demosaic_value("rcd")
 
 
 def test_develop_image_rejects_unknown_raw_developer():
-    recipe = Recipe(raw_developer="rawpy")
+    recipe = Recipe(raw_developer="other-engine")
     with pytest.raises(RuntimeError, match="raw_developer no soportado"):
         _develop_image(Path("/tmp/capture.nef"), recipe)
 

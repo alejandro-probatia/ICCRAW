@@ -54,8 +54,8 @@ class RawMetadata:
 
 @dataclass
 class Recipe:
-    raw_developer: str = "dcraw"
-    demosaic_algorithm: str = "ahd"
+    raw_developer: str = "libraw"
+    demosaic_algorithm: str = "dcb"
     black_level_mode: str = "metadata"
     white_balance_mode: str = "fixed"
     wb_multipliers: list[float] = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])

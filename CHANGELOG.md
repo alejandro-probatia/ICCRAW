@@ -32,8 +32,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Changed
 
-- La GUI aclara que `dcraw` usa AHD (`-q 3`) como máxima calidad disponible y no
-  ofrece AMaZE.
+- El backend RAW pasa completamente de `dcraw` a LibRaw/rawpy, con DCB como
+  demosaicing por defecto instalable y AMaZE disponible solo en builds de
+  rawpy/LibRaw con demosaic pack GPL3.
 - Se eliminan botones redundantes de carga manual en el visor; la selección de
   miniatura pasa a ser la acción principal.
 

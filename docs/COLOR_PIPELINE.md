@@ -25,7 +25,7 @@ Reglas:
 ## Fases
 
 1. `raw-info`: metadatos técnicos.
-2. `develop`: revelado base controlado lineal con `dcraw` para entradas RAW.
+2. `develop`: revelado base controlado lineal con LibRaw/rawpy para entradas RAW.
 3. `detect-chart`: homografía + parches.
 4. `sample-chart`: medición robusta por parche.
 5. `build-develop-profile`: neutralidad y densidad desde fila neutra de carta.

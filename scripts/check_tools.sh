@@ -18,9 +18,25 @@ check_cmd() {
   return 0
 }
 
+check_python_module() {
+  local module="$1"
+  local py="python3"
+  if [[ -x ".venv/bin/python" ]]; then
+    py=".venv/bin/python"
+  fi
+  if ! "$py" -c "import ${module}" >/dev/null 2>&1; then
+    echo "[MISSING] python module ${module}"
+    return 1
+  fi
+  local version
+  version="$("$py" -c "import ${module}; print(getattr(${module}, '__version__', 'version desconocida'))")"
+  echo "[OK] python module ${module} -> ${version}"
+  return 0
+}
+
 missing=0
 
-check_cmd "dcraw" "dcraw" || missing=1
+check_python_module "rawpy" || missing=1
 check_cmd "colprof" "colprof -? " || missing=1
 if command -v xicclu >/dev/null 2>&1; then
   check_cmd "xicclu" "xicclu" || missing=1
@@ -33,7 +49,9 @@ check_cmd "exiftool" "exiftool -ver" || missing=1
 if [[ "$missing" -ne 0 ]]; then
   echo
   echo "Faltan dependencias del sistema. Instala (Debian/Ubuntu):"
-  echo "  sudo apt-get install dcraw argyll liblcms2-utils exiftool"
+  echo "  sudo apt-get install argyll liblcms2-utils exiftool"
+  echo "Y dependencias Python del proyecto:"
+  echo "  pip install -e ."
   exit 2
 fi
 

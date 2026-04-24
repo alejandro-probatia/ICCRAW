@@ -9,6 +9,7 @@ La beta `0.1` se distribuye como paquete Debian binario:
 El paquete instala:
 
 - entorno Python autocontenido en `/opt/iccraw/venv`,
+- dependencia Python `rawpy`/LibRaw dentro del entorno de la aplicacion,
 - lanzador CLI `/usr/bin/iccraw`,
 - lanzador GUI `/usr/bin/iccraw-ui`,
 - entrada de escritorio en `/usr/share/applications/iccraw.desktop`,
@@ -17,7 +18,6 @@ El paquete instala:
 Dependencias de sistema declaradas:
 
 - `python3`,
-- `dcraw`,
 - `argyll`,
 - `liblcms2-utils`,
 - `exiftool`,

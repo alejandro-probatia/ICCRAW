@@ -82,7 +82,7 @@ Priority: optional
 Architecture: $ARCH
 Maintainer: Comunidad AEICF <release@iccraw.local>
 Installed-Size: $INSTALLED_SIZE
-Depends: python3 (>= 3.11), dcraw, argyll, liblcms2-utils, exiftool, libgl1, libegl1, libxkbcommon0, libxcb-cursor0, libxcb-xinerama0
+Depends: python3 (>= 3.11), argyll, liblcms2-utils, exiftool, libgl1, libegl1, libxkbcommon0, libxcb-cursor0, libxcb-xinerama0
 Homepage: https://github.com/alejandro-probatia/ICCRAW
 Description: ICCRAW beta $APP_VERSION reproducible RAW and ICC session profiling
  ICCRAW is a technical/scientific RAW workflow for controlled development,

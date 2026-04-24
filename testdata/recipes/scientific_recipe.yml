@@ -1,5 +1,5 @@
-raw_developer: dcraw
-demosaic_algorithm: ahd
+raw_developer: libraw
+demosaic_algorithm: dcb
 black_level_mode:
   mode: metadata
 white_balance_mode: fixed

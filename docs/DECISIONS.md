@@ -37,8 +37,7 @@ Motivación:
 
 Decisión:
 
-- `dcraw` como motor principal de revelado RAW (invocado por subprocess),
-- `rawpy` como dependencia opcional para metadatos RAW enriquecidos,
+- LibRaw mediante `rawpy` como motor único de revelado RAW,
 - `opencv-python-headless` para detección geométrica,
 - `tifffile` para export TIFF 16-bit,
 - `colour-science` para métricas y conversiones colorimétricas.
@@ -55,9 +54,9 @@ Decisión:
 
 Compatibilidad (resumen):
 
-1. `dcraw` y `ArgyllCMS` se usan como herramientas externas (subproceso), evitando acoplamiento binario directo,
+1. LibRaw se integra mediante `rawpy`; ArgyllCMS y LittleCMS se usan como herramientas externas,
 2. OpenCV BSD: compatible,
-3. `rawpy` es opcional y no bloquea el funcionamiento del pipeline principal.
+3. `rawpy` pasa a ser dependencia crítica del pipeline RAW.
 
 Cumplimiento (resumen):
 

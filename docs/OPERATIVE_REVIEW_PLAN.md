@@ -24,7 +24,7 @@ ICCRAW ya tiene una base razonable:
 - CLI funcional,
 - GUI inicial,
 - recetas reproducibles,
-- integracion con `dcraw`, `exiftool` y ArgyllCMS,
+- integracion con LibRaw/rawpy, `exiftool` y ArgyllCMS,
 - sidecars JSON y manifiestos de lote,
 - tests unitarios iniciales.
 
@@ -116,25 +116,24 @@ Criterios de aceptacion:
 - pruebas comparan transformacion ICC con herramienta externa de referencia,
 - el manifiesto declara modo de gestion de color usado.
 
-### H-002 Receta RAW declara algoritmos no soportados por `dcraw`
+### H-002 Receta RAW declara algoritmos no soportados por el backend
 
 Criticidad: critica.
 
 Estado de implementacion:
 
-- mitigado: recetas de ejemplo actualizadas a `ahd` y validacion estricta para
-  rechazar algoritmos no soportados por `dcraw`.
+- mitigado: el proyecto usa LibRaw/rawpy como unico backend RAW, recetas de
+  ejemplo con `demosaic_algorithm: dcb` y validacion estricta.
 
 Situacion detectada en la revision inicial:
 
-- La receta de ejemplo usa `demosaic_algorithm: rcd`.
-- `dcraw` solo soporta los modos `-q 0..3` principales.
-- El codigo mapea nombres no soportados a AHD de forma silenciosa.
+- La receta de ejemplo usaba `demosaic_algorithm: rcd`.
+- El codigo mapeaba nombres no soportados a otro algoritmo de forma silenciosa.
 
 Evidencia local:
 
-- `testdata/recipes/scientific_recipe.yml`: `demosaic_algorithm: rcd`.
-- `src/iccraw/raw/pipeline.py`: `DCRAW_QUALITY_MAP`.
+- `testdata/recipes/scientific_recipe.yml`: receta cientifica.
+- `src/iccraw/raw/pipeline.py`: validacion `LIBRAW_DEMOSAIC_MAP`.
 
 Riesgo:
 
@@ -146,8 +145,8 @@ Direccion tecnica:
 
 1. Sustituir mapeos silenciosos por validacion estricta.
 2. Introducir `effective_recipe` o `execution_contract` en sidecars.
-3. Si se desea RCD/AMaZE/DHT, introducir un backend adicional mantenido
-   (por ejemplo LibRaw/rawpy o RawTherapee CLI) como decision tecnica separada.
+3. Mantener LibRaw/rawpy como backend unico y ampliar solo algoritmos soportados
+   por ese motor.
 
 Criterios de aceptacion:
 
@@ -409,7 +408,8 @@ Evidencia local:
 - `testdata/raw/mock_capture.nef`.
 - `testdata/raw/batch/session_001.nef`.
 - `testdata/raw/batch/session_002.cr3`.
-- `tests/test_pipeline_dcraw.py` cubre construccion de comandos, no revelado real.
+- `tests/test_pipeline_libraw.py` cubre contrato de parametros LibRaw; falta
+  dataset RAW real para integracion.
 
 Riesgo:
 
@@ -428,7 +428,7 @@ Criterios de aceptacion:
 
 - al menos un test revela un RAW/DNG real con herramientas externas,
 - checksums de salidas son estables bajo tolerancia definida,
-- CI distingue tests que requieren `dcraw`/`colprof`.
+- CI distingue tests que requieren RAW real/`colprof`.
 
 ## 5. Plan de trabajo profesional
 
@@ -466,7 +466,7 @@ Objetivo:
 Tareas:
 
 1. Validacion estricta de receta.
-2. Registro de comando `dcraw` efectivo y versiones externas.
+2. Registro de parametros efectivos LibRaw y versiones externas.
 3. Separacion de `audit_linear_tiff` y salida renderizada.
 4. Tests de recetas validas/invalidas.
 5. Dataset RAW real minimo.
@@ -626,8 +626,8 @@ con:
 ## 9. Riesgos principales
 
 1. Compatibilidad RAW:
-   - `dcraw` es estable, pero limitado frente a formatos recientes.
-   - Mitigacion: evaluar LibRaw/rawpy o DNG normalizado como backend futuro.
+   - LibRaw/rawpy cubre mas formatos modernos, pero puede variar entre versiones.
+   - Mitigacion: registrar version LibRaw/rawpy y usar dataset RAW de regresion.
 2. Interoperabilidad ICC:
    - no todos los consumidores interpretan igual perfiles de entrada.
    - Mitigacion: validar con LittleCMS/ArgyllCMS y TIFFs de referencia.
@@ -642,7 +642,7 @@ con:
 
 Entorno local:
 
-- `dcraw 9.28`: disponible.
+- `rawpy`/LibRaw: disponible en entorno de desarrollo.
 - `colprof 3.1.0`: disponible.
 - `exiftool 12.76`: disponible.
 - tests Python en `.venv`: `21 passed`.

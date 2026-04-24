@@ -78,8 +78,8 @@ def _normalize_recipe_payload(payload: dict) -> dict:
         out["sampling_strategy"] = str(ss.get("mode", "trimmed_mean"))
 
     for field_name, default in {
-        "raw_developer": "dcraw",
-        "demosaic_algorithm": "ahd",
+        "raw_developer": "libraw",
+        "demosaic_algorithm": "dcb",
         "black_level_mode": "metadata",
         "white_balance_mode": "fixed",
         "tone_curve": "linear",

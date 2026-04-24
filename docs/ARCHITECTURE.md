@@ -31,8 +31,8 @@ src/iccraw/
     utils.py                   # I/O imagen, hashes, TIFF 16-bit
 
   raw/                         # ingesta y revelado RAW
-    metadata.py                # raw_info (exiftool + rawpy opcional)
-    pipeline.py                # develop_controlled con backend dcraw
+    metadata.py                # raw_info (exiftool + rawpy/LibRaw)
+    pipeline.py                # develop_controlled con backend LibRaw
     preview.py                 # preview rápido + ajustes técnicos
 
   chart/                       # cartas de color

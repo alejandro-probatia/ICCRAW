@@ -1,1 +1,1 @@
-"""Ingesta y revelado RAW: metadatos, pipeline dcraw y previsualización."""
+"""Ingesta y revelado RAW: metadatos, pipeline LibRaw y previsualización."""

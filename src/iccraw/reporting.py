@@ -40,12 +40,6 @@ class ExternalToolCheck:
 
 EXTERNAL_TOOL_SPECS: list[dict[str, Any]] = [
     {
-        "name": "dcraw",
-        "commands": ["dcraw"],
-        "version_args": [],
-        "required": True,
-    },
-    {
         "name": "argyll-colprof",
         "commands": ["colprof"],
         "version_args": ["-?"],
@@ -95,8 +89,8 @@ def gather_run_context(version: str) -> dict:
         deterministic_mode=deterministic_mode,
         dependencies=[
             DependencyVersion(name="python", version=platform.python_version()),
-            DependencyVersion(name="dcraw", version=_dcraw_version()),
-            DependencyVersion(name="rawpy-optional", version=_safe_import_version("rawpy")),
+            DependencyVersion(name="rawpy", version=_safe_import_version("rawpy")),
+            DependencyVersion(name="libraw", version=_libraw_version()),
             DependencyVersion(name="opencv", version=_safe_import_version("cv2")),
             DependencyVersion(name="colour-science", version=_safe_import_version("colour")),
             DependencyVersion(name="tifffile", version=_safe_import_version("tifffile")),
@@ -180,22 +174,13 @@ def _safe_import_version(module: str) -> str:
     return getattr(mod, "__version__", "unknown")
 
 
-def _dcraw_version() -> str:
+def _libraw_version() -> str:
     try:
-        proc = subprocess.run(
-            ["dcraw"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            check=False,
-        )
-        output = (proc.stdout or "").strip().splitlines()
-        for line in output:
-            txt = line.strip()
-            if txt.lower().startswith("dcraw"):
-                return txt
-        if output:
-            return output[0].strip()
-        return "unknown"
+        import rawpy
+
+        version = getattr(rawpy, "libraw_version", None)
+        if isinstance(version, tuple):
+            return ".".join(str(part) for part in version)
+        return str(version or "unknown")
     except Exception:
         return "not-available"

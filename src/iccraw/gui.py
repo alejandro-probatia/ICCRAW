@@ -61,10 +61,14 @@ BROWSABLE_EXTENSIONS = RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
 LAYOUT_VERSION = 3
 
 DEMOSAIC_OPTIONS = [
-    ("Lineal dcraw (-q 0)", "linear"),
-    ("VNG dcraw (-q 1)", "vng"),
-    ("PPG dcraw (-q 2)", "ppg"),
-    ("AHD dcraw - máxima calidad (-q 3)", "ahd"),
+    ("DCB (LibRaw, alta calidad)", "dcb"),
+    ("DHT", "dht"),
+    ("AHD", "ahd"),
+    ("AAHD", "aahd"),
+    ("VNG", "vng"),
+    ("PPG", "ppg"),
+    ("Lineal", "linear"),
+    ("AMaZE (requiere LibRaw/rawpy con GPL3 demosaic pack)", "amaze"),
 ]
 
 ILLUMINANT_OPTIONS = [
@@ -1205,7 +1209,7 @@ if QtWidgets is not None:
 
             grid.addWidget(QtWidgets.QLabel("Motor RAW"), 2, 0)
             self.combo_raw_developer = QtWidgets.QComboBox()
-            self.combo_raw_developer.addItem("dcraw")
+            self.combo_raw_developer.addItem("LibRaw / rawpy", "libraw")
             self.combo_raw_developer.setEnabled(False)
             grid.addWidget(self.combo_raw_developer, 2, 1, 1, 2)
 
@@ -1215,7 +1219,10 @@ if QtWidgets is not None:
                 self.combo_demosaic.addItem(label, opt)
             grid.addWidget(self.combo_demosaic, 3, 1, 1, 2)
 
-            note = QtWidgets.QLabel("Con dcraw, AHD (-q 3) es el modo de interpolación de mayor calidad disponible.")
+            note = QtWidgets.QLabel(
+                "LibRaw/rawpy es el único motor RAW. DCB es el preset instalable de alta calidad; "
+                "AMaZE requiere una build de rawpy/LibRaw con el demosaic pack GPL3."
+            )
             note.setWordWrap(True)
             note.setStyleSheet("font-size: 12px; color: #6b7280;")
             grid.addWidget(note, 4, 0, 1, 3)
@@ -2464,7 +2471,7 @@ if QtWidgets is not None:
                 self,
                 "Acerca de ICCRAW",
                 "ICCRAW\n\nRevelado RAW tecnico y perfilado ICC reproducible.\n"
-                "Backend: dcraw + ArgyllCMS.\nGUI: Qt/PySide6.",
+                "Backend: LibRaw/rawpy + ArgyllCMS.\nGUI: Qt/PySide6.",
             )
 
         def _menu_check_tools(self) -> None:
@@ -2587,6 +2594,7 @@ if QtWidgets is not None:
             self._save_active_session(silent=True)
 
         def _apply_recipe_to_controls(self, recipe: Recipe) -> None:
+            self._set_combo_data(self.combo_raw_developer, recipe.raw_developer)
             self._set_combo_data(self.combo_demosaic, recipe.demosaic_algorithm)
             self._set_combo_data(self.combo_wb_mode, recipe.white_balance_mode)
             self.edit_wb_multipliers.setText(",".join(f"{float(v):.6g}" for v in recipe.wb_multipliers))
@@ -2748,7 +2756,7 @@ if QtWidgets is not None:
                 if p.exists():
                     recipe = load_recipe(p)
 
-            recipe.raw_developer = "dcraw"
+            recipe.raw_developer = str(self.combo_raw_developer.currentData() or self.combo_raw_developer.currentText())
             recipe.demosaic_algorithm = str(self.combo_demosaic.currentData() or self.combo_demosaic.currentText())
             recipe.white_balance_mode = str(self.combo_wb_mode.currentData() or self.combo_wb_mode.currentText())
             recipe.wb_multipliers = self._parse_wb_multipliers(self.edit_wb_multipliers.text(), recipe.wb_multipliers)
