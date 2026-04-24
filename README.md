@@ -104,6 +104,8 @@ iccraw auto-profile-batch \
   --calibrated-recipe-out recipe_calibrated.yml \
   --profile-out camera_profile.icc \
   --profile-report profile_report.json \
+  --validation-report qa_session_report.json \
+  --validation-holdout-count 1 \
   --out ./tiffs \
   --workdir ./work_auto
 ```

@@ -21,7 +21,7 @@ from .core.models import (
 )
 from .core.recipe import load_recipe, save_recipe
 from .core.utils import RAW_EXTENSIONS
-from .profile.builder import build_profile
+from .profile.builder import build_profile, validate_profile
 from .profile.development import build_development_profile
 from .profile.export import batch_develop
 from .raw.pipeline import develop_controlled
@@ -47,6 +47,10 @@ def auto_generate_profile_from_charts(
     lens_model: str | None = None,
     chart_capture_files: list[Path] | None = None,
     manual_detections: dict[Path, Any] | None = None,
+    validation_holdout_count: int = 0,
+    validation_report_out: Path | None = None,
+    qa_mean_delta_e2000_max: float = 5.0,
+    qa_max_delta_e2000_max: float = 10.0,
 ) -> dict[str, Any]:
     work_dir.mkdir(parents=True, exist_ok=True)
     chart_dev_dir = work_dir / "chart_developed"
@@ -66,9 +70,10 @@ def auto_generate_profile_from_charts(
         source = "la selección explícita" if chart_capture_files is not None else str(chart_captures_dir)
         raise RuntimeError(f"No se encontraron capturas de carta en: {source}")
     manual_detection_map = _normalize_detection_map(manual_detections)
+    training_files, validation_files = _split_training_validation_files(chart_files, validation_holdout_count)
 
     initial_pass = _collect_chart_samples(
-        chart_files=chart_files,
+        chart_files=training_files,
         recipe=recipe,
         reference=reference,
         chart_type=chart_type,
@@ -111,7 +116,7 @@ def auto_generate_profile_from_charts(
         profile_recipe = development.calibrated_recipe
 
         calibrated_pass = _collect_chart_samples(
-            chart_files=chart_files,
+            chart_files=training_files,
             recipe=profile_recipe,
             reference=reference,
             chart_type=chart_type,
@@ -145,16 +150,87 @@ def auto_generate_profile_from_charts(
     )
     write_json(profile_report_out, profile_result)
 
+    validation_payload: dict[str, Any] | None = None
+    qa_report_path: str | None = None
+    if validation_files:
+        validation_detection_map = _validation_detection_map(
+            validation_files=validation_files,
+            manual_detection_map=manual_detection_map,
+            recipe=recipe,
+            chart_type=chart_type,
+            min_confidence=min_confidence,
+            allow_fallback_detection=allow_fallback_detection,
+            work_dir=work_dir,
+        )
+        validation_pass = _collect_chart_samples(
+            chart_files=validation_files,
+            recipe=profile_recipe,
+            reference=reference,
+            chart_type=chart_type,
+            min_confidence=min_confidence,
+            allow_fallback_detection=allow_fallback_detection,
+            chart_dev_dir=work_dir / "chart_developed_validation",
+            detect_dir=work_dir / "detections_validation",
+            sample_dir=work_dir / "samples_validation",
+            overlay_dir=work_dir / "overlays_validation",
+            pass_name="icc_validation_source",
+            existing_detections=validation_detection_map,
+            existing_detection_note="geometria de carta reutilizada desde pasada base de validacion",
+        )
+        validation_samples = validation_pass["accepted_samples"]
+        skipped.extend(validation_pass["skipped"])
+
+        validation_result_payload: dict[str, Any] | None = None
+        validation_samples_path: str | None = None
+        if validation_samples:
+            aggregated_validation = _aggregate_samples(validation_samples, strategy=profile_recipe.sampling_strategy)
+            aggregated_validation_path = work_dir / "samples_aggregated_validation.json"
+            write_json(aggregated_validation_path, aggregated_validation)
+            validation_samples_path = str(aggregated_validation_path)
+            validation_result = validate_profile(samples=aggregated_validation, profile_path=profile_out)
+            validation_result_payload = to_json_dict(validation_result)
+
+        qa_report = _build_session_qa_report(
+            training_files=training_files,
+            validation_files=validation_files,
+            training_samples=aggregated_samples,
+            validation_samples=_aggregate_samples(validation_samples, strategy=profile_recipe.sampling_strategy)
+            if validation_samples
+            else None,
+            training_profile_result=profile_result,
+            validation_result=validation_result_payload,
+            validation_skipped=validation_pass["skipped"],
+            qa_mean_delta_e2000_max=qa_mean_delta_e2000_max,
+            qa_max_delta_e2000_max=qa_max_delta_e2000_max,
+        )
+        qa_file = validation_report_out or (work_dir / "qa_session_report.json")
+        write_json(qa_file, qa_report)
+        qa_report_path = str(qa_file)
+        validation_payload = {
+            "validation_captures_total": len(validation_files),
+            "validation_captures_used": len(validation_samples),
+            "validation_captures_skipped": validation_pass["skipped"],
+            "validation_samples": validation_samples_path,
+            "validation_result": validation_result_payload,
+            "qa_report": qa_report,
+            "qa_report_path": qa_report_path,
+        }
+
     return {
         "chart_captures_total": len(chart_files),
+        "training_captures_total": len(training_files),
         "chart_captures_used": len(accepted_samples),
         "chart_captures_skipped": skipped,
+        "validation_captures_total": len(validation_files),
+        "validation_captures_used": validation_payload["validation_captures_used"] if validation_payload else 0,
         "development_profile_path": development_profile_path,
         "calibrated_recipe_path": calibrated_recipe_path,
         "development_profile": development_payload,
         "aggregated_samples": str(aggregated_samples_path),
         "profile": to_json_dict(profile_result),
         "profile_report_path": str(profile_report_out),
+        "validation": validation_payload,
+        "qa_report_path": qa_report_path,
     }
 
 
@@ -177,6 +253,10 @@ def auto_profile_batch(
     lens_model: str | None = None,
     chart_capture_files: list[Path] | None = None,
     manual_detections: dict[Path, Any] | None = None,
+    validation_holdout_count: int = 0,
+    validation_report_out: Path | None = None,
+    qa_mean_delta_e2000_max: float = 5.0,
+    qa_max_delta_e2000_max: float = 10.0,
 ) -> dict[str, Any]:
     profile_payload = auto_generate_profile_from_charts(
         chart_captures_dir=chart_captures_dir,
@@ -195,6 +275,10 @@ def auto_profile_batch(
         lens_model=lens_model,
         chart_capture_files=chart_capture_files,
         manual_detections=manual_detections,
+        validation_holdout_count=validation_holdout_count,
+        validation_report_out=validation_report_out,
+        qa_mean_delta_e2000_max=qa_mean_delta_e2000_max,
+        qa_max_delta_e2000_max=qa_max_delta_e2000_max,
     )
 
     batch_recipe = recipe
@@ -221,8 +305,121 @@ def auto_profile_batch(
         "aggregated_samples": profile_payload["aggregated_samples"],
         "profile": profile_payload["profile"],
         "profile_report_path": profile_payload["profile_report_path"],
+        "validation_captures_total": profile_payload.get("validation_captures_total", 0),
+        "validation_captures_used": profile_payload.get("validation_captures_used", 0),
+        "validation": profile_payload.get("validation"),
+        "qa_report_path": profile_payload.get("qa_report_path"),
         "batch_manifest": to_json_dict(manifest),
         "batch_manifest_path": str(manifest_path),
+    }
+
+
+def _split_training_validation_files(chart_files: list[Path], validation_holdout_count: int) -> tuple[list[Path], list[Path]]:
+    holdout = max(0, int(validation_holdout_count))
+    if holdout <= 0 or len(chart_files) < 2:
+        return list(chart_files), []
+
+    holdout = min(holdout, len(chart_files) - 1)
+    return list(chart_files[:-holdout]), list(chart_files[-holdout:])
+
+
+def _build_session_qa_report(
+    *,
+    training_files: list[Path],
+    validation_files: list[Path],
+    training_samples: SampleSet,
+    validation_samples: SampleSet | None,
+    training_profile_result: Any,
+    validation_result: dict[str, Any] | None,
+    validation_skipped: list[dict[str, Any]],
+    qa_mean_delta_e2000_max: float,
+    qa_max_delta_e2000_max: float,
+) -> dict[str, Any]:
+    training_error = asdict(training_profile_result.error_summary)
+    validation_error = validation_result.get("error_summary") if validation_result else None
+
+    checks: list[dict[str, Any]] = []
+    checks.append(
+        {
+            "id": "validation_samples_available",
+            "severity": "error",
+            "passed": validation_result is not None,
+            "message": "hay muestras independientes de validacion" if validation_result else "no hay muestras independientes validas",
+        }
+    )
+
+    if validation_error:
+        mean_de = float(validation_error.get("mean_delta_e2000", float("inf")))
+        max_de = float(validation_error.get("max_delta_e2000", float("inf")))
+        checks.extend(
+            [
+                {
+                    "id": "validation_mean_delta_e2000",
+                    "severity": "error",
+                    "value": mean_de,
+                    "limit": float(qa_mean_delta_e2000_max),
+                    "passed": mean_de <= float(qa_mean_delta_e2000_max),
+                },
+                {
+                    "id": "validation_max_delta_e2000",
+                    "severity": "error",
+                    "value": max_de,
+                    "limit": float(qa_max_delta_e2000_max),
+                    "passed": max_de <= float(qa_max_delta_e2000_max),
+                },
+            ]
+        )
+
+    training_quality = _sample_quality(training_samples)
+    validation_quality = _sample_quality(validation_samples) if validation_samples else None
+    for label, quality in (("training", training_quality), ("validation", validation_quality)):
+        if not quality:
+            continue
+        max_sat = float(quality["max_saturated_pixel_ratio"])
+        checks.append(
+            {
+                "id": f"{label}_max_saturation",
+                "severity": "warning",
+                "value": max_sat,
+                "limit": 0.02,
+                "passed": max_sat <= 0.02,
+            }
+        )
+
+    hard_failures = [check for check in checks if check["severity"] == "error" and not check["passed"]]
+    if not validation_files:
+        status = "not_validated"
+    elif hard_failures:
+        status = "rejected"
+    else:
+        status = "validated"
+
+    return {
+        "status": status,
+        "training_captures": [str(p) for p in training_files],
+        "validation_captures": [str(p) for p in validation_files],
+        "thresholds": {
+            "mean_delta_e2000_max": float(qa_mean_delta_e2000_max),
+            "max_delta_e2000_max": float(qa_max_delta_e2000_max),
+        },
+        "training_error_summary": training_error,
+        "validation_error_summary": validation_error,
+        "training_sample_quality": training_quality,
+        "validation_sample_quality": validation_quality,
+        "validation_skipped": validation_skipped,
+        "checks": checks,
+    }
+
+
+def _sample_quality(samples: SampleSet) -> dict[str, Any]:
+    saturated = np.asarray([s.saturated_pixel_ratio for s in samples.samples], dtype=np.float64)
+    excluded = np.asarray([s.excluded_pixel_ratio for s in samples.samples], dtype=np.float64)
+    return {
+        "patch_count": len(samples.samples),
+        "max_saturated_pixel_ratio": float(np.max(saturated)) if saturated.size else 0.0,
+        "median_saturated_pixel_ratio": float(np.median(saturated)) if saturated.size else 0.0,
+        "max_excluded_pixel_ratio": float(np.max(excluded)) if excluded.size else 0.0,
+        "median_excluded_pixel_ratio": float(np.median(excluded)) if excluded.size else 0.0,
     }
 
 
@@ -365,6 +562,110 @@ def _collect_chart_samples(
             )
 
     return {"accepted_samples": accepted_samples, "skipped": skipped, "detections": detections}
+
+
+def _validation_detection_map(
+    *,
+    validation_files: list[Path],
+    manual_detection_map: dict[Path, Any] | None,
+    recipe: Recipe,
+    chart_type: str,
+    min_confidence: float,
+    allow_fallback_detection: bool,
+    work_dir: Path,
+) -> dict[Path, Any] | None:
+    detection_map: dict[Path, Any] = {}
+    if manual_detection_map:
+        detection_map.update(manual_detection_map)
+
+    missing = [
+        p for p in validation_files
+        if p.expanduser().resolve() not in detection_map
+    ]
+    if not missing:
+        return detection_map or None
+
+    geometry = _collect_chart_geometries(
+        chart_files=missing,
+        recipe=recipe,
+        chart_type=chart_type,
+        min_confidence=min_confidence,
+        allow_fallback_detection=allow_fallback_detection,
+        chart_dev_dir=work_dir / "chart_developed_validation_geometry",
+        detect_dir=work_dir / "detections_validation_geometry",
+        overlay_dir=work_dir / "overlays_validation_geometry",
+    )
+    detection_map.update(geometry["detections"])
+    return detection_map or None
+
+
+def _collect_chart_geometries(
+    *,
+    chart_files: list[Path],
+    recipe: Recipe,
+    chart_type: str,
+    min_confidence: float,
+    allow_fallback_detection: bool,
+    chart_dev_dir: Path,
+    detect_dir: Path,
+    overlay_dir: Path,
+) -> dict[str, Any]:
+    for d in (chart_dev_dir, detect_dir, overlay_dir):
+        d.mkdir(parents=True, exist_ok=True)
+
+    detections: dict[Path, Any] = {}
+    skipped: list[dict[str, Any]] = []
+
+    for idx, chart_file in enumerate(chart_files, start=1):
+        prefix = f"{idx:03d}_{chart_file.stem}"
+        developed_tiff = chart_dev_dir / f"{prefix}.tiff"
+        detection_path = detect_dir / f"{prefix}.json"
+        overlay_path = overlay_dir / f"{prefix}.png"
+        detection_key = chart_file.expanduser().resolve()
+
+        try:
+            develop_controlled(chart_file, recipe, developed_tiff, None)
+            detection = detect_chart(developed_tiff, chart_type=chart_type)
+            write_json(detection_path, detection)
+            draw_detection_overlay(developed_tiff, detection, overlay_path)
+
+            if detection.detection_mode == "fallback" and not allow_fallback_detection:
+                skipped.append(
+                    {
+                        "pass": "validation_geometry_source",
+                        "capture": str(chart_file),
+                        "reason": "fallback_detection",
+                        "confidence": float(detection.confidence_score),
+                        "detection_json": str(detection_path),
+                    }
+                )
+                continue
+
+            if detection.confidence_score < float(min_confidence):
+                skipped.append(
+                    {
+                        "pass": "validation_geometry_source",
+                        "capture": str(chart_file),
+                        "reason": "low_confidence",
+                        "confidence": float(detection.confidence_score),
+                        "min_confidence": float(min_confidence),
+                        "detection_json": str(detection_path),
+                    }
+                )
+                continue
+
+            detections[detection_key] = detection
+        except Exception as exc:
+            skipped.append(
+                {
+                    "pass": "validation_geometry_source",
+                    "capture": str(chart_file),
+                    "reason": "processing_error",
+                    "error": str(exc),
+                }
+            )
+
+    return {"detections": detections, "skipped": skipped}
 
 
 def _patch_sort_key(patch_id: str) -> tuple[int, str]:

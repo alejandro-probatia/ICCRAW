@@ -2388,6 +2388,8 @@ if QtWidgets is not None:
             workdir = Path(self.profile_workdir.text().strip())
             development_profile_out = Path(self.develop_profile_out.text().strip())
             calibrated_recipe_out = Path(self.calibrated_recipe_out.text().strip())
+            validation_report_out = profile_report.with_name("qa_session_report.json")
+            validation_holdout_count = 1 if self._profile_chart_candidate_count(charts, chart_capture_files) >= 2 else 0
             chart_type = self.profile_chart_type.currentText()
             min_confidence = float(self.profile_min_conf.value())
             allow_fallback_detection = bool(self.profile_allow_fallback.isChecked())
@@ -2407,6 +2409,7 @@ if QtWidgets is not None:
                     reference=reference,
                     profile_out=profile_out,
                     profile_report_out=profile_report,
+                    validation_report_out=validation_report_out,
                     work_dir=workdir,
                     development_profile_out=development_profile_out,
                     calibrated_recipe_out=calibrated_recipe_out,
@@ -2417,6 +2420,7 @@ if QtWidgets is not None:
                     camera_model=camera,
                     lens_model=lens,
                     manual_detections=manual_detections,
+                    validation_holdout_count=validation_holdout_count,
                 )
 
             def on_success(payload) -> None:
@@ -2438,6 +2442,18 @@ if QtWidgets is not None:
 
             self._start_background_task("Generación de perfil de revelado + ICC", task, on_success)
 
+        def _profile_chart_candidate_count(self, charts: Path, chart_capture_files: list[Path] | None) -> int:
+            if chart_capture_files is not None:
+                return len(chart_capture_files)
+            try:
+                return sum(
+                    1
+                    for p in charts.iterdir()
+                    if p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
+                )
+            except Exception:
+                return 0
+
         def _profile_success_summary(self, payload: dict[str, Any], profile_out: Path) -> str:
             profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
             error_summary = profile.get("error_summary") if isinstance(profile.get("error_summary"), dict) else {}
@@ -2445,11 +2461,24 @@ if QtWidgets is not None:
             max_de00 = error_summary.get("max_delta_e2000")
             parts = [
                 f"Perfil activo: {profile_out}",
-                f"Cartas usadas: {payload.get('chart_captures_used', 0)}/{payload.get('chart_captures_total', 0)}",
+                f"Entrenamiento: {payload.get('chart_captures_used', 0)}/{payload.get('training_captures_total', payload.get('chart_captures_total', 0))}",
                 f"Receta calibrada: {payload.get('calibrated_recipe_path') or 'no generada'}",
             ]
             if isinstance(de00, (int, float)) and isinstance(max_de00, (int, float)):
-                parts.append(f"DeltaE2000 perfil: media {float(de00):.2f}, max {float(max_de00):.2f}")
+                parts.append(f"DeltaE2000 entrenamiento: media {float(de00):.2f}, max {float(max_de00):.2f}")
+            validation = payload.get("validation") if isinstance(payload.get("validation"), dict) else None
+            if validation:
+                qa = validation.get("qa_report") if isinstance(validation.get("qa_report"), dict) else {}
+                v_error = qa.get("validation_error_summary") if isinstance(qa.get("validation_error_summary"), dict) else {}
+                status = qa.get("status", "sin_estado")
+                parts.append(
+                    f"Validación: {validation.get('validation_captures_used', 0)}/"
+                    f"{validation.get('validation_captures_total', 0)} ({status})"
+                )
+                mean_val = v_error.get("mean_delta_e2000")
+                max_val = v_error.get("max_delta_e2000")
+                if isinstance(mean_val, (int, float)) and isinstance(max_val, (int, float)):
+                    parts.append(f"DeltaE2000 validación: media {float(mean_val):.2f}, max {float(max_val):.2f}")
             skipped = payload.get("chart_captures_skipped")
             if isinstance(skipped, list) and skipped:
                 parts.append(f"Avisos/omisiones: {len(skipped)}")

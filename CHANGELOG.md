@@ -134,6 +134,9 @@ Para mantener trazabilidad completa, cada cambio debe:
   carta y se reutilizan durante la generación del perfil de sesión.
 - `batch-develop` separa los TIFF lineales de auditoría en `_linear_audit/`
   para que no se confundan con los TIFF finales de inspección o entrega.
+- El flujo automático puede reservar capturas de carta para validación hold-out,
+  generar `qa_session_report.json` y clasificar la sesión como `validated`,
+  `rejected` o `not_validated`.
 
 ### Docs
 

@@ -31,7 +31,7 @@ criterios de aceptacion completos estan en:
 3. [x] Aplicar parametros completos de muestreo desde receta (`trim_percent`,
    `reject_saturated`, margen de parche, criterios de exclusion).
 4. [x] Validar iluminante, observador, fuente y version de la referencia de carta.
-5. [ ] Implementar validacion cruzada con capturas no usadas para construir perfil.
+5. [x] Implementar validacion cruzada con capturas no usadas para construir perfil.
 6. [x] Mejorar deteccion automatica de ColorChecker24 en condiciones no ideales.
 7. [ ] Completar soporte IT8 (deteccion + referencia + validacion).
 8. [x] Añadir export CGATS completo para interoperabilidad externa.
@@ -39,7 +39,7 @@ criterios de aceptacion completos estan en:
 10. [x] Añadir perfil de revelado científico previo al ICC.
 11. [x] Ejecutar `auto-profile-batch` en doble pasada: receta base -> receta calibrada -> ICC.
 12. [x] Reorganizar GUI como flujo de sesión: calibrar con cartas y aplicar a imágenes objetivo.
-13. [ ] Integrar detecciones manuales guardadas por captura en `auto-profile-batch`.
+13. [x] Integrar detecciones manuales guardadas por captura en `auto-profile-batch`.
 14. [ ] Añadir QA de nitidez/MTF y contraste local con criterio medible, no slider subjetivo.
 
 ## P2

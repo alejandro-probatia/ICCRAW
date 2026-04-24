@@ -116,6 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--reference", required=True)
     s.add_argument("--profile-out", required=True)
     s.add_argument("--profile-report", required=True)
+    s.add_argument("--validation-report", default=None)
     s.add_argument("--out", required=True, help="Directorio de salida TIFF batch")
     s.add_argument("--workdir", required=True, help="Directorio de artefactos intermedios (detecciones/samples)")
     s.add_argument("--development-profile-out", default=None)
@@ -124,6 +125,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--chart-type", choices=["colorchecker24", "it8"], default="colorchecker24")
     s.add_argument("--min-confidence", type=float, default=0.35)
     s.add_argument("--allow-fallback-detection", action="store_true")
+    s.add_argument(
+        "--validation-holdout-count",
+        type=int,
+        default=0,
+        help="Reserva N capturas de carta para validacion cruzada independiente",
+    )
+    s.add_argument("--qa-mean-deltae2000-max", type=float, default=5.0)
+    s.add_argument("--qa-max-deltae2000-max", type=float, default=10.0)
     s.add_argument("--camera", default=None)
     s.add_argument("--lens", default=None)
 
@@ -244,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
                 reference=reference,
                 profile_out=Path(args.profile_out),
                 profile_report_out=Path(args.profile_report),
+                validation_report_out=Path(args.validation_report) if args.validation_report else None,
                 batch_out_dir=Path(args.out),
                 work_dir=Path(args.workdir),
                 development_profile_out=Path(args.development_profile_out) if args.development_profile_out else None,
@@ -252,6 +262,9 @@ def main(argv: list[str] | None = None) -> int:
                 chart_type=args.chart_type,
                 min_confidence=float(args.min_confidence),
                 allow_fallback_detection=bool(args.allow_fallback_detection),
+                validation_holdout_count=int(args.validation_holdout_count),
+                qa_mean_delta_e2000_max=float(args.qa_mean_deltae2000_max),
+                qa_max_delta_e2000_max=float(args.qa_max_deltae2000_max),
                 camera_model=args.camera,
                 lens_model=args.lens,
             )

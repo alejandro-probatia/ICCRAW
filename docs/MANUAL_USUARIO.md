@@ -137,9 +137,14 @@ iccraw auto-profile-batch \
   --calibrated-recipe-out /tmp/recipe_calibrated.yml \
   --profile-out /tmp/camera_profile.icc \
   --profile-report /tmp/profile_report.json \
+  --validation-report /tmp/qa_session_report.json \
+  --validation-holdout-count 1 \
   --out /tmp/tiffs \
   --workdir /tmp/work_auto
 ```
+
+Con `--validation-holdout-count 1`, la última captura de carta se reserva para
+validación independiente y no se usa para construir el perfil.
 
 ## 4. Flujo con interfaz grafica Qt
 
