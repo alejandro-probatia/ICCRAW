@@ -17,6 +17,9 @@ from ..raw.pipeline import develop_controlled
 from ..version import __version__
 
 
+D50_XY = np.asarray(colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D50"], dtype=np.float64)
+
+
 def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: Path) -> BatchManifest:
     out_dir.mkdir(parents=True, exist_ok=True)
     files = list_raw_files(raws_dir)
@@ -167,16 +170,16 @@ def apply_profile_matrix(
     if space in {"srgb", "s_rgb", "s-rgb"}:
         rgb = colour.XYZ_to_sRGB(
             xyz,
-            illuminant=colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D65"],
+            illuminant=D50_XY,
             apply_cctf_encoding=(not output_linear),
         )
         out = np.clip(rgb, 0.0, 1.0)
     elif space in {"scene_linear_camera_rgb", "camera_rgb", "camera"}:
         # Keep mapped XYZ projected back to linear sRGB primaries for practical TIFF export.
-        rgb_linear = colour.XYZ_to_sRGB(xyz, apply_cctf_encoding=False)
+        rgb_linear = colour.XYZ_to_sRGB(xyz, illuminant=D50_XY, apply_cctf_encoding=False)
         out = np.clip(rgb_linear, 0.0, 1.0)
     else:
-        rgb_linear = colour.XYZ_to_sRGB(xyz, apply_cctf_encoding=(not output_linear))
+        rgb_linear = colour.XYZ_to_sRGB(xyz, illuminant=D50_XY, apply_cctf_encoding=(not output_linear))
         out = np.clip(rgb_linear, 0.0, 1.0)
 
     return out.reshape(h, w, 3).astype(np.float32)

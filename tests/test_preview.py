@@ -4,8 +4,10 @@ from pathlib import Path
 
 import numpy as np
 import tifffile
+import colour
 
 from iccraw.core.models import write_json
+from iccraw.profile.export import apply_profile_matrix
 from iccraw.raw.preview import (
     apply_adjustments,
     apply_profile_preview,
@@ -90,6 +92,17 @@ def test_apply_profile_preview_uses_profile_sidecar(tmp_path: Path):
     assert np.isfinite(out).all()
     assert float(np.min(out)) >= 0.0
     assert float(np.max(out)) <= 1.0
+
+
+def test_apply_profile_matrix_adapts_d50_neutral_to_srgb_neutral():
+    d50_xy = colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D50"]
+    neutral_xyz = colour.Lab_to_XYZ(np.asarray([50.0, 0.0, 0.0]), illuminant=d50_xy)
+    matrix = np.tile(neutral_xyz / 3.0, (3, 1))
+    image = np.ones((1, 1, 3), dtype=np.float32)
+
+    out = apply_profile_matrix(image, matrix, output_space="srgb", output_linear=False)[0, 0]
+
+    assert float(np.max(out) - np.min(out)) < 0.02
 
 
 def test_load_image_for_preview_downscales_non_raw(tmp_path: Path):

@@ -17,7 +17,8 @@ from ..core.models import read_json, write_json
 from ..version import __version__
 
 
-D50_XYZ = np.array([0.9642, 1.0, 0.8249], dtype=np.float64)
+D50_XY = np.asarray(colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D50"], dtype=np.float64)
+D50_XYZ = np.asarray(colour.xy_to_XYZ(D50_XY), dtype=np.float64)
 
 
 def build_profile(
@@ -32,7 +33,7 @@ def build_profile(
     matrix, *_ = np.linalg.lstsq(measured_rgb, reference_xyz, rcond=None)
 
     predicted_xyz = measured_rgb @ matrix
-    predicted_lab = colour.XYZ_to_Lab(predicted_xyz, illuminant=D50_XYZ)
+    predicted_lab = colour.XYZ_to_Lab(predicted_xyz, illuminant=D50_XY)
 
     de76 = np.asarray(delta_e76(predicted_lab, reference_lab), dtype=np.float64)
     de00 = np.asarray(delta_e2000(predicted_lab, reference_lab), dtype=np.float64)
@@ -220,7 +221,7 @@ def _samples_to_arrays(samples: SampleSet):
         patch_ids.append(s.patch_id)
         measured.append([float(v) for v in s.measured_rgb])
         lab = np.asarray(s.reference_lab, dtype=np.float64)
-        xyz = colour.Lab_to_XYZ(lab, illuminant=D50_XYZ)
+        xyz = colour.Lab_to_XYZ(lab, illuminant=D50_XY)
         reference_xyz.append([float(x) for x in xyz])
         reference_lab.append([float(v) for v in lab])
 

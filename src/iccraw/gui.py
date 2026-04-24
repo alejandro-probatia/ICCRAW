@@ -223,7 +223,7 @@ if QtWidgets is not None:
     class ICCRawMainWindow(QtWidgets.QMainWindow):
         def __init__(self) -> None:
             super().__init__()
-            self.setWindowTitle("ICCRAW - Revelado RAW y perfil ICC")
+            self.setWindowTitle("ICCRAW - Calibración científica de sesión")
             self.resize(1800, 1020)
             self._settings = QtCore.QSettings("ICCRAW", "ICCRAW")
 
@@ -303,7 +303,7 @@ if QtWidgets is not None:
             menu_file.addAction(self._action("Abrir carpeta...", self._pick_directory, "Ctrl+O"))
             menu_file.addAction(self._action("Cargar seleccion", self._on_load_selected, "Ctrl+L"))
             menu_file.addAction(self._action("Guardar preview PNG", self._on_save_preview, "Ctrl+S"))
-            menu_file.addAction(self._action("Revelar seleccion a TIFF", self._on_develop_selected, "Ctrl+R"))
+            menu_file.addAction(self._action("Aplicar sesión a selección", self._on_batch_develop_selected, "Ctrl+R"))
             menu_file.addSeparator()
             menu_file.addAction(self._action("Salir", self.close, "Ctrl+Q"))
 
@@ -522,7 +522,7 @@ if QtWidgets is not None:
             grid = QtWidgets.QGridLayout(box)
 
             self.profile_charts_dir = QtWidgets.QLineEdit(str(self._current_dir))
-            self._add_path_row(grid, 0, "Carpeta de cartas (respaldo)", self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 0, "Carpeta de cartas", self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
 
             self.profile_chart_selection_label = QtWidgets.QLabel("Cartas: todas las compatibles de la carpeta indicada")
             self.profile_chart_selection_label.setWordWrap(True)
@@ -533,19 +533,19 @@ if QtWidgets is not None:
             self._add_path_row(grid, 2, "Referencia carta JSON", self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
 
             self.profile_out_path_edit = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
-            self._add_path_row(grid, 3, "Perfil ICC de salida", self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
+            self._hide_row_widgets(self._add_path_row(grid, 3, "Perfil ICC de salida", self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False))
 
             self.profile_report_out = QtWidgets.QLineEdit("/tmp/profile_report_gui.json")
-            self._add_path_row(grid, 4, "Reporte perfil JSON", self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False)
+            self._hide_row_widgets(self._add_path_row(grid, 4, "Reporte perfil JSON", self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False))
 
             self.profile_workdir = QtWidgets.QLineEdit("/tmp/iccraw_profile_work")
-            self._add_path_row(grid, 5, "Directorio artefactos", self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True)
+            self._hide_row_widgets(self._add_path_row(grid, 5, "Directorio artefactos", self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True))
 
             self.develop_profile_out = QtWidgets.QLineEdit("/tmp/development_profile_gui.json")
-            self._add_path_row(grid, 6, "Perfil de revelado JSON", self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False)
+            self._hide_row_widgets(self._add_path_row(grid, 6, "Perfil de revelado JSON", self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False))
 
             self.calibrated_recipe_out = QtWidgets.QLineEdit("/tmp/recipe_calibrated_gui.yml")
-            self._add_path_row(grid, 7, "Receta calibrada", self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False)
+            self._hide_row_widgets(self._add_path_row(grid, 7, "Receta calibrada", self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False))
 
             grid.addWidget(QtWidgets.QLabel("Tipo de carta"), 8, 0)
             self.profile_chart_type = QtWidgets.QComboBox()
@@ -564,23 +564,23 @@ if QtWidgets is not None:
             self.profile_allow_fallback.setChecked(False)
             grid.addWidget(self.profile_allow_fallback, 10, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Cámara (opcional)"), 11, 0)
+            label_camera = QtWidgets.QLabel("Cámara (opcional)")
+            grid.addWidget(label_camera, 11, 0)
             self.profile_camera = QtWidgets.QLineEdit("")
             grid.addWidget(self.profile_camera, 11, 1, 1, 2)
+            label_camera.hide()
+            self.profile_camera.hide()
 
-            grid.addWidget(QtWidgets.QLabel("Lente (opcional)"), 12, 0)
+            label_lens = QtWidgets.QLabel("Lente (opcional)")
+            grid.addWidget(label_lens, 12, 0)
             self.profile_lens = QtWidgets.QLineEdit("")
             grid.addWidget(self.profile_lens, 12, 1, 1, 2)
-
-            row_select = QtWidgets.QHBoxLayout()
-            row_select.addWidget(self._button("Usar selección como cartas", self._use_selected_files_as_profile_charts))
-            row_select.addWidget(self._button("Usar carpeta actual", self._use_current_dir_as_profile_charts))
-            grid.addLayout(row_select, 13, 0, 1, 3)
+            label_lens.hide()
+            self.profile_lens.hide()
 
             row_generate = QtWidgets.QHBoxLayout()
             row_generate.addWidget(self._button("Generar perfil de sesión", self._on_generate_profile))
-            row_generate.addWidget(self._button("Usar perfil generado", self._use_generated_profile_as_active))
-            grid.addLayout(row_generate, 14, 0, 1, 3)
+            grid.addLayout(row_generate, 13, 0, 1, 3)
 
             outer.addWidget(box)
 
@@ -597,9 +597,15 @@ if QtWidgets is not None:
             manual_layout.addWidget(self.manual_chart_points_label)
             outer.addWidget(manual_box)
 
+            self.profile_summary_label = QtWidgets.QLabel("Sin perfil de sesión generado")
+            self.profile_summary_label.setWordWrap(True)
+            self.profile_summary_label.setStyleSheet("font-size: 12px; color: #d1d5db;")
+            outer.addWidget(self.profile_summary_label)
+
             self.profile_output = QtWidgets.QPlainTextEdit()
             self.profile_output.setReadOnly(True)
             self.profile_output.setPlaceholderText("Resultado JSON de la generación de perfil")
+            self.profile_output.setMaximumHeight(170)
             outer.addWidget(self.profile_output, 1)
             return tab
 
@@ -750,10 +756,8 @@ if QtWidgets is not None:
             self.chk_apply_profile.toggled.connect(lambda _v: self._refresh_preview())
             g.addWidget(self.chk_apply_profile, 1, 2, 1, 2)
 
-            g.addWidget(self._button("Cargar seleccion", self._on_load_selected), 2, 0)
-            g.addWidget(self._button("Guardar preview", self._on_save_preview), 2, 1)
-            g.addWidget(self._button("Revelar a TIFF", self._on_develop_selected), 2, 2)
-            g.addWidget(self._button("Recargar directorio", self._reload_current_directory), 2, 3)
+            g.addWidget(self._button("Cargar seleccion", self._on_load_selected), 2, 0, 1, 2)
+            g.addWidget(self._button("Recargar directorio", self._reload_current_directory), 2, 2, 1, 2)
 
             layout.addWidget(controls)
 
@@ -1108,8 +1112,9 @@ if QtWidgets is not None:
             file_mode: bool,
             save_mode: bool,
             dir_mode: bool,
-        ) -> None:
-            grid.addWidget(QtWidgets.QLabel(label_text), row, 0)
+        ) -> tuple[QtWidgets.QWidget, QtWidgets.QWidget, QtWidgets.QWidget]:
+            label = QtWidgets.QLabel(label_text)
+            grid.addWidget(label, row, 0)
             grid.addWidget(line_edit, row, 1)
             browse = QtWidgets.QPushButton("...")
             browse.setMaximumWidth(36)
@@ -1122,6 +1127,11 @@ if QtWidgets is not None:
                 )
             )
             grid.addWidget(browse, row, 2)
+            return label, line_edit, browse
+
+        def _hide_row_widgets(self, widgets: tuple[QtWidgets.QWidget, ...]) -> None:
+            for widget in widgets:
+                widget.hide()
 
         def _browse_for_path(self, target, *, file_mode: bool, save_mode: bool, dir_mode: bool) -> None:
             if dir_mode:
@@ -2349,13 +2359,37 @@ if QtWidgets is not None:
                 self.profile_output.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False))
                 self.path_profile_active.setText(str(profile_out))
                 if payload.get("calibrated_recipe_path"):
-                    self.path_recipe.setText(str(payload["calibrated_recipe_path"]))
+                    calibrated_recipe_path = Path(str(payload["calibrated_recipe_path"]))
+                    self.path_recipe.setText(str(calibrated_recipe_path))
+                    try:
+                        self._apply_recipe_to_controls(load_recipe(calibrated_recipe_path))
+                    except Exception as exc:
+                        self._log_preview(f"No se pudo cargar receta calibrada en la GUI: {exc}")
+                if hasattr(self, "profile_summary_label"):
+                    self.profile_summary_label.setText(self._profile_success_summary(payload, profile_out))
                 self._log_preview(f"Perfil de revelado: {payload.get('development_profile_path')}")
                 self._log_preview(f"Perfil ICC generado: {profile_out}")
                 self._set_status(f"Revelado calibrado + ICC generado: {profile_out}")
                 self._save_active_session(silent=True)
 
             self._start_background_task("Generación de perfil de revelado + ICC", task, on_success)
+
+        def _profile_success_summary(self, payload: dict[str, Any], profile_out: Path) -> str:
+            profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+            error_summary = profile.get("error_summary") if isinstance(profile.get("error_summary"), dict) else {}
+            de00 = error_summary.get("mean_delta_e2000")
+            max_de00 = error_summary.get("max_delta_e2000")
+            parts = [
+                f"Perfil activo: {profile_out}",
+                f"Cartas usadas: {payload.get('chart_captures_used', 0)}/{payload.get('chart_captures_total', 0)}",
+                f"Receta calibrada: {payload.get('calibrated_recipe_path') or 'no generada'}",
+            ]
+            if isinstance(de00, (int, float)) and isinstance(max_de00, (int, float)):
+                parts.append(f"DeltaE2000 perfil: media {float(de00):.2f}, max {float(max_de00):.2f}")
+            skipped = payload.get("chart_captures_skipped")
+            if isinstance(skipped, list) and skipped:
+                parts.append(f"Avisos/omisiones: {len(skipped)}")
+            return "\n".join(parts)
 
         def _start_manual_chart_marking(self) -> None:
             if self._original_linear is None:
@@ -2601,6 +2635,13 @@ if QtWidgets is not None:
                 QtWidgets.QMessageBox.information(self, "Info", "El perfil de salida aun no existe.")
                 return
             self.path_profile_active.setText(str(p))
+            recipe_path = Path(self.calibrated_recipe_out.text().strip())
+            if recipe_path.exists():
+                self.path_recipe.setText(str(recipe_path))
+                try:
+                    self._apply_recipe_to_controls(load_recipe(recipe_path))
+                except Exception as exc:
+                    self._log_preview(f"No se pudo activar receta calibrada: {exc}")
             self._set_status(f"Perfil activo: {p}")
             self._save_active_session(silent=True)
 

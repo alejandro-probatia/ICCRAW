@@ -124,6 +124,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 - `auto_generate_profile_from_charts` acepta una lista explícita de capturas de
   carta para que la GUI pueda usar una selección de miniaturas en vez de todo
   un directorio.
+- La pestaña de calibración de sesión oculta rutas internas de artefactos y
+  botones redundantes; el perfil generado se activa automáticamente junto con
+  su receta calibrada.
 
 ### Docs
 
@@ -148,6 +151,10 @@ Para mantener trazabilidad completa, cada cambio debe:
   - normalización de miniatura embebida a lineal para evitar doble corrección gamma.
 - Salvaguarda en preview con perfil ICC:
   - si falta sidecar `.profile.json` o se detecta clipping/dominante extrema, la vista cae a modo sin perfil con aviso en log.
+- La receta calibrada generada se carga inmediatamente en la GUI; los revelados
+  posteriores ya no pueden quedarse usando los controles base por accidente.
+- La previsualización rápida basada en la matriz lateral adapta correctamente
+  de D50 a sRGB/D65 para evitar dominantes amarillas o verdosas espurias.
 
 ## [0.1.0] - 2026-04-23
 
