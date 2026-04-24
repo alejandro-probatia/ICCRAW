@@ -125,6 +125,7 @@ class PatchSample:
     reference_lab: list[float] | None
     excluded_pixel_ratio: float
     saturated_pixel_ratio: float
+    sample_center: list[float] | None = None
 
 
 @dataclass

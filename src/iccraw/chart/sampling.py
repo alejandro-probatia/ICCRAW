@@ -97,6 +97,7 @@ def sample_chart(
             continue
 
         poly = np.array([[p.x, p.y] for p in patch.sample_region], dtype=np.float32)
+        center = np.mean(poly, axis=0)
         rgb, excluded_ratio, sat_ratio = _sample_patch(
             image,
             poly,
@@ -113,6 +114,7 @@ def sample_chart(
                 reference_lab=[float(v) for v in ref.get("reference_lab", [])] if ref.get("reference_lab") is not None else None,
                 excluded_pixel_ratio=float(excluded_ratio),
                 saturated_pixel_ratio=float(sat_ratio),
+                sample_center=[float(center[0]), float(center[1])],
             )
         )
 

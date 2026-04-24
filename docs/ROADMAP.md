@@ -48,7 +48,7 @@ aparentemente validos.
 - doble pasada carta -> receta calibrada -> ICC,
 - flujo GUI en dos pasos: calibrar sesion y aplicar esa sesion a imagenes objetivo,
 - parametros de muestreo completos desde receta,
-- deteccion de saturacion, bajo nivel e iluminacion irregular,
+- deteccion de saturacion, bajo nivel y estimacion de iluminacion irregular,
 - reportes de outliers por parche en QA de sesion,
 - integracion de detecciones manuales por captura en el flujo batch automatico.
 

@@ -307,6 +307,13 @@ def test_auto_generate_profile_writes_holdout_qa_report(tmp_path: Path, monkeypa
     assert result["validation_captures_used"] == 1
     assert result["validation"]["qa_report"]["status"] == "validated"
     assert result["validation"]["qa_report"]["validation_worst_patches"][0]["patch_id"] == "P02"
+    qa = result["validation"]["qa_report"]
+    check_ids = {check["id"] for check in qa["checks"]}
+    assert "training_low_signal" in check_ids
+    assert "validation_low_signal" in check_ids
+    assert qa["training_capture_quality"]["capture_count"] == 1
+    assert qa["training_capture_quality"]["captures"][0]["brightest_neutral_luma"] > 0.0
+    assert qa["training_sample_quality"]["median_patch_luma"] > 0.0
     assert (work_dir / "samples_aggregated_validation.json").exists()
 
 

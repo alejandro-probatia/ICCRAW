@@ -2619,6 +2619,16 @@ if QtWidgets is not None:
                 max_val = v_error.get("max_delta_e2000")
                 if isinstance(mean_val, (int, float)) and isinstance(max_val, (int, float)):
                     parts.append(f"DeltaE2000 validación: media {float(mean_val):.2f}, max {float(max_val):.2f}")
+                checks = qa.get("checks") if isinstance(qa.get("checks"), list) else []
+                failed_warnings = [
+                    str(check.get("id"))
+                    for check in checks
+                    if isinstance(check, dict)
+                    and check.get("severity") == "warning"
+                    and check.get("passed") is False
+                ]
+                if failed_warnings:
+                    parts.append(f"QA captura: {len(failed_warnings)} avisos ({', '.join(failed_warnings[:3])})")
             skipped = payload.get("chart_captures_skipped")
             if isinstance(skipped, list) and skipped:
                 parts.append(f"Avisos/omisiones: {len(skipped)}")

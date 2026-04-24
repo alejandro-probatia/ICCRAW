@@ -28,6 +28,12 @@ from .raw.pipeline import develop_controlled
 
 
 IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+NEUTRAL_PATCH_IDS = ("P19", "P20", "P21", "P22", "P23", "P24")
+LUMA_WEIGHTS = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float64)
+LOW_SIGNAL_BRIGHT_NEUTRAL_MIN = 0.25
+LOW_SIGNAL_MEDIAN_LUMA_MIN = 0.05
+NEUTRAL_DENSITY_SPREAD_EV_MAX = 0.35
+NEUTRAL_ILLUMINATION_GRADIENT_EV_MAX = 0.25
 
 
 def auto_generate_profile_from_charts(
@@ -197,6 +203,8 @@ def auto_generate_profile_from_charts(
             validation_samples=_aggregate_samples(validation_samples, strategy=profile_recipe.sampling_strategy)
             if validation_samples
             else None,
+            training_capture_samples=accepted_samples,
+            validation_capture_samples=validation_samples,
             training_profile_result=profile_result,
             validation_result=validation_result_payload,
             validation_skipped=validation_pass["skipped"],
@@ -329,6 +337,8 @@ def _build_session_qa_report(
     validation_files: list[Path],
     training_samples: SampleSet,
     validation_samples: SampleSet | None,
+    training_capture_samples: list[SampleSet],
+    validation_capture_samples: list[SampleSet],
     training_profile_result: Any,
     validation_result: dict[str, Any] | None,
     validation_skipped: list[dict[str, Any]],
@@ -376,6 +386,8 @@ def _build_session_qa_report(
     validation_worst_patches = _rank_patch_errors(validation_result.get("patch_errors", [])) if validation_result else []
     training_patch_outliers = _patch_error_outliers(training_worst_patches, qa_max_delta_e2000_max)
     validation_patch_outliers = _patch_error_outliers(validation_worst_patches, qa_max_delta_e2000_max)
+    training_capture_quality = _capture_quality_summary(training_capture_samples)
+    validation_capture_quality = _capture_quality_summary(validation_capture_samples) if validation_capture_samples else None
     for label, quality in (("training", training_quality), ("validation", validation_quality)):
         if not quality:
             continue
@@ -389,6 +401,11 @@ def _build_session_qa_report(
                 "passed": max_sat <= 0.02,
             }
         )
+
+    for label, quality in (("training", training_capture_quality), ("validation", validation_capture_quality)):
+        if not quality:
+            continue
+        checks.extend(_capture_quality_checks(label, quality))
 
     for label, outliers in (("training", training_patch_outliers), ("validation", validation_patch_outliers)):
         if not outliers:
@@ -424,6 +441,8 @@ def _build_session_qa_report(
         "validation_error_summary": validation_error,
         "training_sample_quality": training_quality,
         "validation_sample_quality": validation_quality,
+        "training_capture_quality": training_capture_quality,
+        "validation_capture_quality": validation_capture_quality,
         "training_worst_patches": training_worst_patches[:8],
         "validation_worst_patches": validation_worst_patches[:8],
         "training_patch_outliers": training_patch_outliers,
@@ -467,15 +486,215 @@ def _patch_error_outliers(records: list[dict[str, Any]], delta_e2000_limit: floa
     return [record for record in records if float(record["delta_e2000"]) > limit]
 
 
+def _capture_quality_summary(sample_sets: list[SampleSet]) -> dict[str, Any]:
+    captures = [_single_capture_quality(samples) for samples in sample_sets]
+    if not captures:
+        return {
+            "capture_count": 0,
+            "captures": [],
+            "min_brightest_neutral_luma": None,
+            "min_median_luma": None,
+            "max_neutral_density_spread_ev": None,
+            "max_neutral_illumination_gradient_ev": None,
+        }
+
+    return {
+        "capture_count": len(captures),
+        "captures": captures,
+        "min_brightest_neutral_luma": _min_optional(c.get("brightest_neutral_luma") for c in captures),
+        "min_median_luma": _min_optional(c.get("median_luma") for c in captures),
+        "max_neutral_density_spread_ev": _max_optional(c.get("neutral_density_spread_ev") for c in captures),
+        "max_neutral_illumination_gradient_ev": _max_optional(
+            c.get("neutral_illumination_gradient_ev") for c in captures
+        ),
+    }
+
+
+def _single_capture_quality(samples: SampleSet) -> dict[str, Any]:
+    patch_lumas = [
+        {
+            "patch_id": sample.patch_id,
+            "luma": _sample_luma(sample),
+            "reference_y": _reference_y(sample),
+            "sample_center": sample.sample_center,
+        }
+        for sample in samples.samples
+    ]
+    lumas = np.asarray([p["luma"] for p in patch_lumas], dtype=np.float64)
+
+    neutral = [p for p in patch_lumas if p["patch_id"] in NEUTRAL_PATCH_IDS and p["reference_y"] is not None]
+    neutral_lumas = np.asarray([p["luma"] for p in neutral], dtype=np.float64)
+    neutral_density = _neutral_density_residuals(neutral)
+
+    return {
+        "chart_name": samples.chart_name,
+        "patch_count": len(samples.samples),
+        "min_luma": float(np.min(lumas)) if lumas.size else 0.0,
+        "median_luma": float(np.median(lumas)) if lumas.size else 0.0,
+        "max_luma": float(np.max(lumas)) if lumas.size else 0.0,
+        "brightest_neutral_luma": float(np.max(neutral_lumas)) if neutral_lumas.size else None,
+        "darkest_neutral_luma": float(np.min(neutral_lumas)) if neutral_lumas.size else None,
+        "neutral_density_spread_ev": _neutral_density_spread(neutral_density),
+        "neutral_illumination_gradient_ev": _neutral_illumination_gradient(neutral_density),
+        "neutral_density_residuals_ev": neutral_density,
+    }
+
+
+def _capture_quality_checks(label: str, quality: dict[str, Any]) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+
+    bright = quality.get("min_brightest_neutral_luma")
+    median_luma = quality.get("min_median_luma")
+    low_signal_passed = (
+        bright is not None
+        and median_luma is not None
+        and float(bright) >= LOW_SIGNAL_BRIGHT_NEUTRAL_MIN
+        and float(median_luma) >= LOW_SIGNAL_MEDIAN_LUMA_MIN
+    )
+    checks.append(
+        {
+            "id": f"{label}_low_signal",
+            "severity": "warning",
+            "brightest_neutral_luma_min": bright,
+            "brightest_neutral_luma_limit": LOW_SIGNAL_BRIGHT_NEUTRAL_MIN,
+            "median_luma_min": median_luma,
+            "median_luma_limit": LOW_SIGNAL_MEDIAN_LUMA_MIN,
+            "passed": low_signal_passed,
+        }
+    )
+
+    density_spread = quality.get("max_neutral_density_spread_ev")
+    if density_spread is not None:
+        checks.append(
+            {
+                "id": f"{label}_neutral_density_spread",
+                "severity": "warning",
+                "value": float(density_spread),
+                "limit": NEUTRAL_DENSITY_SPREAD_EV_MAX,
+                "passed": float(density_spread) <= NEUTRAL_DENSITY_SPREAD_EV_MAX,
+            }
+        )
+
+    gradient = quality.get("max_neutral_illumination_gradient_ev")
+    if gradient is not None:
+        checks.append(
+            {
+                "id": f"{label}_neutral_illumination_gradient",
+                "severity": "warning",
+                "value": float(gradient),
+                "limit": NEUTRAL_ILLUMINATION_GRADIENT_EV_MAX,
+                "passed": float(gradient) <= NEUTRAL_ILLUMINATION_GRADIENT_EV_MAX,
+                "message": "estimacion por fila neutra; no sustituye una medicion flat-field",
+            }
+        )
+    return checks
+
+
+def _sample_luma(sample: PatchSample) -> float:
+    rgb = np.asarray(sample.measured_rgb, dtype=np.float64)
+    if rgb.size != 3:
+        return 0.0
+    return float(np.dot(np.clip(rgb, 0.0, 1.0), LUMA_WEIGHTS))
+
+
+def _reference_y(sample: PatchSample) -> float | None:
+    if not sample.reference_lab or len(sample.reference_lab) < 1:
+        return None
+    try:
+        lstar = float(sample.reference_lab[0])
+    except (TypeError, ValueError):
+        return None
+    return _lstar_to_relative_y(lstar)
+
+
+def _lstar_to_relative_y(lstar: float) -> float:
+    fy = (float(lstar) + 16.0) / 116.0
+    if fy > (6.0 / 29.0):
+        return float(fy**3)
+    return float(float(lstar) / 903.2962962962963)
+
+
+def _neutral_density_residuals(neutral: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    values: list[dict[str, Any]] = []
+    for item in neutral:
+        ref_y = item.get("reference_y")
+        if ref_y is None:
+            continue
+        measured_luma = max(float(item["luma"]), 1e-6)
+        reference_y = max(float(ref_y), 1e-6)
+        value = float(np.log2(measured_luma / reference_y))
+        values.append(
+            {
+                "patch_id": str(item["patch_id"]),
+                "measured_luma": measured_luma,
+                "reference_y": reference_y,
+                "density_ev": value,
+                "sample_center": item.get("sample_center"),
+            }
+        )
+
+    if not values:
+        return []
+
+    median_ev = float(np.median([item["density_ev"] for item in values]))
+    for item in values:
+        item["residual_ev"] = float(item["density_ev"] - median_ev)
+    return values
+
+
+def _neutral_density_spread(neutral_density: list[dict[str, Any]]) -> float | None:
+    residuals = [float(item["residual_ev"]) for item in neutral_density if "residual_ev" in item]
+    if len(residuals) < 3:
+        return None
+    return float(max(residuals) - min(residuals))
+
+
+def _neutral_illumination_gradient(neutral_density: list[dict[str, Any]]) -> float | None:
+    rows: list[list[float]] = []
+    residuals: list[float] = []
+    for item in neutral_density:
+        center = item.get("sample_center")
+        if not isinstance(center, list) or len(center) != 2:
+            continue
+        rows.append([float(center[0]), float(center[1]), 1.0])
+        residuals.append(float(item["residual_ev"]))
+
+    if len(rows) < 3:
+        return None
+
+    design = np.asarray(rows, dtype=np.float64)
+    targets = np.asarray(residuals, dtype=np.float64)
+    try:
+        coeffs, *_ = np.linalg.lstsq(design, targets, rcond=None)
+    except np.linalg.LinAlgError:
+        return None
+    predicted = design @ coeffs
+    return float(np.max(predicted) - np.min(predicted))
+
+
+def _min_optional(values: Any) -> float | None:
+    numeric = [float(v) for v in values if v is not None]
+    return min(numeric) if numeric else None
+
+
+def _max_optional(values: Any) -> float | None:
+    numeric = [float(v) for v in values if v is not None]
+    return max(numeric) if numeric else None
+
+
 def _sample_quality(samples: SampleSet) -> dict[str, Any]:
     saturated = np.asarray([s.saturated_pixel_ratio for s in samples.samples], dtype=np.float64)
     excluded = np.asarray([s.excluded_pixel_ratio for s in samples.samples], dtype=np.float64)
+    lumas = np.asarray([_sample_luma(s) for s in samples.samples], dtype=np.float64)
     return {
         "patch_count": len(samples.samples),
         "max_saturated_pixel_ratio": float(np.max(saturated)) if saturated.size else 0.0,
         "median_saturated_pixel_ratio": float(np.median(saturated)) if saturated.size else 0.0,
         "max_excluded_pixel_ratio": float(np.max(excluded)) if excluded.size else 0.0,
         "median_excluded_pixel_ratio": float(np.median(excluded)) if excluded.size else 0.0,
+        "min_patch_luma": float(np.min(lumas)) if lumas.size else 0.0,
+        "median_patch_luma": float(np.median(lumas)) if lumas.size else 0.0,
+        "max_patch_luma": float(np.max(lumas)) if lumas.size else 0.0,
     }
 
 
@@ -508,6 +727,7 @@ def _aggregate_samples(sample_sets: list[SampleSet], strategy: str) -> SampleSet
                 reference_lab=ref_lab,
                 excluded_pixel_ratio=excluded,
                 saturated_pixel_ratio=saturated,
+                sample_center=_median_sample_center(items),
             )
         )
 
@@ -524,6 +744,14 @@ def _aggregate_samples(sample_sets: list[SampleSet], strategy: str) -> SampleSet
         samples=aggregated_samples,
         missing_reference_patches=missing,
     )
+
+
+def _median_sample_center(samples: list[PatchSample]) -> list[float] | None:
+    centers = [s.sample_center for s in samples if isinstance(s.sample_center, list) and len(s.sample_center) == 2]
+    if not centers:
+        return None
+    values = np.asarray(centers, dtype=np.float64)
+    return [float(v) for v in np.median(values, axis=0).tolist()]
 
 
 def _collect_chart_samples(

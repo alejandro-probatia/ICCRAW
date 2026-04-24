@@ -68,6 +68,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Tests P1 para exportacion CGATS/CTI3 de muestras.
 - El reporte QA de sesion incluye peores parches y outliers DeltaE2000 por
   parche para diagnosticar desviaciones cromaticas localizadas.
+- El QA de sesion incorpora diagnostico de captura por carta: luminancia de
+  parches, bajo nivel, dispersion densitometrica de la fila neutra y gradiente
+  estimado de iluminacion.
 - Plantilla de mantenimiento continuo del changelog y política de actualización.
 - Módulo `preview` para carga de imagen/RAW en previsualización, ajustes técnicos y análisis lineal.
 - GUI nueva basada en Qt/PySide6 (`app-ui`, `app-ui-qt`) con:
