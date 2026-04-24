@@ -23,7 +23,7 @@ run_app detect-chart /tmp/session_chart.tiff \
 
 run_app sample-chart /tmp/session_chart.tiff \
   --detection /tmp/detection.json \
-  --reference testdata/references/colorchecker24_reference.json \
+  --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
   --out /tmp/samples.json
 
 run_app build-profile /tmp/samples.json \

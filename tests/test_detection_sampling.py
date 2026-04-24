@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import tifffile
 
-from iccraw.chart.detection import detect_chart
+from iccraw.chart.detection import detect_chart, detect_chart_from_corners
 from iccraw.chart.sampling import ReferenceCatalog, sample_chart
 from iccraw.core.models import ChartDetectionResult, PatchDetection, Point2
 
@@ -20,6 +20,73 @@ def test_detect_chart_marks_fallback_as_low_confidence(tmp_path: Path):
     assert detection.confidence_score <= 0.05
     assert detection.valid_patch_ratio == 0.0
     assert any("fallback" in warning for warning in detection.warnings)
+
+
+def test_detect_chart_finds_colorchecker_patch_grid(tmp_path: Path):
+    path = tmp_path / "floating_grid.tiff"
+    image = np.full((520, 760, 3), 1200, dtype=np.uint16)
+
+    colors = [
+        [18000, 12000, 9000],
+        [34000, 26000, 19000],
+        [12000, 19000, 30000],
+        [10000, 22000, 11000],
+        [26000, 15000, 30000],
+        [9000, 26000, 25000],
+        [32000, 32000, 32000],
+        [15000, 15000, 15000],
+        [31000, 9000, 9000],
+        [9000, 11000, 30000],
+        [30000, 26000, 9000],
+        [9000, 22000, 18000],
+        [11000, 9000, 25000],
+        [10000, 25000, 12000],
+        [25000, 9000, 9000],
+        [33000, 33000, 12000],
+        [25000, 12000, 28000],
+        [9000, 26000, 30000],
+        [52000, 52000, 52000],
+        [41000, 41000, 41000],
+        [30000, 30000, 30000],
+        [21000, 21000, 21000],
+        [12000, 12000, 12000],
+        [5000, 5000, 5000],
+    ]
+
+    idx = 0
+    for row in range(4):
+        for col in range(6):
+            x = 190 + col * 76 + row * 4
+            y = 120 + row * 70 + col * 2
+            image[y : y + 52, x : x + 52] = colors[idx]
+            idx += 1
+
+    tifffile.imwrite(str(path), image, photometric="rgb", metadata=None)
+
+    detection = detect_chart(path, chart_type="colorchecker24")
+
+    assert detection.detection_mode == "automatic"
+    assert detection.confidence_score >= 0.35
+    assert detection.valid_patch_ratio >= 0.9
+    assert len(detection.patches) == 24
+
+
+def test_detect_chart_from_manual_corners_builds_geometry(tmp_path: Path):
+    path = tmp_path / "manual.tiff"
+    image = np.full((120, 180, 3), 20000, dtype=np.uint16)
+    tifffile.imwrite(str(path), image, photometric="rgb", metadata=None)
+
+    detection = detect_chart_from_corners(
+        path,
+        corners=[(20, 20), (160, 24), (150, 100), (25, 105)],
+        chart_type="colorchecker24",
+    )
+
+    assert detection.detection_mode == "manual"
+    assert detection.confidence_score == 1.0
+    assert detection.valid_patch_ratio == 1.0
+    assert len(detection.patches) == 24
+    assert any("manual" in warning for warning in detection.warnings)
 
 
 def test_sample_chart_honors_trim_percent_and_saturation_rejection(tmp_path: Path):
@@ -128,3 +195,13 @@ def test_reference_catalog_accepts_strict_colorchecker_reference():
 
     assert catalog.reference_source == "unit-test"
     assert len(catalog.patch_map) == 24
+
+
+def test_colorchecker2005_reference_is_strictly_valid():
+    reference = ReferenceCatalog.from_path(
+        Path("testdata/references/colorchecker24_colorchecker2005_d50.json")
+    )
+
+    assert reference.reference_source.startswith("colour-science")
+    assert reference.patch_map["P01"]["patch_name"] == "dark skin"
+    assert reference.patch_map["P24"]["patch_name"] == "black 2 (1.5 D)"

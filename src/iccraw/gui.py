@@ -26,8 +26,9 @@ try:
 except Exception:
     pass
 
+from .chart.detection import detect_chart_from_corners, draw_detection_overlay
 from .chart.sampling import ReferenceCatalog
-from .core.models import Recipe
+from .core.models import Recipe, write_json
 from .core.recipe import load_recipe
 from .core.utils import RAW_EXTENSIONS, read_image
 from .profile.export import write_profiled_tiff
@@ -133,9 +134,13 @@ if QtWidgets is not None:
 
 
     class ImagePanel(QtWidgets.QLabel):
+        imageClicked = QtCore.Signal(float, float)
+
         def __init__(self, title: str) -> None:
             super().__init__()
             self._base_pixmap: QtGui.QPixmap | None = None
+            self._image_size: tuple[int, int] | None = None
+            self._overlay_points: list[tuple[float, float]] = []
             self.setAlignment(QtCore.Qt.AlignCenter)
             self.setMinimumSize(220, 160)
             self.setText(title)
@@ -152,9 +157,21 @@ if QtWidgets is not None:
             rgb = np.clip(image_rgb, 0.0, 1.0)
             u8 = np.clip(np.round(rgb * 255.0), 0, 255).astype(np.uint8)
             h, w, _ = u8.shape
+            self._image_size = (w, h)
             qimg = QtGui.QImage(u8.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
             self._base_pixmap = QtGui.QPixmap.fromImage(qimg)
             self._refresh_scaled_pixmap()
+
+        def set_overlay_points(self, points: list[tuple[float, float]]) -> None:
+            self._overlay_points = list(points)
+            self._refresh_scaled_pixmap()
+
+        def mousePressEvent(self, event) -> None:  # noqa: N802
+            mapped = self._map_widget_to_image(event.position())
+            if mapped is not None and event.button() == QtCore.Qt.LeftButton:
+                self.imageClicked.emit(float(mapped[0]), float(mapped[1]))
+                return
+            super().mousePressEvent(event)
 
         def resizeEvent(self, event) -> None:  # noqa: N802
             super().resizeEvent(event)
@@ -168,7 +185,38 @@ if QtWidgets is not None:
                 QtCore.Qt.KeepAspectRatio,
                 QtCore.Qt.SmoothTransformation,
             )
+            if self._overlay_points and self._image_size is not None:
+                scaled = QtGui.QPixmap(scaled)
+                painter = QtGui.QPainter(scaled)
+                painter.setRenderHint(QtGui.QPainter.Antialiasing)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#22c55e"), 2))
+                painter.setBrush(QtGui.QBrush(QtGui.QColor(34, 197, 94, 96)))
+                image_w, image_h = self._image_size
+                sx = scaled.width() / max(1, image_w)
+                sy = scaled.height() / max(1, image_h)
+                qpoints = [QtCore.QPointF(x * sx, y * sy) for x, y in self._overlay_points]
+                if len(qpoints) >= 2:
+                    painter.drawPolyline(QtGui.QPolygonF(qpoints))
+                if len(qpoints) == 4:
+                    painter.drawLine(qpoints[-1], qpoints[0])
+                for idx, point in enumerate(qpoints, start=1):
+                    painter.drawEllipse(point, 6, 6)
+                    painter.drawText(point + QtCore.QPointF(8, -8), str(idx))
+                painter.end()
             self.setPixmap(scaled)
+
+        def _map_widget_to_image(self, pos: QtCore.QPointF) -> tuple[float, float] | None:
+            if self._base_pixmap is None or self._image_size is None or self.pixmap() is None:
+                return None
+            displayed = self.pixmap()
+            offset_x = (self.width() - displayed.width()) / 2.0
+            offset_y = (self.height() - displayed.height()) / 2.0
+            x = float(pos.x()) - offset_x
+            y = float(pos.y()) - offset_y
+            if x < 0 or y < 0 or x > displayed.width() or y > displayed.height():
+                return None
+            image_w, image_h = self._image_size
+            return x * image_w / max(1, displayed.width()), y * image_h / max(1, displayed.height())
 
 
     class ICCRawMainWindow(QtWidgets.QMainWindow):
@@ -182,6 +230,8 @@ if QtWidgets is not None:
             self._thumb_cache: dict[str, QtGui.QIcon] = {}
             self._preview_cache: dict[str, np.ndarray] = {}
             self._preview_cache_order: list[str] = []
+            self._manual_chart_marking = False
+            self._manual_chart_points: list[tuple[float, float]] = []
             self._current_dir = Path.home()
             self._selected_file: Path | None = None
             self._storage_roots: list[Path] = []
@@ -472,7 +522,7 @@ if QtWidgets is not None:
             self.profile_charts_dir = QtWidgets.QLineEdit(str(self._current_dir))
             self._add_path_row(grid, 0, "Directorio capturas carta", self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
 
-            self.path_reference = QtWidgets.QLineEdit("testdata/references/colorchecker24_reference.json")
+            self.path_reference = QtWidgets.QLineEdit("testdata/references/colorchecker24_colorchecker2005_d50.json")
             self._add_path_row(grid, 1, "Referencia carta JSON", self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
 
             self.profile_out_path_edit = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
@@ -516,6 +566,19 @@ if QtWidgets is not None:
             grid.addLayout(row, 9, 0, 1, 3)
 
             outer.addWidget(box)
+
+            manual_box = QtWidgets.QGroupBox("Marcado manual de carta")
+            manual_layout = QtWidgets.QVBoxLayout(manual_box)
+            manual_buttons = QtWidgets.QHBoxLayout()
+            manual_buttons.addWidget(self._button("Marcar en visor", self._start_manual_chart_marking))
+            manual_buttons.addWidget(self._button("Limpiar puntos", self._clear_manual_chart_points))
+            manual_buttons.addWidget(self._button("Guardar detección", self._save_manual_chart_detection))
+            manual_layout.addLayout(manual_buttons)
+            self.manual_chart_points_label = QtWidgets.QLabel("Puntos: 0/4")
+            self.manual_chart_points_label.setWordWrap(True)
+            self.manual_chart_points_label.setStyleSheet("font-size: 12px; color: #374151;")
+            manual_layout.addWidget(self.manual_chart_points_label)
+            outer.addWidget(manual_box)
 
             self.profile_output = QtWidgets.QPlainTextEdit()
             self.profile_output.setReadOnly(True)
@@ -679,6 +742,7 @@ if QtWidgets is not None:
             self.viewer_stack = QtWidgets.QStackedWidget()
 
             self.image_result_single = ImagePanel("Resultado")
+            self.image_result_single.imageClicked.connect(self._on_manual_chart_click)
             single_page = QtWidgets.QWidget()
             single_layout = QtWidgets.QVBoxLayout(single_page)
             single_layout.setContentsMargins(0, 0, 0, 0)
@@ -687,6 +751,7 @@ if QtWidgets is not None:
 
             self.image_original_compare = ImagePanel("Original")
             self.image_result_compare = ImagePanel("Resultado")
+            self.image_result_compare.imageClicked.connect(self._on_manual_chart_click)
             self.compare_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
             self.compare_splitter.setChildrenCollapsible(True)
             self.compare_splitter.setHandleWidth(8)
@@ -2196,6 +2261,108 @@ if QtWidgets is not None:
                 self._save_active_session(silent=True)
 
             self._start_background_task("Generación de perfil ICC", task, on_success)
+
+        def _start_manual_chart_marking(self) -> None:
+            if self._original_linear is None:
+                QtWidgets.QMessageBox.information(self, "Info", "Carga primero la captura de carta en el visor.")
+                return
+            self._manual_chart_marking = True
+            self._manual_chart_points = []
+            self._sync_manual_chart_overlay()
+            self._set_status("Marcado manual activo: selecciona 4 esquinas en el visor")
+
+        def _clear_manual_chart_points(self) -> None:
+            self._manual_chart_marking = False
+            self._manual_chart_points = []
+            self._sync_manual_chart_overlay()
+            self._set_status("Marcado manual limpiado")
+
+        def _on_manual_chart_click(self, x: float, y: float) -> None:
+            if not self._manual_chart_marking:
+                return
+            if len(self._manual_chart_points) >= 4:
+                self._manual_chart_points = []
+            self._manual_chart_points.append((float(x), float(y)))
+            if len(self._manual_chart_points) == 4:
+                self._manual_chart_marking = False
+                self._set_status("Cuatro esquinas marcadas; revisa y guarda la detección")
+            else:
+                self._set_status(f"Punto {len(self._manual_chart_points)}/4 marcado")
+            self._sync_manual_chart_overlay()
+
+        def _sync_manual_chart_overlay(self) -> None:
+            if hasattr(self, "manual_chart_points_label"):
+                if self._manual_chart_points:
+                    coords = " | ".join(f"{idx}:{x:.0f},{y:.0f}" for idx, (x, y) in enumerate(self._manual_chart_points, start=1))
+                    self.manual_chart_points_label.setText(f"Puntos: {len(self._manual_chart_points)}/4 - {coords}")
+                else:
+                    self.manual_chart_points_label.setText("Puntos: 0/4")
+            if hasattr(self, "image_result_single"):
+                self.image_result_single.set_overlay_points(self._manual_chart_points)
+            if hasattr(self, "image_result_compare"):
+                self.image_result_compare.set_overlay_points(self._manual_chart_points)
+
+        def _save_manual_chart_detection(self) -> None:
+            if self._selected_file is None:
+                QtWidgets.QMessageBox.information(self, "Info", "Selecciona primero una captura de carta.")
+                return
+            if self._original_linear is None:
+                QtWidgets.QMessageBox.information(self, "Info", "Carga primero la captura de carta en el visor.")
+                return
+            if len(self._manual_chart_points) != 4:
+                QtWidgets.QMessageBox.information(self, "Info", "Marca exactamente 4 esquinas antes de guardar.")
+                return
+
+            workdir = Path(self.profile_workdir.text().strip() or "/tmp/iccraw_profile_work")
+            default_dir = workdir / "manual_detections"
+            default_dir.mkdir(parents=True, exist_ok=True)
+            default_path = default_dir / f"{self._selected_file.stem}.manual_detection.json"
+            out_text, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self,
+                "Guardar detección manual",
+                str(default_path),
+                "JSON (*.json)",
+            )
+            if not out_text:
+                return
+
+            selected = self._selected_file
+            points_preview = list(self._manual_chart_points)
+            preview_h, preview_w = self._original_linear.shape[:2]
+            out_json = Path(out_text)
+            chart_type = self.profile_chart_type.currentText()
+            recipe = self._build_effective_recipe()
+
+            def task():
+                out_json.parent.mkdir(parents=True, exist_ok=True)
+                overlay_path = out_json.with_name(f"{out_json.stem}.overlay.png")
+                if selected.suffix.lower() in RAW_EXTENSIONS:
+                    target_image = out_json.with_name(f"{out_json.stem}.developed.tiff")
+                    develop_controlled(selected, recipe, target_image, None)
+                else:
+                    target_image = selected
+
+                full_image = read_image(target_image)
+                full_h, full_w = full_image.shape[:2]
+                sx = full_w / max(1, preview_w)
+                sy = full_h / max(1, preview_h)
+                corners = [(x * sx, y * sy) for x, y in points_preview]
+                detection = detect_chart_from_corners(target_image, corners=corners, chart_type=chart_type)
+                write_json(out_json, detection)
+                draw_detection_overlay(target_image, detection, overlay_path)
+                return {
+                    "detection_json": str(out_json),
+                    "overlay": str(overlay_path),
+                    "image": str(target_image),
+                    "corners": corners,
+                }
+
+            def on_success(payload) -> None:
+                self.profile_output.setPlainText(json.dumps(payload, indent=2, ensure_ascii=False))
+                self._log_preview(f"Detección manual guardada: {payload['detection_json']}")
+                self._set_status(f"Detección manual guardada: {payload['detection_json']}")
+
+            self._start_background_task("Detección manual de carta", task, on_success)
 
         def _collect_selected_file_paths(self) -> list[Path]:
             files: list[Path] = []

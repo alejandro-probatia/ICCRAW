@@ -15,7 +15,7 @@ sharpen: "off"
 input_color_assumption: camera_native
 working_space: scene_linear_camera_rgb
 output_space: scene_linear_camera_rgb
-chart_reference: colorchecker24_reference
+chart_reference: colorchecker24_colorchecker2005_d50
 illuminant_metadata: D50_led_rig_session_2026_04
 sampling_strategy:
   mode: trimmed_mean

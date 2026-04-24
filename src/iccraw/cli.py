@@ -18,7 +18,7 @@ try:
 except Exception:
     pass
 
-from .chart.detection import detect_chart, draw_detection_overlay
+from .chart.detection import detect_chart, detect_chart_from_corners, draw_detection_overlay
 from .chart.sampling import (
     ReferenceCatalog,
     chart_detection_from_json,
@@ -36,6 +36,14 @@ from .version import __version__
 from .workflow import auto_profile_batch
 
 APP_VERSION = __version__
+
+
+def _parse_corner_arg(value: str) -> tuple[float, float]:
+    try:
+        x_text, y_text = value.split(",", 1)
+        return float(x_text), float(y_text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("usa formato x,y para cada esquina") from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -56,6 +64,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--out", required=True)
     s.add_argument("--preview", default=None)
     s.add_argument("--chart-type", choices=["colorchecker24", "it8"], default="colorchecker24")
+    s.add_argument(
+        "--manual-corners",
+        nargs=4,
+        type=_parse_corner_arg,
+        metavar="X,Y",
+        help="Cuatro esquinas de la carta para deteccion manual/asistida",
+    )
 
     s = sub.add_parser("sample-chart")
     s.add_argument("input")
@@ -130,7 +145,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "detect-chart":
-            result = detect_chart(Path(args.input), chart_type=args.chart_type)
+            if args.manual_corners:
+                result = detect_chart_from_corners(
+                    Path(args.input),
+                    corners=list(args.manual_corners),
+                    chart_type=args.chart_type,
+                )
+            else:
+                result = detect_chart(Path(args.input), chart_type=args.chart_type)
             write_json(Path(args.out), result)
             if args.preview:
                 draw_detection_overlay(Path(args.input), result, Path(args.preview))

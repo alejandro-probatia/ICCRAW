@@ -151,7 +151,7 @@ iccraw auto-profile-batch \
   --charts testdata/batch_images \
   --targets testdata/batch_images \
   --recipe testdata/recipes/scientific_recipe.yml \
-  --reference testdata/references/colorchecker24_reference.json \
+  --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
   --profile-out /tmp/camera_profile.icc \
   --profile-report /tmp/profile_report.json \
   --out /tmp/batch_out \
@@ -165,6 +165,17 @@ forma explicita:
 
 ```bash
 iccraw auto-profile-batch ... --allow-fallback-detection
+```
+
+Para rescatar una captura real cuando la geometria automatica no encaja, se
+puede crear la deteccion con cuatro esquinas manuales y revisar el overlay:
+
+```bash
+iccraw detect-chart chart.tiff \
+  --out detection.json \
+  --preview overlay.png \
+  --chart-type colorchecker24 \
+  --manual-corners 2193,1717 3045,1686 3070,2256 2211,2288
 ```
 
 ## Errores comunes

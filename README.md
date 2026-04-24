@@ -62,7 +62,17 @@ iccraw develop input.raw --recipe recipe.yml --out output.tiff --audit-linear ou
 
 iccraw detect-chart chart.tiff --out detection.json --preview overlay.png --chart-type colorchecker24
 
+# Si la deteccion automatica falla, marcar cuatro esquinas de la carta:
+iccraw detect-chart chart.tiff \
+  --out detection.json \
+  --preview overlay.png \
+  --chart-type colorchecker24 \
+  --manual-corners 2193,1717 3045,1686 3070,2256 2211,2288
+
 iccraw sample-chart chart.tiff --detection detection.json --reference target.json --out samples.json
+
+# Referencia ColorChecker 24 operativa incluida:
+# testdata/references/colorchecker24_colorchecker2005_d50.json
 
 iccraw export-cgats samples.json --out samples.ti3
 

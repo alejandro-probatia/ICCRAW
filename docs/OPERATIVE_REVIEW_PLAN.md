@@ -248,7 +248,14 @@ Estado de implementacion:
   tiene confianza maxima 0.05 y `valid_patch_ratio=0.0`.
 - mitigado: `auto-profile-batch` y la generacion automatica de perfil rechazan
   fallback por defecto; solo se acepta con opt-in explicito.
-- pendiente: modo manual asistido para marcar esquinas de carta.
+- mitigado: la deteccion automatica incorpora ajuste por patron interno de
+  parches ColorChecker24, validado con dos DNG reales de Pixel 6a.
+- mitigado: `detect-chart --manual-corners` permite marcar cuatro esquinas y
+  generar `detection.json` revisable con overlay.
+- mitigado: la GUI permite marcar cuatro puntos en el visor y guardar una
+  deteccion manual con overlay.
+- pendiente: enlazar detecciones manuales guardadas con cada captura dentro del
+  flujo batch automatico.
 
 Situacion detectada en la revision inicial:
 
@@ -273,12 +280,16 @@ Direccion tecnica:
 3. La deteccion debe incorporar checks de orientacion, patch layout y coherencia
    cromatica/luminancia.
 4. Añadir modo manual asistido para esquinas de carta.
+5. Añadir detector por patron de parches para cartas Passport o escenas con
+   contorno exterior ambiguo.
 
 Criterios de aceptacion:
 
 - fallback no supera `min_confidence` por defecto,
 - reporte marca `detection_mode: automatic|manual|fallback`,
 - overlay y JSON incluyen warnings bloqueantes cuando proceda.
+- dos DNG reales con ColorChecker Passport detectan la carta inferior de forma
+  automatica con confianza alta.
 
 ### H-006 Parametros de receta ignorados por el muestreo
 

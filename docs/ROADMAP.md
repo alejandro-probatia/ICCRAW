@@ -41,10 +41,13 @@ Objetivo: impedir que detecciones o muestras defectuosas generen perfiles
 aparentemente validos.
 
 - fallback de carta bloqueante por defecto,
-- modo manual asistido para esquinas de carta,
+- deteccion automatica por patron interno de parches ColorChecker24,
+- modo manual asistido para esquinas de carta en CLI y GUI,
+- referencia ColorChecker 2005 D50 para uso operativo,
 - parametros de muestreo completos desde receta,
 - deteccion de saturacion, bajo nivel e iluminacion irregular,
 - reportes de outliers por parche.
+- integracion de detecciones manuales por captura en el flujo batch automatico.
 
 ## Fase 4 - Validacion colorimetrica (P1)
 

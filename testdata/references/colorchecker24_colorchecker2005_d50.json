@@ -1,0 +1,154 @@
+{
+  "chart_name": "ColorChecker 24",
+  "chart_version": "ColorChecker 2005",
+  "reference_source": "colour-science CCS_COLOURCHECKERS[\"ColorChecker 2005\"] xyY, converted to CIE Lab with D50 white point",
+  "illuminant": "D50",
+  "observer": "2",
+  "patch_order": "row-major, top-left to bottom-right in standard ColorChecker orientation",
+  "patches": [
+    {
+      "patch_id": "P01",
+      "patch_name": "dark skin",
+      "reference_xyY": [0.4316, 0.3777, 0.1008],
+      "reference_lab": [37.9856, 13.5551, 14.0501]
+    },
+    {
+      "patch_id": "P02",
+      "patch_name": "light skin",
+      "reference_xyY": [0.4197, 0.3744, 0.3495],
+      "reference_lab": [65.7097, 18.1405, 17.8088]
+    },
+    {
+      "patch_id": "P03",
+      "patch_name": "blue sky",
+      "reference_xyY": [0.276, 0.3016, 0.1836],
+      "reference_lab": [49.9299, -4.9061, -21.9356]
+    },
+    {
+      "patch_id": "P04",
+      "patch_name": "foliage",
+      "reference_xyY": [0.3703, 0.4499, 0.1325],
+      "reference_lab": [43.1375, -13.0981, 21.8809]
+    },
+    {
+      "patch_id": "P05",
+      "patch_name": "blue flower",
+      "reference_xyY": [0.2999, 0.2856, 0.2304],
+      "reference_lab": [55.1135, 8.842, -25.4078]
+    },
+    {
+      "patch_id": "P06",
+      "patch_name": "bluish green",
+      "reference_xyY": [0.2848, 0.3911, 0.4178],
+      "reference_lab": [70.719, -33.39, -0.2285]
+    },
+    {
+      "patch_id": "P07",
+      "patch_name": "orange",
+      "reference_xyY": [0.5295, 0.4055, 0.3118],
+      "reference_lab": [62.6593, 36.0666, 57.0665]
+    },
+    {
+      "patch_id": "P08",
+      "patch_name": "purplish blue",
+      "reference_xyY": [0.2305, 0.2106, 0.1126],
+      "reference_lab": [40.015, 10.4193, -45.9945]
+    },
+    {
+      "patch_id": "P09",
+      "patch_name": "moderate red",
+      "reference_xyY": [0.5012, 0.3273, 0.1938],
+      "reference_lab": [51.1289, 48.2397, 16.2477]
+    },
+    {
+      "patch_id": "P10",
+      "patch_name": "purple",
+      "reference_xyY": [0.3319, 0.2482, 0.0637],
+      "reference_lab": [30.3274, 23.0005, -21.6076]
+    },
+    {
+      "patch_id": "P11",
+      "patch_name": "yellow green",
+      "reference_xyY": [0.3984, 0.5008, 0.4446],
+      "reference_lab": [72.5349, -23.6933, 57.2603]
+    },
+    {
+      "patch_id": "P12",
+      "patch_name": "orange yellow",
+      "reference_xyY": [0.4957, 0.4427, 0.4357],
+      "reference_lab": [71.9401, 19.3727, 67.8457]
+    },
+    {
+      "patch_id": "P13",
+      "patch_name": "blue",
+      "reference_xyY": [0.2018, 0.1692, 0.0575],
+      "reference_lab": [28.7728, 14.1761, -50.313]
+    },
+    {
+      "patch_id": "P14",
+      "patch_name": "green",
+      "reference_xyY": [0.3253, 0.5032, 0.2318],
+      "reference_lab": [55.2573, -38.3203, 31.353]
+    },
+    {
+      "patch_id": "P15",
+      "patch_name": "red",
+      "reference_xyY": [0.5686, 0.3303, 0.1257],
+      "reference_lab": [42.1081, 53.3839, 28.1936]
+    },
+    {
+      "patch_id": "P16",
+      "patch_name": "yellow",
+      "reference_xyY": [0.4697, 0.4734, 0.5981],
+      "reference_lab": [81.7348, 4.0367, 79.8372]
+    },
+    {
+      "patch_id": "P17",
+      "patch_name": "magenta",
+      "reference_xyY": [0.4159, 0.2688, 0.2009],
+      "reference_lab": [51.9388, 50.0024, -14.5849]
+    },
+    {
+      "patch_id": "P18",
+      "patch_name": "cyan",
+      "reference_xyY": [0.2131, 0.3023, 0.193],
+      "reference_lab": [51.0364, -28.6452, -28.6528]
+    },
+    {
+      "patch_id": "P19",
+      "patch_name": "white 9.5 (.05 D)",
+      "reference_xyY": [0.3469, 0.3608, 0.9131],
+      "reference_lab": [96.5375, -0.4575, 1.1639]
+    },
+    {
+      "patch_id": "P20",
+      "patch_name": "neutral 8 (.23 D)",
+      "reference_xyY": [0.344, 0.3584, 0.5894],
+      "reference_lab": [81.2586, -0.6355, -0.369]
+    },
+    {
+      "patch_id": "P21",
+      "patch_name": "neutral 6.5 (.44 D)",
+      "reference_xyY": [0.3432, 0.3581, 0.3632],
+      "reference_lab": [66.7637, -0.7178, -0.5299]
+    },
+    {
+      "patch_id": "P22",
+      "patch_name": "neutral 5 (.70 D)",
+      "reference_xyY": [0.3446, 0.3579, 0.1915],
+      "reference_lab": [50.8622, -0.1357, -0.2945]
+    },
+    {
+      "patch_id": "P23",
+      "patch_name": "neutral 3.5 (1.05 D)",
+      "reference_xyY": [0.3401, 0.3548, 0.0883],
+      "reference_lab": [35.6549, -0.4343, -1.2429]
+    },
+    {
+      "patch_id": "P24",
+      "patch_name": "black 2 (1.5 D)",
+      "reference_xyY": [0.3406, 0.3537, 0.0311],
+      "reference_lab": [20.4792, -0.0673, -0.9856]
+    }
+  ]
+}

@@ -81,9 +81,16 @@ iccraw detect-chart /tmp/captura_revelada.tiff \
   --preview /tmp/overlay.png \
   --chart-type colorchecker24
 
+# Fallback manual/asistido si el overlay automatico no encaja:
+iccraw detect-chart /tmp/captura_revelada.tiff \
+  --out /tmp/detection.json \
+  --preview /tmp/overlay.png \
+  --chart-type colorchecker24 \
+  --manual-corners 2193,1717 3045,1686 3070,2256 2211,2288
+
 iccraw sample-chart /tmp/captura_revelada.tiff \
   --detection /tmp/detection.json \
-  --reference testdata/references/colorchecker24_reference.json \
+  --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/samples.json
 
@@ -120,7 +127,7 @@ iccraw auto-profile-batch \
   --charts ./charts_raw \
   --targets ./raws_objetivo \
   --recipe testdata/recipes/scientific_recipe.yml \
-  --reference testdata/references/colorchecker24_reference.json \
+  --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
   --profile-out /tmp/camera_profile.icc \
   --profile-report /tmp/profile_report.json \
   --out /tmp/tiffs \
@@ -134,6 +141,12 @@ Arranque:
 ```bash
 iccraw-ui
 ```
+
+Para rescatar una carta no detectada automaticamente desde la GUI:
+
+1. Cargar la captura de carta en el visor.
+2. En `Generación ICC`, usar `Marcar en visor` y hacer clic en cuatro esquinas.
+3. Guardar la deteccion manual y revisar el PNG de overlay generado.
 
 o:
 
