@@ -74,6 +74,9 @@ APP_ICON_RESOURCE = "icons/nexoraw-icon.png"
 DEFAULT_THUMBNAIL_SIZE = 132
 MIN_THUMBNAIL_SIZE = 72
 MAX_THUMBNAIL_SIZE = 220
+IMAGE_PANEL_BACKGROUND = "#2b2b2b"
+IMAGE_PANEL_BORDER = "#5a5a5a"
+IMAGE_PANEL_TEXT = "#e6e6e6"
 
 
 def _app_icon_path() -> Path | None:
@@ -235,9 +238,9 @@ if QtWidgets is not None:
             self.setText(title)
             self.setStyleSheet(
                 "QLabel {"
-                "border: 1px solid #4b5563;"
-                "background-color: #111827;"
-                "color: #e5e7eb;"
+                f"border: 1px solid {IMAGE_PANEL_BORDER};"
+                f"background-color: {IMAGE_PANEL_BACKGROUND};"
+                f"color: {IMAGE_PANEL_TEXT};"
                 "font-size: 13px;"
                 "}"
             )
@@ -321,7 +324,7 @@ if QtWidgets is not None:
             pixmap, rect, scale, transform, bounds = geometry
             painter = QtGui.QPainter(self)
             painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform)
-            painter.fillRect(self.rect(), QtGui.QColor("#111827"))
+            painter.fillRect(self.rect(), QtGui.QColor(IMAGE_PANEL_BACKGROUND))
             painter.drawPixmap(rect, pixmap, QtCore.QRectF(pixmap.rect()))
 
             if self._overlay_points and self._image_size is not None:

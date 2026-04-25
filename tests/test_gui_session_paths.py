@@ -109,6 +109,17 @@ def test_raw_develop_layout_prioritizes_viewer_area(qapp):
         window.close()
 
 
+def test_image_panels_use_neutral_gray_background(qapp):
+    window = ICCRawMainWindow()
+    try:
+        stylesheet = window.image_result_single.styleSheet().lower()
+        assert gui_module.IMAGE_PANEL_BACKGROUND == "#2b2b2b"
+        assert "background-color: #2b2b2b" in stylesheet
+        assert "#111827" not in stylesheet
+    finally:
+        window.close()
+
+
 def test_thumbnail_size_control_resizes_file_list(qapp):
     window = ICCRawMainWindow()
     try:
