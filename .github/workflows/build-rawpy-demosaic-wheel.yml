@@ -48,6 +48,9 @@ jobs:
           $setup = $setup.Replace("name = 'rawpy'", "name = 'rawpy-demosaic'")
           $setup = $setup.Replace("License :: OSI Approved :: MIT License", "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)")
           $setup = $setup.Replace("url = 'https://github.com/letmaik/rawpy'", "url = 'https://github.com/exfab/rawpy-demosaic'")
+          $setup = $setup.Replace("-DENABLE_EXAMPLES=OFF -DENABLE_OPENMP=ON -DENABLE_RAWSPEED=OFF", "-DENABLE_EXAMPLES=OFF -DENABLE_OPENMP=OFF -DENABLE_RAWSPEED=OFF")
+          $setup = $setup.Replace("        if not hasOpenMpSupport:`r`n            raise Exception('OpenMP not available but should be, see error messages above')`r`n        if is64Bit:", "        if not hasOpenMpSupport:`r`n            omp = []`r`n        elif is64Bit:")
+          $setup = $setup.Replace("        if not hasOpenMpSupport:`n            raise Exception('OpenMP not available but should be, see error messages above')`n        if is64Bit:", "        if not hasOpenMpSupport:`n            omp = []`n        elif is64Bit:")
           Set-Content -LiteralPath setup.py -Value $setup -Encoding utf8
 
       - name: Build wheel
