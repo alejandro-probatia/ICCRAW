@@ -5,6 +5,7 @@ from iccraw.version import __version__
 def test_parser_has_expected_commands():
     parser = build_parser()
     text = parser.format_help()
+    assert parser.prog == "nexoraw"
     assert "raw-info" in text
     assert "build-profile" in text
     assert "export-cgats" in text
@@ -24,3 +25,9 @@ def test_parser_has_version_option(capsys):
 
     captured = capsys.readouterr()
     assert __version__ in captured.out
+
+
+def test_nexoraw_package_alias_exposes_version():
+    from nexoraw import __version__ as alias_version
+
+    assert alias_version == __version__

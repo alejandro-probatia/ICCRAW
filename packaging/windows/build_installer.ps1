@@ -120,6 +120,9 @@ function Resolve-LcmsBin {
   if (-not [string]::IsNullOrWhiteSpace($LcmsBin)) {
     return $LcmsBin
   }
+  if (-not [string]::IsNullOrWhiteSpace($env:NEXORAW_LCMS_BIN)) {
+    return $env:NEXORAW_LCMS_BIN
+  }
   if (-not [string]::IsNullOrWhiteSpace($env:ICCRAW_LCMS_BIN)) {
     return $env:ICCRAW_LCMS_BIN
   }
@@ -163,7 +166,7 @@ function Copy-ExternalTools {
 
   $lcmsSource = Resolve-LcmsBin
   if (-not $lcmsSource -or -not (Test-Path (Join-Path $lcmsSource "tificc.exe"))) {
-    throw "No se encontro LittleCMS/tificc para empaquetar. Define -LcmsBin o ICCRAW_LCMS_BIN."
+    throw "No se encontro LittleCMS/tificc para empaquetar. Define -LcmsBin o NEXORAW_LCMS_BIN."
   }
   Copy-DirectoryContents -Source $lcmsSource -Destination (Join-Path $toolsRoot "lcms\bin")
   $lcmsRoot = Split-Path -Parent (Split-Path -Parent $lcmsSource)
@@ -306,7 +309,7 @@ if (-not $SkipTests) {
 }
 
 if (-not $SkipToolCheck) {
-  $toolArgs = @("-m", "iccraw", "check-tools")
+  $toolArgs = @("-m", "nexoraw", "check-tools")
   if ($StrictExternalTools) {
     $toolArgs += "--strict"
   }
@@ -316,7 +319,7 @@ if (-not $SkipToolCheck) {
 if ([string]::IsNullOrWhiteSpace($Version)) {
   $Version = (& $Python -c "from iccraw.version import __version__; print(__version__)").Trim()
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Version)) {
-    throw "No se pudo leer la version de iccraw"
+    throw "No se pudo leer la version de NexoRAW"
   }
 }
 
@@ -327,7 +330,7 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
 $BuildRoot = Join-Path $Root "build\windows"
 $PyInstallerWork = Join-Path $BuildRoot "pyinstaller"
 $SpecPath = Join-Path $Root "packaging\windows\iccraw.spec"
-$AppBuildDir = Join-Path $OutputRoot "ICCRAW"
+$AppBuildDir = Join-Path $OutputRoot "NexoRAW"
 $InstallerDir = Join-Path $OutputRoot "installer"
 
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
@@ -346,11 +349,12 @@ Invoke-Native "Construir aplicacion con PyInstaller" $Python @(
 Copy-ExternalTools -AppBuildDir $AppBuildDir
 Copy-RawpyDemosaicLegal -AppBuildDir $AppBuildDir
 
-Invoke-Native "Smoke CLI empaquetada" (Join-Path $AppBuildDir "iccraw.exe") @("--version")
-Invoke-Native "Smoke ayuda CLI empaquetada" (Join-Path $AppBuildDir "iccraw.exe") @("--help")
-Invoke-Native "Smoke herramientas empaquetadas" (Join-Path $AppBuildDir "iccraw.exe") @("check-tools", "--strict")
+Invoke-Native "Smoke CLI empaquetada" (Join-Path $AppBuildDir "nexoraw.exe") @("--version")
+Invoke-Native "Smoke ayuda CLI empaquetada" (Join-Path $AppBuildDir "nexoraw.exe") @("--help")
+Invoke-Native "Smoke herramientas empaquetadas" (Join-Path $AppBuildDir "nexoraw.exe") @("check-tools", "--strict")
+Invoke-Native "Smoke CLI heredada" (Join-Path $AppBuildDir "iccraw.exe") @("--version")
 if ($RequireAmaze) {
-  Invoke-Native "Smoke AMaZE empaquetado" (Join-Path $AppBuildDir "iccraw.exe") @("check-amaze")
+  Invoke-Native "Smoke AMaZE empaquetado" (Join-Path $AppBuildDir "nexoraw.exe") @("check-amaze")
 }
 
 if (-not $NoInstaller) {

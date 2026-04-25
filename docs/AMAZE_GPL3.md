@@ -2,7 +2,7 @@
 
 ## Decisión de licencia
 
-ICCRAW se distribuye bajo `AGPL-3.0-or-later`. Esta licencia es compatible con
+NexoRAW se distribuye bajo `AGPL-3.0-or-later`. Esta licencia es compatible con
 la condición GPL3+ exigida por el demosaic pack GPL3 de LibRaw, que incluye el
 algoritmo AMaZE.
 
@@ -49,10 +49,10 @@ LIBRAW_DEMOSAIC_PACK_GPL2
 LIBRAW_DEMOSAIC_PACK_GPL3
 ```
 
-La wheel resultante y el instalador de ICCRAW deben incluir avisos de licencia
+La wheel resultante y el instalador de NexoRAW deben incluir avisos de licencia
 GPL3/AGPL y una forma clara de obtener el código fuente correspondiente.
 
-ICCRAW incluye un workflow manual de GitHub Actions para construir la wheel
+NexoRAW incluye un workflow manual de GitHub Actions para construir la wheel
 Windows de `rawpy-demosaic` con MSVC:
 
 ```text
@@ -72,7 +72,7 @@ Una vez descargada la wheel:
 ```powershell
 $wheel = (Get-ChildItem -Recurse .\tmp\wheels -Filter "rawpy_demosaic-*.whl" | Select-Object -First 1).FullName
 .\scripts\install_amaze_backend.ps1 -Wheel $wheel
-.\.venv\Scripts\python.exe -m iccraw check-amaze
+.\.venv\Scripts\python.exe -m nexoraw check-amaze
 ```
 
 Para empaquetar Windows con AMaZE:
@@ -85,11 +85,11 @@ Para empaquetar Windows con AMaZE:
 se llama `rawpy-demosaic`. Por eso `pip` puede avisar de que no esta instalada
 la distribucion `rawpy>=0.26` aunque la importacion runtime `import rawpy`
 funcione con AMaZE. La comprobacion obligatoria para publicar una build es
-`iccraw check-amaze`.
+`nexoraw check-amaze`.
 
 ## Comprobación operativa
 
-ICCRAW no infiere soporte AMaZE por la presencia del enum
+NexoRAW no infiere soporte AMaZE por la presencia del enum
 `rawpy.DemosaicAlgorithm.AMAZE`; esa constante puede existir aunque el pack no
 esté compilado. La comprobación válida es:
 

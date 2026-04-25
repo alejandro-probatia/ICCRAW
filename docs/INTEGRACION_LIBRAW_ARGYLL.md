@@ -1,8 +1,8 @@
-# Integración de LibRaw, ArgyllCMS y LittleCMS en ICCRAW
+# Integración de LibRaw, ArgyllCMS y LittleCMS en NexoRAW
 
 ## Objetivo
 
-ICCRAW usa un único motor de revelado RAW:
+NexoRAW usa un único motor de revelado RAW:
 
 - **LibRaw**, mediante la dependencia Python `rawpy`, para decodificación e
   interpolación RAW.
@@ -29,10 +29,10 @@ Verificación:
 
 ```bash
 bash scripts/check_tools.sh
-iccraw check-tools --strict --out tools_report.json
+nexoraw check-tools --strict --out tools_report.json
 ```
 
-`iccraw check-tools` registra disponibilidad de ArgyllCMS, LittleCMS y
+`nexoraw check-tools` registra disponibilidad de ArgyllCMS, LittleCMS y
 `exiftool`. Las versiones de `rawpy` y LibRaw quedan registradas en el contexto
 de ejecución (`run_context`).
 
@@ -42,7 +42,7 @@ Archivo clave:
 
 - `src/iccraw/raw/pipeline.py`
 
-Para entradas RAW, ICCRAW ejecuta `rawpy.imread(...).postprocess(...)` con un
+Para entradas RAW, NexoRAW ejecuta `rawpy.imread(...).postprocess(...)` con un
 contrato explícito:
 
 - salida de 16 bit,
@@ -119,14 +119,14 @@ Modos de salida:
 ## Validación local
 
 ```bash
-iccraw develop /ruta/a/captura.dng \
+nexoraw develop /ruta/a/captura.dng \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/dev_out.tiff \
   --audit-linear /tmp/dev_linear.tiff
 ```
 
 ```bash
-iccraw auto-profile-batch \
+nexoraw auto-profile-batch \
   --charts testdata/batch_images \
   --targets testdata/batch_images \
   --recipe testdata/recipes/scientific_recipe.yml \

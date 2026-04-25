@@ -42,7 +42,7 @@ if [[ "$missing" -eq 0 ]]; then
   if [[ -x ".venv/bin/python" ]]; then
     py=".venv/bin/python"
   fi
-  if "$py" scripts/check_amaze_support.py >/tmp/iccraw_amaze_check.json 2>/dev/null; then
+  if "$py" scripts/check_amaze_support.py >/tmp/nexoraw_amaze_check.json 2>/dev/null; then
     echo "[OK] LibRaw GPL3 demosaic pack -> AMaZE disponible"
   else
     echo "[WARN] LibRaw GPL3 demosaic pack no disponible; AMaZE requiere rawpy-demosaic o LibRaw compilado con GPL3"

@@ -1,7 +1,7 @@
 # Instalador Windows beta
 
 Este documento deja preparado el flujo de construccion y pruebas para generar
-un instalador Windows de ICCRAW.
+un instalador Windows de NexoRAW.
 
 ## Alcance
 
@@ -19,7 +19,7 @@ sin editar el `PATH` del sistema:
 El diagnostico se comprueba con:
 
 ```powershell
-iccraw check-tools --strict
+nexoraw check-tools --strict
 ```
 
 ## Preparacion del entorno de desarrollo
@@ -57,7 +57,7 @@ evitar publicar una beta sin CMM operativo.
 
 ## Build de aplicacion sin instalador
 
-Genera `dist\windows\ICCRAW\` con `iccraw.exe` e `iccraw-ui.exe`:
+Genera `dist\windows\NexoRAW\` con `nexoraw.exe` e `nexoraw-ui.exe`:
 
 ```powershell
 .\packaging\windows\build_installer.ps1 -NoInstaller
@@ -74,7 +74,7 @@ Genera la aplicacion y despues el instalador:
 Artefacto esperado:
 
 ```text
-dist\windows\installer\ICCRAW-0.1.0b4-Setup.exe
+dist\windows\installer\NexoRAW-0.1.0b4-Setup.exe
 ```
 
 Para una preparacion de release, ejecutar con herramientas externas estrictas:
@@ -100,7 +100,7 @@ El artefacto descargado se instala en el entorno local con:
 ```powershell
 $wheel = (Get-ChildItem -Recurse .\tmp\wheels -Filter "rawpy_demosaic-*.whl" | Select-Object -First 1).FullName
 .\scripts\install_amaze_backend.ps1 -Wheel $wheel
-.\.venv\Scripts\python.exe -m iccraw check-amaze
+.\.venv\Scripts\python.exe -m nexoraw check-amaze
 ```
 
 Para publicar un instalador que falle si AMaZE no queda activo:
@@ -123,12 +123,12 @@ de la trazabilidad de release.
 En una maquina Windows limpia:
 
 1. Instalar el `.exe`.
-2. Abrir `ICCRAW` desde el menu inicio.
+2. Abrir `NexoRAW` desde el menu inicio.
 3. Ejecutar `Diagnostico herramientas` desde el grupo de accesos directos.
 4. Confirmar:
-   - `iccraw --version`,
-   - `iccraw check-tools --strict`,
-   - `iccraw-ui` arranca,
+   - `nexoraw --version`,
+   - `nexoraw check-tools --strict`,
+   - `nexoraw-ui` arranca,
    - una prueba de `detect-chart`/`sample-chart` con `testdata` funciona,
    - una conversion `output_space=srgb` solo se aprueba si `tificc` existe.
 
@@ -142,7 +142,7 @@ En una maquina Windows limpia:
   (`tificc`) en `{app}\tools\...` y la aplicacion los resuelve desde ahi antes
   de consultar el `PATH` del sistema.
 - Para LittleCMS, si `tificc` no esta en `PATH`, el script acepta `-LcmsBin` o
-  la variable `ICCRAW_LCMS_BIN` apuntando al directorio que contiene
+  la variable `NEXORAW_LCMS_BIN` apuntando al directorio que contiene
   `tificc.exe` y sus DLLs.
 - Para publicar un instalador con AMaZE, usar `-RequireAmaze`; la build debe
   informar `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`.

@@ -38,6 +38,12 @@ from .version import __version__
 from .workflow import auto_profile_batch
 
 APP_VERSION = __version__
+DEFAULT_CLI_NAME = "nexoraw"
+
+
+def _runtime_cli_name() -> str:
+    stem = Path(sys.argv[0]).stem
+    return stem if stem in {"nexoraw", "iccraw"} else DEFAULT_CLI_NAME
 
 
 def _parse_corner_arg(value: str) -> tuple[float, float]:
@@ -48,8 +54,11 @@ def _parse_corner_arg(value: str) -> tuple[float, float]:
         raise argparse.ArgumentTypeError("usa formato x,y para cada esquina") from exc
 
 
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="iccraw", description="CLI para perfilado ICC reproducible")
+def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog=prog or DEFAULT_CLI_NAME,
+        description="CLI de NexoRAW para perfilado ICC reproducible",
+    )
     p.add_argument("--version", action="version", version=f"%(prog)s {APP_VERSION}")
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -163,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    args = build_parser(_runtime_cli_name()).parse_args(argv)
 
     try:
         if args.command == "raw-info":

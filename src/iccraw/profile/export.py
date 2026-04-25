@@ -133,7 +133,7 @@ def _write_converted_srgb_tiff(out_tiff: Path, image_linear_rgb: np.ndarray, *, 
         )
 
     out_tiff.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="iccraw_lcms_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="nexoraw_lcms_") as tmp:
         tmpdir = Path(tmp)
         source_tiff = tmpdir / "camera_rgb_input.tiff"
         srgb_icc = tmpdir / "srgb.icc"

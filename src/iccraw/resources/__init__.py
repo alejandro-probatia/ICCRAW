@@ -1,1 +1,1 @@
-"""Datos de referencia empaquetados con ICCRAW."""
+"""Datos de referencia empaquetados con NexoRAW."""

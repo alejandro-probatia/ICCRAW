@@ -11,7 +11,7 @@ if (-not (Test-Path $Python)) {
   throw "No existe .venv. Ejecuta: python -m venv .venv; .\.venv\Scripts\python -m pip install -e `".[dev,gui]`""
 }
 
-$argsList = @("-m", "iccraw", "check-tools")
+$argsList = @("-m", "nexoraw", "check-tools")
 if ($Strict) {
   $argsList += "--strict"
 }

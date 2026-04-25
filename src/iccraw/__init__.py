@@ -1,4 +1,4 @@
-"""ICCRAW — pipeline reproducible de RAW, detección de carta y perfilado ICC."""
+"""NexoRAW — pipeline reproducible de RAW, detección de carta y perfilado ICC."""
 
 from .version import __version__
 

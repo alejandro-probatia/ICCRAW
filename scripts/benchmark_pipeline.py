@@ -46,7 +46,7 @@ def _summary(timings: list[float]) -> dict[str, float | int]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Benchmark basico de preview/render ICCRAW")
+    parser = argparse.ArgumentParser(description="Benchmark basico de preview/render NexoRAW")
     parser.add_argument("input", type=Path)
     parser.add_argument("--recipe", type=Path, required=True)
     parser.add_argument("--repeat", type=int, default=3)

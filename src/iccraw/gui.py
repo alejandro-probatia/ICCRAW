@@ -65,6 +65,8 @@ IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 BROWSABLE_EXTENSIONS = RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
 
 LAYOUT_VERSION = 3
+APP_NAME = "NexoRAW"
+ORG_NAME = "NexoRAW"
 
 DEMOSAIC_OPTIONS = [
     ("DCB (LibRaw, alta calidad)", "dcb"),
@@ -145,24 +147,30 @@ LEGACY_TEMP_OUTPUT_NAMES = {
     "camera_profile_gui.icc",
     "profile_report_gui.json",
     "iccraw_profile_work",
+    "nexoraw_profile_work",
     "development_profile_gui.json",
     "recipe_calibrated_gui.yml",
     "iccraw_preview.png",
+    "nexoraw_preview.png",
     "iccraw_batch_tiffs",
+    "nexoraw_batch_tiffs",
 }
 
-SETTINGS_DIR_ENV = "ICCRAW_SETTINGS_DIR"
+SETTINGS_DIR_ENV = "NEXORAW_SETTINGS_DIR"
+LEGACY_SETTINGS_DIR_ENV = "ICCRAW_SETTINGS_DIR"
 
 
 if QtWidgets is not None:
     def _make_app_settings() -> QtCore.QSettings:
-        settings_dir = os.environ.get(SETTINGS_DIR_ENV, "").strip()
+        settings_dir = os.environ.get(SETTINGS_DIR_ENV, "").strip() or os.environ.get(
+            LEGACY_SETTINGS_DIR_ENV, ""
+        ).strip()
         if settings_dir:
             base = Path(settings_dir).expanduser()
             base.mkdir(parents=True, exist_ok=True)
             QtCore.QSettings.setPath(QtCore.QSettings.IniFormat, QtCore.QSettings.UserScope, str(base))
-            return QtCore.QSettings(QtCore.QSettings.IniFormat, QtCore.QSettings.UserScope, "ICCRAW", "ICCRAW")
-        return QtCore.QSettings("ICCRAW", "ICCRAW")
+            return QtCore.QSettings(QtCore.QSettings.IniFormat, QtCore.QSettings.UserScope, ORG_NAME, APP_NAME)
+        return QtCore.QSettings(ORG_NAME, APP_NAME)
 
 
     class TaskThread(QtCore.QThread):
@@ -387,10 +395,10 @@ if QtWidgets is not None:
             return QtCore.QPointF(rect.left() + tx * scale, rect.top() + ty * scale)
 
 
-    class ICCRawMainWindow(QtWidgets.QMainWindow):
+    class NexoRawMainWindow(QtWidgets.QMainWindow):
         def __init__(self) -> None:
             super().__init__()
-            self.setWindowTitle("ICCRAW - Calibración científica de sesión")
+            self.setWindowTitle(f"{APP_NAME} - Calibración científica de sesión")
             self.resize(1800, 1020)
             self._settings = _make_app_settings()
 
@@ -445,7 +453,7 @@ if QtWidgets is not None:
             root_layout.setSpacing(6)
 
             header = QtWidgets.QHBoxLayout()
-            title = QtWidgets.QLabel("ICCRAW")
+            title = QtWidgets.QLabel(APP_NAME)
             title.setStyleSheet("font-size: 22px; font-weight: 700;")
             subtitle = QtWidgets.QLabel("Flujo tecnico reproducible: RAW -> carta -> perfil de revelado + ICC -> TIFF 16-bit")
             subtitle.setStyleSheet("font-size: 12px; color: #4b5563;")
@@ -523,7 +531,7 @@ if QtWidgets is not None:
 
             menu_help = mb.addMenu("Ayuda")
             menu_help.addAction(self._action("Diagnóstico herramientas...", self._menu_check_tools))
-            menu_help.addAction(self._action("Acerca de ICCRAW", self._menu_about))
+            menu_help.addAction(self._action(f"Acerca de {APP_NAME}", self._menu_about))
 
         def _go_to_nitidez_tab(self) -> None:
             self.main_tabs.setCurrentIndex(1)
@@ -675,7 +683,7 @@ if QtWidgets is not None:
             session_box = QtWidgets.QGroupBox("Gestión de sesión")
             grid = QtWidgets.QGridLayout(session_box)
 
-            self.session_root_path = QtWidgets.QLineEdit(str(self._current_dir / "iccraw_session"))
+            self.session_root_path = QtWidgets.QLineEdit(str(self._current_dir / "nexoraw_session"))
             self._add_path_row(grid, 0, "Directorio raíz de sesión", self.session_root_path, file_mode=False, save_mode=False, dir_mode=True)
             self.session_root_path.editingFinished.connect(self._on_session_root_edited)
 
@@ -784,7 +792,7 @@ if QtWidgets is not None:
             self.profile_report_out = QtWidgets.QLineEdit("/tmp/profile_report_gui.json")
             self._hide_row_widgets(self._add_path_row(grid, 4, "Reporte perfil JSON", self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False))
 
-            self.profile_workdir = QtWidgets.QLineEdit("/tmp/iccraw_profile_work")
+            self.profile_workdir = QtWidgets.QLineEdit("/tmp/nexoraw_profile_work")
             self._hide_row_widgets(self._add_path_row(grid, 5, "Directorio artefactos", self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True))
 
             self.develop_profile_out = QtWidgets.QLineEdit("/tmp/development_profile_gui.json")
@@ -1271,7 +1279,7 @@ if QtWidgets is not None:
             self.spin_preview_max_side.setValue(2600)
             grid.addWidget(self.spin_preview_max_side, 13, 1, 1, 2)
 
-            self.path_preview_png = QtWidgets.QLineEdit("/tmp/iccraw_preview.png")
+            self.path_preview_png = QtWidgets.QLineEdit("/tmp/nexoraw_preview.png")
             self._add_path_row(grid, 14, "Guardar preview PNG", self.path_preview_png, file_mode=False, save_mode=True, dir_mode=False)
             grid.addWidget(self._button("Restablecer detalle", self._reset_adjustments), 15, 0, 1, 3)
             return tab
@@ -1412,7 +1420,7 @@ if QtWidgets is not None:
             self.batch_input_dir = QtWidgets.QLineEdit(str(self._current_dir))
             self._add_path_row(grid, 0, "RAW a revelar (carpeta)", self.batch_input_dir, file_mode=False, save_mode=False, dir_mode=True)
 
-            self.batch_out_dir = QtWidgets.QLineEdit("/tmp/iccraw_batch_tiffs")
+            self.batch_out_dir = QtWidgets.QLineEdit("/tmp/nexoraw_batch_tiffs")
             self._add_path_row(grid, 1, "Salida TIFF de sesión", self.batch_out_dir, file_mode=False, save_mode=False, dir_mode=True)
 
             self.batch_embed_profile = QtWidgets.QCheckBox("Aplicar perfil de sesión (ICC) en TIFF")
@@ -1603,7 +1611,7 @@ if QtWidgets is not None:
                     target.setText(path)
 
         def _initialize_session_tab_defaults(self) -> None:
-            suggested = (self._current_dir / "iccraw_session").resolve()
+            suggested = (self._current_dir / "nexoraw_session").resolve()
             self.session_root_path.setText(str(suggested))
             self.session_name_edit.setText(suggested.name)
             self._populate_session_directory_fields(self._session_paths_from_root(suggested))
@@ -2518,8 +2526,8 @@ if QtWidgets is not None:
         def _menu_about(self) -> None:
             QtWidgets.QMessageBox.information(
                 self,
-                "Acerca de ICCRAW",
-                "ICCRAW\n\nRevelado RAW tecnico y perfilado ICC reproducible.\n"
+                f"Acerca de {APP_NAME}",
+                f"{APP_NAME}\n\nRevelado RAW tecnico y perfilado ICC reproducible.\n"
                 "Backend: LibRaw/rawpy + ArgyllCMS.\nGUI: Qt/PySide6.",
             )
 
@@ -3513,7 +3521,7 @@ if QtWidgets is not None:
                 QtWidgets.QMessageBox.information(self, "Info", "Marca exactamente 4 esquinas antes de guardar.")
                 return
 
-            workdir = Path(self.profile_workdir.text().strip() or "/tmp/iccraw_profile_work")
+            workdir = Path(self.profile_workdir.text().strip() or "/tmp/nexoraw_profile_work")
             default_dir = workdir / "manual_detections"
             default_dir.mkdir(parents=True, exist_ok=True)
             default_path = default_dir / f"{self._selected_file.stem}.manual_detection.json"
@@ -3813,6 +3821,9 @@ if QtWidgets is not None:
             self.statusBar().showMessage(text, 8000)
 
 
+    ICCRawMainWindow = NexoRawMainWindow
+
+
 def main(argv: list[str] | None = None) -> int:
     if QtWidgets is None:
         print(
@@ -3822,9 +3833,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     app = QtWidgets.QApplication(argv if argv is not None else sys.argv)
-    app.setApplicationName("ICCRAW")
-    app.setOrganizationName("ICCRAW")
-    win = ICCRawMainWindow()
+    app.setApplicationName(APP_NAME)
+    app.setOrganizationName(ORG_NAME)
+    win = NexoRawMainWindow()
     win.show()
     return app.exec()
 

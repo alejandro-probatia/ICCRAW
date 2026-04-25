@@ -2,12 +2,12 @@
 
 ## Alcance
 
-Este documento define el marco de cumplimiento legal de ICCRAW para uso
+Este documento define el marco de cumplimiento legal de NexoRAW para uso
 cientifico y forense.
 
 ## Licencia del proyecto
 
-- ICCRAW se distribuye bajo `AGPL-3.0-or-later`.
+- NexoRAW se distribuye bajo `AGPL-3.0-or-later`.
 - Toda redistribucion (codigo fuente o binarios) debe preservar:
   - aviso de copyright,
   - licencia AGPL,
@@ -19,13 +19,13 @@ cientifico y forense.
 
 ## AMaZE y demosaic packs GPL
 
-ICCRAW puede usar AMaZE si el modulo `rawpy` instalado esta vinculado a LibRaw
+NexoRAW puede usar AMaZE si el modulo `rawpy` instalado esta vinculado a LibRaw
 con `LIBRAW_DEMOSAIC_PACK_GPL3` habilitado. Este caso exige GPL3+ para el
 producto resultante; `AGPL-3.0-or-later` cumple ese requisito.
 
 Politica:
 
-1. mantener ICCRAW bajo `AGPL-3.0-or-later`,
+1. mantener NexoRAW bajo `AGPL-3.0-or-later`,
 2. preferir `rawpy-demosaic` para builds con AMaZE cuando exista wheel
    compatible o se construya una wheel propia,
 3. no anunciar AMaZE como disponible salvo que
@@ -36,7 +36,7 @@ Politica:
 
 ## Herramientas externas del flujo
 
-ICCRAW combina dependencias Python y herramientas externas:
+NexoRAW combina dependencias Python y herramientas externas:
 
 - `rawpy`/LibRaw o `rawpy-demosaic`/LibRaw para revelado RAW.
 - `ArgyllCMS` (`colprof`) para construccion de perfiles ICC.
@@ -51,8 +51,8 @@ Notas de licencia relevantes:
    imponen GPL2+ o GPL3+ segun el pack usado.
 3. `rawpy` estandar es MIT y no incluye los packs GPL en sus wheels.
 4. `rawpy-demosaic` es `GPL-3.0-or-later` e incluye los packs GPL2/GPL3.
-5. LittleCMS se distribuye como software open source permisivo; ICCRAW lo invoca como herramienta externa.
-6. PySide6 comunitario se distribuye bajo LGPLv3/GPLv3; en ICCRAW se usa como dependencia opcional de GUI.
+5. LittleCMS se distribuye como software open source permisivo; NexoRAW lo invoca como herramienta externa.
+6. PySide6 comunitario se distribuye bajo LGPLv3/GPLv3; en NexoRAW se usa como dependencia opcional de GUI.
 
 Politica de integracion:
 

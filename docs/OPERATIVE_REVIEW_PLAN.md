@@ -8,7 +8,7 @@ operativa, auditable y apta para validacion cientifica.
 ## 1. Alcance
 
 Este documento recoge los hallazgos tecnicos detectados en la revision del
-proyecto ICCRAW y define un plan de trabajo estructurado para implementar las
+proyecto NexoRAW y define un plan de trabajo estructurado para implementar las
 correcciones de forma profesional.
 
 El objetivo no es convertir el proyecto en un editor fotografico generalista.
@@ -18,7 +18,7 @@ documental y forense.
 
 ## 2. Resumen ejecutivo
 
-ICCRAW ya tiene una base razonable:
+NexoRAW ya tiene una base razonable:
 
 - arquitectura Python modular,
 - CLI funcional,

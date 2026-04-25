@@ -9,7 +9,7 @@ import sys
 def bundled_tool_dirs() -> list[Path]:
     dirs: list[Path] = []
 
-    env_dir = os.environ.get("ICCRAW_TOOL_DIR", "").strip()
+    env_dir = os.environ.get("NEXORAW_TOOL_DIR", "").strip() or os.environ.get("ICCRAW_TOOL_DIR", "").strip()
     if env_dir:
         dirs.append(Path(env_dir).expanduser())
 

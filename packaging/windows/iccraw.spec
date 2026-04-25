@@ -18,6 +18,7 @@ for dist_name in ("rawpy-demosaic", "rawpy"):
     except Exception:
         pass
 hiddenimports = collect_submodules("iccraw")
+hiddenimports += collect_submodules("nexoraw")
 rawpy_binaries = collect_dynamic_libs("rawpy")
 
 a_cli = Analysis(
@@ -36,6 +37,24 @@ a_cli = Analysis(
 pyz_cli = PYZ(a_cli.pure)
 
 cli = EXE(
+    pyz_cli,
+    a_cli.scripts,
+    [],
+    exclude_binaries=True,
+    name="nexoraw",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
+cli_legacy = EXE(
     pyz_cli,
     a_cli.scripts,
     [],
@@ -73,6 +92,24 @@ gui = EXE(
     a_gui.scripts,
     [],
     exclude_binaries=True,
+    name="nexoraw-ui",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+)
+
+gui_legacy = EXE(
+    pyz_gui,
+    a_gui.scripts,
+    [],
+    exclude_binaries=True,
     name="iccraw-ui",
     debug=False,
     bootloader_ignore_signals=False,
@@ -88,7 +125,9 @@ gui = EXE(
 
 coll = COLLECT(
     cli,
+    cli_legacy,
     gui,
+    gui_legacy,
     a_cli.binaries,
     a_cli.zipfiles,
     a_cli.datas,
@@ -98,5 +137,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="ICCRAW",
+    name="NexoRAW",
 )

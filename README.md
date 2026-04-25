@@ -1,6 +1,6 @@
-# ICCRAW
+# NexoRAW
 
-ICCRAW es una aplicación open source para fotografía técnico-científica,
+NexoRAW es una aplicación open source para fotografía técnico-científica,
 documental y forense. Su objetivo es transformar una captura RAW en un flujo
 reproducible y auditable, donde cada decisión técnica queda declarada,
 registrada y puede repetirse con las mismas condiciones.
@@ -10,7 +10,7 @@ convencionales no suelen priorizar: separar el ajuste creativo de la medición
 colorimétrica, controlar el revelado RAW, generar perfiles de cámara por sesión
 y conservar evidencia técnica suficiente para revisar el proceso después.
 
-En términos prácticos, ICCRAW implementa:
+En términos prácticos, NexoRAW implementa:
 
 1. revelado RAW controlado y reproducible,
 2. detección automática de carta de color,
@@ -23,7 +23,7 @@ En términos prácticos, ICCRAW implementa:
 
 El objetivo principal es construir una herramienta comunitaria que permita
 trabajar con imágenes RAW bajo criterios de reproducibilidad, control
-colorimétrico y trazabilidad. ICCRAW no busca ser un editor generalista ni una
+colorimétrico y trazabilidad. NexoRAW no busca ser un editor generalista ni una
 alternativa creativa a Lightroom, Darktable o RawTherapee. Su foco es más
 estrecho:
 
@@ -42,7 +42,7 @@ forense o proyectos comunitarios que necesiten una cadena de procesado abierta.
 
 ## Metodología aplicada
 
-La metodología de ICCRAW parte de una idea simple: un perfil ICC de cámara no
+La metodología de NexoRAW parte de una idea simple: un perfil ICC de cámara no
 debe esconder problemas básicos de captura o revelado. Antes de perfilar, el
 sistema intenta fijar una base técnica coherente: balance de blancos,
 exposición/densidad y salida lineal. El perfil ICC queda reservado para describir
@@ -94,12 +94,12 @@ Principios de diseño:
 
 ## Alcance y límites
 
-ICCRAW trabaja por sesiones. Una sesión agrupa capturas de carta, RAW objetivo,
+NexoRAW trabaja por sesiones. Una sesión agrupa capturas de carta, RAW objetivo,
 recetas, perfiles, exportaciones, reportes y artefactos de trabajo. Esto evita
 tratar el perfil ICC como una propiedad permanente de la cámara: el perfil se
 entiende como una descripción operativa de una configuración concreta.
 
-ICCRAW no pretende:
+NexoRAW no pretende:
 
 - mejorar fotografías con criterios estéticos,
 - reemplazar un laboratorio de validación colorimétrica,
@@ -116,7 +116,7 @@ Mantenimiento comunitario:
 
 ## Estado actual (importante)
 
-ICCRAW esta en fase activa de desarrollo. Aunque ya hay CLI y GUI operativas para pruebas, la aplicacion **todavia no es plenamente funcional ni esta validada para produccion cientifica/forense**.
+NexoRAW esta en fase activa de desarrollo. Aunque ya hay CLI y GUI operativas para pruebas, la aplicacion **todavia no es plenamente funcional ni esta validada para produccion cientifica/forense**.
 
 Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas controladas.
 
@@ -149,7 +149,7 @@ Opcional pero recomendado para perfilado con ArgyllCMS y conversion ICC real:
 # Debian/Ubuntu
 sudo apt-get install argyll liblcms2-utils exiftool
 bash scripts/check_tools.sh
-iccraw check-tools --out tools_report.json
+nexoraw check-tools --out tools_report.json
 ```
 
 ## Paquete Debian beta
@@ -158,48 +158,50 @@ La beta `0.1` puede construirse como paquete `.deb` instalable:
 
 ```bash
 bash packaging/debian/build_deb.sh
-sudo apt install ./dist/iccraw_0.1.0~beta3_amd64.deb
+sudo apt install ./dist/nexoraw_0.1.0~beta4_amd64.deb
 ```
 
-El paquete instala la aplicacion en `/opt/iccraw`, crea los lanzadores
-`iccraw`/`iccraw-ui` y declara las dependencias externas del pipeline. Ver
+El paquete instala la aplicacion en `/opt/nexoraw`, crea los lanzadores
+`nexoraw`/`nexoraw-ui` y declara las dependencias externas del pipeline. Ver
 [Paquete Debian beta](docs/DEBIAN_PACKAGE.md).
 
 ## CLI
 
-El entry point es `iccraw` (también invocable como `python -m iccraw`):
+El entry point nuevo es `nexoraw` (también invocable como `python -m nexoraw`).
+Los comandos heredados `iccraw` e `iccraw-ui` se mantienen como alias durante la
+transicion del proyecto:
 
 ```bash
-iccraw raw-info input.raw
+nexoraw raw-info input.raw
 
-iccraw develop input.raw --recipe recipe.yml --out output.tiff --audit-linear output_linear.tiff
+nexoraw develop input.raw --recipe recipe.yml --out output.tiff --audit-linear output_linear.tiff
 
-iccraw detect-chart chart.tiff --out detection.json --preview overlay.png --chart-type colorchecker24
+nexoraw detect-chart chart.tiff --out detection.json --preview overlay.png --chart-type colorchecker24
 
 # Si la deteccion automatica falla, marcar cuatro esquinas de la carta:
-iccraw detect-chart chart.tiff \
+nexoraw detect-chart chart.tiff \
   --out detection.json \
   --preview overlay.png \
   --chart-type colorchecker24 \
   --manual-corners 2193,1717 3045,1686 3070,2256 2211,2288
 
-iccraw sample-chart chart.tiff --detection detection.json --reference target.json --out samples.json
+nexoraw sample-chart chart.tiff --detection detection.json --reference target.json --out samples.json
 
 # Referencia ColorChecker 24 operativa incluida:
 # testdata/references/colorchecker24_colorchecker2005_d50.json
 
-iccraw build-develop-profile samples.json \
+nexoraw build-develop-profile samples.json \
   --recipe recipe.yml \
   --out development_profile.json \
   --calibrated-recipe recipe_calibrated.yml
 
-iccraw export-cgats samples.json --out samples.ti3
+nexoraw export-cgats samples.json --out samples.ti3
 
-iccraw build-profile samples.json --recipe recipe_calibrated.yml --out camera_profile.icc --report report.json
+nexoraw build-profile samples.json --recipe recipe_calibrated.yml --out camera_profile.icc --report report.json
 
-iccraw batch-develop ./raws --recipe recipe_calibrated.yml --profile camera_profile.icc --out ./tiffs
+nexoraw batch-develop ./raws --recipe recipe_calibrated.yml --profile camera_profile.icc --out ./tiffs
 
-iccraw validate-profile samples.json --profile camera_profile.icc --out validation.json
+nexoraw validate-profile samples.json --profile camera_profile.icc --out validation.json
 
 # Flujo completo automático de sesión:
 # 1) develop de capturas de carta
@@ -209,7 +211,7 @@ iccraw validate-profile samples.json --profile camera_profile.icc --out validati
 # 5) segunda medicion con receta calibrada
 # 6) build-profile ICC
 # 7) aplicacion posterior a imagenes objetivo con receta calibrada + ICC
-iccraw auto-profile-batch \
+nexoraw auto-profile-batch \
   --charts ./charts_raw \
   --targets ./raws \
   --recipe recipe.yml \
@@ -226,17 +228,17 @@ iccraw auto-profile-batch \
 ```
 
 ```bash
-iccraw compare-qa-reports session_a/qa_session_report.json session_b/qa_session_report.json \
+nexoraw compare-qa-reports session_a/qa_session_report.json session_b/qa_session_report.json \
   --out qa_comparison.json
 
-iccraw check-tools --strict --out tools_report.json
+nexoraw check-tools --strict --out tools_report.json
 ```
 
 ## Verificación
 
 ```bash
 bash scripts/run_checks.sh
-iccraw check-tools --strict --out tools_report.json
+nexoraw check-tools --strict --out tools_report.json
 ```
 
 En Windows:
@@ -257,7 +259,7 @@ python scripts/benchmark_pipeline.py input.tiff --recipe recipe.yml --repeat 3 -
 La aplicación incluye una GUI basada en **Qt/PySide6** optimizada para flujo de revelado técnico:
 
 ```bash
-iccraw-ui
+nexoraw-ui
 ```
 
 O directamente:

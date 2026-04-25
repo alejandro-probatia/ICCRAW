@@ -1,8 +1,8 @@
-# Manual de Usuario ICCRAW
+# Manual de Usuario NexoRAW
 
-## 1. ¿Qué hace ICCRAW?
+## 1. ¿Qué hace NexoRAW?
 
-ICCRAW implementa un flujo reproducible para:
+NexoRAW implementa un flujo reproducible para:
 
 1. revelar RAW con control técnico,
 2. detectar automáticamente carta ColorChecker,
@@ -42,7 +42,7 @@ pip install -e .[gui]
 
 ### 2.3 Licencia y uso legal
 
-- ICCRAW se distribuye bajo `AGPL-3.0-or-later`.
+- NexoRAW se distribuye bajo `AGPL-3.0-or-later`.
 - Proyecto mantenido por la comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
 - Antes de redistribuir o desplegar como servicio, revisar:
   - `docs/LEGAL_COMPLIANCE.md`
@@ -57,7 +57,7 @@ pip install -e .[gui]
 ## 3.1 Obtener metadatos RAW
 
 ```bash
-iccraw raw-info captura.raw
+nexoraw raw-info captura.raw
 ```
 
 Salida: JSON con cámara, lente, ISO, exposición, hash, etc.
@@ -65,7 +65,7 @@ Salida: JSON con cámara, lente, ISO, exposición, hash, etc.
 ## 3.2 Revelado controlado
 
 ```bash
-iccraw develop captura.raw \
+nexoraw develop captura.raw \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/captura_revelada.tiff \
   --audit-linear /tmp/captura_linear.tiff
@@ -74,42 +74,42 @@ iccraw develop captura.raw \
 ## 3.3 Detectar carta y muestrear
 
 ```bash
-iccraw detect-chart /tmp/captura_revelada.tiff \
+nexoraw detect-chart /tmp/captura_revelada.tiff \
   --out /tmp/detection.json \
   --preview /tmp/overlay.png \
   --chart-type colorchecker24
 
 # Fallback manual/asistido si el overlay automatico no encaja:
-iccraw detect-chart /tmp/captura_revelada.tiff \
+nexoraw detect-chart /tmp/captura_revelada.tiff \
   --out /tmp/detection.json \
   --preview /tmp/overlay.png \
   --chart-type colorchecker24 \
   --manual-corners 2193,1717 3045,1686 3070,2256 2211,2288
 
-iccraw sample-chart /tmp/captura_revelada.tiff \
+nexoraw sample-chart /tmp/captura_revelada.tiff \
   --detection /tmp/detection.json \
   --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/samples.json
 
-iccraw export-cgats /tmp/samples.json \
+nexoraw export-cgats /tmp/samples.json \
   --out /tmp/samples.ti3
 ```
 
 ## 3.4 Calibrar sesión: perfil de revelado + ICC
 
 ```bash
-iccraw build-develop-profile /tmp/samples.json \
+nexoraw build-develop-profile /tmp/samples.json \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/development_profile.json \
   --calibrated-recipe /tmp/recipe_calibrated.yml
 
-iccraw build-profile /tmp/samples.json \
+nexoraw build-profile /tmp/samples.json \
   --recipe /tmp/recipe_calibrated.yml \
   --out /tmp/camera_profile.icc \
   --report /tmp/profile_report.json
 
-iccraw validate-profile /tmp/samples.json \
+nexoraw validate-profile /tmp/samples.json \
   --profile /tmp/camera_profile.icc \
   --out /tmp/validation.json
 ```
@@ -117,7 +117,7 @@ iccraw validate-profile /tmp/samples.json \
 ## 3.5 Aplicar perfil de sesión a lote
 
 ```bash
-iccraw batch-develop ./raws \
+nexoraw batch-develop ./raws \
   --recipe /tmp/recipe_calibrated.yml \
   --profile /tmp/camera_profile.icc \
   --out /tmp/tiffs
@@ -126,7 +126,7 @@ iccraw batch-develop ./raws \
 ## 3.6 Flujo automático de extremo a extremo
 
 ```bash
-iccraw auto-profile-batch \
+nexoraw auto-profile-batch \
   --charts ./charts_raw \
   --targets ./raws_objetivo \
   --recipe testdata/recipes/scientific_recipe.yml \
@@ -151,7 +151,7 @@ DeltaE y `expired` cuando se supera la vigencia declarada.
 Para comparar sesiones ya generadas:
 
 ```bash
-iccraw compare-qa-reports \
+nexoraw compare-qa-reports \
   /ruta/sesion_a/qa_session_report.json \
   /ruta/sesion_b/qa_session_report.json \
   --out /tmp/qa_comparison.json
@@ -160,7 +160,7 @@ iccraw compare-qa-reports \
 Para comprobar que el entorno externo está listo antes de calibrar:
 
 ```bash
-iccraw check-tools --strict --out config/iccraw_tools.json
+nexoraw check-tools --strict --out config/nexoraw_tools.json
 ```
 
 ## 4. Flujo con interfaz grafica Qt
@@ -168,7 +168,7 @@ iccraw check-tools --strict --out config/iccraw_tools.json
 Arranque:
 
 ```bash
-iccraw-ui
+nexoraw-ui
 ```
 
 o:
@@ -180,9 +180,9 @@ bash scripts/run_ui.sh
 Instalacion beta con paquete Debian:
 
 ```bash
-sudo apt install ./dist/iccraw_0.1.0~beta3_amd64.deb
-iccraw check-tools --strict
-iccraw-ui
+sudo apt install ./dist/nexoraw_0.1.0~beta4_amd64.deb
+nexoraw check-tools --strict
+nexoraw-ui
 ```
 
 Para rescatar una carta no detectada automaticamente desde la GUI:
@@ -254,7 +254,7 @@ Notas de uso de preview:
 
 ## 5. Artefactos que genera el sistema
 
-Durante el proceso, ICCRAW produce:
+Durante el proceso, NexoRAW produce:
 
 - TIFF 16-bit,
 - perfil ICC,

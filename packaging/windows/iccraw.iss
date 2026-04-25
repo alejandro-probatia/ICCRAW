@@ -3,7 +3,7 @@
 #endif
 
 #ifndef AppBuildDir
-#define AppBuildDir "..\..\dist\windows\ICCRAW"
+#define AppBuildDir "..\..\dist\windows\NexoRAW"
 #endif
 
 #ifndef OutputDir
@@ -16,18 +16,18 @@
 
 [Setup]
 AppId={{F88E3E29-B992-4B88-8BB9-5066D6A77764}
-AppName=ICCRAW
+AppName=NexoRAW
 AppVersion={#AppVersion}
 AppPublisher=Comunidad AEICF
 AppPublisherURL=https://github.com/alejandro-probatia/ICCRAW
 AppSupportURL=https://github.com/alejandro-probatia/ICCRAW
 AppUpdatesURL=https://github.com/alejandro-probatia/ICCRAW
-DefaultDirName={autopf}\ICCRAW
-DefaultGroupName=ICCRAW
+DefaultDirName={autopf}\NexoRAW
+DefaultGroupName=NexoRAW
 DisableProgramGroupPage=yes
 LicenseFile={#RootDir}\LICENSE
 OutputDir={#OutputDir}
-OutputBaseFilename=ICCRAW-{#AppVersion}-Setup
+OutputBaseFilename=NexoRAW-{#AppVersion}-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -35,7 +35,7 @@ ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=lowest
 SetupLogging=yes
-UninstallDisplayIcon={app}\iccraw-ui.exe
+UninstallDisplayIcon={app}\nexoraw-ui.exe
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -56,11 +56,11 @@ Source: "{#RootDir}\docs\WINDOWS_INSTALLER.md"; DestDir: "{app}\docs"; Flags: ig
 Source: "{#RootDir}\scripts\check_amaze_support.py"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\ICCRAW"; Filename: "{app}\iccraw-ui.exe"; WorkingDir: "{app}"
-Name: "{group}\ICCRAW CLI"; Filename: "{cmd}"; Parameters: "/K ""{app}\iccraw.exe"" --help"; WorkingDir: "{app}"
-Name: "{group}\Diagnostico herramientas"; Filename: "{cmd}"; Parameters: "/K ""{app}\iccraw.exe"" check-tools"; WorkingDir: "{app}"
-Name: "{group}\Desinstalar ICCRAW"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\ICCRAW"; Filename: "{app}\iccraw-ui.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\NexoRAW"; Filename: "{app}\nexoraw-ui.exe"; WorkingDir: "{app}"
+Name: "{group}\NexoRAW CLI"; Filename: "{cmd}"; Parameters: "/K ""{app}\nexoraw.exe"" --help"; WorkingDir: "{app}"
+Name: "{group}\Diagnostico herramientas"; Filename: "{cmd}"; Parameters: "/K ""{app}\nexoraw.exe"" check-tools"; WorkingDir: "{app}"
+Name: "{group}\Desinstalar NexoRAW"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\NexoRAW"; Filename: "{app}\nexoraw-ui.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\iccraw.exe"; Parameters: "--version"; Flags: runhidden
+Filename: "{app}\nexoraw.exe"; Parameters: "--version"; Flags: runhidden

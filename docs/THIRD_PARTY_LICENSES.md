@@ -1,26 +1,26 @@
 # Licencias de terceros (resumen operativo)
 
-Este archivo resume licencias de componentes clave y como se integran en ICCRAW.
+Este archivo resume licencias de componentes clave y como se integran en NexoRAW.
 
 Fecha de revision: 2026-04-25.
 
-## 1) ICCRAW (repositorio principal)
+## 1) NexoRAW (repositorio principal)
 
 - Licencia: `AGPL-3.0-or-later`.
 - Codigo mantenido por la comunidad de la Asociacion Espanola de Imagen Cientifica y Forense.
 
 ## 2) ArgyllCMS (`colprof`)
 
-- Uso en ICCRAW: herramienta externa por subprocess para generar perfiles ICC.
+- Uso en NexoRAW: herramienta externa por subprocess para generar perfiles ICC.
 - Licencia declarada por ArgyllCMS: AGPL para el paquete principal.
-- Politica en ICCRAW:
+- Politica en NexoRAW:
   - no se redistribuyen binarios dentro del repositorio,
   - se exige instalacion desde fuente oficial o paquete del sistema,
   - se registran version y contexto en trazabilidad.
 
 ## 3) LibRaw / rawpy / rawpy-demosaic
 
-- Uso en ICCRAW: motor unico de revelado RAW mediante el modulo Python
+- Uso en NexoRAW: motor unico de revelado RAW mediante el modulo Python
   `rawpy`, vinculado a LibRaw.
 - Dependencia base instalable: `rawpy`, vinculada a LibRaw.
 - Backend GPL3 para AMaZE: `rawpy-demosaic`, fork GPL3 de `rawpy` que incluye
@@ -30,8 +30,8 @@ Fecha de revision: 2026-04-25.
   - `rawpy`: MIT, sin demosaic packs GPL en wheels estandar.
   - `rawpy-demosaic`: `GPL-3.0-or-later`.
   - LibRaw demosaic pack GPL3: GPL3+, incluye AMaZE.
-- Politica en ICCRAW:
-  - ICCRAW se mantiene bajo `AGPL-3.0-or-later`, compatible con GPL3+,
+- Politica en NexoRAW:
+  - NexoRAW se mantiene bajo `AGPL-3.0-or-later`, compatible con GPL3+,
   - se registra version de `rawpy`, distribucion instalada (`rawpy` o
     `rawpy-demosaic`), LibRaw y `rawpy.flags` en contexto de ejecucion,
   - AMaZE solo se anuncia como disponible cuando `DEMOSAIC_PACK_GPL3=True`,
@@ -39,18 +39,18 @@ Fecha de revision: 2026-04-25.
 
 ## 4) PySide6 / Qt (GUI opcional)
 
-- Uso en ICCRAW: interfaz grafica opcional.
+- Uso en NexoRAW: interfaz grafica opcional.
 - Licencia comunitaria de Qt for Python: LGPLv3/GPLv3 (segun documentacion oficial de Qt).
-- Politica en ICCRAW:
+- Politica en NexoRAW:
   - dependencia opcional (`pip install -e .[gui]`),
   - mantener avisos de licencia al redistribuir builds con GUI.
 
 ## 5) LittleCMS (`tificc`)
 
-- Uso en ICCRAW: CMM externo para convertir TIFFs desde perfil ICC de entrada a
+- Uso en NexoRAW: CMM externo para convertir TIFFs desde perfil ICC de entrada a
   perfil de salida, actualmente sRGB.
 - Licencia: MIT-like open source segun proyecto LittleCMS.
-- Politica en ICCRAW:
+- Politica en NexoRAW:
   - se invoca como herramienta externa,
   - no se redistribuyen binarios dentro del repositorio,
   - se comprueba con `scripts/check_tools.sh`.
@@ -71,7 +71,7 @@ Fecha de revision: 2026-04-25.
 
 - `PyInstaller`: herramienta de build para crear los ejecutables Windows.
 - `Inno Setup`: herramienta externa para generar el instalador `.exe`.
-- Politica en ICCRAW:
+- Politica en NexoRAW:
   - se usan como herramientas de construccion,
   - no se versionan binarios generados en el repositorio,
   - revisar licencias y avisos antes de publicar una beta redistribuible.

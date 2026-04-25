@@ -8,4 +8,4 @@ fi
 .venv/bin/python -m pip install -q --upgrade pip
 .venv/bin/python -m pip install -q -e ".[gui]"
 
-exec .venv/bin/iccraw-ui
+exec .venv/bin/nexoraw-ui

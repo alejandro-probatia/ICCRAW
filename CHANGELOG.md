@@ -1,6 +1,6 @@
 # Changelog
 
-Todos los cambios relevantes de ICCRAW se documentan en este archivo.
+Todos los cambios relevantes de NexoRAW se documentan en este archivo.
 
 Este proyecto sigue:
 
@@ -18,13 +18,19 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+### Changed
+
+- El nombre visible del proyecto pasa a ser NexoRAW. Se añaden entry points
+  `nexoraw`/`nexoraw-ui` y se mantienen `iccraw`/`iccraw-ui` como alias
+  heredados para no romper scripts existentes.
+
 ## [0.1.0-beta.4] - 2026-04-25
 
 ### Changed
 
 - El instalador Windows AMaZE incluye metadata de distribucion
   `rawpy-demosaic` dentro del ejecutable PyInstaller para que
-  `iccraw check-amaze` informe el backend exacto.
+  `nexoraw check-amaze` informe el backend exacto.
 - El empaquetado Windows copia avisos/licencias de `rawpy-demosaic`, LibRaw,
   los demosaic packs GPL2/GPL3 y RawSpeed, junto con hash de wheel y commit de
   fuente.
@@ -56,7 +62,7 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Las opciones de generacion ICC (`colprof`, calidad, formato y salida) y los
   criterios `RAW global` se muestran dentro de `Calibrar sesion`, antes de
   iniciar la calibracion.
-- Politica AMaZE/GPL3 documentada: ICCRAW mantiene `AGPL-3.0-or-later`, registra
+- Politica AMaZE/GPL3 documentada: NexoRAW mantiene `AGPL-3.0-or-later`, registra
   flags de `rawpy` y solo habilita AMaZE cuando `DEMOSAIC_PACK_GPL3=True`.
 - El instalador Windows empaqueta herramientas externas del flujo completo
   (`colprof`/`xicclu`, `exiftool` y `tificc`) bajo `tools/`.
