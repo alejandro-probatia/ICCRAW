@@ -11,7 +11,7 @@ except Exception:  # pragma: no cover - optional dependency at runtime.
 
 
 @contextmanager
-def open_rawpy(path_or_file, *, shot_select: int = 0) -> Iterator:
+def open_rawpy(path_or_file, *, shot_select: int = 0, unpack: bool = False) -> Iterator:
     if rawpy is None:
         raise RuntimeError("No se puede abrir RAW: dependencia 'rawpy'/'LibRaw' no disponible.")
 
@@ -28,10 +28,11 @@ def open_rawpy(path_or_file, *, shot_select: int = 0) -> Iterator:
         set_unpack_params = getattr(raw, "set_unpack_params", None)
         if callable(set_unpack_params):
             set_unpack_params(shot_select=int(shot_select))
+        if unpack:
+            raw.unpack()
         yield raw
     finally:
         try:
             raw.close()
         except Exception:
             pass
-

@@ -3185,7 +3185,7 @@ if QtWidgets is not None:
             try:
                 if rawpy is None:
                     return None
-                with open_rawpy(path) as raw:
+                with open_rawpy(path, unpack=True) as raw:
                     return raw.postprocess(
                         half_size=True,
                         use_camera_wb=True,
@@ -3200,7 +3200,7 @@ if QtWidgets is not None:
                 try:
                     if rawpy is None:
                         return None
-                    with open_rawpy(path) as raw:
+                    with open_rawpy(path, unpack=True) as raw:
                         return raw.postprocess(
                             half_size=True,
                             use_camera_wb=False,

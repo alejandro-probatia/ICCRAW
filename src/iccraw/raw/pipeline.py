@@ -104,7 +104,7 @@ def develop_with_libraw(input_path: Path, recipe: Recipe, *, half_size: bool = F
 
     kwargs = _build_libraw_postprocess_kwargs(recipe, half_size=half_size)
     try:
-        with open_rawpy(input_path) as raw:
+        with open_rawpy(input_path, unpack=True) as raw:
             image = raw.postprocess(**kwargs)
     except Exception as exc:
         raise RuntimeError(f"Fallo de decodificacion RAW con LibRaw/rawpy: {exc}") from exc
