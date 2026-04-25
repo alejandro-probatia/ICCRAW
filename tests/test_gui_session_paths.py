@@ -189,6 +189,24 @@ def test_raw_global_options_live_in_calibration_flow(qapp):
         window.close()
 
 
+def test_right_column_uses_independent_collapsible_sections(qapp):
+    window = ICCRawMainWindow()
+    try:
+        assert isinstance(window.config_tabs, gui_module.CollapsibleToolPanel)
+        assert not isinstance(window.config_tabs, QtWidgets.QToolBox)
+
+        window.config_tabs.setItemExpanded(0, True)
+        window.config_tabs.setItemExpanded(1, True)
+        assert window.config_tabs.isItemExpanded(0)
+        assert window.config_tabs.isItemExpanded(1)
+
+        window.config_tabs.setItemExpanded(0, False)
+        assert not window.config_tabs.isItemExpanded(0)
+        assert window.config_tabs.isItemExpanded(1)
+    finally:
+        window.close()
+
+
 def test_gui_downgrades_amaze_when_gpl3_pack_is_missing(qapp, monkeypatch):
     monkeypatch.setattr(pipeline.rawpy, "flags", {"DEMOSAIC_PACK_GPL3": False})
     window = ICCRawMainWindow()

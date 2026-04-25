@@ -218,6 +218,90 @@ if QtWidgets is not None:
                 self.failed.emit(traceback.format_exc())
 
 
+    class CollapsibleToolPanel(QtWidgets.QScrollArea):
+        def __init__(self) -> None:
+            super().__init__()
+            self.setWidgetResizable(True)
+            self.setFrameShape(QtWidgets.QFrame.NoFrame)
+            self._items: list[dict[str, Any]] = []
+
+            self._content = QtWidgets.QWidget()
+            self._layout = QtWidgets.QVBoxLayout(self._content)
+            self._layout.setContentsMargins(0, 0, 0, 0)
+            self._layout.setSpacing(6)
+            self._layout.addStretch(1)
+            self.setWidget(self._content)
+
+        def addItem(self, widget: QtWidgets.QWidget, title: str, expanded: bool = True) -> int:  # noqa: N802
+            section = QtWidgets.QFrame()
+            section.setFrameShape(QtWidgets.QFrame.StyledPanel)
+            section.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Maximum)
+
+            section_layout = QtWidgets.QVBoxLayout(section)
+            section_layout.setContentsMargins(0, 0, 0, 0)
+            section_layout.setSpacing(0)
+
+            header = QtWidgets.QToolButton()
+            header.setText(title)
+            header.setCheckable(True)
+            header.setChecked(bool(expanded))
+            header.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+            header.setArrowType(QtCore.Qt.DownArrow if expanded else QtCore.Qt.RightArrow)
+            header.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+            header.setStyleSheet(
+                "QToolButton {"
+                "text-align: left;"
+                "font-weight: 600;"
+                "padding: 5px 6px;"
+                "border: 0;"
+                "}"
+            )
+
+            body = QtWidgets.QWidget()
+            body_layout = QtWidgets.QVBoxLayout(body)
+            body_layout.setContentsMargins(8, 8, 8, 8)
+            body_layout.addWidget(widget)
+            body.setVisible(bool(expanded))
+            body.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Maximum)
+
+            def toggle(checked: bool, *, body_widget=body, button=header) -> None:
+                body_widget.setVisible(bool(checked))
+                button.setArrowType(QtCore.Qt.DownArrow if checked else QtCore.Qt.RightArrow)
+
+            header.toggled.connect(toggle)
+            section_layout.addWidget(header)
+            section_layout.addWidget(body)
+
+            self._layout.insertWidget(max(0, self._layout.count() - 1), section)
+            self._items.append({"title": title, "header": header, "body": body, "widget": widget, "section": section})
+            return len(self._items) - 1
+
+        def count(self) -> int:
+            return len(self._items)
+
+        def itemText(self, index: int) -> str:  # noqa: N802
+            if index < 0 or index >= len(self._items):
+                return ""
+            return str(self._items[index]["title"])
+
+        def setCurrentIndex(self, index: int) -> None:  # noqa: N802
+            self.setItemExpanded(index, True)
+
+        def setItemExpanded(self, index: int, expanded: bool) -> None:  # noqa: N802
+            if index < 0 or index >= len(self._items):
+                return
+            header = self._items[index]["header"]
+            header.setChecked(bool(expanded))
+            if expanded:
+                section = self._items[index]["section"]
+                QtCore.QTimer.singleShot(0, lambda: self.ensureWidgetVisible(section, 0, 24))
+
+        def isItemExpanded(self, index: int) -> bool:  # noqa: N802
+            if index < 0 or index >= len(self._items):
+                return False
+            return bool(self._items[index]["header"].isChecked())
+
+
     class ImagePanel(QtWidgets.QLabel):
         imageClicked = QtCore.Signal(float, float)
 
@@ -1199,23 +1283,16 @@ if QtWidgets is not None:
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(6)
 
-            self.config_tabs = QtWidgets.QToolBox()
-            self.config_tabs.addItem(self._scrollable_panel(self._build_tab_profile_generation()), "Calibrar sesión")
-            self.config_tabs.addItem(self._scrollable_panel(self._build_tab_basic_adjustments()), "Corrección básica")
-            self.config_tabs.addItem(self._scrollable_panel(self._build_tab_preview_settings()), "Detalle")
+            self.config_tabs = CollapsibleToolPanel()
+            self.config_tabs.addItem(self._build_tab_profile_generation(), "Calibrar sesión", expanded=True)
+            self.config_tabs.addItem(self._build_tab_basic_adjustments(), "Corrección básica", expanded=True)
+            self.config_tabs.addItem(self._build_tab_preview_settings(), "Detalle", expanded=True)
             self._advanced_profile_config = self._build_tab_profile_config()
-            self.config_tabs.addItem(self._scrollable_panel(self._advanced_profile_config), "Perfil activo")
-            self.config_tabs.addItem(self._scrollable_panel(self._build_tab_batch_config()), "Aplicar sesión")
+            self.config_tabs.addItem(self._advanced_profile_config, "Perfil activo", expanded=False)
+            self.config_tabs.addItem(self._build_tab_batch_config(), "Aplicar sesión", expanded=False)
             layout.addWidget(self.config_tabs, 1)
 
             return pane
-
-        def _scrollable_panel(self, widget: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
-            scroll = QtWidgets.QScrollArea()
-            scroll.setWidgetResizable(True)
-            scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-            scroll.setWidget(widget)
-            return scroll
 
         def _build_tab_basic_adjustments(self) -> QtWidgets.QWidget:
             tab = QtWidgets.QWidget()
