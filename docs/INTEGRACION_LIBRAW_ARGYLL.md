@@ -1,4 +1,4 @@
-# Integración de LibRaw, ArgyllCMS y LittleCMS en NexoRAW
+# Integración de LibRaw y ArgyllCMS en NexoRAW
 
 ## Objetivo
 
@@ -7,7 +7,8 @@ NexoRAW usa un único motor de revelado RAW:
 - **LibRaw**, mediante la dependencia Python `rawpy`, para decodificación e
   interpolación RAW.
 - **ArgyllCMS** (`colprof`) como motor de generación de perfiles ICC.
-- **LittleCMS** (`tificc`) como CMM para conversiones ICC de salida.
+- **ArgyllCMS** (`cctiff`/`xicclu`) como CMM para conversiones ICC de salida,
+  validación y preview de perfil.
 
 La meta es mantener un flujo científico reproducible y auditable con menos
 ramas de código y sin mapeos implícitos entre motores RAW distintos.
@@ -18,7 +19,7 @@ ramas de código y sin mapeos implícitos entre motores RAW distintos.
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .[gui]
-sudo apt-get install -y argyll liblcms2-utils exiftool
+sudo apt-get install -y argyll exiftool
 ```
 
 `rawpy`/LibRaw se instala como dependencia Python del proyecto. Para AMaZE se
@@ -32,7 +33,7 @@ bash scripts/check_tools.sh
 nexoraw check-tools --strict --out tools_report.json
 ```
 
-`nexoraw check-tools` registra disponibilidad de ArgyllCMS, LittleCMS y
+`nexoraw check-tools` registra disponibilidad de ArgyllCMS y
 `exiftool`. Las versiones de `rawpy` y LibRaw quedan registradas en el contexto
 de ejecución (`run_context`).
 
@@ -103,7 +104,7 @@ Validación:
 - La matriz `matrix_camera_to_xyz` del sidecar queda como diagnóstico, no como
   sustituto de una conversión ICC real.
 
-## Integración LittleCMS
+## CMM ICC con ArgyllCMS
 
 Archivo clave:
 
@@ -113,8 +114,8 @@ Modos de salida:
 
 1. `camera_rgb_with_input_icc`: mantiene píxeles en RGB de cámara e incrusta el
    perfil ICC de entrada generado para la sesión.
-2. `converted_srgb`: usa `tificc` como CMM para transformar desde el perfil ICC
-   de entrada a sRGB.
+2. `converted_srgb`: usa `cctiff` como CMM para transformar desde el perfil ICC
+   de entrada al perfil de referencia sRGB incluido en ArgyllCMS.
 
 ## Validación local
 
@@ -144,8 +145,8 @@ nexoraw auto-profile-batch \
   - Solución: reinstalar el paquete o ejecutar `pip install -e .`.
 - `colprof no esta en PATH`
   - Solución: instalar `argyll`.
-- `No se puede convertir ICC: 'tificc' no esta disponible en PATH.`
-  - Solución: instalar `liblcms2-utils`.
+- `No se puede convertir ICC: 'cctiff' de ArgyllCMS no esta disponible en PATH.`
+  - Solución: instalar ArgyllCMS completo y verificar `cctiff -?`.
 
 ## Integracion C2PA/CAI
 

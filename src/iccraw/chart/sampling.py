@@ -118,7 +118,25 @@ def sample_chart(
     reject_saturated: bool = True,
 ) -> SampleSet:
     image = read_image(image_path)
-    h, w = image.shape[:2]
+    return sample_chart_from_array(
+        image,
+        detection,
+        reference,
+        strategy=strategy,
+        trim_percent=trim_percent,
+        reject_saturated=reject_saturated,
+    )
+
+
+def sample_chart_from_array(
+    image: np.ndarray,
+    detection: ChartDetectionResult,
+    reference: ReferenceCatalog,
+    strategy: str = "trimmed_mean",
+    trim_percent: float = 0.1,
+    reject_saturated: bool = True,
+) -> SampleSet:
+    image = np.asarray(image, dtype=np.float32)
 
     samples: list[PatchSample] = []
     missing: list[str] = []

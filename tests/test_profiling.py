@@ -28,6 +28,7 @@ def test_build_profile_generates_icc_and_sidecar(tmp_path: Path, monkeypatch):
         out_icc.write_bytes(icc_bytes)
 
     monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+    monkeypatch.setattr(profiling, "_lookup_lab_with_icc", lambda _profile, _rgb: np.asarray([s.reference_lab for s in samples], dtype=np.float64))
 
     samples = []
     for i in range(1, 25):

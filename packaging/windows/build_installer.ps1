@@ -8,7 +8,6 @@ param(
   [string]$OutputRoot = "",
   [string]$ArgyllRoot = "",
   [string]$ExifToolRoot = "",
-  [string]$LcmsBin = "",
   [string]$RawpyDemosaicWheel = "",
   [string]$RawpyDemosaicSource = "",
   [switch]$RequireAmaze
@@ -116,27 +115,6 @@ function Resolve-ExifToolRoot {
   return Resolve-CommandDirectory "exiftool"
 }
 
-function Resolve-LcmsBin {
-  if (-not [string]::IsNullOrWhiteSpace($LcmsBin)) {
-    return $LcmsBin
-  }
-  if (-not [string]::IsNullOrWhiteSpace($env:NEXORAW_LCMS_BIN)) {
-    return $env:NEXORAW_LCMS_BIN
-  }
-  if (-not [string]::IsNullOrWhiteSpace($env:ICCRAW_LCMS_BIN)) {
-    return $env:ICCRAW_LCMS_BIN
-  }
-  $fromPath = Resolve-CommandDirectory "tificc"
-  if ($fromPath) {
-    return $fromPath
-  }
-  $condaCandidate = Join-Path $Root "tmp\lcms2-conda\Library\bin"
-  if (Test-Path (Join-Path $condaCandidate "tificc.exe")) {
-    return $condaCandidate
-  }
-  return $null
-}
-
 function Copy-ExternalTools {
   param([string]$AppBuildDir)
 
@@ -151,6 +129,11 @@ function Copy-ExternalTools {
   }
   Copy-DirectoryContents -Source $argyllBin -Destination (Join-Path $toolsRoot "argyll\bin")
   $argyllRoot = Split-Path -Parent $argyllBin
+  $argyllRef = Join-Path $argyllRoot "ref"
+  if (-not (Test-Path (Join-Path $argyllRef "sRGB.icm"))) {
+    throw "No se encontro el directorio ref de ArgyllCMS con sRGB.icm."
+  }
+  Copy-DirectoryContents -Source $argyllRef -Destination (Join-Path $toolsRoot "argyll\ref")
   foreach ($file in @("License.txt", "Readme.txt")) {
     $path = Join-Path $argyllRoot $file
     if (Test-Path $path) {
@@ -163,21 +146,6 @@ function Copy-ExternalTools {
     throw "No se encontro ExifTool completo para empaquetar (exiftool.exe)."
   }
   Copy-DirectoryContents -Source $exifRoot -Destination (Join-Path $toolsRoot "exiftool")
-
-  $lcmsSource = Resolve-LcmsBin
-  if (-not $lcmsSource -or -not (Test-Path (Join-Path $lcmsSource "tificc.exe"))) {
-    throw "No se encontro LittleCMS/tificc para empaquetar. Define -LcmsBin o NEXORAW_LCMS_BIN."
-  }
-  Copy-DirectoryContents -Source $lcmsSource -Destination (Join-Path $toolsRoot "lcms\bin")
-  $lcmsRoot = Split-Path -Parent (Split-Path -Parent $lcmsSource)
-  $lcmsMeta = Join-Path $lcmsRoot "conda-meta"
-  if (Test-Path $lcmsMeta) {
-    Copy-DirectoryContents -Source $lcmsMeta -Destination (Join-Path $docsRoot "lcms-conda-meta")
-  }
-  $lcmsDocs = Join-Path $lcmsRoot "Library\share\doc"
-  if (Test-Path $lcmsDocs) {
-    Copy-DirectoryContents -Source $lcmsDocs -Destination (Join-Path $docsRoot "lcms-doc")
-  }
 
   Write-Host "Herramientas externas empaquetadas en: $toolsRoot"
 }

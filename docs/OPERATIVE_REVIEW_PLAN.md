@@ -72,9 +72,9 @@ Criticidad: critica.
 
 Estado de implementacion:
 
-- mitigacion inicial implementada: la exportacion de lote ya separa RGB de camara
-  con perfil de entrada incrustado y conversion a sRGB mediante LittleCMS
-  (`tificc`).
+- mitigacion implementada: la exportacion de lote ya separa RGB de camara
+  con perfil de entrada incrustado y conversion a sRGB mediante ArgyllCMS
+  (`cctiff`).
 - pendiente: validacion cruzada externa mas amplia de perfiles ICC reales.
 
 Situacion detectada en la revision inicial:
@@ -104,8 +104,7 @@ Direccion tecnica:
    - `assign-input-profile`: TIFF en RGB camara + perfil ICC de entrada incrustado.
    - `convert-to-output-profile`: transformacion con CMM real a sRGB/AdobeRGB/XYZ/Lab.
 2. Integrar un CMM real para conversiones ICC:
-   - LittleCMS via `Pillow.ImageCms`, `lcms2` o herramienta externa equivalente,
-   - o ArgyllCMS (`cctiff`/flujo validado) si se decide mantener dependencia CLI.
+   - ArgyllCMS (`cctiff`/`xicclu`) para mantener un unico proveedor CMM externo.
 3. Eliminar la aplicacion silenciosa de la matriz lateral como salida principal.
 4. Mantener la matriz solo como artefacto diagnostico, no como sustituto del ICC.
 
@@ -490,7 +489,7 @@ Tareas:
    - `converted_xyz_or_lab` si se justifica cientificamente.
 2. Integrar CMM real.
 3. Sustituir aplicacion de matriz por transformacion ICC validada.
-4. Validar perfiles con herramientas externas (`iccdump`, ArgyllCMS, LittleCMS).
+4. Validar perfiles con herramientas externas (`iccdump`, ArgyllCMS).
 5. Documentar comportamiento de TIFF final.
 
 Criterio de salida:
@@ -630,7 +629,7 @@ con:
    - Mitigacion: registrar version LibRaw/rawpy y usar dataset RAW de regresion.
 2. Interoperabilidad ICC:
    - no todos los consumidores interpretan igual perfiles de entrada.
-   - Mitigacion: validar con LittleCMS/ArgyllCMS y TIFFs de referencia.
+   - Mitigacion: validar con ArgyllCMS y TIFFs de referencia.
 3. Datos de referencia:
    - cartas envejecen, referencias cambian y metrologia puede no estar trazada.
    - Mitigacion: versionar referencias y registrar fuente/espectrofotometro.

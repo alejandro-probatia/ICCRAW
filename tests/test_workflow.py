@@ -8,7 +8,7 @@ import tifffile
 
 from iccraw.chart.detection import detect_chart_from_corners
 from iccraw.chart.sampling import ReferenceCatalog
-from iccraw.core.models import ErrorSummary, PatchError, ValidationResult, read_json
+from iccraw.core.models import ErrorSummary, PatchError, Recipe, ValidationResult, read_json
 from iccraw.core.recipe import load_recipe
 from iccraw.workflow import auto_generate_profile_from_charts, auto_profile_batch
 import iccraw.workflow as workflow
@@ -32,6 +32,7 @@ def test_auto_profile_batch_end_to_end(tmp_path: Path, monkeypatch):
         out_icc.write_bytes(icc_bytes)
 
     monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+    monkeypatch.setattr(profiling, "_lookup_lab_with_icc", _fake_lookup_lab)
 
     charts_dir = tmp_path / "charts"
     targets_dir = tmp_path / "targets"
@@ -91,6 +92,7 @@ def test_auto_generate_profile_from_charts_only(tmp_path: Path, monkeypatch):
         out_icc.write_bytes(icc_bytes)
 
     monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+    monkeypatch.setattr(profiling, "_lookup_lab_with_icc", _fake_lookup_lab)
 
     charts_dir = tmp_path / "charts"
     work_dir = tmp_path / "work_profile"
@@ -145,6 +147,7 @@ def test_auto_generate_profile_from_explicit_chart_files(tmp_path: Path, monkeyp
         out_icc.write_bytes(icc_bytes)
 
     monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+    monkeypatch.setattr(profiling, "_lookup_lab_with_icc", _fake_lookup_lab)
 
     charts_a = tmp_path / "charts_a"
     charts_b = tmp_path / "charts_b"
@@ -201,6 +204,7 @@ def test_auto_generate_profile_uses_manual_detection(tmp_path: Path, monkeypatch
         out_icc.write_bytes(icc_bytes)
 
     monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+    monkeypatch.setattr(profiling, "_lookup_lab_with_icc", _fake_lookup_lab)
 
     charts_dir = tmp_path / "charts"
     work_dir = tmp_path / "work_manual"
@@ -274,6 +278,7 @@ def test_auto_generate_profile_writes_holdout_qa_report(tmp_path: Path, monkeypa
         )
 
     monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+    monkeypatch.setattr(profiling, "_lookup_lab_with_icc", _fake_lookup_lab)
     monkeypatch.setattr(workflow, "validate_profile", fake_validate_profile)
 
     charts_dir = tmp_path / "charts"
@@ -359,6 +364,7 @@ def test_auto_profile_batch_refuses_rejected_session_profile(tmp_path: Path, mon
         )
 
     monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+    monkeypatch.setattr(profiling, "_lookup_lab_with_icc", _fake_lookup_lab)
     monkeypatch.setattr(workflow, "validate_profile", fake_validate_profile)
 
     charts_dir = tmp_path / "charts"
@@ -422,6 +428,44 @@ def test_profile_status_resolves_draft_rejected_and_expired():
     assert draft["status"] == "draft"
     assert rejected["status"] == "rejected"
     assert expired["status"] == "expired"
+
+
+def test_auto_generate_profile_rejects_non_scientific_recipe(tmp_path: Path):
+    reference = ReferenceCatalog({"chart_name": "unit", "chart_version": "1", "illuminant": "D50", "patches": []})
+    recipe = Recipe(tone_curve="srgb", output_linear=False, output_space="srgb")
+
+    with pytest.raises(RuntimeError, match="no apta para perfilado cientifico"):
+        auto_generate_profile_from_charts(
+            chart_captures_dir=tmp_path / "charts",
+            recipe=recipe,
+            reference=reference,
+            profile_out=tmp_path / "bad.icc",
+            profile_report_out=tmp_path / "bad_report.json",
+            work_dir=tmp_path / "work_bad_recipe",
+        )
+
+
+def test_auto_generate_profile_rejects_non_raw_or_tiff_chart_files(tmp_path: Path):
+    reference = ReferenceCatalog({"chart_name": "unit", "chart_version": "1", "illuminant": "D50", "patches": []})
+    jpg = tmp_path / "chart.jpg"
+    jpg.write_bytes(b"not-a-scientific-chart-source")
+
+    with pytest.raises(RuntimeError, match="solo RAW/DNG/TIFF lineal"):
+        auto_generate_profile_from_charts(
+            chart_captures_dir=tmp_path / "unused",
+            chart_capture_files=[jpg],
+            recipe=Recipe(),
+            reference=reference,
+            profile_out=tmp_path / "bad_ext.icc",
+            profile_report_out=tmp_path / "bad_ext_report.json",
+            work_dir=tmp_path / "work_bad_ext",
+        )
+
+
+def _fake_lookup_lab(_profile: Path, measured_rgb: np.ndarray) -> np.ndarray:
+    rgb = np.asarray(measured_rgb, dtype=np.float64)
+    base = np.array([50.0, 0.0, 0.0], dtype=np.float64)
+    return np.repeat(base.reshape(1, 3), rgb.shape[0], axis=0)
 
 
 def _synthetic_colorchecker_image() -> np.ndarray:

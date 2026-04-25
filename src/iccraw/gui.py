@@ -29,16 +29,15 @@ try:
 except Exception:
     pass
 
-from .chart.detection import detect_chart_from_corners, draw_detection_overlay
+from .chart.detection import detect_chart_from_corners_array, draw_detection_overlay_array
 from .chart.sampling import ReferenceCatalog
 from .core.models import Recipe, to_json_dict, write_json
 from .core.recipe import load_recipe
-from .core.utils import RAW_EXTENSIONS, read_image
+from .core.utils import RAW_EXTENSIONS, read_image, write_tiff16
 from .metadata_viewer import inspect_file_metadata, metadata_display_sections, metadata_sections_text
 from .profile.export import write_profiled_tiff
 from .qa_compare import compare_qa_reports
 from .raw.pipeline import (
-    develop_controlled,
     develop_image_array,
     is_libraw_demosaic_supported,
     rawpy_feature_flags,
@@ -71,6 +70,7 @@ except Exception:  # pragma: no cover - entorno sin GUI
 
 IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 BROWSABLE_EXTENSIONS = RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
+PROFILE_CHART_EXTENSIONS = RAW_EXTENSIONS.union({".tif", ".tiff"})
 
 LAYOUT_VERSION = 4
 APP_NAME = "NexoRAW"
@@ -767,6 +767,7 @@ if QtWidgets is not None:
             self._preview_cache_order: list[str] = []
             self._manual_chart_marking = False
             self._manual_chart_points: list[tuple[float, float]] = []
+            self._manual_chart_marking_after_reload = False
             self._neutral_picker_active = False
             self._current_dir = self._startup_directory_from_settings()
             self._selected_file: Path | None = None
@@ -783,6 +784,7 @@ if QtWidgets is not None:
             self._adjusted_linear: np.ndarray | None = None
             self._preview_srgb: np.ndarray | None = None
             self._last_loaded_preview_key: str | None = None
+            self._tone_curve_histogram_key: str | None = None
             self._viewer_zoom = 1.0
             self._viewer_rotation = 0
             self._selection_load_timer = QtCore.QTimer(self)
@@ -4077,6 +4079,7 @@ if QtWidgets is not None:
             self._preview_cache.clear()
             self._preview_cache_order.clear()
             self._last_loaded_preview_key = None
+            self._tone_curve_histogram_key = None
 
         def _load_selected_from_timer(self) -> None:
             if self._selected_file is None:
@@ -4101,6 +4104,9 @@ if QtWidgets is not None:
             )
 
             if cache_key == self._last_loaded_preview_key and self._original_linear is not None:
+                if self._manual_chart_marking_after_reload:
+                    self._manual_chart_marking_after_reload = False
+                    self._begin_manual_chart_marking()
                 return
 
             cached = self._preview_cache.get(cache_key)
@@ -4111,6 +4117,9 @@ if QtWidgets is not None:
                 self._refresh_preview()
                 self._log_preview(f"Preview cargada desde cache: {selected.name}")
                 self._set_status(f"Preview en cache: {selected.name}")
+                if self._manual_chart_marking_after_reload:
+                    self._manual_chart_marking_after_reload = False
+                    self._begin_manual_chart_marking()
                 return
 
             def task():
@@ -4131,6 +4140,9 @@ if QtWidgets is not None:
                 self._cache_preview_image(cache_key, self._original_linear)
                 self._refresh_preview()
                 self._log_preview(msg)
+                if self._manual_chart_marking_after_reload:
+                    self._manual_chart_marking_after_reload = False
+                    self._begin_manual_chart_marking()
 
             self._start_background_task("Carga de imagen para preview", task, on_success)
 
@@ -4158,7 +4170,10 @@ if QtWidgets is not None:
                 sharpen = self.slider_sharpen.value() / 100.0
                 radius = self.slider_radius.value() / 10.0
                 ca_red, ca_blue = self._ca_scale_factors()
-                self.tone_curve_editor.set_histogram_from_image(self._original_linear)
+                histogram_key = self._last_loaded_preview_key or str(id(self._original_linear))
+                if self._tone_curve_histogram_key != histogram_key:
+                    self.tone_curve_editor.set_histogram_from_image(self._original_linear)
+                    self._tone_curve_histogram_key = histogram_key
 
                 adjusted = self._apply_output_adjustments(
                     self._original_linear,
@@ -4180,18 +4195,22 @@ if QtWidgets is not None:
                 result_srgb = linear_to_srgb_display(adjusted)
                 if self.chk_apply_profile.isChecked() and self.path_profile_active.text().strip():
                     p = Path(self.path_profile_active.text().strip())
-                    if p.exists() and p.with_suffix(".profile.json").exists():
-                        candidate = apply_profile_preview(adjusted, p)
-                        if self._looks_broken_profile_preview(candidate):
+                    if p.exists():
+                        try:
+                            candidate = apply_profile_preview(adjusted, p)
+                        except Exception as exc:
+                            self._log_preview(f"Aviso: no se pudo aplicar preview ICC con ArgyllCMS: {exc}")
+                            candidate = None
+                        if candidate is not None and self._looks_broken_profile_preview(candidate):
                             self._log_preview(
                                 "Aviso: preview del perfil ICC parece no fiable "
                                 "(dominante/clipping extremo). Se muestra vista sin perfil."
                             )
-                        else:
+                        elif candidate is not None:
                             result_srgb = candidate
                     else:
                         self._log_preview(
-                            f"Aviso: perfil activo sin sidecar valido ({p}). Se muestra vista sin perfil."
+                            f"Aviso: perfil activo no encontrado ({p}). Se muestra vista sin perfil."
                         )
 
                 self._preview_srgb = np.asarray(result_srgb, dtype=np.float32)
@@ -4299,7 +4318,7 @@ if QtWidgets is not None:
         def _use_selected_files_as_profile_charts(self) -> None:
             files = [
                 p for p in self._collect_selected_file_paths()
-                if p.suffix.lower() in BROWSABLE_EXTENSIONS
+                if p.suffix.lower() in PROFILE_CHART_EXTENSIONS
             ]
             if not files:
                 QtWidgets.QMessageBox.information(
@@ -4333,7 +4352,8 @@ if QtWidgets is not None:
             self._refresh_color_reference_thumbnail_markers()
 
         def _profile_chart_files_or_none(self) -> list[Path] | None:
-            return list(self._selected_chart_files) if self._selected_chart_files else None
+            files = [p for p in self._selected_chart_files if p.suffix.lower() in PROFILE_CHART_EXTENSIONS]
+            return files if files else None
 
         def _infer_profile_chart_files(self) -> list[Path] | None:
             files = self._profile_chart_files_or_none()
@@ -4342,7 +4362,7 @@ if QtWidgets is not None:
 
             selected = [
                 p for p in self._collect_selected_file_paths()
-                if p.suffix.lower() in BROWSABLE_EXTENSIONS
+                if p.suffix.lower() in PROFILE_CHART_EXTENSIONS
             ]
             if selected:
                 self._selected_chart_files = sorted(set(selected), key=lambda p: str(p))
@@ -4354,7 +4374,7 @@ if QtWidgets is not None:
                 self._set_status(f"Referencias colorimétricas tomadas de la selección: {len(self._selected_chart_files)}")
                 return list(self._selected_chart_files)
 
-            if self._selected_file is not None and self._selected_file.suffix.lower() in BROWSABLE_EXTENSIONS:
+            if self._selected_file is not None and self._selected_file.suffix.lower() in PROFILE_CHART_EXTENSIONS:
                 self._selected_chart_files = [self._selected_file]
                 self.profile_charts_dir.setText(str(self._selected_file.parent))
                 self._sync_profile_chart_selection_label()
@@ -4414,27 +4434,28 @@ if QtWidgets is not None:
             manual_dir.mkdir(parents=True, exist_ok=True)
             if source.suffix.lower() in RAW_EXTENSIONS:
                 target_image = manual_dir / f"{source.stem}.manual_for_profile.tiff"
-                develop_controlled(source, recipe, target_image, None)
+                full_image = develop_image_array(source, recipe)
+                write_tiff16(target_image, full_image)
             else:
                 target_image = source
+                full_image = read_image(target_image)
 
-            full_image = read_image(target_image)
             full_h, full_w = full_image.shape[:2]
             sx = full_w / max(1, int(preview_w))
             sy = full_h / max(1, int(preview_h))
             corners = [(x * sx, y * sy) for x, y in points_preview]
-            detection = detect_chart_from_corners(target_image, corners=corners, chart_type=chart_type)
+            detection = detect_chart_from_corners_array(full_image, corners=corners, chart_type=chart_type)
 
             detection_path = manual_dir / f"{source.stem}.manual_for_profile.json"
             overlay_path = manual_dir / f"{source.stem}.manual_for_profile.overlay.png"
             write_json(detection_path, detection)
-            draw_detection_overlay(target_image, detection, overlay_path)
+            draw_detection_overlay_array(full_image, detection, overlay_path)
             return source, detection
 
         def _directory_has_chart_captures(self, folder: Path) -> bool:
             try:
                 return folder.exists() and folder.is_dir() and any(
-                    p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
+                    p.is_file() and p.suffix.lower() in PROFILE_CHART_EXTENSIONS
                     for p in folder.iterdir()
                 )
             except Exception:
@@ -4523,6 +4544,10 @@ if QtWidgets is not None:
                 status = str(profile_status.get("status") or "draft")
                 if status not in {"rejected", "expired"}:
                     self.path_profile_active.setText(str(profile_out))
+                    if status == "draft":
+                        reasons = profile_status.get("reasons") if isinstance(profile_status.get("reasons"), list) else []
+                        detail = f" ({', '.join(str(r) for r in reasons[:3])})" if reasons else ""
+                        self._log_preview(f"Aviso: perfil activado en estado draft{detail}; no sustituye una validacion independiente.")
                 else:
                     self.path_profile_active.clear()
                     self._log_preview(f"Perfil no activado por estado: {status}")
@@ -4551,7 +4576,7 @@ if QtWidgets is not None:
                 return sum(
                     1
                     for p in charts.iterdir()
-                    if p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
+                    if p.is_file() and p.suffix.lower() in PROFILE_CHART_EXTENSIONS
                 )
             except Exception:
                 return 0
@@ -4603,11 +4628,34 @@ if QtWidgets is not None:
             if self._original_linear is None:
                 QtWidgets.QMessageBox.information(self, "Info", "Carga primero la captura de carta en el visor.")
                 return
+            if self._selected_file is None or self._selected_file.suffix.lower() not in PROFILE_CHART_EXTENSIONS:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Referencia no compatible",
+                    "El marcado manual para perfilado cientifico solo acepta RAW/DNG/TIFF.",
+                )
+                return
+            if (
+                self._selected_file is not None
+                and self._selected_file.suffix.lower() in RAW_EXTENSIONS
+                and self.check_fast_raw_preview.isChecked()
+            ):
+                self._manual_chart_marking_after_reload = True
+                self.check_fast_raw_preview.setChecked(False)
+                self._last_loaded_preview_key = None
+                self._set_status("Recargando preview de alta calidad antes del marcado manual")
+                self._on_load_selected(show_message=False)
+                return
+            self._begin_manual_chart_marking()
+
+        def _begin_manual_chart_marking(self) -> None:
+            if self._original_linear is None:
+                return
             self._set_neutral_picker_active(False)
             self._manual_chart_marking = True
             self._manual_chart_points = []
             self._sync_manual_chart_overlay()
-            self._set_status("Marcado manual activo: selecciona 4 esquinas en el visor")
+            self._set_status("Marcado manual activo sobre preview de revelado: selecciona 4 esquinas en el visor")
 
         def _clear_manual_chart_points(self) -> None:
             self._manual_chart_marking = False
@@ -4650,6 +4698,13 @@ if QtWidgets is not None:
             if self._selected_file is None:
                 QtWidgets.QMessageBox.information(self, "Info", "Selecciona primero una captura de carta.")
                 return
+            if self._selected_file.suffix.lower() not in PROFILE_CHART_EXTENSIONS:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Referencia no compatible",
+                    "Las detecciones de carta para perfilado cientifico solo aceptan RAW/DNG/TIFF.",
+                )
+                return
             if self._original_linear is None:
                 QtWidgets.QMessageBox.information(self, "Info", "Carga primero la captura de carta en el visor.")
                 return
@@ -4682,18 +4737,19 @@ if QtWidgets is not None:
                 overlay_path = out_json.with_name(f"{out_json.stem}.overlay.png")
                 if selected.suffix.lower() in RAW_EXTENSIONS:
                     target_image = out_json.with_name(f"{out_json.stem}.developed.tiff")
-                    develop_controlled(selected, recipe, target_image, None)
+                    full_image = develop_image_array(selected, recipe)
+                    write_tiff16(target_image, full_image)
                 else:
                     target_image = selected
+                    full_image = read_image(target_image)
 
-                full_image = read_image(target_image)
                 full_h, full_w = full_image.shape[:2]
                 sx = full_w / max(1, preview_w)
                 sy = full_h / max(1, preview_h)
                 corners = [(x * sx, y * sy) for x, y in points_preview]
-                detection = detect_chart_from_corners(target_image, corners=corners, chart_type=chart_type)
+                detection = detect_chart_from_corners_array(full_image, corners=corners, chart_type=chart_type)
                 write_json(out_json, detection)
-                draw_detection_overlay(target_image, detection, overlay_path)
+                draw_detection_overlay_array(full_image, detection, overlay_path)
                 return {
                     "detection_json": str(out_json),
                     "overlay": str(overlay_path),

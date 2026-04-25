@@ -20,6 +20,11 @@ class _PatchCandidate:
 
 def detect_chart(image_path: Path, chart_type: str = "colorchecker24") -> ChartDetectionResult:
     image = read_image(image_path)
+    return detect_chart_from_array(image, chart_type=chart_type)
+
+
+def detect_chart_from_array(image: np.ndarray, chart_type: str = "colorchecker24") -> ChartDetectionResult:
+    image = np.asarray(image, dtype=np.float32)
     h, w = image.shape[:2]
     bgr8 = np.clip(_to_display(image)[:, :, ::-1] * 255.0, 0, 255).astype(np.uint8)
 
@@ -63,6 +68,18 @@ def detect_chart_from_corners(
         raise ValueError("Se necesitan exactamente 4 esquinas para la deteccion manual")
 
     image = read_image(image_path)
+    return detect_chart_from_corners_array(image, corners=corners, chart_type=chart_type)
+
+
+def detect_chart_from_corners_array(
+    image: np.ndarray,
+    corners: list[tuple[float, float]],
+    chart_type: str = "colorchecker24",
+) -> ChartDetectionResult:
+    if len(corners) != 4:
+        raise ValueError("Se necesitan exactamente 4 esquinas para la deteccion manual")
+
+    image = np.asarray(image, dtype=np.float32)
     bgr8 = np.clip(_to_display(image)[:, :, ::-1] * 255.0, 0, 255).astype(np.uint8)
     chart_type, cols, rows = _chart_dimensions(chart_type)
     quad = np.array(corners, dtype=np.float32)
@@ -177,6 +194,11 @@ def _build_detection_from_homography(
 
 def draw_detection_overlay(image_path: Path, detection: ChartDetectionResult, out_preview: Path) -> None:
     image = read_image(image_path)
+    draw_detection_overlay_array(image, detection, out_preview)
+
+
+def draw_detection_overlay_array(image: np.ndarray, detection: ChartDetectionResult, out_preview: Path) -> None:
+    image = np.asarray(image, dtype=np.float32)
     bgr8 = np.clip(_to_display(image)[:, :, ::-1] * 255.0, 0, 255).astype(np.uint8)
 
     chart = np.array([[p.x, p.y] for p in detection.chart_polygon], dtype=np.int32)

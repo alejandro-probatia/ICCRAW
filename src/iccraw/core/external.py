@@ -19,7 +19,6 @@ def bundled_tool_dirs() -> list[Path]:
             exe_dir / "tools" / "bin",
             exe_dir / "tools" / "argyll" / "bin",
             exe_dir / "tools" / "exiftool",
-            exe_dir / "tools" / "lcms" / "bin",
         ]
     )
 
@@ -29,7 +28,6 @@ def bundled_tool_dirs() -> list[Path]:
             base_dir / "tools" / "bin",
             base_dir / "tools" / "argyll" / "bin",
             base_dir / "tools" / "exiftool",
-            base_dir / "tools" / "lcms" / "bin",
         ]
     )
 

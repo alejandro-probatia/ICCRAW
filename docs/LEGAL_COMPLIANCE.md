@@ -39,8 +39,8 @@ Politica:
 NexoRAW combina dependencias Python y herramientas externas:
 
 - `rawpy`/LibRaw o `rawpy-demosaic`/LibRaw para revelado RAW.
-- `ArgyllCMS` (`colprof`) para construccion de perfiles ICC.
-- `LittleCMS` (`tificc`) para conversiones ICC de salida.
+- `ArgyllCMS` (`colprof`, `xicclu`, `cctiff`) para construccion, validacion y
+  conversion de perfiles ICC.
 - `exiftool` para metadatos.
 - `PySide6` (Qt for Python, opcional) para GUI.
 
@@ -51,8 +51,7 @@ Notas de licencia relevantes:
    imponen GPL2+ o GPL3+ segun el pack usado.
 3. `rawpy` estandar es MIT y no incluye los packs GPL en sus wheels.
 4. `rawpy-demosaic` es `GPL-3.0-or-later` e incluye los packs GPL2/GPL3.
-5. LittleCMS se distribuye como software open source permisivo; NexoRAW lo invoca como herramienta externa.
-6. PySide6 comunitario se distribuye bajo LGPLv3/GPLv3; en NexoRAW se usa como dependencia opcional de GUI.
+5. PySide6 comunitario se distribuye bajo LGPLv3/GPLv3; en NexoRAW se usa como dependencia opcional de GUI.
 
 Politica de integracion:
 

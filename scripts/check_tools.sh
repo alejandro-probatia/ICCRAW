@@ -54,13 +54,13 @@ if command -v xicclu >/dev/null 2>&1; then
 else
   check_cmd "icclu" "icclu" || missing=1
 fi
-check_cmd "tificc" "tificc -v" || missing=1
+check_cmd "cctiff" "cctiff -?" || missing=1
 check_cmd "exiftool" "exiftool -ver" || missing=1
 
 if [[ "$missing" -ne 0 ]]; then
   echo
   echo "Faltan dependencias del sistema. Instala (Debian/Ubuntu):"
-  echo "  sudo apt-get install argyll liblcms2-utils exiftool"
+  echo "  sudo apt-get install argyll exiftool"
   echo "Y dependencias Python del proyecto:"
   echo "  pip install -e ."
   exit 2

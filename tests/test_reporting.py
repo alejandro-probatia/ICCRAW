@@ -4,7 +4,7 @@ from iccraw import reporting
 
 
 def test_check_external_tools_reports_available_required_tools(monkeypatch):
-    available = {"colprof", "xicclu", "tificc", "exiftool"}
+    available = {"colprof", "xicclu", "cctiff", "exiftool"}
 
     def fake_tool_path(command):
         if command in available:
@@ -27,7 +27,7 @@ def test_check_external_tools_reports_available_required_tools(monkeypatch):
 
 
 def test_check_external_tools_uses_icclu_fallback(monkeypatch):
-    available = {"colprof", "icclu", "tificc", "exiftool"}
+    available = {"colprof", "icclu", "cctiff", "exiftool"}
 
     def fake_tool_path(command):
         if command in available:

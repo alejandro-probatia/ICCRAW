@@ -188,7 +188,7 @@ def test_raw_thumbnail_payload_falls_back_to_half_size_raw(tmp_path: Path, monke
 
 
 def test_selected_color_reference_images_are_marked_in_thumbnail_list(tmp_path: Path, qapp):
-    image_path = tmp_path / "reference.png"
+    image_path = tmp_path / "reference.tiff"
     Image.new("RGB", (96, 48), (20, 120, 220)).save(image_path)
 
     window = ICCRawMainWindow()
@@ -219,8 +219,8 @@ def test_selected_color_reference_images_are_marked_in_thumbnail_list(tmp_path: 
 
 
 def test_generate_profile_uses_explicit_color_reference_selection(tmp_path: Path, monkeypatch, qapp):
-    chart_01 = tmp_path / "chart_01.png"
-    chart_02 = tmp_path / "chart_02.png"
+    chart_01 = tmp_path / "chart_01.tiff"
+    chart_02 = tmp_path / "chart_02.tiff"
     Image.new("RGB", (16, 16), (20, 120, 220)).save(chart_01)
     Image.new("RGB", (16, 16), (220, 120, 20)).save(chart_02)
 

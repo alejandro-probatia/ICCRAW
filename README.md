@@ -122,7 +122,7 @@ NexoRAW no pretende:
 - reemplazar un laboratorio de validación colorimétrica,
 - garantizar validez forense por sí solo,
 - generar un perfil universal para cualquier luz o escena,
-- ocultar dependencias críticas como LibRaw/rawpy, ArgyllCMS o LittleCMS.
+- ocultar dependencias críticas como LibRaw/rawpy, ArgyllCMS o ExifTool.
 
 La meta de la beta es ofrecer una base instalable y verificable para pruebas
 controladas, discusión técnica y ampliación comunitaria.
@@ -149,7 +149,7 @@ Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas control
 - Colorimetría y DeltaE: `colour-science`.
 - Export TIFF 16-bit: `tifffile`.
 - Motor de perfil ICC: **ArgyllCMS (`colprof`)**.
-- Conversion ICC de salida: **LittleCMS (`tificc`)**.
+- CMM ICC de salida y preview de perfil: **ArgyllCMS (`cctiff`/`xicclu`)**.
 - GUI (opcional): **Qt for Python (`PySide6`)**.
 
 ## Instalación
@@ -166,7 +166,7 @@ Opcional pero recomendado para perfilado con ArgyllCMS y conversion ICC real:
 
 ```bash
 # Debian/Ubuntu
-sudo apt-get install argyll liblcms2-utils exiftool
+sudo apt-get install argyll exiftool
 bash scripts/check_tools.sh
 nexoraw check-tools --out tools_report.json
 ```

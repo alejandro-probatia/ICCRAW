@@ -21,7 +21,7 @@ La version actual esta en desarrollo. Existe funcionalidad base para ejecutar fl
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y argyll liblcms2-utils exiftool
+sudo apt-get install -y argyll exiftool
 ```
 
 Comprobación:
@@ -263,8 +263,8 @@ Notas de uso de preview:
   `profiles/` para ICC, `config/` para reportes/recetas, `work/` para
   intermedios y `exports/` para TIFF/preview. Los temporales internos siguen
   usándose solo como scratch transitorio.
-- `Ayuda -> Diagnóstico herramientas...` muestra versiones/rutas de ArgyllCMS,
-  LittleCMS y `exiftool`; `rawpy`/LibRaw queda registrado en el contexto de
+- `Ayuda -> Diagnóstico herramientas...` muestra versiones/rutas de ArgyllCMS
+  y `exiftool`; `rawpy`/LibRaw queda registrado en el contexto de
   ejecución.
 
 ## 5. Artefactos que genera el sistema

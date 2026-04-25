@@ -12,9 +12,8 @@ El instalador redistribuye la aplicacion Python y empaqueta las herramientas
 externas criticas bajo `{app}\tools\...` para que el pipeline completo funcione
 sin editar el `PATH` del sistema:
 
-- ArgyllCMS: `colprof` y `xicclu`/`icclu`.
+- ArgyllCMS: `colprof`, `xicclu`/`icclu` y `cctiff`.
 - ExifTool: `exiftool`.
-- LittleCMS: `tificc`.
 
 El diagnostico se comprueba con:
 
@@ -51,7 +50,7 @@ Pruebas con dependencias externas obligatorias:
 .\scripts\run_checks.ps1 -StrictExternalTools
 ```
 
-En equipos donde falta `tificc`, la suite Python puede pasar con una prueba
+En equipos donde falta `cctiff`, la suite Python puede pasar con una prueba
 saltada, pero `-StrictExternalTools` debe fallar. Ese fallo es intencionado para
 evitar publicar una beta sin CMM operativo.
 
@@ -130,7 +129,7 @@ En una maquina Windows limpia:
    - `nexoraw check-tools --strict`,
    - `nexoraw-ui` arranca,
    - una prueba de `detect-chart`/`sample-chart` con `testdata` funciona,
-   - una conversion `output_space=srgb` solo se aprueba si `tificc` existe.
+   - una conversion `output_space=srgb` solo se aprueba si `cctiff` existe.
 
 ## Notas de mantenimiento
 
@@ -138,12 +137,9 @@ En una maquina Windows limpia:
 - La plantilla Inno Setup esta en `packaging/windows/iccraw.iss`.
 - El script `build_installer.ps1` instala los extras `dev`, `gui` e
   `installer` antes de empaquetar.
-- El instalador copia ArgyllCMS (`colprof`/`xicclu`), ExifTool y LittleCMS
-  (`tificc`) en `{app}\tools\...` y la aplicacion los resuelve desde ahi antes
+- El instalador copia ArgyllCMS (`bin` y `ref`, incluyendo `sRGB.icm`) y ExifTool en
+  `{app}\tools\...` y la aplicacion los resuelve desde ahi antes
   de consultar el `PATH` del sistema.
-- Para LittleCMS, si `tificc` no esta en `PATH`, el script acepta `-LcmsBin` o
-  la variable `NEXORAW_LCMS_BIN` apuntando al directorio que contiene
-  `tificc.exe` y sus DLLs.
 - Para publicar un instalador con AMaZE, usar `-RequireAmaze`; la build debe
   informar `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`.
 - Los binarios generados quedan en `dist\windows\`; los temporales en

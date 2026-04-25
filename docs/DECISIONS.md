@@ -54,7 +54,7 @@ Decisión:
 
 Compatibilidad (resumen):
 
-1. LibRaw se integra mediante `rawpy`; ArgyllCMS y LittleCMS se usan como herramientas externas,
+1. LibRaw se integra mediante `rawpy`; ArgyllCMS se usa como herramienta externa para perfilado, validacion y conversion ICC,
 2. OpenCV BSD: compatible,
 3. `rawpy` pasa a ser dependencia crítica del pipeline RAW.
 

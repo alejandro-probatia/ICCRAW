@@ -4,11 +4,11 @@ import shutil
 import numpy as np
 import pytest
 import tifffile
-from PIL import ImageCms
 
 from iccraw.core.models import Recipe
+from iccraw.core.external import external_tool_path
 from iccraw.core.utils import read_image
-from iccraw.profile.export import batch_develop, color_management_mode, write_profiled_tiff
+from iccraw.profile.export import _argyll_reference_profile, batch_develop, color_management_mode, write_profiled_tiff
 
 
 def test_color_management_mode_assigns_camera_profile_by_default():
@@ -99,10 +99,10 @@ def test_batch_develop_writes_true_linear_audit_before_output_adjustments(tmp_pa
     assert not np.allclose(rendered, audit_linear, atol=1e-3)
 
 
-@pytest.mark.skipif(shutil.which("tificc") is None, reason="requiere tificc/LittleCMS")
+@pytest.mark.skipif(external_tool_path("cctiff") is None, reason="requiere cctiff/ArgyllCMS")
 def test_write_profiled_tiff_converts_to_srgb_with_cmm(tmp_path: Path):
     profile = tmp_path / "source_srgb.icc"
-    profile.write_bytes(ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes())
+    shutil.copy2(_argyll_reference_profile("sRGB.icm"), profile)
     out = tmp_path / "converted_srgb.tiff"
     image = np.zeros((10, 12, 3), dtype=np.float32)
     image[..., 0] = 0.2

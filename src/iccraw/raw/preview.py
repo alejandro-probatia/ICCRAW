@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 import cv2
 import numpy as np
+import colour
 
+from ..core.external import external_tool_path
 from ..core.models import Recipe
 from ..core.recipe import load_recipe
 from ..core.utils import RAW_EXTENSIONS, read_image
-from ..profile.builder import load_profile_model
 from ..profile.export import apply_profile_matrix
 from .compat import open_rawpy, rawpy
 from .pipeline import develop_image_array
+
+
+_PROFILE_PREVIEW_LUT_CACHE: dict[tuple[str, int], np.ndarray] = {}
 
 
 def load_image_for_preview(
@@ -551,15 +556,110 @@ def apply_profile_preview(image_linear_rgb: np.ndarray, profile_path: Path) -> n
     if not profile_path.exists():
         raise FileNotFoundError(f"No existe el perfil ICC: {profile_path}")
 
-    model = load_profile_model(profile_path)
-    matrix = np.asarray(model["matrix_camera_to_xyz"], dtype=np.float64)
-    mapped = apply_profile_matrix(
-        image_linear_rgb=image_linear_rgb,
-        matrix_camera_to_xyz=matrix,
-        output_space="srgb",
-        output_linear=False,
-    )
-    return np.clip(mapped.astype(np.float32), 0.0, 1.0)
+    lut = _profile_preview_lut(profile_path, grid_size=17)
+    return _apply_srgb_lut(image_linear_rgb, lut)
+
+
+def _profile_preview_lut(profile_path: Path, *, grid_size: int) -> np.ndarray:
+    key = (_profile_cache_key(profile_path), int(grid_size))
+    cached = _PROFILE_PREVIEW_LUT_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    lut = _build_profile_preview_lut_with_argyll(profile_path, grid_size=grid_size)
+    _PROFILE_PREVIEW_LUT_CACHE[key] = lut
+    if len(_PROFILE_PREVIEW_LUT_CACHE) > 8:
+        oldest = next(iter(_PROFILE_PREVIEW_LUT_CACHE))
+        _PROFILE_PREVIEW_LUT_CACHE.pop(oldest, None)
+    return lut
+
+
+def _profile_cache_key(profile_path: Path) -> str:
+    try:
+        resolved = profile_path.expanduser().resolve()
+        st = resolved.stat()
+        return f"{resolved}|{st.st_mtime_ns}|{st.st_size}"
+    except OSError:
+        return str(profile_path)
+
+
+def _build_profile_preview_lut_with_argyll(profile_path: Path, *, grid_size: int) -> np.ndarray:
+    xicclu = external_tool_path("xicclu") or external_tool_path("icclu")
+    if xicclu is None:
+        raise RuntimeError("No se puede previsualizar ICC: 'xicclu'/'icclu' de ArgyllCMS no esta disponible.")
+
+    n = int(np.clip(grid_size, 3, 65))
+    axis = np.linspace(0.0, 1.0, n, dtype=np.float64)
+    rr, gg, bb = np.meshgrid(axis, axis, axis, indexing="ij")
+    grid = np.stack([rr, gg, bb], axis=-1).reshape((-1, 3))
+    stdin = "\n".join(" ".join(f"{float(v):.10g}" for v in row) for row in grid) + "\n"
+    cmd = [
+        xicclu,
+        "-v0",
+        "-ff",
+        "-ir",
+        "-pl",
+        str(profile_path),
+    ]
+    proc = subprocess.run(cmd, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0:
+        stderr_tail = (proc.stderr or proc.stdout)[-800:]
+        raise RuntimeError(f"Fallo previsualizando ICC con {Path(xicclu).name}: {stderr_tail}")
+
+    lab_rows: list[list[float]] = []
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split()
+        if len(parts) < 3:
+            continue
+        try:
+            lab_rows.append([float(parts[0]), float(parts[1]), float(parts[2])])
+        except ValueError as exc:
+            raise RuntimeError(f"Salida inesperada de {Path(xicclu).name}: {line}") from exc
+
+    if len(lab_rows) != grid.shape[0]:
+        raise RuntimeError(
+            f"{Path(xicclu).name} devolvio {len(lab_rows)} muestras Lab para {grid.shape[0]} entradas RGB"
+        )
+
+    d50_xy = colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D50"]
+    lab = np.asarray(lab_rows, dtype=np.float64)
+    xyz = colour.Lab_to_XYZ(lab, illuminant=d50_xy)
+    srgb = colour.XYZ_to_sRGB(xyz, illuminant=d50_xy, apply_cctf_encoding=True)
+    return np.clip(srgb.reshape((n, n, n, 3)).astype(np.float32), 0.0, 1.0)
+
+
+def _apply_srgb_lut(image_linear_rgb: np.ndarray, lut: np.ndarray) -> np.ndarray:
+    image = np.clip(np.asarray(image_linear_rgb, dtype=np.float32), 0.0, 1.0)
+    if image.ndim != 3 or image.shape[2] < 3:
+        raise RuntimeError(f"Imagen RGB inesperada para preview ICC: shape={image.shape}")
+
+    n = int(lut.shape[0])
+    coords = image[..., :3] * float(n - 1)
+    lower = np.floor(coords).astype(np.int32)
+    upper = np.clip(lower + 1, 0, n - 1)
+    lower = np.clip(lower, 0, n - 1)
+    frac = coords - lower.astype(np.float32)
+
+    r0, g0, b0 = lower[..., 0], lower[..., 1], lower[..., 2]
+    r1, g1, b1 = upper[..., 0], upper[..., 1], upper[..., 2]
+    fr, fg, fb = frac[..., 0:1], frac[..., 1:2], frac[..., 2:3]
+
+    c000 = lut[r0, g0, b0]
+    c001 = lut[r0, g0, b1]
+    c010 = lut[r0, g1, b0]
+    c011 = lut[r0, g1, b1]
+    c100 = lut[r1, g0, b0]
+    c101 = lut[r1, g0, b1]
+    c110 = lut[r1, g1, b0]
+    c111 = lut[r1, g1, b1]
+
+    c00 = c000 * (1.0 - fb) + c001 * fb
+    c01 = c010 * (1.0 - fb) + c011 * fb
+    c10 = c100 * (1.0 - fb) + c101 * fb
+    c11 = c110 * (1.0 - fb) + c111 * fb
+    c0 = c00 * (1.0 - fg) + c01 * fg
+    c1 = c10 * (1.0 - fg) + c11 * fg
+    return np.clip(c0 * (1.0 - fr) + c1 * fr, 0.0, 1.0).astype(np.float32)
 
 
 def linear_to_srgb_display(image_linear_rgb: np.ndarray) -> np.ndarray:

@@ -9,9 +9,10 @@ Fecha de revision: 2026-04-25.
 - Licencia: `AGPL-3.0-or-later`.
 - Codigo mantenido por la comunidad de la Asociacion Espanola de Imagen Cientifica y Forense.
 
-## 2) ArgyllCMS (`colprof`)
+## 2) ArgyllCMS (`colprof`, `xicclu`, `cctiff`)
 
-- Uso en NexoRAW: herramienta externa por subprocess para generar perfiles ICC.
+- Uso en NexoRAW: herramienta externa por subprocess para generar perfiles ICC,
+  validar el ICC real y convertir TIFFs finales a perfiles de salida.
 - Licencia declarada por ArgyllCMS: AGPL para el paquete principal.
 - Politica en NexoRAW:
   - no se redistribuyen binarios dentro del repositorio,
@@ -45,17 +46,7 @@ Fecha de revision: 2026-04-25.
   - dependencia opcional (`pip install -e .[gui]`),
   - mantener avisos de licencia al redistribuir builds con GUI.
 
-## 5) LittleCMS (`tificc`)
-
-- Uso en NexoRAW: CMM externo para convertir TIFFs desde perfil ICC de entrada a
-  perfil de salida, actualmente sRGB.
-- Licencia: MIT-like open source segun proyecto LittleCMS.
-- Politica en NexoRAW:
-  - se invoca como herramienta externa,
-  - no se redistribuyen binarios dentro del repositorio,
-  - se comprueba con `scripts/check_tools.sh`.
-
-## 6) c2pa-python (C2PA/CAI opcional)
+## 5) c2pa-python (C2PA/CAI opcional)
 
 - Uso en NexoRAW: firma y lectura de manifiestos C2PA embebidos en TIFF final.
 - Licencia declarada por `contentauth/c2pa-python`: Apache-2.0 o MIT.
@@ -65,7 +56,7 @@ Fecha de revision: 2026-04-25.
   - la clave privada se pasa por ruta de archivo y no se registra en logs,
   - revisar certificados, TSA y politica de confianza antes de uso probatorio.
 
-## 7) Dependencias Python relevantes
+## 6) Dependencias Python relevantes
 
 - `opencv-python-headless`: BSD-3-Clause (OpenCV).
 - `tifffile`: BSD.

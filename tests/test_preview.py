@@ -6,8 +6,9 @@ import numpy as np
 import tifffile
 import colour
 
-from iccraw.core.models import Recipe, write_json
+from iccraw.core.models import Recipe
 from iccraw.profile.export import apply_profile_matrix
+import iccraw.raw.preview as preview_module
 from iccraw.raw.preview import (
     _camera_rgb_display_balance_if_needed,
     apply_adjustments,
@@ -166,21 +167,16 @@ def test_preview_analysis_text_includes_global_stats():
     assert "Diferencia máxima absoluta global" in text
 
 
-def test_apply_profile_preview_uses_profile_sidecar(tmp_path: Path):
+def test_apply_profile_preview_uses_cached_argyll_lut(tmp_path: Path, monkeypatch):
     profile = tmp_path / "camera.icc"
     profile.write_bytes(b"icc-placeholder")
-    sidecar = profile.with_suffix(".profile.json")
-    write_json(
-        sidecar,
-        {
-            "matrix_camera_to_xyz": [
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-                [0.0, 0.0, 1.0],
-            ],
-            "trc_gamma": 1.0,
-        },
-    )
+    lut = np.zeros((3, 3, 3, 3), dtype=np.float32)
+    axis = np.linspace(0.0, 1.0, 3, dtype=np.float32)
+    rr, gg, bb = np.meshgrid(axis, axis, axis, indexing="ij")
+    lut[..., 0] = rr
+    lut[..., 1] = gg
+    lut[..., 2] = bb
+    monkeypatch.setattr(preview_module, "_profile_preview_lut", lambda _profile, *, grid_size: lut)
 
     image = np.full((6, 9, 3), 0.2, dtype=np.float32)
     out = apply_profile_preview(image, profile)

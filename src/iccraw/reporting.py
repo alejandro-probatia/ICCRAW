@@ -55,9 +55,9 @@ EXTERNAL_TOOL_SPECS: list[dict[str, Any]] = [
         "required": True,
     },
     {
-        "name": "littlecms-tificc",
-        "commands": ["tificc"],
-        "version_args": ["-v"],
+        "name": "argyll-cctiff",
+        "commands": ["cctiff"],
+        "version_args": ["-?"],
         "required": True,
     },
     {

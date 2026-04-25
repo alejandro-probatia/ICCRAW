@@ -18,11 +18,49 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.1.0-beta.5] - 2026-04-25
+
 ### Changed
 
 - El nombre visible del proyecto pasa a ser NexoRAW. Se añaden entry points
   `nexoraw`/`nexoraw-ui` y se mantienen `iccraw`/`iccraw-ui` como alias
   heredados para no romper scripts existentes.
+- CMM unificado en ArgyllCMS: se sustituye LittleCMS (`tificc`) por
+  `cctiff`/`xicclu` para conversion ICC de salida, validacion y preview de
+  perfil. Desaparecen las dependencias `liblcms2-utils` y `Pillow.ImageCms` del
+  flujo principal.
+- `apply_profile_preview` reconstruye la previsualizacion ICC a partir de un
+  LUT 17^3 calculado con `xicclu` e interpolacion trilineal cacheada por
+  perfil; se elimina la dependencia del sidecar `.profile.json` para mostrar
+  preview con perfil activo.
+- `build_profile` reporta DeltaE 76/2000 a partir del ICC real generado por
+  `colprof` (consultando `xicclu`). La matriz lateral
+  `matrix_camera_to_xyz` se conserva solo como diagnostico
+  (`diagnostic_matrix_*`).
+- `auto_generate_profile_from_charts` aplica un guard cientifico estricto:
+  rechaza recetas con `denoise`, `sharpen` o `tone_curve` activos, o con
+  `output_linear=False` u `output_space` distinto de RGB de camara lineal.
+- Las capturas de carta para perfilado se restringen a RAW/DNG/TIFF lineal;
+  PNG/JPG ya no se aceptan ni en CLI ni en GUI.
+- Refactor array-first del workflow de perfilado: `_collect_chart_samples` y
+  `_collect_chart_geometries` usan `develop_image_array` y variantes
+  `detect_chart_from_array` / `sample_chart_from_array` /
+  `draw_detection_overlay_array`, evitando roundtrips a TIFF.
+- El instalador Windows empaqueta `tools/argyll/ref/` (incluido `sRGB.icm`)
+  para que la conversion ICC funcione sin perfiles externos. Se elimina la
+  copia de binarios y metadata de LittleCMS.
+- Paquete Debian: se elimina `liblcms2-utils` de las dependencias declaradas.
+- `nexoraw check-tools` requiere `cctiff` (ArgyllCMS) en lugar de `tificc`.
+
+### Fixed
+
+- GUI: el histograma del editor de curvas tonales se recalcula solo cuando
+  cambia la imagen base, evitando recomputos en cada movimiento de curva.
+- GUI: el marcado manual de cuatro esquinas de carta sobrevive a recargas
+  asincronas de la imagen seleccionada.
+- GUI: la previsualizacion con perfil ICC ya no requiere `*.profile.json`
+  asociado; un fallo de `xicclu` se registra como aviso y se cae a vista sin
+  perfil sin bloquear el visor.
 
 ## [0.1.0-beta.4] - 2026-04-25
 

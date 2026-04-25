@@ -21,7 +21,6 @@ Dependencias de sistema declaradas:
 
 - `python3`,
 - `argyll`,
-- `liblcms2-utils`,
 - `exiftool`,
 - librerias minimas de Qt/OpenGL/XCB para la GUI.
 

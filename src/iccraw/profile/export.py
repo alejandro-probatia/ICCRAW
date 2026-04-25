@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 import numpy as np
 import colour
-from PIL import ImageCms
 
 from ..core.models import BatchManifest, BatchManifestEntry, Recipe
 from ..core.external import external_tool_path
@@ -135,48 +134,54 @@ def write_profiled_tiff(
         return mode
 
     if mode == "converted_srgb":
-        _write_converted_srgb_tiff(out_tiff, image_linear_rgb, input_profile=profile_path)
+        _write_converted_srgb_tiff_with_argyll(out_tiff, image_linear_rgb, input_profile=profile_path)
         return mode
 
     raise RuntimeError(f"Modo de gestion de color no soportado: {mode}")
 
 
-def _write_converted_srgb_tiff(out_tiff: Path, image_linear_rgb: np.ndarray, *, input_profile: Path) -> None:
-    tificc = external_tool_path("tificc")
-    if tificc is None:
+def _write_converted_srgb_tiff_with_argyll(out_tiff: Path, image_linear_rgb: np.ndarray, *, input_profile: Path) -> None:
+    cctiff = external_tool_path("cctiff")
+    if cctiff is None:
         raise RuntimeError(
-            "No se puede convertir ICC: 'tificc' no esta disponible en PATH. "
-            "Instala LittleCMS tools (por ejemplo, paquete liblcms2-utils)."
+            "No se puede convertir ICC: 'cctiff' de ArgyllCMS no esta disponible en PATH. "
+            "Instala ArgyllCMS completo o configura su directorio bin."
         )
+    srgb_icc = _argyll_reference_profile("sRGB.icm")
 
     out_tiff.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="nexoraw_lcms_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="nexoraw_argyll_cctiff_") as tmp:
         tmpdir = Path(tmp)
         source_tiff = tmpdir / "camera_rgb_input.tiff"
-        srgb_icc = tmpdir / "srgb.icc"
 
         write_tiff16(source_tiff, image_linear_rgb)
-        _write_srgb_profile(srgb_icc)
 
         cmd = [
-            tificc,
-            f"-i{input_profile}",
-            f"-o{srgb_icc}",
-            "-t1",
-            "-b",
-            "-w16",
+            cctiff,
+            "-N",  # uncompressed TIFF, reproducible and readable without optional codecs
+            "-p",  # precise correction path
+            "-ir",
+            str(input_profile),
+            str(srgb_icc),
             "-e",
+            str(srgb_icc),
             str(source_tiff),
             str(out_tiff),
         ]
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         if proc.returncode != 0:
-            raise RuntimeError(f"tificc retorno {proc.returncode}: {proc.stdout[-500:]}")
+            raise RuntimeError(f"cctiff retorno {proc.returncode}: {proc.stdout[-800:]}")
 
 
-def _write_srgb_profile(path: Path) -> None:
-    profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
-    path.write_bytes(profile.tobytes())
+def _argyll_reference_profile(name: str) -> Path:
+    for command in ("cctiff", "xicclu", "colprof"):
+        tool = external_tool_path(command)
+        if not tool:
+            continue
+        candidate = Path(tool).resolve().parent.parent / "ref" / name
+        if candidate.exists():
+            return candidate
+    raise RuntimeError(f"No se encontro el perfil de referencia de ArgyllCMS: {name}")
 
 
 def apply_profile_matrix(

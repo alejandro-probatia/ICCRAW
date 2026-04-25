@@ -8,8 +8,8 @@ from typing import Any
 
 import numpy as np
 
-from .chart.detection import detect_chart, draw_detection_overlay
-from .chart.sampling import ReferenceCatalog, sample_chart
+from .chart.detection import detect_chart_from_array, draw_detection_overlay_array
+from .chart.sampling import ReferenceCatalog, sample_chart_from_array
 from .core.models import (
     ChartDetectionResult,
     PatchDetection,
@@ -20,15 +20,15 @@ from .core.models import (
     to_json_dict,
     write_json,
 )
-from .core.recipe import load_recipe, save_recipe
-from .core.utils import RAW_EXTENSIONS
+from .core.recipe import load_recipe, save_recipe, scientific_guard
+from .core.utils import RAW_EXTENSIONS, write_tiff16
 from .profile.builder import build_profile, validate_profile
 from .profile.development import build_development_profile
 from .profile.export import batch_develop
-from .raw.pipeline import develop_controlled
+from .raw.pipeline import develop_image_array
 
 
-IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+PROFILE_CHART_EXTENSIONS = RAW_EXTENSIONS | {".tif", ".tiff"}
 NEUTRAL_PATCH_IDS = ("P19", "P20", "P21", "P22", "P23", "P24")
 LUMA_WEIGHTS = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float64)
 LOW_SIGNAL_BRIGHT_NEUTRAL_MIN = 0.25
@@ -64,6 +64,7 @@ def auto_generate_profile_from_charts(
     qa_max_delta_e2000_max: float = 10.0,
     profile_validity_days: int | None = None,
 ) -> dict[str, Any]:
+    _enforce_profile_recipe_guard(recipe, phase="receta de perfilado inicial")
     work_dir.mkdir(parents=True, exist_ok=True)
     chart_dev_dir = work_dir / "chart_developed"
     detect_dir = work_dir / "detections"
@@ -126,6 +127,7 @@ def auto_generate_profile_from_charts(
         calibrated_recipe_path = str(calibrated_recipe_file)
         development_payload = to_json_dict(development)
         profile_recipe = development.calibrated_recipe
+        _enforce_profile_recipe_guard(profile_recipe, phase="receta calibrada de perfilado")
 
         calibrated_pass = _collect_chart_samples(
             chart_files=training_files,
@@ -347,6 +349,26 @@ def auto_profile_batch(
         "batch_manifest": to_json_dict(manifest),
         "batch_manifest_path": str(manifest_path),
     }
+
+
+def _enforce_profile_recipe_guard(recipe: Recipe, *, phase: str) -> None:
+    guard = scientific_guard(recipe)
+    errors = list(guard.warnings)
+    if recipe.denoise.lower() != "off":
+        errors.append(f"denoise debe estar desactivado durante perfilado: {recipe.denoise}")
+    if recipe.sharpen.lower() != "off":
+        errors.append(f"sharpen debe estar desactivado durante perfilado: {recipe.sharpen}")
+    if recipe.tone_curve.lower() != "linear":
+        errors.append(f"tone_curve debe ser linear durante perfilado: {recipe.tone_curve}")
+    if not recipe.output_linear:
+        errors.append("output_linear debe estar activo durante perfilado")
+    output_space = str(recipe.output_space or "").strip().lower()
+    if output_space not in {"scene_linear_camera_rgb", "camera_rgb", "camera"}:
+        errors.append(f"output_space debe conservar RGB de camara lineal durante perfilado: {recipe.output_space}")
+
+    if errors:
+        joined = "; ".join(dict.fromkeys(str(item) for item in errors))
+        raise RuntimeError(f"{phase} no apta para perfilado cientifico: {joined}")
 
 
 def _utc_now_iso() -> str:
@@ -874,18 +896,19 @@ def _collect_chart_samples(
         sample_path = sample_dir / f"{prefix}.json"
 
         try:
-            develop_controlled(chart_file, recipe, developed_tiff, None)
+            image = develop_image_array(chart_file, recipe)
+            write_tiff16(developed_tiff, image)
             detection_key = chart_file.expanduser().resolve()
             detection = existing_detections.get(detection_key) if existing_detections else None
             if detection is None:
-                detection = detect_chart(developed_tiff, chart_type=chart_type)
+                detection = detect_chart_from_array(image, chart_type=chart_type)
             else:
                 detection = _coerce_chart_detection(detection)
                 detection.warnings = list(detection.warnings) + [
                     existing_detection_note
                 ]
             write_json(detection_path, detection)
-            draw_detection_overlay(developed_tiff, detection, overlay_path)
+            draw_detection_overlay_array(image, detection, overlay_path)
             detections[detection_key] = detection
 
             if detection.detection_mode == "fallback" and not allow_fallback_detection:
@@ -913,8 +936,8 @@ def _collect_chart_samples(
                 )
                 continue
 
-            samples = sample_chart(
-                developed_tiff,
+            samples = sample_chart_from_array(
+                image,
                 detection,
                 reference,
                 strategy=recipe.sampling_strategy,
@@ -997,10 +1020,11 @@ def _collect_chart_geometries(
         detection_key = chart_file.expanduser().resolve()
 
         try:
-            develop_controlled(chart_file, recipe, developed_tiff, None)
-            detection = detect_chart(developed_tiff, chart_type=chart_type)
+            image = develop_image_array(chart_file, recipe)
+            write_tiff16(developed_tiff, image)
+            detection = detect_chart_from_array(image, chart_type=chart_type)
             write_json(detection_path, detection)
-            draw_detection_overlay(developed_tiff, detection, overlay_path)
+            draw_detection_overlay_array(image, detection, overlay_path)
 
             if detection.detection_mode == "fallback" and not allow_fallback_detection:
                 skipped.append(
@@ -1055,14 +1079,14 @@ def _list_chart_capture_files(folder: Path) -> list[Path]:
     files = [
         p
         for p in folder.iterdir()
-        if p.is_file() and p.suffix.lower() in RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
+        if p.is_file() and p.suffix.lower() in PROFILE_CHART_EXTENSIONS
     ]
     files.sort()
     return files
 
 
 def _normalize_chart_capture_files(files: list[Path]) -> list[Path]:
-    supported = RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
+    supported = PROFILE_CHART_EXTENSIONS
     normalized: list[Path] = []
     invalid: list[str] = []
 
@@ -1076,7 +1100,10 @@ def _normalize_chart_capture_files(files: list[Path]) -> list[Path]:
     if invalid:
         preview = ", ".join(invalid[:5])
         suffix = "" if len(invalid) <= 5 else f" (+{len(invalid) - 5} más)"
-        raise RuntimeError(f"Capturas de carta inválidas o incompatibles: {preview}{suffix}")
+        raise RuntimeError(
+            "Capturas de carta invalidas o incompatibles para perfilado cientifico "
+            f"(solo RAW/DNG/TIFF lineal): {preview}{suffix}"
+        )
 
     return sorted(set(normalized), key=lambda p: str(p))
 
