@@ -34,7 +34,7 @@ from .chart.sampling import ReferenceCatalog
 from .core.models import Recipe, to_json_dict, write_json
 from .core.recipe import load_recipe
 from .core.utils import RAW_EXTENSIONS, read_image
-from .metadata_viewer import inspect_file_metadata, metadata_sections_text
+from .metadata_viewer import inspect_file_metadata, metadata_display_sections, metadata_sections_text
 from .profile.export import write_profiled_tiff
 from .qa_compare import compare_qa_reports
 from .raw.pipeline import (
@@ -1422,10 +1422,10 @@ if QtWidgets is not None:
             layout.addLayout(actions)
 
             self.metadata_tabs = QtWidgets.QTabWidget()
-            self.metadata_summary = self._metadata_text_widget("Resumen de EXIF/GPS y C2PA")
-            self.metadata_exif = self._metadata_text_widget("EXIF")
-            self.metadata_gps = self._metadata_text_widget("GPS")
-            self.metadata_c2pa = self._metadata_text_widget("C2PA")
+            self.metadata_summary = self._metadata_tree_widget()
+            self.metadata_exif = self._metadata_tree_widget()
+            self.metadata_gps = self._metadata_tree_widget()
+            self.metadata_c2pa = self._metadata_tree_widget()
             self.metadata_all = self._metadata_text_widget("JSON completo")
             self.metadata_tabs.addTab(self.metadata_summary, "Resumen")
             self.metadata_tabs.addTab(self.metadata_exif, "EXIF")
@@ -1434,6 +1434,17 @@ if QtWidgets is not None:
             self.metadata_tabs.addTab(self.metadata_all, "Todo")
             layout.addWidget(self.metadata_tabs, 1)
             return panel
+
+        def _metadata_tree_widget(self) -> QtWidgets.QTreeWidget:
+            tree = QtWidgets.QTreeWidget()
+            tree.setHeaderLabels(["Campo", "Valor"])
+            tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
+            tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+            tree.setAlternatingRowColors(True)
+            tree.setRootIsDecorated(True)
+            tree.setUniformRowHeights(False)
+            tree.setTextElideMode(QtCore.Qt.ElideMiddle)
+            return tree
 
         def _metadata_text_widget(self, placeholder: str) -> QtWidgets.QPlainTextEdit:
             widget = QtWidgets.QPlainTextEdit()
@@ -3286,7 +3297,7 @@ if QtWidgets is not None:
             if hasattr(self, "metadata_file_label"):
                 self.metadata_file_label.setText(f"Metadatos: {path.name}")
             if hasattr(self, "metadata_summary"):
-                self.metadata_summary.setPlainText("Leyendo metadatos...")
+                self._metadata_tree_message(self.metadata_summary, "Leyendo metadatos...")
             self._metadata_timer.start(max(0, int(delay_ms)))
 
         def _load_metadata_from_timer(self) -> None:
@@ -3302,7 +3313,7 @@ if QtWidgets is not None:
             if hasattr(self, "metadata_file_label"):
                 self.metadata_file_label.setText(f"Metadatos: {selected}")
             if hasattr(self, "metadata_summary"):
-                self.metadata_summary.setPlainText("Leyendo metadatos...")
+                self._metadata_tree_message(self.metadata_summary, "Leyendo metadatos...")
 
             def task():
                 return generation, selected, inspect_file_metadata(selected)
@@ -3328,7 +3339,7 @@ if QtWidgets is not None:
                 try:
                     if self._selected_file == selected:
                         msg = trace.strip().splitlines()[-1] if trace.strip() else "No se pudieron leer metadatos"
-                        self.metadata_summary.setPlainText(msg)
+                        self._metadata_tree_message(self.metadata_summary, msg)
                         self.metadata_exif.clear()
                         self.metadata_gps.clear()
                         self.metadata_c2pa.clear()
@@ -3342,11 +3353,12 @@ if QtWidgets is not None:
 
         def _apply_metadata_payload(self, path: Path, payload: dict[str, Any]) -> None:
             sections = metadata_sections_text(payload)
+            display = metadata_display_sections(payload)
             self.metadata_file_label.setText(f"Metadatos: {path}")
-            self.metadata_summary.setPlainText(sections["summary"])
-            self.metadata_exif.setPlainText(sections["exif"])
-            self.metadata_gps.setPlainText(sections["gps"])
-            self.metadata_c2pa.setPlainText(sections["c2pa"])
+            self._populate_metadata_tree(self.metadata_summary, display["summary"])
+            self._populate_metadata_tree(self.metadata_exif, display["exif"])
+            self._populate_metadata_tree(self.metadata_gps, display["gps"])
+            self._populate_metadata_tree(self.metadata_c2pa, display["c2pa"])
             self.metadata_all.setPlainText(sections["all"])
 
         def _clear_metadata_view(self) -> None:
@@ -3358,13 +3370,72 @@ if QtWidgets is not None:
                 self.metadata_exif,
                 self.metadata_gps,
                 self.metadata_c2pa,
-                self.metadata_all,
             ):
                 widget.clear()
+            self.metadata_all.clear()
 
         def _show_metadata_all_tab(self) -> None:
             if hasattr(self, "metadata_tabs"):
                 self.metadata_tabs.setCurrentWidget(self.metadata_all)
+
+        def _metadata_tree_message(self, tree: QtWidgets.QTreeWidget, message: str) -> None:
+            tree.clear()
+            item = QtWidgets.QTreeWidgetItem([str(message), ""])
+            tree.addTopLevelItem(item)
+
+        def _populate_metadata_tree(self, tree: QtWidgets.QTreeWidget, groups: Any) -> None:
+            tree.clear()
+            if not groups:
+                self._metadata_tree_message(tree, "Sin datos")
+                return
+            if isinstance(groups, list):
+                for group in groups:
+                    self._add_metadata_group(tree, group)
+            elif isinstance(groups, dict):
+                self._add_metadata_dict(tree, None, groups)
+            else:
+                self._metadata_tree_message(tree, str(groups))
+            tree.expandToDepth(0)
+
+        def _add_metadata_group(self, tree: QtWidgets.QTreeWidget, group: dict[str, Any]) -> None:
+            title = str(group.get("title") or "Metadatos")
+            parent = QtWidgets.QTreeWidgetItem([title, ""])
+            font = parent.font(0)
+            font.setBold(True)
+            parent.setFont(0, font)
+            parent.setFirstColumnSpanned(False)
+            tree.addTopLevelItem(parent)
+            for item in group.get("items") or []:
+                if isinstance(item, dict):
+                    child = QtWidgets.QTreeWidgetItem([str(item.get("label", "")), str(item.get("value", ""))])
+                    child.setToolTip(1, str(item.get("value", "")))
+                    parent.addChild(child)
+
+        def _add_metadata_dict(self, tree: QtWidgets.QTreeWidget, parent: QtWidgets.QTreeWidgetItem | None, payload: dict[str, Any]) -> None:
+            for key, value in sorted(payload.items()):
+                if isinstance(value, dict):
+                    node = QtWidgets.QTreeWidgetItem([str(key), ""])
+                    if parent is None:
+                        tree.addTopLevelItem(node)
+                    else:
+                        parent.addChild(node)
+                    self._add_metadata_dict(tree, node, value)
+                elif isinstance(value, list):
+                    node = QtWidgets.QTreeWidgetItem([str(key), f"{len(value)} elementos"])
+                    if parent is None:
+                        tree.addTopLevelItem(node)
+                    else:
+                        parent.addChild(node)
+                    for idx, item in enumerate(value):
+                        child = QtWidgets.QTreeWidgetItem([str(idx + 1), json.dumps(item, ensure_ascii=False) if isinstance(item, (dict, list)) else str(item)])
+                        node.addChild(child)
+                else:
+                    node = QtWidgets.QTreeWidgetItem([str(key), str(value)])
+                    node.setToolTip(1, str(value))
+                    if parent is None:
+                        tree.addTopLevelItem(node)
+                    else:
+                        parent.addChild(node)
 
         def _toggle_compare(self, enabled: bool) -> None:
             self.viewer_stack.setCurrentIndex(1 if enabled else 0)

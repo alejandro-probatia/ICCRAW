@@ -7,7 +7,13 @@ import subprocess
 from typing import Any
 
 from .core.external import external_tool_path
-from .provenance.c2pa import C2PAClient, C2PAError, C2PANotAvailableError, C2PAPythonClient
+from .provenance.c2pa import (
+    C2PAClient,
+    C2PAError,
+    C2PANotAvailableError,
+    C2PAPythonClient,
+    extract_raw_link_assertion,
+)
 
 
 GPS_TAG_HINTS = {
@@ -156,6 +162,19 @@ def metadata_sections_text(payload: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def metadata_display_sections(payload: dict[str, Any]) -> dict[str, Any]:
+    exif_gps = payload.get("exif_gps", {})
+    c2pa = payload.get("c2pa", {})
+    raw = exif_gps.get("all", {}) if isinstance(exif_gps, dict) else {}
+    gps = exif_gps.get("gps", {}) if isinstance(exif_gps, dict) else {}
+    return {
+        "summary": _interpreted_summary(payload, raw, gps, c2pa),
+        "exif": _grouped_tree(exif_gps.get("groups", {}) if isinstance(exif_gps, dict) else {}),
+        "gps": _gps_display(gps),
+        "c2pa": _c2pa_display(c2pa),
+    }
+
+
 def _file_payload(path: Path) -> dict[str, Any]:
     stat = path.stat()
     return {
@@ -242,6 +261,342 @@ def _summary_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _interpreted_summary(
+    payload: dict[str, Any],
+    raw: dict[str, Any],
+    gps: dict[str, Any],
+    c2pa: dict[str, Any],
+) -> list[dict[str, Any]]:
+    file_payload = payload.get("file", {}) if isinstance(payload.get("file"), dict) else {}
+    return [
+        {
+            "title": "Archivo",
+            "items": _items(
+                ("Nombre", file_payload.get("basename")),
+                ("Ruta", file_payload.get("path")),
+                ("Tipo", _first(raw, "File:MIMEType", "File:FileType", default=file_payload.get("extension"))),
+                ("Tamaño", _format_bytes(file_payload.get("size_bytes"))),
+                ("Modificado UTC", file_payload.get("modified_utc")),
+            ),
+        },
+        {
+            "title": "Cámara",
+            "items": _items(
+                ("Marca", _first(raw, "EXIF:Make", "IFD0:Make")),
+                ("Modelo", _first(raw, "EXIF:Model", "IFD0:Model")),
+                ("Número de serie", _first(raw, "EXIF:SerialNumber", "MakerNotes:SerialNumber", "Composite:SerialNumber")),
+                ("Firmware / software", _first(raw, "EXIF:Software", "IFD0:Software")),
+                ("Autor / propietario", _first(raw, "EXIF:Artist", "IFD0:Artist", "EXIF:OwnerName")),
+            ),
+        },
+        {
+            "title": "Captura",
+            "items": _items(
+                ("Fecha/hora original", _first(raw, "EXIF:DateTimeOriginal", "EXIF:CreateDate", "Composite:SubSecDateTimeOriginal")),
+                ("Exposición", _format_exposure(_first(raw, "EXIF:ExposureTime", "Composite:ShutterSpeed"))),
+                ("Apertura", _format_aperture(_first(raw, "EXIF:FNumber", "Composite:Aperture"))),
+                ("ISO", _first(raw, "EXIF:ISO", "Composite:ISO")),
+                ("Compensación EV", _first(raw, "EXIF:ExposureCompensation", "Composite:ExposureCompensation")),
+                ("Programa / modo", _first(raw, "EXIF:ExposureProgram", "EXIF:ExposureMode")),
+                ("Medición", _first(raw, "EXIF:MeteringMode")),
+                ("Flash", _first(raw, "EXIF:Flash")),
+                ("Balance de blancos", _first(raw, "EXIF:WhiteBalance", "Composite:WhiteBalance")),
+                ("Fuente de luz", _first(raw, "EXIF:LightSource", "Composite:LightSource")),
+            ),
+        },
+        {
+            "title": "Óptica",
+            "items": _items(
+                ("Lente", _first(raw, "Composite:LensID", "EXIF:LensModel", "MakerNotes:Lens")),
+                ("Focal", _format_focal(_first(raw, "EXIF:FocalLength", "Composite:FocalLength"))),
+                ("Focal equivalente 35 mm", _format_focal(_first(raw, "EXIF:FocalLengthIn35mmFormat", "Composite:FocalLength35efl"))),
+                ("Distancia de enfoque", _first(raw, "Composite:FocusDistance", "MakerNotes:FocusDistance")),
+            ),
+        },
+        {
+            "title": "Imagen",
+            "items": _items(
+                ("Dimensiones", _image_size(raw)),
+                ("Megapíxeles", _format_number(_first(raw, "Composite:Megapixels"))),
+                ("Orientación", _first(raw, "EXIF:Orientation", "IFD0:Orientation")),
+                ("Bits por muestra", _first(raw, "EXIF:BitsPerSample")),
+                ("Compresión", _first(raw, "EXIF:Compression")),
+                ("Espacio color", _first(raw, "EXIF:ColorSpace", "Composite:ColorSpace")),
+                ("Perfil ICC", _first(raw, "ICC_Profile:ProfileDescription", "EXIF:ProfileName")),
+            ),
+        },
+        {
+            "title": "Localización",
+            "items": _items(
+                ("Estado GPS", "presente" if gps else "sin GPS"),
+                ("Latitud", _first(gps, "GPS:GPSLatitude", "Composite:GPSLatitude")),
+                ("Longitud", _first(gps, "GPS:GPSLongitude", "Composite:GPSLongitude")),
+                ("Altitud", _format_altitude(_first(gps, "GPS:GPSAltitude", "Composite:GPSAltitude"))),
+            ),
+        },
+        {
+            "title": "C2PA",
+            "items": _items(
+                ("Estado", c2pa.get("status") if isinstance(c2pa, dict) else None),
+                ("Manifiesto activo", c2pa.get("active_manifest_id") if isinstance(c2pa, dict) else None),
+                ("Firma", _c2pa_signature_summary(c2pa)),
+                ("Validación", _c2pa_validation_summary(c2pa)),
+            ),
+        },
+    ]
+
+
+def _gps_display(gps: dict[str, Any]) -> list[dict[str, Any]]:
+    if not gps:
+        return [{"title": "GPS", "items": [{"label": "Estado", "value": "No hay coordenadas GPS"}]}]
+    return [
+        {
+            "title": "Coordenadas",
+            "items": _items(
+                ("Latitud", _first(gps, "GPS:GPSLatitude", "Composite:GPSLatitude")),
+                ("Longitud", _first(gps, "GPS:GPSLongitude", "Composite:GPSLongitude")),
+                ("Altitud", _format_altitude(_first(gps, "GPS:GPSAltitude", "Composite:GPSAltitude"))),
+                ("Fecha GPS", _first(gps, "GPS:GPSDateStamp", "Composite:GPSDateTime")),
+                ("Hora GPS", _first(gps, "GPS:GPSTimeStamp")),
+                ("Mapa", _map_hint(gps)),
+            ),
+        },
+        {
+            "title": "Todos los campos GPS",
+            "items": [{"label": key, "value": _format_value(value)} for key, value in sorted(gps.items())],
+        },
+    ]
+
+
+def _c2pa_display(c2pa: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(c2pa, dict):
+        return [{"title": "C2PA", "items": [{"label": "Estado", "value": "No disponible"}]}]
+    manifest_store = c2pa.get("manifest_store")
+    raw_link = None
+    if isinstance(manifest_store, dict):
+        try:
+            raw_link = extract_raw_link_assertion(manifest_store)
+        except Exception:
+            raw_link = None
+    raw_identity = raw_link.get("raw_identity", {}) if isinstance(raw_link, dict) else {}
+    nexoraw = raw_link.get("nexoraw", {}) if isinstance(raw_link, dict) else {}
+    return [
+        {
+            "title": "Estado C2PA",
+            "items": _items(
+                ("Estado", c2pa.get("status")),
+                ("Manifiesto activo", c2pa.get("active_manifest_id")),
+                ("Firma", _c2pa_signature_summary(c2pa)),
+                ("Validación", _c2pa_validation_summary(c2pa)),
+            ),
+        },
+        {
+            "title": "Firma",
+            "items": _dict_items(c2pa.get("signature_info")),
+        },
+        {
+            "title": "Aserciones",
+            "items": [{"label": f"{idx + 1}", "value": label} for idx, label in enumerate(c2pa.get("assertion_labels") or [])],
+        },
+        {
+            "title": "Vínculo RAW NexoRAW",
+            "items": _items(
+                ("RAW SHA-256", raw_identity.get("sha256")),
+                ("RAW", raw_identity.get("basename")),
+                ("Tamaño RAW", _format_bytes(raw_identity.get("size_bytes"))),
+                ("MIME RAW", raw_identity.get("mime_type")),
+                ("Hash receta", nexoraw.get("recipe_sha256")),
+                ("Hash ICC", nexoraw.get("icc_profile_sha256")),
+                ("Backend RAW", nexoraw.get("raw_backend")),
+                ("Demosaicing", nexoraw.get("demosaicing_algorithm")),
+                ("Espacio salida", nexoraw.get("output_space")),
+                ("Modo color", nexoraw.get("color_management_mode")),
+                ("Generado UTC", nexoraw.get("generated_at_utc")),
+            ),
+        },
+        {
+            "title": "Validación",
+            "items": _validation_items(c2pa.get("validation_status")),
+        },
+    ]
+
+
+def _grouped_tree(groups: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for group, values in sorted(groups.items()):
+        if isinstance(values, dict):
+            items = [{"label": key, "value": _format_value(value)} for key, value in sorted(values.items())]
+        else:
+            items = [{"label": group, "value": _format_value(values)}]
+        out.append({"title": str(group), "items": items})
+    return out
+
+
+def _items(*pairs: tuple[str, Any]) -> list[dict[str, str]]:
+    return [{"label": label, "value": _format_value(value)} for label, value in pairs if _present(value)]
+
+
+def _dict_items(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, dict) or not value:
+        return [{"label": "Estado", "value": "No disponible"}]
+    return [{"label": str(key), "value": _format_value(val)} for key, val in sorted(value.items())]
+
+
+def _validation_items(value: Any) -> list[dict[str, str]]:
+    if not value:
+        return [{"label": "Estado", "value": "Sin errores declarados"}]
+    if not isinstance(value, list):
+        return [{"label": "Estado", "value": _format_value(value)}]
+    out = []
+    for idx, item in enumerate(value, start=1):
+        if isinstance(item, dict):
+            label = str(item.get("code") or f"Validación {idx}")
+            detail = item.get("explanation") or item.get("url") or item
+            out.append({"label": label, "value": _format_value(detail)})
+        else:
+            out.append({"label": f"Validación {idx}", "value": _format_value(item)})
+    return out
+
+
+def _first(source: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    if not isinstance(source, dict):
+        return default
+    lower_map = {str(key).lower(): value for key, value in source.items()}
+    for key in keys:
+        if key in source and _present(source[key]):
+            return source[key]
+        low = key.lower()
+        if low in lower_map and _present(lower_map[low]):
+            return lower_map[low]
+    return default
+
+
+def _present(value: Any) -> bool:
+    return value is not None and value != "" and value != []
+
+
+def _format_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return _format_number(value)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
+def _format_number(value: Any) -> str:
+    try:
+        number = float(value)
+    except Exception:
+        return _format_value(value)
+    if number == 0:
+        return "0"
+    if abs(number) >= 1000 or abs(number) < 0.001:
+        return f"{number:.6g}"
+    return f"{number:.4f}".rstrip("0").rstrip(".")
+
+
+def _format_bytes(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        size = float(value)
+    except Exception:
+        return _format_value(value)
+    units = ["B", "KB", "MB", "GB", "TB"]
+    idx = 0
+    while size >= 1024 and idx < len(units) - 1:
+        size /= 1024.0
+        idx += 1
+    if idx == 0:
+        return f"{int(size)} {units[idx]}"
+    return f"{size:.2f} {units[idx]}"
+
+
+def _format_exposure(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        seconds = float(value)
+    except Exception:
+        return _format_value(value)
+    if seconds <= 0:
+        return _format_value(value)
+    if seconds < 1:
+        denominator = round(1.0 / seconds)
+        return f"1/{denominator} s ({seconds:.6g} s)"
+    return f"{seconds:.3f}".rstrip("0").rstrip(".") + " s"
+
+
+def _format_aperture(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        return f"f/{float(value):.1f}".rstrip("0").rstrip(".")
+    except Exception:
+        return _format_value(value)
+
+
+def _format_focal(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = _format_value(value)
+    return text if "mm" in text.lower() else f"{text} mm"
+
+
+def _format_altitude(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = _format_value(value)
+    return text if "m" in text.lower() else f"{text} m"
+
+
+def _image_size(raw: dict[str, Any]) -> str | None:
+    width = _first(raw, "EXIF:ImageWidth", "File:ImageWidth", "Composite:ImageWidth")
+    height = _first(raw, "EXIF:ImageHeight", "File:ImageHeight", "Composite:ImageHeight")
+    composite = _first(raw, "Composite:ImageSize")
+    if width and height:
+        return f"{width} x {height} px"
+    return _format_value(composite) if composite else None
+
+
+def _map_hint(gps: dict[str, Any]) -> str | None:
+    lat = _first(gps, "GPS:GPSLatitude", "Composite:GPSLatitude")
+    lon = _first(gps, "GPS:GPSLongitude", "Composite:GPSLongitude")
+    if lat is None or lon is None:
+        return None
+    return f"https://maps.google.com/?q={lat},{lon}"
+
+
+def _c2pa_signature_summary(c2pa: dict[str, Any]) -> str | None:
+    if not isinstance(c2pa, dict):
+        return None
+    sig = c2pa.get("signature_info")
+    if not isinstance(sig, dict):
+        return None
+    signer = sig.get("common_name") or sig.get("issuer") or "firmante no declarado"
+    alg = sig.get("alg")
+    time = sig.get("time")
+    parts = [str(signer)]
+    if alg:
+        parts.append(str(alg))
+    if time:
+        parts.append(str(time))
+    return " / ".join(parts)
+
+
+def _c2pa_validation_summary(c2pa: dict[str, Any]) -> str | None:
+    if not isinstance(c2pa, dict):
+        return None
+    status = c2pa.get("validation_status")
+    if not status:
+        return "Sin errores declarados"
+    if isinstance(status, list):
+        codes = [str(item.get("code") if isinstance(item, dict) else item) for item in status]
+        return "; ".join(codes)
+    return _format_value(status)
+
+
 def _json_text(payload: Any) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True)
-
