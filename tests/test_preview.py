@@ -14,8 +14,10 @@ from iccraw.raw.preview import (
     apply_lateral_chromatic_aberration,
     apply_profile_preview,
     apply_render_adjustments,
+    apply_tone_curve,
     linear_to_srgb_display,
     load_image_for_preview,
+    normalize_tone_curve_points,
     preview_analysis_text,
     srgb_to_linear_display,
 )
@@ -63,6 +65,34 @@ def test_apply_render_adjustments_changes_tone_and_white_balance():
     assert out.shape == img.shape
     assert np.isfinite(out).all()
     assert not np.allclose(out, img)
+
+
+def test_normalize_tone_curve_points_clamps_sorts_and_keeps_endpoints():
+    points = normalize_tone_curve_points([(0.7, 0.8), (-0.5, 0.2), (1.2, 2.0), (0.2, 0.1)])
+
+    assert points[0] == (0.0, 0.0)
+    assert points[-1] == (1.0, 1.0)
+    assert [x for x, _y in points] == sorted(x for x, _y in points)
+    assert all(0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 for x, y in points)
+
+
+def test_apply_tone_curve_identity_for_linear_points():
+    img = np.linspace(0.0, 1.0, 3 * 8 * 9, dtype=np.float32).reshape((8, 9, 3))
+    out = apply_tone_curve(img, [(0.0, 0.0), (1.0, 1.0)])
+
+    assert out.shape == img.shape
+    assert np.allclose(out, img, atol=1e-7)
+
+
+def test_apply_render_adjustments_uses_advanced_tone_curve():
+    img = np.full((6, 7, 3), 0.25, dtype=np.float32)
+    out = apply_render_adjustments(
+        img,
+        tone_curve_points=[(0.0, 0.0), (0.25, 0.45), (1.0, 1.0)],
+    )
+
+    assert out.shape == img.shape
+    assert float(np.mean(out)) > float(np.mean(img))
 
 
 def test_lateral_chromatic_aberration_identity_at_neutral_scales():

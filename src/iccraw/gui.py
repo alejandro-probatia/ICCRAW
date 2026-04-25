@@ -50,6 +50,7 @@ from .raw.preview import (
     extract_embedded_preview,
     linear_to_srgb_display,
     load_image_for_preview,
+    normalize_tone_curve_points,
     preview_analysis_text,
 )
 from .reporting import check_external_tools
@@ -134,6 +135,15 @@ TONE_OPTIONS = [
     ("Lineal", "linear"),
     ("sRGB", "srgb"),
     ("Gamma", "gamma"),
+]
+
+TONE_CURVE_PRESETS: list[tuple[str, str, list[tuple[float, float]]]] = [
+    ("Lineal", "linear", [(0.0, 0.0), (1.0, 1.0)]),
+    ("Contraste suave", "soft_contrast", [(0.0, 0.0), (0.24, 0.18), (0.50, 0.50), (0.76, 0.84), (1.0, 1.0)]),
+    ("Similar a película", "film_like", [(0.0, 0.0), (0.06, 0.015), (0.22, 0.18), (0.52, 0.66), (0.82, 0.92), (1.0, 1.0)]),
+    ("Sombras levantadas", "lift_shadows", [(0.0, 0.0), (0.14, 0.20), (0.45, 0.50), (0.78, 0.82), (1.0, 1.0)]),
+    ("Alto contraste", "high_contrast", [(0.0, 0.0), (0.18, 0.09), (0.50, 0.50), (0.82, 0.93), (1.0, 1.0)]),
+    ("Personalizada", "custom", [(0.0, 0.0), (1.0, 1.0)]),
 ]
 
 SPACE_OPTIONS = [
@@ -300,6 +310,150 @@ if QtWidgets is not None:
             if index < 0 or index >= len(self._items):
                 return False
             return bool(self._items[index]["header"].isChecked())
+
+
+    class ToneCurveEditor(QtWidgets.QWidget):
+        pointsChanged = QtCore.Signal(object)
+
+        def __init__(self) -> None:
+            super().__init__()
+            self._points = normalize_tone_curve_points([(0.0, 0.0), (1.0, 1.0)])
+            self._drag_index: int | None = None
+            self._histogram: np.ndarray | None = None
+            self.setMinimumHeight(190)
+            self.setMouseTracking(True)
+            self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+        def points(self) -> list[tuple[float, float]]:
+            return list(self._points)
+
+        def set_points(self, points: list[tuple[float, float]], *, emit: bool = True) -> None:
+            self._points = normalize_tone_curve_points(points)
+            self._drag_index = None
+            self.update()
+            if emit:
+                self.pointsChanged.emit(self.points())
+
+        def set_histogram_from_image(self, image_linear_rgb: np.ndarray | None) -> None:
+            if image_linear_rgb is None:
+                self._histogram = None
+                self.update()
+                return
+            rgb = np.clip(np.asarray(image_linear_rgb, dtype=np.float32), 0.0, 1.0)
+            if rgb.ndim != 3 or rgb.shape[2] < 3:
+                self._histogram = None
+                self.update()
+                return
+            weights = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
+            luminance = np.sum(rgb[..., :3] * weights.reshape((1, 1, 3)), axis=2)
+            hist, _ = np.histogram(luminance, bins=64, range=(0.0, 1.0))
+            hist = hist.astype(np.float32)
+            maxv = float(np.max(hist)) if hist.size else 0.0
+            self._histogram = hist / maxv if maxv > 0.0 else None
+            self.update()
+
+        def paintEvent(self, _event) -> None:  # noqa: N802
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            rect = self._plot_rect()
+            painter.fillRect(self.rect(), QtGui.QColor("#2b2b2b"))
+            painter.fillRect(rect, QtGui.QColor("#242424"))
+
+            grid_pen = QtGui.QPen(QtGui.QColor("#505050"), 1)
+            painter.setPen(grid_pen)
+            for i in range(6):
+                x = rect.left() + rect.width() * i / 5.0
+                y = rect.top() + rect.height() * i / 5.0
+                painter.drawLine(QtCore.QPointF(x, rect.top()), QtCore.QPointF(x, rect.bottom()))
+                painter.drawLine(QtCore.QPointF(rect.left(), y), QtCore.QPointF(rect.right(), y))
+
+            if self._histogram is not None:
+                painter.setPen(QtCore.Qt.NoPen)
+                painter.setBrush(QtGui.QColor(110, 110, 110, 110))
+                bin_w = rect.width() / max(1, len(self._histogram))
+                for idx, value in enumerate(self._histogram):
+                    h = rect.height() * float(value)
+                    painter.drawRect(QtCore.QRectF(rect.left() + idx * bin_w, rect.bottom() - h, bin_w + 1, h))
+
+            diagonal_pen = QtGui.QPen(QtGui.QColor("#8a8a8a"), 1, QtCore.Qt.DashLine)
+            painter.setPen(diagonal_pen)
+            painter.drawLine(self._point_to_widget((0.0, 0.0)), self._point_to_widget((1.0, 1.0)))
+
+            curve_pen = QtGui.QPen(QtGui.QColor("#d9d9d9"), 2)
+            painter.setPen(curve_pen)
+            path = QtGui.QPainterPath(self._point_to_widget(self._points[0]))
+            for point in self._points[1:]:
+                path.lineTo(self._point_to_widget(point))
+            painter.drawPath(path)
+
+            painter.setBrush(QtGui.QBrush(QtGui.QColor("#d9d9d9")))
+            painter.setPen(QtGui.QPen(QtGui.QColor("#101010"), 1))
+            for idx, point in enumerate(self._points):
+                radius = 5 if idx == self._drag_index else 4
+                pos = self._point_to_widget(point)
+                painter.drawEllipse(pos, radius, radius)
+
+        def mousePressEvent(self, event) -> None:  # noqa: N802
+            pos = event.position()
+            nearest = self._nearest_point_index(pos)
+            if event.button() == QtCore.Qt.RightButton and nearest not in (None, 0, len(self._points) - 1):
+                self._points.pop(int(nearest))
+                self.update()
+                self.pointsChanged.emit(self.points())
+                return
+            if event.button() != QtCore.Qt.LeftButton:
+                return super().mousePressEvent(event)
+            if nearest is None:
+                self._points.append(self._widget_to_point(pos))
+                self._points = normalize_tone_curve_points(self._points)
+                nearest = self._nearest_point_index(pos)
+                self.pointsChanged.emit(self.points())
+            self._drag_index = nearest
+
+        def mouseMoveEvent(self, event) -> None:  # noqa: N802
+            if self._drag_index is None:
+                return super().mouseMoveEvent(event)
+            idx = int(self._drag_index)
+            if idx == 0 or idx == len(self._points) - 1:
+                return
+            x, y = self._widget_to_point(event.position())
+            left = self._points[idx - 1][0] + 0.01
+            right = self._points[idx + 1][0] - 0.01
+            self._points[idx] = (float(np.clip(x, left, right)), float(np.clip(y, 0.0, 1.0)))
+            self.update()
+            self.pointsChanged.emit(self.points())
+
+        def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+            self._drag_index = None
+            self._points = normalize_tone_curve_points(self._points)
+            self.update()
+            return super().mouseReleaseEvent(event)
+
+        def _plot_rect(self) -> QtCore.QRectF:
+            return QtCore.QRectF(12, 12, max(20, self.width() - 24), max(20, self.height() - 24))
+
+        def _point_to_widget(self, point: tuple[float, float]) -> QtCore.QPointF:
+            rect = self._plot_rect()
+            x = rect.left() + float(point[0]) * rect.width()
+            y = rect.bottom() - float(point[1]) * rect.height()
+            return QtCore.QPointF(x, y)
+
+        def _widget_to_point(self, pos: QtCore.QPointF) -> tuple[float, float]:
+            rect = self._plot_rect()
+            x = (pos.x() - rect.left()) / max(1.0, rect.width())
+            y = (rect.bottom() - pos.y()) / max(1.0, rect.height())
+            return float(np.clip(x, 0.0, 1.0)), float(np.clip(y, 0.0, 1.0))
+
+        def _nearest_point_index(self, pos: QtCore.QPointF) -> int | None:
+            best_idx = None
+            best_dist = 14.0
+            for idx, point in enumerate(self._points):
+                p = self._point_to_widget(point)
+                dist = float(np.hypot(p.x() - pos.x(), p.y() - pos.y()))
+                if dist < best_dist:
+                    best_dist = dist
+                    best_idx = idx
+            return best_idx
 
 
     class ImagePanel(QtWidgets.QLabel):
@@ -1372,7 +1526,25 @@ if QtWidgets is not None:
             grid.addWidget(self.label_midtone, 11, 0, 1, 3)
             grid.addWidget(self.slider_midtone, 12, 0, 1, 3)
 
-            grid.addWidget(self._button("Restablecer corrección básica", self._reset_basic_adjustments), 13, 0, 1, 3)
+            self.check_tone_curve_enabled = QtWidgets.QCheckBox("Curva tonal avanzada")
+            self.check_tone_curve_enabled.setChecked(False)
+            self.check_tone_curve_enabled.toggled.connect(self._on_tone_curve_enabled_changed)
+            grid.addWidget(self.check_tone_curve_enabled, 13, 0, 1, 3)
+
+            grid.addWidget(QtWidgets.QLabel("Preset curva"), 14, 0)
+            self.combo_tone_curve_preset = QtWidgets.QComboBox()
+            for label, key, _points in TONE_CURVE_PRESETS:
+                self.combo_tone_curve_preset.addItem(label, key)
+            self.combo_tone_curve_preset.currentIndexChanged.connect(self._on_tone_curve_preset_changed)
+            grid.addWidget(self.combo_tone_curve_preset, 14, 1, 1, 2)
+
+            self.tone_curve_editor = ToneCurveEditor()
+            self.tone_curve_editor.pointsChanged.connect(self._on_tone_curve_points_changed)
+            grid.addWidget(self.tone_curve_editor, 15, 0, 1, 3)
+            grid.addWidget(self._button("Restablecer curva", self._reset_tone_curve), 16, 0, 1, 3)
+            self._set_tone_curve_controls_enabled(False)
+
+            grid.addWidget(self._button("Restablecer corrección básica", self._reset_basic_adjustments), 17, 0, 1, 3)
             return tab
 
         def _build_tab_preview_settings(self) -> QtWidgets.QWidget:
@@ -1685,9 +1857,15 @@ if QtWidgets is not None:
                 "white_point": self.slider_white_point.value() / 1000.0,
                 "contrast": self.slider_contrast.value() / 100.0,
                 "midtone": self.slider_midtone.value() / 100.0,
+                "tone_curve_enabled": bool(self.check_tone_curve_enabled.isChecked()),
+                "tone_curve_preset": self._tone_curve_preset_key(),
+                "tone_curve_points": [
+                    [float(x), float(y)]
+                    for x, y in normalize_tone_curve_points(self.tone_curve_editor.points())
+                ],
             }
 
-        def _render_adjustment_kwargs(self) -> dict[str, float]:
+        def _render_adjustment_kwargs(self) -> dict[str, Any]:
             state = self._render_adjustment_state()
             return {
                 "temperature_kelvin": float(state["temperature_kelvin"]),
@@ -1698,6 +1876,7 @@ if QtWidgets is not None:
                 "white_point": float(max(state["black_point"] + 0.001, state["white_point"])),
                 "contrast": float(state["contrast"]),
                 "midtone": float(state["midtone"]),
+                "tone_curve_points": state["tone_curve_points"] if state["tone_curve_enabled"] else None,
             }
 
         def _detail_adjustment_state(self) -> dict[str, Any]:
@@ -1723,7 +1902,7 @@ if QtWidgets is not None:
             sharpen_radius: float,
             lateral_ca_red_scale: float,
             lateral_ca_blue_scale: float,
-            render_adjustments: dict[str, float],
+            render_adjustments: dict[str, Any],
         ) -> np.ndarray:
             adjusted = apply_adjustments(
                 image,
@@ -2170,6 +2349,16 @@ if QtWidgets is not None:
                 )
                 self.slider_contrast.setValue(int(round(float(render_adjustments.get("contrast", 0.0)) * 100)))
                 self.slider_midtone.setValue(int(round(float(render_adjustments.get("midtone", 1.0)) * 100)))
+                curve_enabled = bool(render_adjustments.get("tone_curve_enabled", False))
+                curve_preset = str(render_adjustments.get("tone_curve_preset") or "linear")
+                curve_points = self._coerce_tone_curve_points(render_adjustments.get("tone_curve_points"))
+                self._set_combo_data(self.combo_tone_curve_preset, curve_preset)
+                self.tone_curve_editor.set_points(
+                    curve_points or self._tone_curve_preset_points(curve_preset),
+                    emit=False,
+                )
+                self.check_tone_curve_enabled.setChecked(curve_enabled)
+                self._set_tone_curve_controls_enabled(curve_enabled)
             except Exception:
                 pass
 
@@ -3103,6 +3292,34 @@ if QtWidgets is not None:
             if idx >= 0:
                 combo.setCurrentIndex(idx)
 
+        def _tone_curve_preset_points(self, key: str) -> list[tuple[float, float]]:
+            for _label, preset_key, points in TONE_CURVE_PRESETS:
+                if preset_key == key:
+                    return list(points)
+            return [(0.0, 0.0), (1.0, 1.0)]
+
+        def _tone_curve_preset_key(self) -> str:
+            return str(self.combo_tone_curve_preset.currentData() or "linear")
+
+        def _set_tone_curve_controls_enabled(self, enabled: bool) -> None:
+            self.combo_tone_curve_preset.setEnabled(bool(enabled))
+            self.tone_curve_editor.setEnabled(bool(enabled))
+
+        def _coerce_tone_curve_points(self, value: Any) -> list[tuple[float, float]] | None:
+            if not isinstance(value, (list, tuple)):
+                return None
+            points: list[tuple[float, float]] = []
+            for item in value:
+                if not isinstance(item, (list, tuple)) or len(item) < 2:
+                    continue
+                try:
+                    points.append((float(item[0]), float(item[1])))
+                except (TypeError, ValueError):
+                    continue
+            if not points:
+                return None
+            return normalize_tone_curve_points(points)
+
         def _on_illuminant_changed(self) -> None:
             data = self.combo_illuminant_render.currentData()
             if isinstance(data, dict) and data.get("temperature") is not None:
@@ -3116,9 +3333,33 @@ if QtWidgets is not None:
                     self.edit_illuminant.setText(self.combo_illuminant_render.currentText().split("(", 1)[0].strip())
             self._on_render_control_change()
 
+        def _on_tone_curve_enabled_changed(self, enabled: bool) -> None:
+            self._set_tone_curve_controls_enabled(enabled)
+            self._on_render_control_change()
+
+        def _on_tone_curve_preset_changed(self, _index: int) -> None:
+            key = self._tone_curve_preset_key()
+            if key != "custom":
+                self.tone_curve_editor.set_points(self._tone_curve_preset_points(key), emit=False)
+            self._on_render_control_change()
+
+        def _on_tone_curve_points_changed(self, _points: object) -> None:
+            if self._tone_curve_preset_key() != "custom":
+                self.combo_tone_curve_preset.blockSignals(True)
+                self._set_combo_data(self.combo_tone_curve_preset, "custom")
+                self.combo_tone_curve_preset.blockSignals(False)
+            self._on_render_control_change()
+
         def _on_render_control_change(self) -> None:
             if self._original_linear is not None:
                 self._schedule_preview_refresh()
+
+        def _reset_tone_curve(self) -> None:
+            self.check_tone_curve_enabled.setChecked(False)
+            self._set_combo_data(self.combo_tone_curve_preset, "linear")
+            self.tone_curve_editor.set_points(self._tone_curve_preset_points("linear"), emit=False)
+            self._set_tone_curve_controls_enabled(False)
+            self._on_render_control_change()
 
         def _reset_basic_adjustments(self) -> None:
             self.combo_illuminant_render.setCurrentIndex(1)
@@ -3129,6 +3370,7 @@ if QtWidgets is not None:
             self.slider_white_point.setValue(1000)
             self.slider_contrast.setValue(0)
             self.slider_midtone.setValue(100)
+            self._reset_tone_curve()
             if self._original_linear is not None:
                 self._refresh_preview()
 
@@ -3377,6 +3619,7 @@ if QtWidgets is not None:
                 sharpen = self.slider_sharpen.value() / 100.0
                 radius = self.slider_radius.value() / 10.0
                 ca_red, ca_blue = self._ca_scale_factors()
+                self.tone_curve_editor.set_histogram_from_image(self._original_linear)
 
                 adjusted = self._apply_output_adjustments(
                     self._original_linear,
@@ -3970,7 +4213,7 @@ if QtWidgets is not None:
             sharpen_radius: float,
             lateral_ca_red_scale: float,
             lateral_ca_blue_scale: float,
-            render_adjustments: dict[str, float],
+            render_adjustments: dict[str, Any],
         ) -> dict[str, Any]:
             out_dir.mkdir(parents=True, exist_ok=True)
             outputs: list[dict[str, str]] = []

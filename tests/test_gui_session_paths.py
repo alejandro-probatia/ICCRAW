@@ -207,6 +207,23 @@ def test_right_column_uses_independent_collapsible_sections(qapp):
         window.close()
 
 
+def test_advanced_tone_curve_is_persisted_in_render_state(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window.check_tone_curve_enabled.setChecked(True)
+        window.tone_curve_editor.set_points([(0.0, 0.0), (0.5, 0.72), (1.0, 1.0)])
+
+        state = window._render_adjustment_state()
+        kwargs = window._render_adjustment_kwargs()
+
+        assert state["tone_curve_enabled"] is True
+        assert state["tone_curve_preset"] == "custom"
+        assert state["tone_curve_points"][1] == [0.5, 0.72]
+        assert kwargs["tone_curve_points"] == state["tone_curve_points"]
+    finally:
+        window.close()
+
+
 def test_gui_downgrades_amaze_when_gpl3_pack_is_missing(qapp, monkeypatch):
     monkeypatch.setattr(pipeline.rawpy, "flags", {"DEMOSAIC_PACK_GPL3": False})
     window = ICCRawMainWindow()

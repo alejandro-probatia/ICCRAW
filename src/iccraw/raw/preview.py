@@ -224,6 +224,7 @@ def apply_render_adjustments(
     white_point: float = 1.0,
     contrast: float = 0.0,
     midtone: float = 1.0,
+    tone_curve_points: list[tuple[float, float]] | None = None,
 ) -> np.ndarray:
     out = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
 
@@ -252,7 +253,69 @@ def apply_render_adjustments(
         gamma = 1.0 / m
         out = np.power(np.clip(out, 0.0, 1.0), gamma)
 
+    if tone_curve_points:
+        out = apply_tone_curve(out, tone_curve_points)
+
     return np.clip(out, 0.0, 1.0).astype(np.float32)
+
+
+def normalize_tone_curve_points(points: list[tuple[float, float]] | tuple[tuple[float, float], ...]) -> list[tuple[float, float]]:
+    normalized: list[tuple[float, float]] = []
+    for point in points:
+        try:
+            x = float(point[0])
+            y = float(point[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if not np.isfinite(x) or not np.isfinite(y):
+            continue
+        normalized.append((float(np.clip(x, 0.0, 1.0)), float(np.clip(y, 0.0, 1.0))))
+
+    normalized.extend([(0.0, 0.0), (1.0, 1.0)])
+    normalized.sort(key=lambda p: (p[0], p[1]))
+
+    deduped: list[tuple[float, float]] = []
+    for x, y in normalized:
+        if deduped and abs(x - deduped[-1][0]) < 1e-4:
+            deduped[-1] = (x, y)
+        else:
+            deduped.append((x, y))
+    deduped[0] = (0.0, 0.0)
+    deduped[-1] = (1.0, 1.0)
+    return deduped
+
+
+def apply_tone_curve(
+    image_linear_rgb: np.ndarray,
+    points: list[tuple[float, float]] | tuple[tuple[float, float], ...],
+    *,
+    lut_size: int = 4096,
+) -> np.ndarray:
+    curve = normalize_tone_curve_points(points)
+    xs = np.asarray([p[0] for p in curve], dtype=np.float32)
+    ys = np.asarray([p[1] for p in curve], dtype=np.float32)
+
+    out = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
+    if len(curve) <= 2 and np.allclose(xs, [0.0, 1.0], atol=1e-6) and np.allclose(ys, [0.0, 1.0], atol=1e-6):
+        return out.astype(np.float32)
+
+    # Apply the curve to scene luminance and scale RGB by the luminance ratio.
+    # This keeps the operation deterministic while reducing hue shifts versus
+    # applying an arbitrary display curve independently to each channel.
+    weights = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    luminance = np.clip(np.sum(out[..., :3] * weights.reshape((1, 1, 3)), axis=2), 0.0, 1.0)
+    lut_size = int(np.clip(lut_size, 256, 65536))
+    lut_x = np.linspace(0.0, 1.0, lut_size, dtype=np.float32)
+    lut_y = np.interp(lut_x, xs, ys).astype(np.float32)
+    indices = np.clip(np.rint(luminance * (lut_size - 1)), 0, lut_size - 1).astype(np.int32)
+    curved_luminance = lut_y[indices]
+
+    scale = np.ones_like(luminance, dtype=np.float32)
+    mask = luminance > 1e-6
+    scale[mask] = curved_luminance[mask] / luminance[mask]
+    adjusted = out.copy()
+    adjusted[..., :3] *= scale[..., None]
+    return np.clip(adjusted, 0.0, 1.0).astype(np.float32)
 
 
 def _scale_channel_radially(channel: np.ndarray, scale: float) -> np.ndarray:
