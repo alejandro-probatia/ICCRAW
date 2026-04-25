@@ -55,7 +55,17 @@ Fecha de revision: 2026-04-25.
   - no se redistribuyen binarios dentro del repositorio,
   - se comprueba con `scripts/check_tools.sh`.
 
-## 6) Dependencias Python relevantes
+## 6) c2pa-python (C2PA/CAI opcional)
+
+- Uso en NexoRAW: firma y lectura de manifiestos C2PA embebidos en TIFF final.
+- Licencia declarada por `contentauth/c2pa-python`: Apache-2.0 o MIT.
+- Politica en NexoRAW:
+  - dependencia opcional (`pip install -e .[c2pa]`),
+  - no sustituye `batch_manifest.json`, hashes SHA-256 ni auditoria lineal,
+  - la clave privada se pasa por ruta de archivo y no se registra en logs,
+  - revisar certificados, TSA y politica de confianza antes de uso probatorio.
+
+## 7) Dependencias Python relevantes
 
 - `opencv-python-headless`: BSD-3-Clause (OpenCV).
 - `tifffile`: BSD.
@@ -66,8 +76,9 @@ Fecha de revision: 2026-04-25.
 - `Pillow`: HPND-like (PIL Software License).
 - `rawpy`: MIT; wheels estandar sin demosaic packs GPL.
 - `rawpy-demosaic`: GPL-3.0-or-later; habilita demosaic packs GPL2/GPL3.
+- `c2pa-python`: Apache-2.0 o MIT; opcional para C2PA/CAI.
 
-## 7) Herramientas de empaquetado Windows
+## 8) Herramientas de empaquetado Windows
 
 - `PyInstaller`: herramienta de build para crear los ejecutables Windows.
 - `Inno Setup`: herramienta externa para generar el instalador `.exe`.
@@ -76,7 +87,7 @@ Fecha de revision: 2026-04-25.
   - no se versionan binarios generados en el repositorio,
   - revisar licencias y avisos antes de publicar una beta redistribuible.
 
-## 8) Regla de distribucion del proyecto
+## 9) Regla de distribucion del proyecto
 
 Antes de publicar release/binarios/contenedor:
 

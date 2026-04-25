@@ -41,6 +41,9 @@ dev = [
 installer = [
   "pyinstaller>=6.10",
 ]
+c2pa = [
+  "c2pa-python>=0.32",
+]
 
 [project.scripts]
 nexoraw = "nexoraw.cli:main"

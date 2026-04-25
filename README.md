@@ -205,6 +205,18 @@ nexoraw build-profile samples.json --recipe recipe_calibrated.yml --out camera_p
 
 nexoraw batch-develop ./raws --recipe recipe_calibrated.yml --profile camera_profile.icc --out ./tiffs
 
+# Opcional: firmar TIFFs finales con C2PA/CAI
+pip install -e .[c2pa]
+nexoraw batch-develop ./raws \
+  --recipe recipe_calibrated.yml \
+  --profile camera_profile.icc \
+  --out ./tiffs \
+  --c2pa-sign \
+  --c2pa-cert chain.pem \
+  --c2pa-key signing.key
+
+nexoraw verify-c2pa ./tiffs/captura.tiff --raw ./raws/captura.NEF --manifest ./tiffs/batch_manifest.json
+
 nexoraw validate-profile samples.json --profile camera_profile.icc --out validation.json
 
 # Flujo completo automático de sesión:

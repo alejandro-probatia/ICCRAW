@@ -30,6 +30,7 @@ from .core.recipe import load_recipe, save_recipe
 from .profile.development import build_development_profile
 from .profile.builder import build_profile, validate_profile, write_samples_cgats
 from .profile.export import batch_develop
+from .provenance.c2pa import DEFAULT_TIMESTAMP_URL, C2PASignConfig, verify_c2pa_raw_link
 from .qa_compare import compare_qa_reports
 from .raw.metadata import raw_info
 from .raw.pipeline import develop_controlled
@@ -114,6 +115,18 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     s.add_argument("--recipe", required=True)
     s.add_argument("--profile", required=True)
     s.add_argument("--out", required=True)
+    s.add_argument("--c2pa-sign", action="store_true", help="Firma cada TIFF final con C2PA")
+    s.add_argument("--c2pa-cert", default=None, help="Cadena de certificado PEM para C2PA")
+    s.add_argument("--c2pa-key", default=None, help="Clave privada PEM para C2PA")
+    s.add_argument("--c2pa-alg", default="ps256", help="Algoritmo de firma C2PA: ps256, ps384, es256...")
+    s.add_argument("--c2pa-timestamp-url", default=DEFAULT_TIMESTAMP_URL, help="URL TSA RFC 3161")
+    s.add_argument("--c2pa-signer-name", default="NexoRAW", help="Nombre publico del agente firmante")
+    s.add_argument(
+        "--c2pa-technical-manifest",
+        default=None,
+        help="Manifiesto tecnico existente cuyo SHA-256 se incluira en la asercion C2PA",
+    )
+    s.add_argument("--session-id", default=None, help="Identificador de sesion opcional para trazabilidad C2PA")
 
     s = sub.add_parser("validate-profile")
     s.add_argument("samples")
@@ -167,6 +180,11 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
 
     s = sub.add_parser("check-amaze")
     s.add_argument("--out", default=None, help="JSON de salida opcional")
+
+    s = sub.add_parser("verify-c2pa")
+    s.add_argument("input", help="TIFF final firmado")
+    s.add_argument("--raw", required=True, help="RAW fuente para verificar SHA-256 declarado")
+    s.add_argument("--manifest", default=None, help="batch_manifest.json externo de NexoRAW")
 
     return p
 
@@ -257,11 +275,27 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "batch-develop":
             recipe = load_recipe(Path(args.recipe))
+            c2pa_config = None
+            if args.c2pa_sign:
+                if not args.c2pa_cert or not args.c2pa_key:
+                    raise RuntimeError("--c2pa-sign requiere --c2pa-cert y --c2pa-key")
+                c2pa_config = C2PASignConfig(
+                    cert_path=Path(args.c2pa_cert),
+                    key_path=Path(args.c2pa_key),
+                    alg=args.c2pa_alg,
+                    timestamp_url=args.c2pa_timestamp_url,
+                    signer_name=args.c2pa_signer_name,
+                    technical_manifest_path=Path(args.c2pa_technical_manifest)
+                    if args.c2pa_technical_manifest
+                    else None,
+                    session_id=args.session_id,
+                )
             manifest = batch_develop(
                 raws_dir=Path(args.input),
                 recipe=recipe,
                 profile_path=Path(args.profile),
                 out_dir=Path(args.out),
+                c2pa_config=c2pa_config,
             )
             manifest_path = Path(args.out) / "batch_manifest.json"
             write_json(manifest_path, manifest)
@@ -326,6 +360,15 @@ def main(argv: list[str] | None = None) -> int:
                 write_json(Path(args.out), result)
             print(json.dumps(result, indent=2))
             return 0 if result.get("amaze_supported") else 2
+
+        if args.command == "verify-c2pa":
+            result = verify_c2pa_raw_link(
+                signed_tiff=Path(args.input),
+                source_raw=Path(args.raw),
+                external_manifest_path=Path(args.manifest) if args.manifest else None,
+            )
+            print(json.dumps(result, indent=2))
+            return 0 if result.get("status") == "ok" else 2
 
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

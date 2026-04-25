@@ -147,13 +147,12 @@ nexoraw auto-profile-batch \
 - `No se puede convertir ICC: 'tificc' no esta disponible en PATH.`
   - Solución: instalar `liblcms2-utils`.
 
-## Integración futura C2PA/CAI
+## Integracion C2PA/CAI
 
-La arquitectura de sidecars y manifiestos permite añadir C2PA/CAI más adelante:
+NexoRAW incluye soporte opcional C2PA para firmar TIFFs finales y declarar una
+asercion RAW -> TIFF basada en SHA-256 del RAW original. Esta capa no sustituye
+los sidecars ni `batch_manifest.json`.
 
-1. hash de entrada/salida,
-2. receta,
-3. versión software + commit,
-4. perfil ICC aplicado,
-5. métricas DeltaE,
-6. firma del laboratorio o entidad responsable.
+Ver:
+
+- `docs/C2PA_CAI.md`

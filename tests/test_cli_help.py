@@ -14,6 +14,7 @@ def test_parser_has_expected_commands():
     assert "compare-qa-reports" in text
     assert "check-tools" in text
     assert "check-amaze" in text
+    assert "verify-c2pa" in text
 
 
 def test_parser_has_version_option(capsys):

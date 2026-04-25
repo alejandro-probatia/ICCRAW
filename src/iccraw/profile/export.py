@@ -13,6 +13,7 @@ from PIL import ImageCms
 from ..core.models import BatchManifest, BatchManifestEntry, Recipe
 from ..core.external import external_tool_path
 from ..core.utils import list_raw_files, sha256_file, write_tiff16
+from ..provenance.c2pa import C2PASignConfig, sign_tiff_with_c2pa
 from ..raw.pipeline import develop_scene_linear_array, render_recipe_output_array
 from ..version import __version__
 
@@ -20,7 +21,14 @@ from ..version import __version__
 D50_XY = np.asarray(colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D50"], dtype=np.float64)
 
 
-def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: Path) -> BatchManifest:
+def batch_develop(
+    raws_dir: Path,
+    recipe: Recipe,
+    profile_path: Path,
+    out_dir: Path,
+    *,
+    c2pa_config: C2PASignConfig | None = None,
+) -> BatchManifest:
     out_dir.mkdir(parents=True, exist_ok=True)
     linear_audit_dir = out_dir / "_linear_audit"
     linear_audit_dir.mkdir(parents=True, exist_ok=True)
@@ -55,7 +63,16 @@ def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: P
         # quantization/read cycle. The audit TIFF is still written and hashed in
         # the manifest, preserving the forensic artifact.
         image = render_recipe_output_array(scene_linear, recipe)
-        write_profiled_tiff(out_final, image, recipe=recipe, profile_path=profile_path)
+        write_mode = write_profiled_tiff(out_final, image, recipe=recipe, profile_path=profile_path)
+        if c2pa_config is not None:
+            sign_tiff_with_c2pa(
+                out_final,
+                source_raw=raw,
+                recipe=recipe,
+                profile_path=profile_path,
+                color_management_mode=write_mode,
+                config=c2pa_config,
+            )
 
         entries.append(
             BatchManifestEntry(

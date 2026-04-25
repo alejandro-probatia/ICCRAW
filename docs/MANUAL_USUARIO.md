@@ -301,16 +301,49 @@ Durante el proceso, NexoRAW produce:
   - comprobar que declara `reference_source`, `illuminant: D50`, `observer: 2`
     y valores `reference_lab` para todos los parches.
 
-## 9. C2PA/CAI (propuesta)
+## 9. C2PA/CAI
 
-Es posible integrar C2PA/CAI para añadir cadena de custodia criptográfica del proceso.
+NexoRAW puede firmar TIFFs finales con C2PA como capa criptografica opcional.
+Esta capa no sustituye `batch_manifest.json`, hashes SHA-256, auditoria lineal,
+perfiles ICC ni reportes QA.
 
-Recomendación de implantación:
+Instalacion opcional:
 
-1. generar manifiesto C2PA con hashes, recipe, perfil y métricas,
-2. firmar con certificado del laboratorio,
-3. embebido en TIFF o sidecar `.c2pa`.
+```bash
+pip install -e .[c2pa]
+```
 
-Ver detalles técnicos en:
+Firma de lote:
 
+```bash
+nexoraw batch-develop ./raws \
+  --recipe recipe_calibrated.yml \
+  --profile camera_profile.icc \
+  --out ./tiffs \
+  --c2pa-sign \
+  --c2pa-cert chain.pem \
+  --c2pa-key signing.key \
+  --c2pa-alg ps256 \
+  --session-id sesion-2026-04-25
+```
+
+Verificacion:
+
+```bash
+nexoraw verify-c2pa ./tiffs/captura.tiff \
+  --raw ./raws/captura.NEF \
+  --manifest ./tiffs/batch_manifest.json
+```
+
+Principios operativos:
+
+1. el RAW original no se modifica;
+2. el identificador probatorio es el SHA-256 de los bytes exactos del RAW;
+3. la ruta del RAW solo se registra como localizador auxiliar;
+4. el SHA-256 del TIFF firmado se guarda fuera del C2PA embebido para evitar circularidad;
+5. los RAW propietarios no se reescriben ni reciben C2PA embebido.
+
+Ver detalles tecnicos en:
+
+- `docs/C2PA_CAI.md`
 - `docs/INTEGRACION_LIBRAW_ARGYLL.md`
