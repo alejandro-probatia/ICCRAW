@@ -30,8 +30,10 @@ jobs:
       - name: Clone rawpy-demosaic
         shell: pwsh
         run: |
+          git config --global url."https://github.com/".insteadOf git://github.com/
           git clone --recursive https://github.com/exfab/rawpy-demosaic.git tmp/rawpy-demosaic
           git -C tmp/rawpy-demosaic checkout "${{ inputs['rawpy-demosaic-ref'] }}"
+          git -C tmp/rawpy-demosaic submodule sync --recursive
           git -C tmp/rawpy-demosaic submodule update --init --recursive
           New-Item -ItemType Directory -Force -Path tmp/rawpy-demosaic-build-info | Out-Null
           git -C tmp/rawpy-demosaic rev-parse HEAD | Out-File -Encoding ascii tmp/rawpy-demosaic-build-info/source-commit.txt
