@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
+from importlib import metadata as importlib_metadata
 import os
 import platform
 import shutil
 import subprocess
 from typing import Any
+
+from .raw.pipeline import rawpy_feature_flags
 
 
 @dataclass
@@ -90,7 +93,9 @@ def gather_run_context(version: str) -> dict:
         dependencies=[
             DependencyVersion(name="python", version=platform.python_version()),
             DependencyVersion(name="rawpy", version=_safe_import_version("rawpy")),
+            DependencyVersion(name="rawpy-distribution", version=_rawpy_distribution_version()),
             DependencyVersion(name="libraw", version=_libraw_version()),
+            DependencyVersion(name="rawpy-flags", version=_rawpy_flags_summary()),
             DependencyVersion(name="opencv", version=_safe_import_version("cv2")),
             DependencyVersion(name="colour-science", version=_safe_import_version("colour")),
             DependencyVersion(name="tifffile", version=_safe_import_version("tifffile")),
@@ -108,6 +113,13 @@ def check_external_tools() -> dict[str, Any]:
         "missing_required": missing_required,
         "failing_required": failing_required,
         "tools": [asdict(check) for check in checks],
+        "python_runtime": {
+            "rawpy": _safe_import_version("rawpy"),
+            "rawpy_distribution": _rawpy_distribution_version(),
+            "libraw": _libraw_version(),
+            "rawpy_flags": rawpy_feature_flags(),
+            "amaze_supported": bool(rawpy_feature_flags().get("DEMOSAIC_PACK_GPL3", False)),
+        },
     }
 
 
@@ -172,6 +184,23 @@ def _safe_import_version(module: str) -> str:
     except Exception:
         return "not-available"
     return getattr(mod, "__version__", "unknown")
+
+
+def _rawpy_distribution_version() -> str:
+    found: list[str] = []
+    for dist_name in ("rawpy-demosaic", "rawpy"):
+        try:
+            found.append(f"{dist_name}=={importlib_metadata.version(dist_name)}")
+        except importlib_metadata.PackageNotFoundError:
+            continue
+    return ", ".join(found) if found else "not-available"
+
+
+def _rawpy_flags_summary() -> str:
+    flags = rawpy_feature_flags()
+    if not flags:
+        return "not-available"
+    return ", ".join(f"{key}={value}" for key, value in sorted(flags.items()))
 
 
 def _libraw_version() -> str:

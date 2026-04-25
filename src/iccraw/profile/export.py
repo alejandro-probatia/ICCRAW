@@ -12,8 +12,8 @@ import colour
 from PIL import ImageCms
 
 from ..core.models import BatchManifest, BatchManifestEntry, Recipe
-from ..core.utils import list_raw_files, read_image, sha256_file, write_tiff16
-from ..raw.pipeline import develop_controlled
+from ..core.utils import list_raw_files, sha256_file, write_tiff16
+from ..raw.pipeline import develop_scene_linear_array, render_recipe_output_array
 from ..version import __version__
 
 
@@ -49,8 +49,12 @@ def batch_develop(raws_dir: Path, recipe: Recipe, profile_path: Path, out_dir: P
         out_linear = linear_audit_dir / f"{raw.stem}.scene_linear.tiff"
         out_final = out_dir / f"{raw.stem}.tiff"
 
-        develop_controlled(raw, recipe, out_linear, None)
-        image = read_image(out_linear)
+        scene_linear = develop_scene_linear_array(raw, recipe)
+        write_tiff16(out_linear, scene_linear)
+        # Render final output from the in-memory array to avoid a second TIFF
+        # quantization/read cycle. The audit TIFF is still written and hashed in
+        # the manifest, preserving the forensic artifact.
+        image = render_recipe_output_array(scene_linear, recipe)
         write_profiled_tiff(out_final, image, recipe=recipe, profile_path=profile_path)
 
         entries.append(

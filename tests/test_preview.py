@@ -6,9 +6,10 @@ import numpy as np
 import tifffile
 import colour
 
-from iccraw.core.models import write_json
+from iccraw.core.models import Recipe, write_json
 from iccraw.profile.export import apply_profile_matrix
 from iccraw.raw.preview import (
+    _camera_rgb_display_balance_if_needed,
     apply_adjustments,
     apply_lateral_chromatic_aberration,
     apply_profile_preview,
@@ -144,3 +145,17 @@ def test_load_image_for_preview_downscales_non_raw(tmp_path: Path):
     assert loaded.ndim == 3
     assert loaded.shape[2] == 3
     assert max(loaded.shape[0], loaded.shape[1]) <= 1000
+
+
+def test_camera_rgb_preview_balance_is_display_only_for_strong_cast():
+    image = np.zeros((12, 16, 3), dtype=np.float32)
+    image[..., 0] = 0.15
+    image[..., 1] = 0.30
+    image[..., 2] = 0.22
+    recipe = Recipe(profiling_mode=True, output_space="scene_linear_camera_rgb")
+
+    balanced = _camera_rgb_display_balance_if_needed(image, recipe)
+
+    means = np.mean(balanced, axis=(0, 1))
+    assert float(np.max(means) / np.min(means)) < 1.05
+    assert not np.shares_memory(balanced, image)

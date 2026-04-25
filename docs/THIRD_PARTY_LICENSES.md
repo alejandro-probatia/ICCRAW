@@ -2,7 +2,7 @@
 
 Este archivo resume licencias de componentes clave y como se integran en ICCRAW.
 
-Fecha de revision: 2026-04-23.
+Fecha de revision: 2026-04-25.
 
 ## 1) ICCRAW (repositorio principal)
 
@@ -18,13 +18,23 @@ Fecha de revision: 2026-04-23.
   - se exige instalacion desde fuente oficial o paquete del sistema,
   - se registran version y contexto en trazabilidad.
 
-## 3) LibRaw / rawpy
+## 3) LibRaw / rawpy / rawpy-demosaic
 
-- Uso en ICCRAW: motor único de revelado RAW mediante dependencia Python
-  `rawpy`, vinculada a LibRaw.
-- Licencia declarada: dual LGPL-2.1/CDDL (segun LibRaw/rawpy).
+- Uso en ICCRAW: motor unico de revelado RAW mediante el modulo Python
+  `rawpy`, vinculado a LibRaw.
+- Dependencia base instalable: `rawpy`, vinculada a LibRaw.
+- Backend GPL3 para AMaZE: `rawpy-demosaic`, fork GPL3 de `rawpy` que incluye
+  los demosaic packs GPL2/GPL3 de LibRaw y exporta el mismo modulo `rawpy`.
+- Licencias declaradas:
+  - LibRaw: LGPL/CDDL segun upstream.
+  - `rawpy`: MIT, sin demosaic packs GPL en wheels estandar.
+  - `rawpy-demosaic`: `GPL-3.0-or-later`.
+  - LibRaw demosaic pack GPL3: GPL3+, incluye AMaZE.
 - Politica en ICCRAW:
-  - se registra version de `rawpy` y LibRaw en contexto de ejecucion,
+  - ICCRAW se mantiene bajo `AGPL-3.0-or-later`, compatible con GPL3+,
+  - se registra version de `rawpy`, distribucion instalada (`rawpy` o
+    `rawpy-demosaic`), LibRaw y `rawpy.flags` en contexto de ejecucion,
+  - AMaZE solo se anuncia como disponible cuando `DEMOSAIC_PACK_GPL3=True`,
   - se incluyen avisos de licencia al publicar builds que redistribuyan wheels.
 
 ## 4) PySide6 / Qt (GUI opcional)
@@ -54,7 +64,8 @@ Fecha de revision: 2026-04-23.
 - `PyYAML`: MIT.
 - `colour-science`: BSD-3-Clause.
 - `Pillow`: HPND-like (PIL Software License).
-- `rawpy`: licencia dual LGPL-2.1/CDDL (segun LibRaw/rawpy).
+- `rawpy`: MIT; wheels estandar sin demosaic packs GPL.
+- `rawpy-demosaic`: GPL-3.0-or-later; habilita demosaic packs GPL2/GPL3.
 
 ## 7) Herramientas de empaquetado Windows
 
@@ -72,4 +83,6 @@ Antes de publicar release/binarios/contenedor:
 1. incluir `LICENSE` (AGPL) del proyecto,
 2. incluir este archivo o equivalente actualizado,
 3. incluir instrucciones para obtener codigo fuente correspondiente,
-4. verificar licencias de binarios de sistema empaquetados (si se empaquetan).
+4. verificar licencias de binarios de sistema empaquetados (si se empaquetan),
+5. si se distribuye AMaZE, incluir avisos GPL3 de `rawpy-demosaic`, LibRaw y
+   demosaic packs, junto con el codigo fuente correspondiente o URL publica.

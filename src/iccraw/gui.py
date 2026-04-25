@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 import json
+import os
 from pathlib import Path
 import shlex
 import sys
@@ -33,12 +34,17 @@ from .core.recipe import load_recipe
 from .core.utils import RAW_EXTENSIONS, read_image
 from .profile.export import write_profiled_tiff
 from .qa_compare import compare_qa_reports
-from .raw.pipeline import develop_controlled
+from .raw.pipeline import (
+    develop_controlled,
+    develop_image_array,
+    is_libraw_demosaic_supported,
+    rawpy_feature_flags,
+    unavailable_demosaic_reason,
+)
 from .raw.preview import (
     apply_adjustments,
     apply_render_adjustments,
     apply_profile_preview,
-    extract_embedded_preview,
     linear_to_srgb_display,
     load_image_for_preview,
     preview_analysis_text,
@@ -68,7 +74,7 @@ DEMOSAIC_OPTIONS = [
     ("VNG", "vng"),
     ("PPG", "ppg"),
     ("Lineal", "linear"),
-    ("AMaZE (requiere LibRaw/rawpy con GPL3 demosaic pack)", "amaze"),
+    ("AMaZE (GPL3)", "amaze"),
 ]
 
 ILLUMINANT_OPTIONS = [
@@ -145,8 +151,20 @@ LEGACY_TEMP_OUTPUT_NAMES = {
     "iccraw_batch_tiffs",
 }
 
+SETTINGS_DIR_ENV = "ICCRAW_SETTINGS_DIR"
+
 
 if QtWidgets is not None:
+    def _make_app_settings() -> QtCore.QSettings:
+        settings_dir = os.environ.get(SETTINGS_DIR_ENV, "").strip()
+        if settings_dir:
+            base = Path(settings_dir).expanduser()
+            base.mkdir(parents=True, exist_ok=True)
+            QtCore.QSettings.setPath(QtCore.QSettings.IniFormat, QtCore.QSettings.UserScope, str(base))
+            return QtCore.QSettings(QtCore.QSettings.IniFormat, QtCore.QSettings.UserScope, "ICCRAW", "ICCRAW")
+        return QtCore.QSettings("ICCRAW", "ICCRAW")
+
+
     class TaskThread(QtCore.QThread):
         succeeded = QtCore.Signal(object)
         failed = QtCore.Signal(str)
@@ -274,8 +292,8 @@ if QtWidgets is not None:
 
             if self._overlay_points and self._image_size is not None:
                 painter.setRenderHint(QtGui.QPainter.Antialiasing)
-                painter.setPen(QtGui.QPen(QtGui.QColor("#22c55e"), 2))
-                painter.setBrush(QtGui.QBrush(QtGui.QColor(34, 197, 94, 96)))
+                painter.setPen(QtGui.QPen(QtGui.QColor("#f59e0b"), 2))
+                painter.setBrush(QtCore.Qt.NoBrush)
                 qpoints = [
                     self._map_image_to_widget(x, y, rect, scale, transform, bounds)
                     for x, y in self._overlay_points
@@ -284,10 +302,12 @@ if QtWidgets is not None:
                     painter.drawPolyline(QtGui.QPolygonF(qpoints))
                 if len(qpoints) == 4:
                     painter.drawLine(qpoints[-1], qpoints[0])
+                painter.setBrush(QtGui.QBrush(QtGui.QColor(245, 158, 11, 160)))
                 for idx, point in enumerate(qpoints, start=1):
                     painter.drawEllipse(point, 6, 6)
                     painter.drawText(point + QtCore.QPointF(8, -8), str(idx))
 
+            painter.setBrush(QtCore.Qt.NoBrush)
             painter.setPen(QtGui.QPen(QtGui.QColor("#4b5563"), 1))
             painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
             painter.end()
@@ -372,7 +392,7 @@ if QtWidgets is not None:
             super().__init__()
             self.setWindowTitle("ICCRAW - Calibración científica de sesión")
             self.resize(1800, 1020)
-            self._settings = QtCore.QSettings("ICCRAW", "ICCRAW")
+            self._settings = _make_app_settings()
 
             self._threads: list[TaskThread] = []
             self._thumb_cache: dict[str, QtGui.QIcon] = {}
@@ -380,7 +400,7 @@ if QtWidgets is not None:
             self._preview_cache_order: list[str] = []
             self._manual_chart_marking = False
             self._manual_chart_points: list[tuple[float, float]] = []
-            self._current_dir = Path.home()
+            self._current_dir = self._startup_directory_from_settings()
             self._selected_file: Path | None = None
             self._storage_roots: list[Path] = []
             self._task_counter = 0
@@ -400,6 +420,9 @@ if QtWidgets is not None:
             self._selection_load_timer = QtCore.QTimer(self)
             self._selection_load_timer.setSingleShot(True)
             self._selection_load_timer.timeout.connect(self._load_selected_from_timer)
+            self._preview_refresh_timer = QtCore.QTimer(self)
+            self._preview_refresh_timer.setSingleShot(True)
+            self._preview_refresh_timer.timeout.connect(self._refresh_preview)
 
             self._build_ui()
             self._build_menu_bar()
@@ -429,6 +452,7 @@ if QtWidgets is not None:
             header.addWidget(title)
             header.addWidget(subtitle)
             header.addStretch(1)
+            header.addWidget(self._button("Inicio", self._go_home_directory))
             header.addWidget(self._button("Abrir carpeta...", self._pick_directory))
             header.addWidget(self._button("Recargar", self._reload_current_directory))
             header.addWidget(self._button("Pantalla completa", self._menu_toggle_fullscreen))
@@ -585,23 +609,57 @@ if QtWidgets is not None:
                 return QtCore.QByteArray(bytes(value))
             return None
 
+        def _default_work_directory(self) -> Path:
+            try:
+                return Path.home().expanduser().resolve()
+            except Exception:
+                return Path.cwd().expanduser().resolve()
+
+        def _startup_directory_from_settings(self) -> Path:
+            folder = self._persistent_directory("browser/last_dir")
+            return folder or self._default_work_directory()
+
+        def _persistent_directory(self, key: str) -> Path | None:
+            text = str(self._settings.value(key) or "").strip()
+            if not text:
+                return None
+            if self._is_legacy_temp_output_path(text):
+                self._settings.remove(key)
+                return None
+            folder = Path(text).expanduser()
+            if folder.exists() and folder.is_dir():
+                return folder.resolve()
+            self._settings.remove(key)
+            return None
+
+        def _persistent_session_root(self) -> Path | None:
+            key = "session/last_root"
+            text = str(self._settings.value(key) or "").strip()
+            if not text:
+                return None
+            if self._is_legacy_temp_output_path(text):
+                self._settings.remove(key)
+                return None
+            root = Path(text).expanduser()
+            if session_file_path(root).exists():
+                return root.resolve()
+            self._settings.remove(key)
+            return None
+
         def _restore_startup_context(self) -> bool:
-            last_session = str(self._settings.value("session/last_root") or "").strip()
-            if last_session:
-                root = Path(last_session).expanduser()
+            root = self._persistent_session_root()
+            if root is not None:
                 try:
-                    if session_file_path(root).exists():
-                        self._activate_session(root, load_session(root))
-                        return True
+                    self._activate_session(root, load_session(root))
+                    return True
                 except Exception as exc:
+                    self._settings.remove("session/last_root")
                     self._set_status(f"No se pudo restaurar la última sesión: {exc}")
 
-            last_dir = str(self._settings.value("browser/last_dir") or "").strip()
-            if last_dir:
-                folder = Path(last_dir).expanduser()
-                if folder.exists() and folder.is_dir():
-                    self._set_current_directory(folder)
-                    return True
+            folder = self._persistent_directory("browser/last_dir")
+            if folder is not None:
+                self._set_current_directory(folder)
+                return True
             return False
 
         def closeEvent(self, event) -> None:  # noqa: N802
@@ -720,7 +778,8 @@ if QtWidgets is not None:
             self._add_path_row(grid, 2, "Referencia carta JSON", self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
 
             self.profile_out_path_edit = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
-            self._hide_row_widgets(self._add_path_row(grid, 3, "Perfil ICC de salida", self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False))
+            self.path_profile_out = self.profile_out_path_edit
+            self._add_path_row(grid, 3, "Perfil ICC de salida", self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
 
             self.profile_report_out = QtWidgets.QLineEdit("/tmp/profile_report_gui.json")
             self._hide_row_widgets(self._add_path_row(grid, 4, "Reporte perfil JSON", self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False))
@@ -751,25 +810,46 @@ if QtWidgets is not None:
             self.profile_allow_fallback.setChecked(False)
             grid.addWidget(self.profile_allow_fallback, 10, 1, 1, 2)
 
+            grid.addWidget(QtWidgets.QLabel("Formato ICC"), 11, 0)
+            self.combo_profile_format = QtWidgets.QComboBox()
+            self.combo_profile_format.addItems(PROFILE_FORMAT_OPTIONS)
+            grid.addWidget(self.combo_profile_format, 11, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Tipo de perfil ICC"), 12, 0)
+            self.combo_profile_algo = QtWidgets.QComboBox()
+            for label, flag in PROFILE_ALGO_OPTIONS:
+                self.combo_profile_algo.addItem(label, flag)
+            grid.addWidget(self.combo_profile_algo, 12, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Calidad colprof"), 13, 0)
+            self.combo_profile_quality = QtWidgets.QComboBox()
+            for label, q in PROFILE_QUALITY_OPTIONS:
+                self.combo_profile_quality.addItem(label, q)
+            self.combo_profile_quality.setCurrentIndex(1)
+            grid.addWidget(self.combo_profile_quality, 13, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Args extra colprof"), 14, 0)
+            self.edit_colprof_args = QtWidgets.QLineEdit("")
+            self.edit_colprof_args.setPlaceholderText("Ejemplo: -D \"Perfil Camara Museo\"")
+            grid.addWidget(self.edit_colprof_args, 14, 1, 1, 2)
+
             label_camera = QtWidgets.QLabel("Cámara (opcional)")
-            grid.addWidget(label_camera, 11, 0)
+            grid.addWidget(label_camera, 15, 0)
             self.profile_camera = QtWidgets.QLineEdit("")
-            grid.addWidget(self.profile_camera, 11, 1, 1, 2)
+            grid.addWidget(self.profile_camera, 15, 1, 1, 2)
             label_camera.hide()
             self.profile_camera.hide()
 
             label_lens = QtWidgets.QLabel("Lente (opcional)")
-            grid.addWidget(label_lens, 12, 0)
+            grid.addWidget(label_lens, 16, 0)
             self.profile_lens = QtWidgets.QLineEdit("")
-            grid.addWidget(self.profile_lens, 12, 1, 1, 2)
+            grid.addWidget(self.profile_lens, 16, 1, 1, 2)
             label_lens.hide()
             self.profile_lens.hide()
 
-            row_generate = QtWidgets.QHBoxLayout()
-            row_generate.addWidget(self._button("Generar perfil de sesión", self._on_generate_profile))
-            grid.addLayout(row_generate, 13, 0, 1, 3)
-
             outer.addWidget(box)
+            self._advanced_raw_config = self._build_tab_raw_config("RAW global: criterios de revelado del perfil")
+            outer.addWidget(self._advanced_raw_config)
 
             manual_box = QtWidgets.QGroupBox("Marcado manual de carta")
             manual_layout = QtWidgets.QVBoxLayout(manual_box)
@@ -783,6 +863,10 @@ if QtWidgets is not None:
             self.manual_chart_points_label.setStyleSheet("font-size: 12px; color: #374151;")
             manual_layout.addWidget(self.manual_chart_points_label)
             outer.addWidget(manual_box)
+
+            row_generate = QtWidgets.QHBoxLayout()
+            row_generate.addWidget(self._button("Generar perfil de sesión", self._on_generate_profile))
+            outer.addLayout(row_generate)
 
             self.profile_summary_label = QtWidgets.QLabel("Sin perfil de sesión generado")
             self.profile_summary_label.setWordWrap(True)
@@ -901,7 +985,7 @@ if QtWidgets is not None:
             self.file_list.setMovement(QtWidgets.QListView.Static)
             self.file_list.setSpacing(8)
             self.file_list.setWordWrap(True)
-            self.file_list.setUniformItemSizes(False)
+            self.file_list.setUniformItemSizes(True)
             self.file_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
             self.file_list.itemSelectionChanged.connect(self._on_file_selection_changed)
             self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
@@ -939,7 +1023,7 @@ if QtWidgets is not None:
                 "Desactivado por defecto para evitar dominantes si el perfil no corresponde "
                 "a camara + iluminacion + receta actuales."
             )
-            self.chk_apply_profile.toggled.connect(lambda _v: self._refresh_preview())
+            self.chk_apply_profile.toggled.connect(lambda _v: self._schedule_preview_refresh())
             g.addWidget(self.chk_apply_profile, 1, 2, 1, 2)
 
             view_tools = QtWidgets.QHBoxLayout()
@@ -1014,10 +1098,8 @@ if QtWidgets is not None:
             self.config_tabs.addItem(self._scrollable_panel(self._build_tab_profile_generation()), "Calibrar sesión")
             self.config_tabs.addItem(self._scrollable_panel(self._build_tab_basic_adjustments()), "Corrección básica")
             self.config_tabs.addItem(self._scrollable_panel(self._build_tab_preview_settings()), "Detalle")
-            self._advanced_raw_config = self._build_tab_raw_config()
             self._advanced_profile_config = self._build_tab_profile_config()
-            self.config_tabs.addItem(self._scrollable_panel(self._advanced_raw_config), "RAW global")
-            self.config_tabs.addItem(self._scrollable_panel(self._advanced_profile_config), "Perfil ICC")
+            self.config_tabs.addItem(self._scrollable_panel(self._advanced_profile_config), "Perfil activo")
             self.config_tabs.addItem(self._scrollable_panel(self._build_tab_batch_config()), "Aplicar sesión")
             layout.addWidget(self.config_tabs, 1)
 
@@ -1194,8 +1276,8 @@ if QtWidgets is not None:
             grid.addWidget(self._button("Restablecer detalle", self._reset_adjustments), 15, 0, 1, 3)
             return tab
 
-        def _build_tab_raw_config(self) -> QtWidgets.QWidget:
-            tab = QtWidgets.QWidget()
+        def _build_tab_raw_config(self, title: str | None = None) -> QtWidgets.QWidget:
+            tab = QtWidgets.QGroupBox(title) if title else QtWidgets.QWidget()
             grid = QtWidgets.QGridLayout(tab)
 
             self.path_recipe = QtWidgets.QLineEdit("testdata/recipes/scientific_recipe.yml")
@@ -1217,11 +1299,12 @@ if QtWidgets is not None:
             self.combo_demosaic = QtWidgets.QComboBox()
             for label, opt in DEMOSAIC_OPTIONS:
                 self.combo_demosaic.addItem(label, opt)
+            self._sync_demosaic_capabilities()
             grid.addWidget(self.combo_demosaic, 3, 1, 1, 2)
 
             note = QtWidgets.QLabel(
-                "LibRaw/rawpy es el único motor RAW. DCB es el preset instalable de alta calidad; "
-                "AMaZE requiere una build de rawpy/LibRaw con el demosaic pack GPL3."
+                "LibRaw/rawpy es el único motor RAW. DCB es el preset instalable de alta calidad. "
+                "AMaZE queda disponible solo cuando rawpy informa DEMOSAIC_PACK_GPL3=True."
             )
             note.setWordWrap(True)
             note.setStyleSheet("font-size: 12px; color: #6b7280;")
@@ -1315,36 +1398,10 @@ if QtWidgets is not None:
             self.path_profile_active = QtWidgets.QLineEdit("/tmp/camera_profile.icc")
             self._add_path_row(grid, 0, "Perfil ICC activo (preview/export)", self.path_profile_active, file_mode=True, save_mode=False, dir_mode=False)
 
-            self.path_profile_out = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
-            self._add_path_row(grid, 1, "Perfil ICC salida (workflow)", self.path_profile_out, file_mode=False, save_mode=True, dir_mode=False)
-
-            grid.addWidget(QtWidgets.QLabel("Formato archivo"), 2, 0)
-            self.combo_profile_format = QtWidgets.QComboBox()
-            self.combo_profile_format.addItems(PROFILE_FORMAT_OPTIONS)
-            grid.addWidget(self.combo_profile_format, 2, 1, 1, 2)
-
-            grid.addWidget(QtWidgets.QLabel("Tipo de perfil ICC"), 3, 0)
-            self.combo_profile_algo = QtWidgets.QComboBox()
-            for label, flag in PROFILE_ALGO_OPTIONS:
-                self.combo_profile_algo.addItem(label, flag)
-            grid.addWidget(self.combo_profile_algo, 3, 1, 1, 2)
-
-            grid.addWidget(QtWidgets.QLabel("Calidad perfil"), 4, 0)
-            self.combo_profile_quality = QtWidgets.QComboBox()
-            for label, q in PROFILE_QUALITY_OPTIONS:
-                self.combo_profile_quality.addItem(label, q)
-            self.combo_profile_quality.setCurrentIndex(1)
-            grid.addWidget(self.combo_profile_quality, 4, 1, 1, 2)
-
-            grid.addWidget(QtWidgets.QLabel("Args extra colprof"), 5, 0)
-            self.edit_colprof_args = QtWidgets.QLineEdit("")
-            self.edit_colprof_args.setPlaceholderText("Ejemplo: -D \"Perfil Camara Museo\"")
-            grid.addWidget(self.edit_colprof_args, 5, 1, 1, 2)
-
             row = QtWidgets.QHBoxLayout()
             row.addWidget(self._button("Cargar perfil activo", self._menu_load_profile))
             row.addWidget(self._button("Usar perfil generado", self._use_generated_profile_as_active))
-            grid.addLayout(row, 6, 0, 1, 3)
+            grid.addLayout(row, 1, 0, 1, 3)
             return tab
 
         def _build_tab_batch_config(self) -> QtWidgets.QWidget:
@@ -1383,14 +1440,34 @@ if QtWidgets is not None:
 
         def _init_fs_model(self) -> None:
             self._dir_model = QtWidgets.QFileSystemModel(self)
+            for option in (
+                "DontWatchForChanges",
+                "DontResolveSymlinks",
+                "DontUseCustomDirectoryIcons",
+            ):
+                if hasattr(QtWidgets.QFileSystemModel, option):
+                    self._dir_model.setOption(getattr(QtWidgets.QFileSystemModel, option), True)
             self._dir_model.setFilter(QtCore.QDir.AllDirs | QtCore.QDir.NoDotAndDotDot)
-            root_path = "" if sys.platform.startswith("win") else "/"
-            self._dir_model.setRootPath(root_path)
-            index = self._dir_model.index(root_path)
+            root_path = self._filesystem_model_root(self._current_dir)
+            self._dir_model_root_path = root_path
+            index = self._dir_model.setRootPath(root_path)
             self.dir_tree.setModel(self._dir_model)
             self.dir_tree.setRootIndex(index)
             for c in (1, 2, 3):
                 self.dir_tree.hideColumn(c)
+
+        def _filesystem_model_root(self, folder: Path) -> str:
+            if sys.platform.startswith("win"):
+                return folder.anchor or str(folder)
+            return "/"
+
+        def _set_filesystem_model_root(self, folder: Path) -> None:
+            root_path = self._filesystem_model_root(folder)
+            if getattr(self, "_dir_model_root_path", None) == root_path:
+                return
+            self._dir_model_root_path = root_path
+            root_index = self._dir_model.setRootPath(root_path)
+            self.dir_tree.setRootIndex(root_index)
 
         def _action(self, text: str, callback, shortcut: str | None = None) -> QtGui.QAction:
             a = QtGui.QAction(text, self)
@@ -1403,6 +1480,9 @@ if QtWidgets is not None:
             b = QtWidgets.QPushButton(text)
             b.clicked.connect(callback)
             return b
+
+        def _go_home_directory(self) -> None:
+            self._set_current_directory(self._default_work_directory())
 
         def _slider(self, minimum: int, maximum: int, value: int, on_change, formatter):
             label = QtWidgets.QLabel(formatter(value))
@@ -1567,7 +1647,7 @@ if QtWidgets is not None:
         def _session_state_path_or_default(self, value: Any, default: Path) -> Path:
             text = str(value or "").strip()
             default = default.expanduser()
-            if not text:
+            if not text or self._is_legacy_temp_output_path(text):
                 return default
 
             candidate = Path(text).expanduser()
@@ -1844,10 +1924,8 @@ if QtWidgets is not None:
                 str(self._session_output_path_or_default(state.get("preview_png_path"), defaults["preview"]))
             )
             recipe_path = state.get("recipe_path")
-            if recipe_path and self._is_legacy_temp_output_path(recipe_path):
-                self.path_recipe.setText(str(defaults["calibrated_recipe"]))
-            else:
-                self.path_recipe.setText(str(recipe_path or defaults["recipe"]))
+            recipe_default = defaults["calibrated_recipe"] if defaults["calibrated_recipe"].exists() else defaults["recipe"]
+            self.path_recipe.setText(str(self._session_state_path_or_default(recipe_path, recipe_default)))
 
             profile_active = str(state.get("profile_active_path") or "").strip()
             if profile_active and not self._is_legacy_temp_output_path(profile_active):
@@ -2340,6 +2418,7 @@ if QtWidgets is not None:
             self.current_dir_label.setText(str(folder))
             self._settings.setValue("browser/last_dir", str(folder))
             self._refresh_storage_roots()
+            self._set_filesystem_model_root(folder)
             index = self._dir_model.index(str(folder))
             if index.isValid():
                 self.dir_tree.blockSignals(True)
@@ -2360,12 +2439,22 @@ if QtWidgets is not None:
             self._last_loaded_preview_key = None
             self.selected_file_label.setText("Sin archivo seleccionado")
 
-            files = [
-                p for p in sorted(folder.iterdir())
-                if p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
-            ]
             max_items = 500
-            shown = files[:max_items]
+            shown: list[Path] = []
+            truncated = False
+            try:
+                for p in folder.iterdir():
+                    if not p.is_file() or p.suffix.lower() not in BROWSABLE_EXTENSIONS:
+                        continue
+                    shown.append(p)
+                    if len(shown) >= max_items:
+                        truncated = True
+                        break
+            except OSError as exc:
+                self._log_preview(f"No se pudo listar carpeta: {exc}")
+                return
+
+            shown.sort(key=lambda p: p.name.lower())
 
             for p in shown:
                 item = QtWidgets.QListWidgetItem(p.name)
@@ -2375,63 +2464,21 @@ if QtWidgets is not None:
                 item.setIcon(self._icon_for_file(p))
                 self.file_list.addItem(item)
 
-            if len(files) > max_items:
-                rest = len(files) - max_items
-                i = QtWidgets.QListWidgetItem(f"... {rest} archivos mas")
+            if truncated:
+                i = QtWidgets.QListWidgetItem("... mas archivos no mostrados")
                 i.setFlags(QtCore.Qt.NoItemFlags)
                 self.file_list.addItem(i)
 
         def _icon_for_file(self, path: Path) -> QtGui.QIcon:
-            try:
-                st = path.stat()
-                key = f"{path}:{st.st_mtime_ns}"
-            except Exception:
-                key = str(path)
-
+            suffix = path.suffix.lower()
+            key = "raw" if suffix in RAW_EXTENSIONS else "image"
             cached = self._thumb_cache.get(key)
             if cached is not None:
                 return cached
 
-            if path.suffix.lower() in RAW_EXTENSIONS:
-                preview = extract_embedded_preview(path)
-                if preview is not None:
-                    icon = self._icon_from_linear_image(preview)
-                else:
-                    icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileIcon)
-                self._thumb_cache[key] = icon
-                return icon
-
-            try:
-                rgb = read_image(path)
-                icon = self._icon_from_linear_image(rgb)
-                self._thumb_cache[key] = icon
-                return icon
-            except Exception:
-                icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileIcon)
-                self._thumb_cache[key] = icon
-                return icon
-
-        def _icon_from_linear_image(self, rgb: np.ndarray) -> QtGui.QIcon:
-            h, w, _ = rgb.shape
-            max_side = max(h, w)
-            if max_side > 280:
-                scale = 280.0 / max_side
-                rgb = cv2.resize(
-                    rgb,
-                    (max(1, int(w * scale)), max(1, int(h * scale))),
-                    interpolation=cv2.INTER_AREA,
-                )
-            srgb = linear_to_srgb_display(rgb)
-            u8 = np.clip(np.round(srgb * 255.0), 0, 255).astype(np.uint8)
-            hh, ww, _ = u8.shape
-            qimg = QtGui.QImage(u8.data, ww, hh, 3 * ww, QtGui.QImage.Format_RGB888).copy()
-            pix = QtGui.QPixmap.fromImage(qimg).scaled(
-                132,
-                132,
-                QtCore.Qt.KeepAspectRatio,
-                QtCore.Qt.SmoothTransformation,
-            )
-            return QtGui.QIcon(pix)
+            icon = self.style().standardIcon(QtWidgets.QStyle.SP_FileIcon)
+            self._thumb_cache[key] = icon
+            return icon
 
         def _on_file_selection_changed(self) -> None:
             item = self.file_list.currentItem()
@@ -2461,6 +2508,8 @@ if QtWidgets is not None:
                 self._action_compare.blockSignals(True)
                 self._action_compare.setChecked(enabled)
                 self._action_compare.blockSignals(False)
+            if enabled:
+                self._schedule_preview_refresh()
 
         def _menu_toggle_compare(self, checked: bool) -> None:
             self.chk_compare.setChecked(checked)
@@ -2595,7 +2644,10 @@ if QtWidgets is not None:
 
         def _apply_recipe_to_controls(self, recipe: Recipe) -> None:
             self._set_combo_data(self.combo_raw_developer, recipe.raw_developer)
-            self._set_combo_data(self.combo_demosaic, recipe.demosaic_algorithm)
+            self._set_combo_data(
+                self.combo_demosaic,
+                self._supported_gui_demosaic(recipe.demosaic_algorithm, notify=True),
+            )
             self._set_combo_data(self.combo_wb_mode, recipe.white_balance_mode)
             self.edit_wb_multipliers.setText(",".join(f"{float(v):.6g}" for v in recipe.wb_multipliers))
 
@@ -2625,6 +2677,28 @@ if QtWidgets is not None:
                 self._set_combo_data(self.combo_profile_quality, "m")
                 self._set_combo_data(self.combo_profile_algo, "-as")
                 self.edit_colprof_args.setText("")
+
+        def _sync_demosaic_capabilities(self) -> None:
+            flags = rawpy_feature_flags()
+            has_gpl3 = bool(flags.get("DEMOSAIC_PACK_GPL3", False))
+            model = self.combo_demosaic.model()
+            for i in range(self.combo_demosaic.count()):
+                value = str(self.combo_demosaic.itemData(i) or "").strip().lower()
+                item = model.item(i) if hasattr(model, "item") else None
+                if item is not None:
+                    item.setEnabled(is_libraw_demosaic_supported(value))
+                if value == "amaze":
+                    suffix = "disponible" if has_gpl3 else "no disponible: requiere rawpy-demosaic/GPL3"
+                    self.combo_demosaic.setItemText(i, f"AMaZE (GPL3, {suffix})")
+
+        def _supported_gui_demosaic(self, demosaic_algorithm: str, *, notify: bool) -> str:
+            requested = str(demosaic_algorithm or "dcb").strip().lower()
+            reason = unavailable_demosaic_reason(requested)
+            if reason is None:
+                return requested
+            if notify:
+                self._log_preview(f"Aviso: {reason} Se usa DCB en la GUI hasta instalar soporte GPL.")
+            return "dcb"
 
         def _split_black_mode(self, value: str) -> tuple[str, int]:
             txt = (value or "metadata").strip().lower()
@@ -2695,7 +2769,7 @@ if QtWidgets is not None:
 
         def _on_render_control_change(self) -> None:
             if self._original_linear is not None:
-                self._refresh_preview()
+                self._schedule_preview_refresh()
 
         def _reset_basic_adjustments(self) -> None:
             self.combo_illuminant_render.setCurrentIndex(1)
@@ -2757,7 +2831,10 @@ if QtWidgets is not None:
                     recipe = load_recipe(p)
 
             recipe.raw_developer = str(self.combo_raw_developer.currentData() or self.combo_raw_developer.currentText())
-            recipe.demosaic_algorithm = str(self.combo_demosaic.currentData() or self.combo_demosaic.currentText())
+            recipe.demosaic_algorithm = self._supported_gui_demosaic(
+                str(self.combo_demosaic.currentData() or self.combo_demosaic.currentText()),
+                notify=False,
+            )
             recipe.white_balance_mode = str(self.combo_wb_mode.currentData() or self.combo_wb_mode.currentText())
             recipe.wb_multipliers = self._parse_wb_multipliers(self.edit_wb_multipliers.text(), recipe.wb_multipliers)
 
@@ -2866,6 +2943,11 @@ if QtWidgets is not None:
                 old = self._preview_cache_order.pop(0)
                 self._preview_cache.pop(old, None)
 
+        def _invalidate_preview_cache(self) -> None:
+            self._preview_cache.clear()
+            self._preview_cache_order.clear()
+            self._last_loaded_preview_key = None
+
         def _load_selected_from_timer(self) -> None:
             if self._selected_file is None:
                 return
@@ -2924,7 +3006,7 @@ if QtWidgets is not None:
 
         def _on_slider_change(self) -> None:
             if self._original_linear is not None:
-                self._refresh_preview()
+                self._schedule_preview_refresh()
 
         def _reset_adjustments(self) -> None:
             self.slider_sharpen.setValue(0)
@@ -2939,6 +3021,7 @@ if QtWidgets is not None:
         def _refresh_preview(self) -> None:
             if self._original_linear is None:
                 return
+            self._preview_refresh_timer.stop()
             try:
                 nl = self.slider_noise_luma.value() / 100.0
                 nc = self.slider_noise_color.value() / 100.0
@@ -2958,8 +3041,10 @@ if QtWidgets is not None:
                 )
                 self._adjusted_linear = adjusted
 
-                original_srgb = linear_to_srgb_display(self._original_linear)
-                self.image_original_compare.set_rgb_float_image(original_srgb)
+                compare_enabled = bool(self.chk_compare.isChecked())
+                if compare_enabled:
+                    original_srgb = linear_to_srgb_display(self._original_linear)
+                    self.image_original_compare.set_rgb_float_image(original_srgb)
 
                 result_srgb = linear_to_srgb_display(adjusted)
                 if self.chk_apply_profile.isChecked() and self.path_profile_active.text().strip():
@@ -2980,10 +3065,16 @@ if QtWidgets is not None:
 
                 self._preview_srgb = np.asarray(result_srgb, dtype=np.float32)
                 self.image_result_single.set_rgb_float_image(self._preview_srgb)
-                self.image_result_compare.set_rgb_float_image(self._preview_srgb)
+                if compare_enabled:
+                    self.image_result_compare.set_rgb_float_image(self._preview_srgb)
                 self.preview_analysis.setPlainText(preview_analysis_text(self._original_linear, adjusted))
             except Exception as exc:
                 QtWidgets.QMessageBox.warning(self, "Aviso", str(exc))
+
+        def _schedule_preview_refresh(self) -> None:
+            if self._original_linear is None:
+                return
+            self._preview_refresh_timer.start(120)
 
         def _looks_broken_profile_preview(self, image_srgb: np.ndarray) -> bool:
             x = np.clip(np.asarray(image_srgb, dtype=np.float32), 0.0, 1.0)
@@ -3045,21 +3136,18 @@ if QtWidgets is not None:
             render_adjustments = self._render_adjustment_kwargs()
 
             def task():
-                with tempfile.TemporaryDirectory(prefix="iccraw_gui_develop_") as tmp:
-                    temp_linear = Path(tmp) / "develop_linear.tiff"
-                    develop_controlled(in_path, recipe, temp_linear, None)
-                    image = read_image(temp_linear)
-                    image = self._apply_output_adjustments(
-                        image,
-                        denoise_luma=nl,
-                        denoise_color=nc,
-                        sharpen_amount=sharpen,
-                        sharpen_radius=radius,
-                        lateral_ca_red_scale=ca_red,
-                        lateral_ca_blue_scale=ca_blue,
-                        render_adjustments=render_adjustments,
-                    )
-                    write_profiled_tiff(out_path, image, recipe=recipe, profile_path=profile_path)
+                image = develop_image_array(in_path, recipe)
+                image = self._apply_output_adjustments(
+                    image,
+                    denoise_luma=nl,
+                    denoise_color=nc,
+                    sharpen_amount=sharpen,
+                    sharpen_radius=radius,
+                    lateral_ca_red_scale=ca_red,
+                    lateral_ca_blue_scale=ca_blue,
+                    render_adjustments=render_adjustments,
+                )
+                write_profiled_tiff(out_path, image, recipe=recipe, profile_path=profile_path)
                 return {"output_tiff": str(out_path)}
 
             def on_success(payload) -> None:
@@ -3153,6 +3241,59 @@ if QtWidgets is not None:
                 matches = {Path(path): detection for path, detection in self._manual_chart_detections.items()}
             return matches or None
 
+        def _pending_manual_detection_request(self, chart_files: list[Path] | None) -> dict[str, Any] | None:
+            if self._selected_file is None or self._original_linear is None or len(self._manual_chart_points) != 4:
+                return None
+
+            source = self._selected_file.expanduser().resolve()
+            if chart_files:
+                selected = {str(p.expanduser().resolve()) for p in chart_files}
+                if str(source) not in selected:
+                    return None
+
+            if str(source) in self._manual_chart_detections:
+                return None
+
+            preview_h, preview_w = self._original_linear.shape[:2]
+            return {
+                "source": source,
+                "points_preview": list(self._manual_chart_points),
+                "preview_shape": (int(preview_h), int(preview_w)),
+            }
+
+        def _build_pending_manual_detection(
+            self,
+            request: dict[str, Any],
+            *,
+            recipe: Recipe,
+            chart_type: str,
+            workdir: Path,
+        ) -> tuple[Path, Any]:
+            source = Path(str(request["source"])).expanduser().resolve()
+            points_preview = [(float(x), float(y)) for x, y in request["points_preview"]]
+            preview_h, preview_w = request["preview_shape"]
+
+            manual_dir = workdir / "manual_detections"
+            manual_dir.mkdir(parents=True, exist_ok=True)
+            if source.suffix.lower() in RAW_EXTENSIONS:
+                target_image = manual_dir / f"{source.stem}.manual_for_profile.tiff"
+                develop_controlled(source, recipe, target_image, None)
+            else:
+                target_image = source
+
+            full_image = read_image(target_image)
+            full_h, full_w = full_image.shape[:2]
+            sx = full_w / max(1, int(preview_w))
+            sy = full_h / max(1, int(preview_h))
+            corners = [(x * sx, y * sy) for x, y in points_preview]
+            detection = detect_chart_from_corners(target_image, corners=corners, chart_type=chart_type)
+
+            detection_path = manual_dir / f"{source.stem}.manual_for_profile.json"
+            overlay_path = manual_dir / f"{source.stem}.manual_for_profile.overlay.png"
+            write_json(detection_path, detection)
+            draw_detection_overlay(target_image, detection, overlay_path)
+            return source, detection
+
         def _directory_has_chart_captures(self, folder: Path) -> bool:
             try:
                 return folder.exists() and folder.is_dir() and any(
@@ -3183,6 +3324,7 @@ if QtWidgets is not None:
                     )
                     return
             manual_detections = self._manual_detections_for_profile(chart_capture_files)
+            pending_manual_detection = self._pending_manual_detection_request(chart_capture_files)
             reference_path = Path(self.path_reference.text().strip())
             profile_out = Path(self.profile_out_path_edit.text().strip())
             ext = self.combo_profile_format.currentText().strip().lower() or ".icc"
@@ -3206,6 +3348,16 @@ if QtWidgets is not None:
             self.path_profile_out.setText(str(profile_out))
 
             def task():
+                task_manual_detections = dict(manual_detections or {})
+                if pending_manual_detection is not None:
+                    source, detection = self._build_pending_manual_detection(
+                        pending_manual_detection,
+                        recipe=recipe,
+                        chart_type=chart_type,
+                        workdir=workdir,
+                    )
+                    task_manual_detections[source] = detection
+
                 reference = ReferenceCatalog.from_path(reference_path)
                 return auto_generate_profile_from_charts(
                     chart_captures_dir=charts,
@@ -3224,7 +3376,7 @@ if QtWidgets is not None:
                     allow_fallback_detection=allow_fallback_detection,
                     camera_model=camera,
                     lens_model=lens,
-                    manual_detections=manual_detections,
+                    manual_detections=task_manual_detections or None,
                     validation_holdout_count=validation_holdout_count,
                 )
 
@@ -3242,6 +3394,8 @@ if QtWidgets is not None:
                     self.path_recipe.setText(str(calibrated_recipe_path))
                     try:
                         self._apply_recipe_to_controls(load_recipe(calibrated_recipe_path))
+                        self._invalidate_preview_cache()
+                        QtCore.QTimer.singleShot(0, lambda: self._on_load_selected(show_message=False))
                     except Exception as exc:
                         self._log_preview(f"No se pudo cargar receta calibrada en la GUI: {exc}")
                 if hasattr(self, "profile_summary_label"):
@@ -3473,42 +3627,38 @@ if QtWidgets is not None:
             outputs: list[dict[str, str]] = []
             errors: list[dict[str, str]] = []
 
-            with tempfile.TemporaryDirectory(prefix="iccraw_gui_batch_") as tmp:
-                tmpdir = Path(tmp)
-                if profile_path is not None and not profile_path.exists():
-                    raise RuntimeError(f"No existe perfil ICC activo: {profile_path}")
+            if profile_path is not None and not profile_path.exists():
+                raise RuntimeError(f"No existe perfil ICC activo: {profile_path}")
 
-                for idx, src in enumerate(files, start=1):
-                    try:
-                        if src.suffix.lower() in RAW_EXTENSIONS:
-                            temp_linear = tmpdir / f"{idx:04d}_{src.stem}.tiff"
-                            develop_controlled(src, recipe, temp_linear, None)
-                            image = read_image(temp_linear)
-                        else:
-                            image = read_image(src)
+            for src in files:
+                try:
+                    if src.suffix.lower() in RAW_EXTENSIONS:
+                        image = develop_image_array(src, recipe)
+                    else:
+                        image = read_image(src)
 
-                        if apply_adjust:
-                            image = self._apply_output_adjustments(
-                                image,
-                                denoise_luma=denoise_luma,
-                                denoise_color=denoise_color,
-                                sharpen_amount=sharpen_amount,
-                                sharpen_radius=sharpen_radius,
-                                lateral_ca_red_scale=lateral_ca_red_scale,
-                                lateral_ca_blue_scale=lateral_ca_blue_scale,
-                                render_adjustments=render_adjustments,
-                            )
-
-                        out_path = out_dir / f"{src.stem}.tiff"
-                        write_profiled_tiff(
-                            out_path,
+                    if apply_adjust:
+                        image = self._apply_output_adjustments(
                             image,
-                            recipe=recipe,
-                            profile_path=profile_path if use_profile else None,
+                            denoise_luma=denoise_luma,
+                            denoise_color=denoise_color,
+                            sharpen_amount=sharpen_amount,
+                            sharpen_radius=sharpen_radius,
+                            lateral_ca_red_scale=lateral_ca_red_scale,
+                            lateral_ca_blue_scale=lateral_ca_blue_scale,
+                            render_adjustments=render_adjustments,
                         )
-                        outputs.append({"source": str(src), "output": str(out_path)})
-                    except Exception as exc:
-                        errors.append({"source": str(src), "error": str(exc)})
+
+                    out_path = out_dir / f"{src.stem}.tiff"
+                    write_profiled_tiff(
+                        out_path,
+                        image,
+                        recipe=recipe,
+                        profile_path=profile_path if use_profile else None,
+                    )
+                    outputs.append({"source": str(src), "output": str(out_path)})
+                except Exception as exc:
+                    errors.append({"source": str(src), "error": str(exc)})
 
             return {
                 "input_files": len(files),

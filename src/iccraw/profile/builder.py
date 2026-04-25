@@ -271,7 +271,9 @@ def _build_profile_with_argyll(
 
         produced = base.with_suffix(".icc")
         if not produced.exists():
-            raise RuntimeError("colprof no produjo fichero .icc")
+            produced = base.with_suffix(".icm")
+        if not produced.exists():
+            raise RuntimeError("colprof no produjo fichero .icc/.icm")
 
         shutil.copy2(produced, out_icc)
 

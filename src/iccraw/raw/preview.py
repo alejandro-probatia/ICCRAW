@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import tempfile
 
 import cv2
 import numpy as np
@@ -12,7 +11,7 @@ from ..core.recipe import load_recipe
 from ..core.utils import RAW_EXTENSIONS, read_image
 from ..profile.builder import load_profile_model
 from ..profile.export import apply_profile_matrix
-from .pipeline import develop_controlled, develop_with_libraw
+from .pipeline import develop_image_array
 
 
 def load_image_for_preview(
@@ -41,15 +40,14 @@ def load_image_for_preview(
     if fast_raw:
         image = _develop_raw_fast_preview(input_path, recipe)
         image = _downscale_for_preview(image, max_preview_side=max_preview_side)
+        image = _camera_rgb_display_balance_if_needed(image, recipe)
         return image, f"RAW previsualizado en modo rapido: {input_path.name}"
 
-    # Fallback preciso: mismo pipeline de revelado controlado.
-    with tempfile.TemporaryDirectory(prefix="iccraw_qt_preview_") as tmp:
-        out_tiff = Path(tmp) / "preview_raw.tiff"
-        develop_controlled(input_path, recipe, out_tiff, None)
-        image = read_image(out_tiff)
+    # Preview de alta calidad: mismo render que develop_controlled, sin TIFF temporal.
+    image = develop_image_array(input_path, recipe)
     image = _downscale_for_preview(image, max_preview_side=max_preview_side)
-    return image, f"RAW revelado completo para preview: {input_path.name}"
+    image = _camera_rgb_display_balance_if_needed(image, recipe)
+    return image, f"RAW revelado completo para preview de alta calidad: {input_path.name}"
 
 
 def _develop_raw_fast_preview(input_path: Path, recipe: Recipe) -> np.ndarray:
@@ -57,7 +55,7 @@ def _develop_raw_fast_preview(input_path: Path, recipe: Recipe) -> np.ndarray:
     if embedded is not None:
         return embedded
 
-    return develop_with_libraw(input_path, recipe, half_size=True)
+    return develop_image_array(input_path, recipe, half_size=True)
 
 
 def extract_embedded_preview(input_path: Path) -> np.ndarray | None:
@@ -115,6 +113,32 @@ def _downscale_for_preview(image: np.ndarray, *, max_preview_side: int) -> np.nd
     nh = max(1, int(round(h * scale)))
     resized = cv2.resize(image.astype(np.float32), (nw, nh), interpolation=cv2.INTER_AREA)
     return np.clip(resized, 0.0, 1.0).astype(np.float32)
+
+
+def _camera_rgb_display_balance_if_needed(image: np.ndarray, recipe: Recipe) -> np.ndarray:
+    output_space = str(recipe.output_space or "").strip().lower()
+    if not recipe.profiling_mode and "camera_rgb" not in output_space:
+        return image.astype(np.float32)
+
+    rgb = np.clip(image.astype(np.float32), 0.0, 1.0)
+    if rgb.ndim != 3 or rgb.shape[2] < 3:
+        return rgb
+
+    means = np.mean(rgb[..., :3], axis=(0, 1), dtype=np.float64)
+    if not np.all(np.isfinite(means)) or float(np.min(means)) <= 1e-6:
+        return rgb
+
+    if float(np.max(means) / np.min(means)) < 1.35:
+        return rgb
+
+    # Display-only neutralisation for camera-native profiling previews. The
+    # scientific render, manual detection geometry, sampling and exported TIFFs
+    # continue to use the unmodified recipe data.
+    target = float(np.median(means))
+    gains = np.clip(target / means, 0.35, 2.8).astype(np.float32)
+    balanced = rgb.copy()
+    balanced[..., :3] *= gains.reshape((1, 1, 3))
+    return np.clip(balanced, 0.0, 1.0).astype(np.float32)
 
 
 def apply_adjustments(

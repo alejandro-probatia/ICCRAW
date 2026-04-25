@@ -1,6 +1,7 @@
 from pathlib import Path
 import shutil
 import subprocess
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -57,6 +58,28 @@ def test_build_profile_generates_icc_and_sidecar(tmp_path: Path, monkeypatch):
     assert out_icc.stat().st_size > 256
     assert Path(result.output_profile_json).exists()
     assert result.metadata["profile_engine_used"] == "argyll"
+
+
+def test_argyll_builder_accepts_icm_output(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(profiling.shutil, "which", lambda name: "colprof" if name == "colprof" else None)
+
+    def fake_run(args, cwd, stdout, stderr, text):
+        Path(cwd, "camera_profile.icm").write_bytes(b"icm-profile")
+        return SimpleNamespace(returncode=0, stdout="Profile done")
+
+    monkeypatch.setattr(profiling.subprocess, "run", fake_run)
+
+    out_icc = tmp_path / "camera.icc"
+    profiling._build_profile_with_argyll(
+        out_icc=out_icc,
+        measured_rgb=np.asarray([[0.1, 0.2, 0.3]], dtype=np.float64),
+        reference_lab=np.asarray([[50.0, 0.0, 0.0]], dtype=np.float64),
+        patch_ids=["P01"],
+        description="unit",
+        extra_args=["-qm", "-as"],
+    )
+
+    assert out_icc.read_bytes() == b"icm-profile"
 
 
 @pytest.mark.skipif(shutil.which("xicclu") is None, reason="requiere xicclu/ArgyllCMS")

@@ -180,7 +180,7 @@ bash scripts/run_ui.sh
 Instalacion beta con paquete Debian:
 
 ```bash
-sudo apt install ./dist/iccraw_0.1.0~beta2_amd64.deb
+sudo apt install ./dist/iccraw_0.1.0~beta3_amd64.deb
 iccraw check-tools --strict
 iccraw-ui
 ```
@@ -208,9 +208,10 @@ Pestañas principales:
    - preview RAW rápida,
    - comparación original/resultado,
    - zoom, rotación y reencuadre por arrastre en el visor,
-   - paneles verticales de procesado: calibración, corrección básica, detalle,
-     RAW global, perfil ICC y aplicación de sesión,
-   - `Calibrar sesión`: usar la selección de miniaturas o una carpeta de cartas para generar perfil de revelado + ICC,
+   - paneles verticales de procesado: calibración con criterios RAW,
+     corrección básica, detalle, perfil activo y aplicación de sesión,
+   - `Calibrar sesión`: usar la selección de miniaturas o una carpeta de cartas,
+     ajustar criterios RAW globales y generar perfil de revelado + ICC,
    - `Corrección básica`: iluminante final, temperatura, matiz, brillo, niveles,
      contraste y curva de medios,
    - `Detalle`: eliminación de ruido de luminancia/color, nitidez y corrección
@@ -239,9 +240,9 @@ Notas de uso de preview:
 - Si el perfil activo no tiene sidecar `.profile.json` válido o genera clipping extremo en preview, la aplicación muestra la vista sin perfil y registra aviso.
 - La barra superior muestra progreso indeterminado durante carga, generación de
   perfil y revelado por lote.
-- LibRaw/rawpy es el único motor RAW; DCB es el valor por defecto instalable de
-  alta calidad. AMaZE requiere una build de `rawpy`/LibRaw con demosaic pack
-  GPL3.
+- LibRaw/rawpy es el unico motor RAW; DCB es el valor por defecto instalable.
+  AMaZE requiere `rawpy-demosaic` o una build de `rawpy`/LibRaw con demosaic
+  pack GPL3 y `DEMOSAIC_PACK_GPL3=True`.
 - `Vista -> Pantalla completa` (`F11`) y `Vista -> Restablecer distribución` permiten adaptar la interfaz a cualquier tamaño de pantalla.
 - Al abrir una sesión, las salidas operativas se fuerzan al árbol de sesión:
   `profiles/` para ICC, `config/` para reportes/recetas, `work/` para
@@ -285,7 +286,9 @@ Durante el proceso, ICCRAW produce:
 
 - Error LibRaw/rawpy:
   - comprobar que la ruta es RAW real y no fichero de ejemplo truncado,
-  - reinstalar dependencias Python con `pip install -e .`.
+  - reinstalar dependencias Python con `pip install -e .`,
+  - si se usa AMaZE, ejecutar `python scripts/check_amaze_support.py` y revisar
+    `docs/AMAZE_GPL3.md`.
 - Error `colprof`:
   - revisar que Argyll esté instalado y que la referencia de carta sea correcta.
 - Detección con baja confianza:

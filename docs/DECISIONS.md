@@ -94,3 +94,24 @@ Motivacion:
 1. la AGPL protege la reciprocidad de mejoras y uso en red,
 2. añadir clausulas "solo no comercial" romperia compatibilidad open source y reutilizacion cientifica,
 3. se prioriza seguridad juridica y compatibilidad con dependencias libres.
+
+## DEC-0007: AMaZE y demosaic packs GPL3
+
+- Estado: aceptada
+- Fecha: 2026-04-25
+
+Decision:
+
+- mantener `AGPL-3.0-or-later` como licencia del repositorio,
+- permitir AMaZE cuando el backend `rawpy` este respaldado por LibRaw con
+  `DEMOSAIC_PACK_GPL3=True`,
+- documentar `rawpy-demosaic` como backend recomendado para builds GPL3,
+- no activar ni anunciar AMaZE si la build instalada no incluye el pack GPL3.
+
+Motivacion:
+
+1. el demosaic pack GPL3 de LibRaw exige GPL3+ para el producto resultante,
+2. la AGPL del proyecto es compatible con GPL3+ y mantiene reciprocidad comunitaria,
+3. la trazabilidad forense requiere registrar el backend exacto y sus flags,
+4. la GUI debe evitar bloqueos interactivos cuando una receta antigua pide AMaZE
+   en un entorno sin soporte GPL3.

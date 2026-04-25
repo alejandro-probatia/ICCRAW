@@ -6,17 +6,20 @@ import rawpy
 import tifffile
 
 from iccraw.core.models import Recipe
+from iccraw.raw import pipeline
 from iccraw.core.utils import read_image
 from iccraw.raw.pipeline import (
     _build_libraw_postprocess_kwargs,
     _develop_image,
     _parse_int_mode_value,
+    develop_image_array,
     develop_controlled,
     libraw_demosaic_value,
 )
 
 
-def test_build_libraw_kwargs_with_amaze_fixed_wb_and_black_level():
+def test_build_libraw_kwargs_with_amaze_fixed_wb_and_black_level(monkeypatch):
+    monkeypatch.setattr(pipeline.rawpy, "flags", {"DEMOSAIC_PACK_GPL3": True})
     recipe = Recipe(
         raw_developer="libraw",
         demosaic_algorithm="amaze",
@@ -60,6 +63,12 @@ def test_libraw_demosaic_rejects_unsupported():
         libraw_demosaic_value("rcd")
 
 
+def test_libraw_demosaic_rejects_amaze_without_gpl3_pack(monkeypatch):
+    monkeypatch.setattr(pipeline.rawpy, "flags", {"DEMOSAIC_PACK_GPL3": False})
+    with pytest.raises(RuntimeError, match="GPL3"):
+        libraw_demosaic_value("amaze")
+
+
 def test_develop_image_rejects_unknown_raw_developer():
     recipe = Recipe(raw_developer="other-engine")
     with pytest.raises(RuntimeError, match="raw_developer no soportado"):
@@ -90,3 +99,28 @@ def test_develop_controlled_writes_audit_before_output_adjustments(tmp_path: Pat
 
     assert np.allclose(audit_linear, source_linear, atol=1 / 65535)
     assert not np.allclose(rendered, audit_linear, atol=1e-3)
+
+
+def test_develop_image_array_matches_develop_controlled_output(tmp_path: Path):
+    source = tmp_path / "input.tiff"
+    out = tmp_path / "out.tiff"
+
+    image = np.zeros((8, 10, 3), dtype=np.uint16)
+    image[..., 0] = 8000
+    image[..., 1] = 16000
+    image[..., 2] = 24000
+    tifffile.imwrite(str(source), image, photometric="rgb", metadata=None)
+
+    recipe = Recipe(
+        exposure_compensation=0.5,
+        tone_curve="gamma:2.2",
+        output_linear=False,
+    )
+    develop_controlled(source, recipe, out, None)
+
+    array_first = develop_image_array(source, recipe)
+    rendered = read_image(out)
+
+    assert array_first.dtype == np.float32
+    assert array_first.shape == rendered.shape
+    assert np.allclose(array_first, rendered, atol=1 / 65535)

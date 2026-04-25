@@ -123,7 +123,8 @@ Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas control
 ## Stack actual
 
 - Lenguaje: **Python** (única toolchain del proyecto).
-- Revelado RAW: **LibRaw** mediante `rawpy`, con DCB por defecto.
+- Revelado RAW: **LibRaw** mediante `rawpy`, con DCB por defecto y soporte
+  AMaZE cuando el entorno use `rawpy-demosaic`/LibRaw con GPL3.
 - Metadatos RAW enriquecidos: `rawpy` (LibRaw) + `exiftool`.
 - Detección geométrica: `OpenCV`.
 - Colorimetría y DeltaE: `colour-science`.
@@ -157,7 +158,7 @@ La beta `0.1` puede construirse como paquete `.deb` instalable:
 
 ```bash
 bash packaging/debian/build_deb.sh
-sudo apt install ./dist/iccraw_0.1.0~beta2_amd64.deb
+sudo apt install ./dist/iccraw_0.1.0~beta3_amd64.deb
 ```
 
 El paquete instala la aplicacion en `/opt/iccraw`, crea los lanzadores
@@ -245,6 +246,12 @@ En Windows:
 .\scripts\check_tools.ps1 -Strict
 ```
 
+Medicion basica de rendimiento de preview/render:
+
+```bash
+python scripts/benchmark_pipeline.py input.tiff --recipe recipe.yml --repeat 3 --out benchmark.json
+```
+
 ## Interfaz Gráfica Qt
 
 La aplicación incluye una GUI basada en **Qt/PySide6** optimizada para flujo de revelado técnico:
@@ -275,9 +282,10 @@ La interfaz principal se organiza en 3 pestañas:
     carga automáticamente en el visor,
   - preview rápido RAW/DNG (miniatura embebida / half-size) y resolución configurable,
   - visor con zoom, arrastre de reencuadre, rotación y comparación original/resultado,
-  - panel lateral por secciones verticales: calibración, corrección básica,
-    detalle, RAW global, perfil ICC y aplicación de sesión,
-  - `Calibrar sesión`: selección de una o varias capturas de carta y generación conjunta de perfil de revelado + ICC,
+  - panel lateral por secciones verticales: calibración con criterios RAW,
+    corrección básica, detalle, perfil activo y aplicación de sesión,
+  - `Calibrar sesión`: selección de una o varias capturas de carta, ajuste de
+    criterios RAW globales y generación conjunta de perfil de revelado + ICC,
   - `Corrección básica`: iluminante final, temperatura, matiz, brillo, niveles,
     contraste y curva de medios,
   - `Detalle`: ruido de luminancia, ruido cromático, nitidez y corrección de
@@ -326,8 +334,9 @@ Campos clave:
 
 Con el backend actual LibRaw/rawpy, `demosaic_algorithm` acepta valores como
 `dcb`, `dht`, `ahd`, `vng`, `ppg`, `linear` y, si la build de LibRaw/rawpy lo
-incluye, `amaze`. `dcb` es el valor por defecto porque funciona con los wheels
-estandar de `rawpy`; AMaZE requiere el demosaic pack GPL3.
+incluye, `amaze`. `dcb` es el valor por defecto instalable; AMaZE requiere
+`rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`, normalmente mediante
+`rawpy-demosaic` o una build propia de LibRaw con el demosaic pack GPL3.
 
 ## Reproducibilidad y límites
 
@@ -343,6 +352,7 @@ estandar de `rawpy`; AMaZE requiere el demosaic pack GPL3.
 - Para despliegues y redistribución, seguir:
   - [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
   - [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)
+  - [Soporte AMaZE GPL3](docs/AMAZE_GPL3.md)
 
 ## Documentación
 

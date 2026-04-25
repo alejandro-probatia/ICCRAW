@@ -10,12 +10,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 from PySide6 import QtWidgets  # noqa: E402
 
+import iccraw.gui as gui_module  # noqa: E402
+from iccraw.core.models import Recipe  # noqa: E402
 from iccraw.gui import ICCRawMainWindow  # noqa: E402
+from iccraw.raw import pipeline  # noqa: E402
 from iccraw.session import load_session  # noqa: E402
 
 
 @pytest.fixture
-def qapp():
+def qapp(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("ICCRAW_SETTINGS_DIR", str(tmp_path / "qt_settings"))
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     return app
 
@@ -32,13 +36,15 @@ def test_activate_session_migrates_legacy_temp_outputs(tmp_path: Path, monkeypat
         "metadata": {"name": "case_a"},
         "directories": directories,
         "state": {
+            "profile_charts_dir": str(tmp_path / "stale_pytest_paths" / "charts"),
             "profile_output_path": "/tmp/camera_profile_gui.icc",
             "profile_report_path": "/tmp/profile_report_gui.json",
             "profile_workdir": "/tmp/iccraw_profile_work",
             "development_profile_path": "/tmp/development_profile_gui.json",
             "calibrated_recipe_path": "/tmp/recipe_calibrated_gui.yml",
-            "recipe_path": "/tmp/recipe_calibrated_gui.yml",
+            "recipe_path": str(tmp_path / "stale_pytest_paths" / "config" / "recipe_calibrated.yml"),
             "profile_active_path": "/tmp/camera_profile_gui.icc",
+            "batch_input_dir": str(tmp_path / "stale_pytest_paths" / "raw"),
             "batch_output_dir": "/tmp/iccraw_batch_tiffs",
             "preview_png_path": "/tmp/iccraw_preview.png",
         },
@@ -55,14 +61,73 @@ def test_activate_session_migrates_legacy_temp_outputs(tmp_path: Path, monkeypat
         assert window.profile_workdir.text() == str(defaults["workdir"])
         assert window.develop_profile_out.text() == str(defaults["development_profile"])
         assert window.calibrated_recipe_out.text() == str(defaults["calibrated_recipe"])
-        assert window.path_recipe.text() == str(defaults["calibrated_recipe"])
+        assert window.path_recipe.text() == str(defaults["recipe"])
+        assert window.profile_charts_dir.text() == str(paths["charts"])
+        assert window.batch_input_dir.text() == str(paths["raw"])
         assert window.batch_out_dir.text() == str(defaults["tiff_dir"])
         assert window.path_preview_png.text() == str(defaults["preview"])
         assert window.path_profile_active.text() == ""
 
         saved_state = load_session(root)["state"]
         assert saved_state["profile_output_path"] == str(defaults["profile_out"])
-        assert saved_state["recipe_path"] == str(defaults["calibrated_recipe"])
+        assert saved_state["recipe_path"] == str(defaults["recipe"])
         assert saved_state["batch_output_dir"] == str(defaults["tiff_dir"])
+    finally:
+        window.close()
+
+
+def test_file_icons_do_not_decode_image_data(tmp_path: Path, monkeypatch, qapp):
+    image_path = tmp_path / "frame.tiff"
+    raw_path = tmp_path / "capture.dng"
+    image_path.write_bytes(b"not a real image")
+    raw_path.write_bytes(b"not a real raw")
+
+    def fail_read_image(*_args, **_kwargs):
+        raise AssertionError("file-list icons must not decode image data")
+
+    monkeypatch.setattr(gui_module, "read_image", fail_read_image)
+
+    window = ICCRawMainWindow()
+    try:
+        assert not window._icon_for_file(image_path).isNull()
+        assert not window._icon_for_file(raw_path).isNull()
+    finally:
+        window.close()
+
+
+def test_startup_memory_ignores_stale_paths_and_falls_back_to_home(tmp_path: Path, qapp):
+    settings = gui_module._make_app_settings()
+    settings.setValue("session/last_root", str(tmp_path / "missing_session"))
+    settings.setValue("browser/last_dir", str(tmp_path / "missing_dir"))
+    settings.sync()
+
+    window = ICCRawMainWindow()
+    try:
+        assert window._current_dir == Path.home().expanduser().resolve()
+        assert window._settings.value("session/last_root") is None
+        assert Path(str(window._settings.value("browser/last_dir"))).expanduser().resolve() == Path.home().resolve()
+    finally:
+        window.close()
+
+
+def test_raw_global_options_live_in_calibration_flow(qapp):
+    window = ICCRawMainWindow()
+    try:
+        panel_labels = [window.config_tabs.itemText(i) for i in range(window.config_tabs.count())]
+        assert "RAW global" not in panel_labels
+        assert "Calibrar sesión" in panel_labels
+        assert isinstance(window._advanced_raw_config, QtWidgets.QGroupBox)
+        assert window._advanced_raw_config.title().startswith("RAW global")
+    finally:
+        window.close()
+
+
+def test_gui_downgrades_amaze_when_gpl3_pack_is_missing(qapp, monkeypatch):
+    monkeypatch.setattr(pipeline.rawpy, "flags", {"DEMOSAIC_PACK_GPL3": False})
+    window = ICCRawMainWindow()
+    try:
+        window._apply_recipe_to_controls(Recipe(demosaic_algorithm="amaze"))
+        recipe = window._build_effective_recipe()
+        assert recipe.demosaic_algorithm == "dcb"
     finally:
         window.close()

@@ -21,7 +21,9 @@ pip install -e .[gui]
 sudo apt-get install -y argyll liblcms2-utils exiftool
 ```
 
-`rawpy`/LibRaw se instala como dependencia Python del proyecto.
+`rawpy`/LibRaw se instala como dependencia Python del proyecto. Para AMaZE se
+requiere una build GPL3 con `DEMOSAIC_PACK_GPL3=True`; ver
+`docs/AMAZE_GPL3.md`.
 
 Verificación:
 
@@ -69,6 +71,9 @@ Regla operativa:
 
 - no se permiten motores RAW alternativos ni mapeos silenciosos; una receta que
   pida un `raw_developer` distinto de `libraw` falla antes de procesar.
+- AMaZE requiere `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`. Si no esta
+  disponible, la CLI/backend fallan con error explicito y la GUI degrada la
+  receta interactiva a `dcb` para no bloquear la calibracion.
 
 ## Integración ArgyllCMS
 

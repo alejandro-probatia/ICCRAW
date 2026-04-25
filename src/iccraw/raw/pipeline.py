@@ -31,6 +31,9 @@ LIBRAW_DEMOSAIC_MAP = {
     "amaze": "AMAZE",
 }
 
+GPL2_DEMOSAIC_ALGORITHMS = {"afd", "lmmse", "modified_ahd", "vcd", "vcd_modified_ahd"}
+GPL3_DEMOSAIC_ALGORITHMS = {"amaze"}
+
 
 RAW_SUFFIXES = {".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".rw2", ".orf", ".pef"}
 
@@ -39,21 +42,14 @@ def develop_controlled(input_path: Path, recipe: Recipe, out_tiff: Path, audit_l
     metadata = raw_info(input_path) if input_path.suffix.lower() in RAW_SUFFIXES else _fake_metadata(input_path)
     guard = scientific_guard(recipe)
 
-    image = _develop_image(input_path, recipe)
+    image = develop_scene_linear_array(input_path, recipe)
 
     audit_path_str: str | None = None
     if audit_linear_tiff is not None:
         write_tiff16(audit_linear_tiff, image)
         audit_path_str = str(audit_linear_tiff)
 
-    if recipe.exposure_compensation != 0.0:
-        image = np.clip(image * (2.0 ** float(recipe.exposure_compensation)), 0.0, 1.0)
-
-    if recipe.tone_curve.lower() == "srgb":
-        image = _apply_srgb_oetf(image)
-    elif recipe.tone_curve.lower().startswith("gamma:"):
-        gamma = float(recipe.tone_curve.split(":", 1)[1])
-        image = np.clip(np.power(np.clip(image, 0.0, 1.0), 1.0 / gamma), 0.0, 1.0)
+    image = render_recipe_output_array(image, recipe)
 
     write_tiff16(out_tiff, image)
 
@@ -67,13 +63,43 @@ def develop_controlled(input_path: Path, recipe: Recipe, out_tiff: Path, audit_l
 
 
 def _develop_image(input_path: Path, recipe: Recipe) -> np.ndarray:
+    return develop_scene_linear_array(input_path, recipe)
+
+
+def develop_scene_linear_array(input_path: Path, recipe: Recipe, *, half_size: bool = False) -> np.ndarray:
     if input_path.suffix.lower() not in RAW_SUFFIXES:
         return read_image(input_path)
 
     developer = recipe.raw_developer.strip().lower()
     if developer not in {"", "libraw", "rawpy"}:
         raise RuntimeError(f"raw_developer no soportado: {recipe.raw_developer}. Usa 'libraw'.")
-    return develop_with_libraw(input_path, recipe, half_size=False)
+    return develop_with_libraw(input_path, recipe, half_size=half_size)
+
+
+def render_recipe_output_array(image_linear_rgb: np.ndarray, recipe: Recipe) -> np.ndarray:
+    image = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
+
+    if recipe.exposure_compensation != 0.0:
+        image = np.clip(image * (2.0 ** float(recipe.exposure_compensation)), 0.0, 1.0)
+
+    tone_curve = recipe.tone_curve.lower()
+    if tone_curve == "srgb":
+        image = _apply_srgb_oetf(image)
+    elif tone_curve.startswith("gamma:"):
+        gamma = float(tone_curve.split(":", 1)[1])
+        image = np.clip(np.power(np.clip(image, 0.0, 1.0), 1.0 / gamma), 0.0, 1.0)
+
+    return np.clip(image, 0.0, 1.0).astype(np.float32)
+
+
+def develop_image_array(
+    input_path: Path,
+    recipe: Recipe,
+    *,
+    half_size: bool = False,
+) -> np.ndarray:
+    image = develop_scene_linear_array(input_path, recipe, half_size=half_size)
+    return render_recipe_output_array(image, recipe)
 
 
 def develop_with_libraw(input_path: Path, recipe: Recipe, *, half_size: bool = False) -> np.ndarray:
@@ -132,8 +158,56 @@ def libraw_demosaic_value(demosaic_algorithm: str):
             "demosaic_algorithm no soportado por LibRaw/rawpy: "
             f"{demosaic_algorithm!r}. Valores soportados: {supported}."
         )
+    reason = unavailable_demosaic_reason(name)
+    if reason is not None:
+        raise RuntimeError(reason)
     enum_name = LIBRAW_DEMOSAIC_MAP[name]
     return getattr(rawpy.DemosaicAlgorithm, enum_name)
+
+
+def rawpy_feature_flags() -> dict[str, bool]:
+    if rawpy is None:
+        return {}
+    flags = getattr(rawpy, "flags", None)
+    if not isinstance(flags, dict):
+        return {}
+    return {str(key): bool(value) for key, value in flags.items()}
+
+
+def is_libraw_demosaic_supported(demosaic_algorithm: str) -> bool:
+    return unavailable_demosaic_reason(demosaic_algorithm) is None
+
+
+def unavailable_demosaic_reason(demosaic_algorithm: str) -> str | None:
+    if rawpy is None:
+        return "No se puede configurar demosaicing: dependencia 'rawpy' no disponible."
+
+    name = str(demosaic_algorithm or "").strip().lower()
+    if name not in LIBRAW_DEMOSAIC_MAP:
+        supported = ", ".join(sorted(LIBRAW_DEMOSAIC_MAP))
+        return (
+            "demosaic_algorithm no soportado por LibRaw/rawpy: "
+            f"{demosaic_algorithm!r}. Valores soportados: {supported}."
+        )
+
+    flags = rawpy_feature_flags()
+    if not flags:
+        return None
+    if name in GPL3_DEMOSAIC_ALGORITHMS and not flags.get("DEMOSAIC_PACK_GPL3", False):
+        return (
+            "El algoritmo AMaZE requiere el demosaic pack GPL3 de LibRaw. "
+            "Instala rawpy-demosaic o compila rawpy/LibRaw con "
+            "LIBRAW_DEMOSAIC_PACK_GPL3; la build actual informa "
+            "DEMOSAIC_PACK_GPL3=False."
+        )
+    if name in GPL2_DEMOSAIC_ALGORITHMS and not flags.get("DEMOSAIC_PACK_GPL2", False):
+        return (
+            f"El algoritmo {demosaic_algorithm} requiere el demosaic pack GPL2 de LibRaw. "
+            "Instala rawpy-demosaic o compila rawpy/LibRaw con "
+            "LIBRAW_DEMOSAIC_PACK_GPL2; la build actual informa "
+            "DEMOSAIC_PACK_GPL2=False."
+        )
+    return None
 
 
 def _libraw_wb(values: list[float] | None) -> list[float] | None:

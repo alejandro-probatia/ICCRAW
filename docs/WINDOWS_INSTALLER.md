@@ -75,7 +75,7 @@ Genera la aplicacion y despues el instalador:
 Artefacto esperado:
 
 ```text
-dist\windows\installer\ICCRAW-0.1.0b2-Setup.exe
+dist\windows\installer\ICCRAW-0.1.0b3-Setup.exe
 ```
 
 Para una preparacion de release, ejecutar con herramientas externas estrictas:
@@ -104,5 +104,9 @@ En una maquina Windows limpia:
 - La plantilla Inno Setup esta en `packaging/windows/iccraw.iss`.
 - El script `build_installer.ps1` instala los extras `dev`, `gui` e
   `installer` antes de empaquetar.
+- Para publicar un instalador con AMaZE, la wheel incluida debe informar
+  `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`. Si se usa `rawpy-demosaic` o una
+  wheel propia de LibRaw GPL3, incluir tambien los avisos GPL3/AGPL y la ruta
+  de codigo fuente correspondiente descrita en `docs/AMAZE_GPL3.md`.
 - Los binarios generados quedan en `dist\windows\`; los temporales en
   `build\windows\`.

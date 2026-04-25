@@ -18,27 +18,59 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.1.0-beta.3] - 2026-04-25
+
 ### Added
 
+- Funcion `develop_image_array` para render RAW/TIFF array-first y benchmark
+  basico de preview/render en `scripts/benchmark_pipeline.py`.
+- Script `scripts/check_amaze_support.py` para auditar si el entorno LibRaw/rawpy
+  incluye el demosaic pack GPL3 necesario para AMaZE.
 - Preparado el flujo de empaquetado Windows con scripts PowerShell,
   PyInstaller, plantilla Inno Setup y documentacion de pruebas.
+
+### Changed
+
+- Preview de alta calidad, exportacion batch y rutas GUI de revelado evitan
+  TIFF temporales cuando no son necesarios.
+- La preview RAW en modo camera RGB/perfilado aplica una normalizacion visual
+  solo para el visor, evitando dominantes verdes al marcar cartas sin alterar
+  TIFFs auditados, muestreo ni exportacion.
+- Las opciones de generacion ICC (`colprof`, calidad, formato y salida) y los
+  criterios `RAW global` se muestran dentro de `Calibrar sesion`, antes de
+  iniciar la calibracion.
+- Politica AMaZE/GPL3 documentada: ICCRAW mantiene `AGPL-3.0-or-later`, registra
+  flags de `rawpy` y solo habilita AMaZE cuando `DEMOSAIC_PACK_GPL3=True`.
 - La GUI carga automáticamente la previsualización al seleccionar miniaturas y
   añade una barra superior de progreso para tareas largas.
 - El visor permite zoom, reencuadre por arrastre y rotación de 90 grados.
-- Nuevos paneles verticales de procesado: corrección básica, detalle, RAW
-  global, perfil ICC y aplicación de sesión.
+- Nuevos paneles verticales de procesado: calibracion con criterios RAW,
+  corrección básica, detalle, perfil activo y aplicación de sesión.
 - Corrección básica de preview/lote: iluminante final, temperatura, matiz,
   brillo, niveles, contraste y curva de medios.
 - Ajustes de detalle de preview/lote: reducción de ruido de luminancia/color,
   nitidez y corrección de aberración cromática lateral.
-
-### Changed
 
 - El backend RAW pasa completamente de `dcraw` a LibRaw/rawpy, con DCB como
   demosaicing por defecto instalable y AMaZE disponible solo en builds de
   rawpy/LibRaw con demosaic pack GPL3.
 - Se eliminan botones redundantes de carga manual en el visor; la selección de
   miniatura pasa a ser la acción principal.
+
+### Fixed
+
+- Compatibilidad con ArgyllCMS en Windows cuando `colprof` genera `.icm` en
+  lugar de `.icc`.
+- El backend RAW informa de forma explicita cuando una receta pide AMaZE sin
+  demosaic pack GPL3; la GUI evita el bloqueo degradando a `dcb` con aviso.
+- La generacion de perfil desde GUI reutiliza automaticamente las cuatro
+  esquinas manuales pendientes, aunque aun no se haya guardado el JSON de
+  deteccion manual.
+- Las sesiones ya no restauran rutas temporales heredadas de ejecuciones de
+  tests como rutas operativas de cartas, receta, perfiles o lote.
+- La memoria persistente de la GUI recuerda ultima sesion/carpeta valida,
+  ignora rutas obsoletas y usa la home del usuario como directorio inicial
+  portable en Linux, macOS y Windows.
 
 ## [0.1.0-beta.2] - 2026-04-25
 

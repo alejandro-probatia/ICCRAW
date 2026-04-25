@@ -7,6 +7,7 @@ import tifffile
 from PIL import ImageCms
 
 from iccraw.core.models import Recipe
+from iccraw.core.utils import read_image
 from iccraw.profile.export import batch_develop, color_management_mode, write_profiled_tiff
 
 
@@ -61,6 +62,41 @@ def test_batch_develop_keeps_linear_audit_separate_from_final_outputs(tmp_path: 
     assert not (out_dir / "capture_01.linear.tiff").exists()
     assert (out_dir / "_linear_audit" / "capture_01.scene_linear.tiff").exists()
     assert manifest.entries[0].linear_audit_tiff == str(out_dir / "_linear_audit" / "capture_01.scene_linear.tiff")
+
+
+def test_batch_develop_writes_true_linear_audit_before_output_adjustments(tmp_path: Path):
+    raws = tmp_path / "inputs"
+    out_dir = tmp_path / "out"
+    raws.mkdir()
+    profile = tmp_path / "camera.icc"
+    profile.write_bytes(b"camera-profile-placeholder")
+
+    image = np.zeros((6, 8, 3), dtype=np.uint16)
+    image[..., 0] = 7000
+    image[..., 1] = 14000
+    image[..., 2] = 21000
+    source = raws / "capture_01.tiff"
+    tifffile.imwrite(str(source), image, photometric="rgb", metadata=None)
+
+    recipe = Recipe(
+        output_space="camera_rgb",
+        output_linear=False,
+        exposure_compensation=1.0,
+        tone_curve="srgb",
+    )
+    manifest = batch_develop(
+        raws_dir=raws,
+        recipe=recipe,
+        profile_path=profile,
+        out_dir=out_dir,
+    )
+
+    source_linear = read_image(source)
+    audit_linear = read_image(Path(manifest.entries[0].linear_audit_tiff or ""))
+    rendered = read_image(out_dir / "capture_01.tiff")
+
+    assert np.allclose(audit_linear, source_linear, atol=1 / 65535)
+    assert not np.allclose(rendered, audit_linear, atol=1e-3)
 
 
 @pytest.mark.skipif(shutil.which("tificc") is None, reason="requiere tificc/LittleCMS")

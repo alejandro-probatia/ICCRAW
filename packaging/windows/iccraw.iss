@@ -50,7 +50,10 @@ Source: "{#RootDir}\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RootDir}\CHANGELOG.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RootDir}\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RootDir}\docs\THIRD_PARTY_LICENSES.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RootDir}\docs\LEGAL_COMPLIANCE.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RootDir}\docs\AMAZE_GPL3.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RootDir}\docs\WINDOWS_INSTALLER.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RootDir}\scripts\check_amaze_support.py"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\ICCRAW"; Filename: "{app}\iccraw-ui.exe"; WorkingDir: "{app}"

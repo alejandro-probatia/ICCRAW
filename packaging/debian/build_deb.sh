@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
-DEB_VERSION="${ICCRAW_DEB_VERSION:-0.1.0~beta2}"
-APP_VERSION="${ICCRAW_APP_VERSION:-0.1.0b2}"
+DEB_VERSION="${ICCRAW_DEB_VERSION:-0.1.0~beta3}"
+APP_VERSION="${ICCRAW_APP_VERSION:-0.1.0b3}"
 ARCH="${ICCRAW_DEB_ARCH:-$(dpkg --print-architecture)}"
 PKG_NAME="iccraw"
 BUILD_ROOT="$ROOT/build/deb/${PKG_NAME}_${DEB_VERSION}_${ARCH}"
@@ -71,7 +71,10 @@ install -m 0644 "$ROOT/README.md" "$BUILD_ROOT/usr/share/doc/iccraw/README.md"
 install -m 0644 "$ROOT/CHANGELOG.md" "$BUILD_ROOT/usr/share/doc/iccraw/CHANGELOG.md"
 install -m 0644 "$ROOT/LICENSE" "$BUILD_ROOT/usr/share/doc/iccraw/LICENSE"
 install -m 0644 "$ROOT/docs/THIRD_PARTY_LICENSES.md" "$BUILD_ROOT/usr/share/doc/iccraw/THIRD_PARTY_LICENSES.md"
+install -m 0644 "$ROOT/docs/LEGAL_COMPLIANCE.md" "$BUILD_ROOT/usr/share/doc/iccraw/LEGAL_COMPLIANCE.md"
+install -m 0644 "$ROOT/docs/AMAZE_GPL3.md" "$BUILD_ROOT/usr/share/doc/iccraw/AMAZE_GPL3.md"
 install -m 0644 "$ROOT/docs/DEBIAN_PACKAGE.md" "$BUILD_ROOT/usr/share/doc/iccraw/DEBIAN_PACKAGE.md"
+install -m 0755 "$ROOT/scripts/check_amaze_support.py" "$BUILD_ROOT/usr/share/doc/iccraw/check_amaze_support.py"
 
 INSTALLED_SIZE="$(du -sk "$BUILD_ROOT" | awk '{print $1}')"
 cat > "$BUILD_ROOT/DEBIAN/control" <<EOF

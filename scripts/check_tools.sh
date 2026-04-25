@@ -37,6 +37,17 @@ check_python_module() {
 missing=0
 
 check_python_module "rawpy" || missing=1
+if [[ "$missing" -eq 0 ]]; then
+  py="python3"
+  if [[ -x ".venv/bin/python" ]]; then
+    py=".venv/bin/python"
+  fi
+  if "$py" scripts/check_amaze_support.py >/tmp/iccraw_amaze_check.json 2>/dev/null; then
+    echo "[OK] LibRaw GPL3 demosaic pack -> AMaZE disponible"
+  else
+    echo "[WARN] LibRaw GPL3 demosaic pack no disponible; AMaZE requiere rawpy-demosaic o LibRaw compilado con GPL3"
+  fi
+fi
 check_cmd "colprof" "colprof -? " || missing=1
 if command -v xicclu >/dev/null 2>&1; then
   check_cmd "xicclu" "xicclu" || missing=1
