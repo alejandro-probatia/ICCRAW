@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -93,6 +94,45 @@ def test_file_icons_do_not_decode_image_data(tmp_path: Path, monkeypatch, qapp):
         assert not window._icon_for_file(raw_path).isNull()
     finally:
         window.close()
+
+
+def test_raw_develop_layout_prioritizes_viewer_area(qapp):
+    window = ICCRawMainWindow()
+    try:
+        assert window.left_tabs.tabPosition() == QtWidgets.QTabWidget.West
+        labels = [window.left_tabs.tabText(i) for i in range(window.left_tabs.count())]
+        assert labels == ["Explorador", "Visor", "Análisis", "Log"]
+        assert window.viewer_splitter.count() == 2
+        assert window.viewer_splitter.widget(0) is window.viewer_stack
+        assert hasattr(window, "thumbnail_size_slider")
+    finally:
+        window.close()
+
+
+def test_thumbnail_size_control_resizes_file_list(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window.thumbnail_size_slider.setValue(180)
+        assert window.file_list.iconSize().width() == 180
+        assert window.file_list.gridSize().width() > 180
+        assert int(window._settings.value("view/thumbnail_size")) == 180
+    finally:
+        window.close()
+
+
+def test_image_thumbnail_payload_uses_real_preview(tmp_path: Path, qapp):
+    image_path = tmp_path / "patch.png"
+    Image.new("RGB", (96, 48), (20, 120, 220)).save(image_path)
+
+    payloads = ICCRawMainWindow._build_thumbnail_payloads([image_path], 64)
+
+    assert len(payloads) == 1
+    raw_path, key, rgb = payloads[0]
+    assert raw_path == str(image_path)
+    assert str(image_path) in key
+    assert rgb.dtype.name == "uint8"
+    assert max(rgb.shape[:2]) <= 64
+    assert rgb.shape[2] == 3
 
 
 def test_app_icon_resource_is_packaged(qapp):

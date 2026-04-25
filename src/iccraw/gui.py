@@ -14,6 +14,7 @@ import warnings
 
 import cv2
 import numpy as np
+from PIL import Image, ImageOps
 import yaml
 
 warnings.filterwarnings(
@@ -46,6 +47,7 @@ from .raw.preview import (
     apply_adjustments,
     apply_render_adjustments,
     apply_profile_preview,
+    extract_embedded_preview,
     linear_to_srgb_display,
     load_image_for_preview,
     preview_analysis_text,
@@ -65,10 +67,13 @@ except Exception:  # pragma: no cover - entorno sin GUI
 IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 BROWSABLE_EXTENSIONS = RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
 
-LAYOUT_VERSION = 3
+LAYOUT_VERSION = 4
 APP_NAME = "NexoRAW"
 ORG_NAME = "NexoRAW"
 APP_ICON_RESOURCE = "icons/nexoraw-icon.png"
+DEFAULT_THUMBNAIL_SIZE = 132
+MIN_THUMBNAIL_SIZE = 72
+MAX_THUMBNAIL_SIZE = 220
 
 
 def _app_icon_path() -> Path | None:
@@ -428,6 +433,9 @@ if QtWidgets is not None:
 
             self._threads: list[TaskThread] = []
             self._thumb_cache: dict[str, QtGui.QIcon] = {}
+            self._image_thumb_cache: dict[str, QtGui.QIcon] = {}
+            self._thumbnail_generation = 0
+            self._pending_thumbnail_paths: list[Path] = []
             self._preview_cache: dict[str, np.ndarray] = {}
             self._preview_cache_order: list[str] = []
             self._manual_chart_marking = False
@@ -455,6 +463,9 @@ if QtWidgets is not None:
             self._preview_refresh_timer = QtCore.QTimer(self)
             self._preview_refresh_timer.setSingleShot(True)
             self._preview_refresh_timer.timeout.connect(self._refresh_preview)
+            self._thumbnail_timer = QtCore.QTimer(self)
+            self._thumbnail_timer.setSingleShot(True)
+            self._thumbnail_timer.timeout.connect(self._start_pending_thumbnail_generation)
 
             self._build_ui()
             self._build_menu_bar()
@@ -570,8 +581,8 @@ if QtWidgets is not None:
         def _reset_layout_splitters(self) -> None:
             if hasattr(self, "raw_splitter"):
                 w = max(1200, int(self.width() * 0.98))
-                left = max(220, int(w * 0.15))
-                right = max(320, int(w * 0.25))
+                left = max(260, int(w * 0.16))
+                right = max(300, int(w * 0.21))
                 center = max(520, w - left - right)
                 self.raw_splitter.setSizes([left, center, right])
 
@@ -582,9 +593,8 @@ if QtWidgets is not None:
             if hasattr(self, "viewer_splitter"):
                 h = max(700, int(self.height() * 0.85))
                 self.viewer_splitter.setSizes([
-                    int(h * 0.55),
-                    int(h * 0.30),
-                    int(h * 0.15),
+                    int(h * 0.76),
+                    int(h * 0.24),
                 ])
 
         def _restore_window_settings(self) -> bool:
@@ -974,11 +984,22 @@ if QtWidgets is not None:
 
         def _build_left_pane(self) -> QtWidgets.QWidget:
             pane = QtWidgets.QWidget()
-            pane.setMinimumWidth(220)
+            pane.setMinimumWidth(260)
             layout = QtWidgets.QVBoxLayout(pane)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(6)
 
+            self.left_tabs = QtWidgets.QTabWidget()
+            self.left_tabs.setTabPosition(QtWidgets.QTabWidget.West)
+            self.left_tabs.setDocumentMode(True)
+            self.left_tabs.addTab(self._build_browser_panel(), "Explorador")
+            self.left_tabs.addTab(self._build_viewer_controls_panel(), "Visor")
+            self.left_tabs.addTab(self._build_analysis_panel(), "Análisis")
+            self.left_tabs.addTab(self._build_preview_log_panel(), "Log")
+            layout.addWidget(self.left_tabs, 1)
+            return pane
+
+        def _build_browser_panel(self) -> QtWidgets.QWidget:
             box = QtWidgets.QGroupBox("Explorador de unidades y carpetas")
             box_layout = QtWidgets.QVBoxLayout(box)
 
@@ -1000,54 +1021,23 @@ if QtWidgets is not None:
             self.dir_tree.setMinimumHeight(260)
             self.dir_tree.clicked.connect(self._on_tree_clicked)
             box_layout.addWidget(self.dir_tree, 1)
+            return box
 
-            layout.addWidget(box, 1)
-            return pane
+        def _build_viewer_controls_panel(self) -> QtWidgets.QWidget:
+            panel = QtWidgets.QWidget()
+            layout = QtWidgets.QVBoxLayout(panel)
+            layout.setContentsMargins(8, 8, 8, 8)
+            layout.setSpacing(8)
 
-        def _build_thumbnails_pane(self) -> QtWidgets.QWidget:
-            pane = QtWidgets.QWidget()
-            layout = QtWidgets.QVBoxLayout(pane)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(6)
-
-            self.file_list = QtWidgets.QListWidget()
-            self.file_list.setViewMode(QtWidgets.QListView.IconMode)
-            self.file_list.setIconSize(QtCore.QSize(132, 132))
-            self.file_list.setResizeMode(QtWidgets.QListView.Adjust)
-            self.file_list.setMovement(QtWidgets.QListView.Static)
-            self.file_list.setSpacing(8)
-            self.file_list.setWordWrap(True)
-            self.file_list.setUniformItemSizes(True)
-            self.file_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-            self.file_list.itemSelectionChanged.connect(self._on_file_selection_changed)
-            self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
-            layout.addWidget(self.file_list, 1)
-
-            row = QtWidgets.QHBoxLayout()
-            row.addWidget(self._button("Usar selección como cartas", self._use_selected_files_as_profile_charts))
-            row.addWidget(self._button("Añadir selección a cola", self._queue_add_selected))
-            layout.addLayout(row)
-            return pane
-
-        def _build_center_pane(self) -> QtWidgets.QWidget:
-            pane = QtWidgets.QWidget()
-            pane.setMinimumWidth(420)
-            layout = QtWidgets.QVBoxLayout(pane)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(6)
-
-            controls = QtWidgets.QGroupBox("Visor principal")
-            g = QtWidgets.QGridLayout(controls)
-
-            g.addWidget(QtWidgets.QLabel("Archivo actual"), 0, 0)
+            layout.addWidget(QtWidgets.QLabel("Archivo actual"))
             self.selected_file_label = QtWidgets.QLabel("Sin archivo seleccionado")
             self.selected_file_label.setWordWrap(True)
             self.selected_file_label.setStyleSheet("font-size: 12px; color: #1f2937;")
-            g.addWidget(self.selected_file_label, 0, 1, 1, 4)
+            layout.addWidget(self.selected_file_label)
 
             self.chk_compare = QtWidgets.QCheckBox("Comparar original / resultado")
             self.chk_compare.toggled.connect(self._toggle_compare)
-            g.addWidget(self.chk_compare, 1, 0, 1, 2)
+            layout.addWidget(self.chk_compare)
 
             self.chk_apply_profile = QtWidgets.QCheckBox("Aplicar perfil ICC en resultado")
             self.chk_apply_profile.setChecked(False)
@@ -1056,22 +1046,115 @@ if QtWidgets is not None:
                 "a camara + iluminacion + receta actuales."
             )
             self.chk_apply_profile.toggled.connect(lambda _v: self._schedule_preview_refresh())
-            g.addWidget(self.chk_apply_profile, 1, 2, 1, 2)
+            layout.addWidget(self.chk_apply_profile)
 
-            view_tools = QtWidgets.QHBoxLayout()
-            view_tools.addWidget(self._button("−", self._viewer_zoom_out))
+            zoom_grid = QtWidgets.QGridLayout()
+            zoom_grid.setHorizontalSpacing(6)
+            zoom_grid.setVerticalSpacing(6)
             self.viewer_zoom_label = QtWidgets.QLabel("100%")
             self.viewer_zoom_label.setAlignment(QtCore.Qt.AlignCenter)
             self.viewer_zoom_label.setMinimumWidth(52)
-            view_tools.addWidget(self.viewer_zoom_label)
-            view_tools.addWidget(self._button("+", self._viewer_zoom_in))
-            view_tools.addWidget(self._button("1:1", self._viewer_zoom_100))
-            view_tools.addWidget(self._button("↺", self._viewer_rotate_left))
-            view_tools.addWidget(self._button("↻", self._viewer_rotate_right))
-            view_tools.addWidget(self._button("Encajar", self._viewer_fit))
-            g.addLayout(view_tools, 2, 0, 1, 4)
+            zoom_grid.addWidget(self._button("-", self._viewer_zoom_out), 0, 0)
+            zoom_grid.addWidget(self.viewer_zoom_label, 0, 1)
+            zoom_grid.addWidget(self._button("+", self._viewer_zoom_in), 0, 2)
+            zoom_grid.addWidget(self._button("1:1", self._viewer_zoom_100), 1, 0)
+            zoom_grid.addWidget(self._button("Girar izq.", self._viewer_rotate_left), 1, 1)
+            zoom_grid.addWidget(self._button("Girar der.", self._viewer_rotate_right), 1, 2)
+            zoom_grid.addWidget(self._button("Encajar", self._viewer_fit), 2, 0, 1, 3)
+            layout.addLayout(zoom_grid)
+            layout.addStretch(1)
+            return panel
 
-            layout.addWidget(controls)
+        def _build_analysis_panel(self) -> QtWidgets.QWidget:
+            panel = QtWidgets.QWidget()
+            layout = QtWidgets.QVBoxLayout(panel)
+            layout.setContentsMargins(4, 4, 4, 4)
+            self.preview_analysis = QtWidgets.QPlainTextEdit()
+            self.preview_analysis.setReadOnly(True)
+            self.preview_analysis.setPlaceholderText("Analisis tecnico lineal")
+            layout.addWidget(self.preview_analysis, 1)
+            return panel
+
+        def _build_preview_log_panel(self) -> QtWidgets.QWidget:
+            panel = QtWidgets.QWidget()
+            layout = QtWidgets.QVBoxLayout(panel)
+            layout.setContentsMargins(4, 4, 4, 4)
+            self.preview_log = QtWidgets.QPlainTextEdit()
+            self.preview_log.setReadOnly(True)
+            self.preview_log.setPlaceholderText("Eventos y trazas de ejecucion")
+            layout.addWidget(self.preview_log, 1)
+            return panel
+
+        def _build_thumbnails_pane(self) -> QtWidgets.QWidget:
+            pane = QtWidgets.QWidget()
+            layout = QtWidgets.QVBoxLayout(pane)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
+
+            toolbar = QtWidgets.QHBoxLayout()
+            toolbar.setContentsMargins(4, 0, 4, 0)
+            toolbar.addWidget(QtWidgets.QLabel("Miniaturas"))
+            self.thumbnail_size_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+            self.thumbnail_size_slider.setRange(MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE)
+            self.thumbnail_size_slider.setSingleStep(8)
+            self.thumbnail_size_slider.setPageStep(16)
+            thumbnail_size = self._thumbnail_size_from_settings()
+            self.thumbnail_size_slider.setValue(thumbnail_size)
+            self.thumbnail_size_slider.valueChanged.connect(self._on_thumbnail_size_changed)
+            toolbar.addWidget(self.thumbnail_size_slider, 1)
+            self.thumbnail_size_label = QtWidgets.QLabel(f"{thumbnail_size}px")
+            self.thumbnail_size_label.setMinimumWidth(48)
+            self.thumbnail_size_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            toolbar.addWidget(self.thumbnail_size_label)
+            layout.addLayout(toolbar)
+
+            self.file_list = QtWidgets.QListWidget()
+            self.file_list.setViewMode(QtWidgets.QListView.IconMode)
+            self.file_list.setResizeMode(QtWidgets.QListView.Adjust)
+            self.file_list.setMovement(QtWidgets.QListView.Static)
+            self.file_list.setSpacing(8)
+            self.file_list.setWordWrap(True)
+            self.file_list.setUniformItemSizes(True)
+            self.file_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+            self.file_list.itemSelectionChanged.connect(self._on_file_selection_changed)
+            self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
+            self._apply_thumbnail_size(thumbnail_size)
+            layout.addWidget(self.file_list, 1)
+
+            row = QtWidgets.QHBoxLayout()
+            row.addWidget(self._button("Usar selección como cartas", self._use_selected_files_as_profile_charts))
+            row.addWidget(self._button("Añadir selección a cola", self._queue_add_selected))
+            layout.addLayout(row)
+            return pane
+
+        def _thumbnail_size_from_settings(self) -> int:
+            value = self._settings.value("view/thumbnail_size", DEFAULT_THUMBNAIL_SIZE)
+            try:
+                size = int(value)
+            except (TypeError, ValueError):
+                size = DEFAULT_THUMBNAIL_SIZE
+            return int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
+
+        def _apply_thumbnail_size(self, size: int) -> None:
+            size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
+            self.file_list.setIconSize(QtCore.QSize(size, size))
+            self.file_list.setGridSize(QtCore.QSize(size + 74, size + 46))
+            if hasattr(self, "thumbnail_size_label"):
+                self.thumbnail_size_label.setText(f"{size}px")
+
+        def _on_thumbnail_size_changed(self, size: int) -> None:
+            size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
+            self._settings.setValue("view/thumbnail_size", size)
+            self._apply_thumbnail_size(size)
+            self._set_file_list_placeholder_icons()
+            self._queue_thumbnail_generation(self._file_list_paths(), delay_ms=80)
+
+        def _build_center_pane(self) -> QtWidgets.QWidget:
+            pane = QtWidgets.QWidget()
+            pane.setMinimumWidth(420)
+            layout = QtWidgets.QVBoxLayout(pane)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
 
             self.viewer_stack = QtWidgets.QStackedWidget()
 
@@ -1095,27 +1178,14 @@ if QtWidgets is not None:
             self.viewer_stack.addWidget(self.compare_splitter)
             self.viewer_stack.setCurrentIndex(0)
 
-            tabs = QtWidgets.QTabWidget()
-            self.preview_analysis = QtWidgets.QPlainTextEdit()
-            self.preview_analysis.setReadOnly(True)
-            self.preview_analysis.setPlaceholderText("Analisis tecnico lineal")
-            tabs.addTab(self.preview_analysis, "Analisis")
-
-            self.preview_log = QtWidgets.QPlainTextEdit()
-            self.preview_log.setReadOnly(True)
-            self.preview_log.setPlaceholderText("Eventos y trazas de ejecucion")
-            tabs.addTab(self.preview_log, "Log")
-
             self.viewer_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
             self.viewer_splitter.setChildrenCollapsible(True)
             self.viewer_splitter.setHandleWidth(8)
             self.viewer_splitter.addWidget(self.viewer_stack)
             self.viewer_splitter.addWidget(self._build_thumbnails_pane())
-            self.viewer_splitter.addWidget(tabs)
-            self.viewer_splitter.setStretchFactor(0, 3)
-            self.viewer_splitter.setStretchFactor(1, 2)
-            self.viewer_splitter.setStretchFactor(2, 0)
-            self.viewer_splitter.setSizes([680, 280, 150])
+            self.viewer_splitter.setStretchFactor(0, 1)
+            self.viewer_splitter.setStretchFactor(1, 0)
+            self.viewer_splitter.setSizes([760, 240])
             layout.addWidget(self.viewer_splitter, 1)
             return pane
 
@@ -2500,6 +2570,173 @@ if QtWidgets is not None:
                 i = QtWidgets.QListWidgetItem("... mas archivos no mostrados")
                 i.setFlags(QtCore.Qt.NoItemFlags)
                 self.file_list.addItem(i)
+
+            self._queue_thumbnail_generation(shown)
+
+        def _file_list_paths(self) -> list[Path]:
+            paths: list[Path] = []
+            for row in range(self.file_list.count()):
+                item = self.file_list.item(row)
+                raw_path = item.data(QtCore.Qt.UserRole)
+                if raw_path:
+                    paths.append(Path(str(raw_path)))
+            return paths
+
+        def _set_file_list_placeholder_icons(self) -> None:
+            for row in range(self.file_list.count()):
+                item = self.file_list.item(row)
+                raw_path = item.data(QtCore.Qt.UserRole)
+                if raw_path:
+                    item.setIcon(self._icon_for_file(Path(str(raw_path))))
+
+        def _queue_thumbnail_generation(self, paths: list[Path], *, delay_ms: int = 220) -> None:
+            self._thumbnail_generation += 1
+            self._pending_thumbnail_paths = list(paths)
+            if not self._pending_thumbnail_paths:
+                self._thumbnail_timer.stop()
+                return
+            self._thumbnail_timer.start(max(0, int(delay_ms)))
+
+        def _start_pending_thumbnail_generation(self) -> None:
+            paths = [p for p in self._pending_thumbnail_paths if p.exists() and p.is_file()]
+            if not paths:
+                return
+
+            size = int(self.file_list.iconSize().width() or DEFAULT_THUMBNAIL_SIZE)
+            generation = self._thumbnail_generation
+            missing = [p for p in paths if self._thumbnail_cache_key(p, size) not in self._image_thumb_cache]
+            if not missing:
+                self._apply_cached_thumbnails(paths, size)
+                return
+
+            def task():
+                return generation, size, self._build_thumbnail_payloads(missing, size)
+
+            thread = TaskThread(task)
+            self._threads.append(thread)
+
+            def cleanup() -> None:
+                if thread in self._threads:
+                    self._threads.remove(thread)
+                thread.deleteLater()
+
+            def ok(payload) -> None:
+                try:
+                    payload_generation, payload_size, thumbnails = payload
+                    if payload_generation != self._thumbnail_generation:
+                        return
+                    for raw_path, key, rgb_u8 in thumbnails:
+                        icon = self._icon_from_thumbnail_array(rgb_u8)
+                        self._image_thumb_cache[key] = icon
+                        self._set_item_icon_for_path(Path(raw_path), icon)
+                    self._apply_cached_thumbnails(self._file_list_paths(), int(payload_size))
+                finally:
+                    cleanup()
+
+            def fail(trace: str) -> None:
+                cleanup()
+                self._log_preview(f"No se pudieron generar miniaturas: {trace.strip().splitlines()[-1] if trace.strip() else 'error'}")
+
+            thread.succeeded.connect(ok)
+            thread.failed.connect(fail)
+            thread.start()
+
+        def _apply_cached_thumbnails(self, paths: list[Path], size: int) -> None:
+            for p in paths:
+                icon = self._image_thumb_cache.get(self._thumbnail_cache_key(p, size))
+                if icon is not None:
+                    self._set_item_icon_for_path(p, icon)
+
+        def _set_item_icon_for_path(self, path: Path, icon: QtGui.QIcon) -> None:
+            target = str(path)
+            for row in range(self.file_list.count()):
+                item = self.file_list.item(row)
+                if item.data(QtCore.Qt.UserRole) == target:
+                    item.setIcon(icon)
+
+        def _thumbnail_cache_key(self, path: Path, size: int) -> str:
+            try:
+                st = path.stat()
+                stamp = f"{st.st_mtime_ns}:{st.st_size}"
+            except OSError:
+                stamp = "nostat"
+            return f"{path}|{stamp}|{int(size)}"
+
+        @staticmethod
+        def _build_thumbnail_payloads(paths: list[Path], size: int) -> list[tuple[str, str, np.ndarray]]:
+            payloads: list[tuple[str, str, np.ndarray]] = []
+            for path in paths:
+                try:
+                    rgb_u8 = NexoRawMainWindow._thumbnail_array_for_path(path, size)
+                except Exception:
+                    continue
+                if rgb_u8 is None:
+                    continue
+                payloads.append((str(path), NexoRawMainWindow._thumbnail_cache_key_for_path(path, size), rgb_u8))
+            return payloads
+
+        @staticmethod
+        def _thumbnail_cache_key_for_path(path: Path, size: int) -> str:
+            try:
+                st = path.stat()
+                stamp = f"{st.st_mtime_ns}:{st.st_size}"
+            except OSError:
+                stamp = "nostat"
+            return f"{path}|{stamp}|{int(size)}"
+
+        @staticmethod
+        def _thumbnail_array_for_path(path: Path, size: int) -> np.ndarray | None:
+            suffix = path.suffix.lower()
+            if suffix in RAW_EXTENSIONS:
+                image = extract_embedded_preview(path)
+                if image is None:
+                    return None
+                return NexoRawMainWindow._thumbnail_u8(linear_to_srgb_display(image), size)
+
+            try:
+                with Image.open(path) as img:
+                    img = ImageOps.exif_transpose(img)
+                    if "A" in img.getbands():
+                        rgba = img.convert("RGBA")
+                        base = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+                        base.alpha_composite(rgba)
+                        img = base.convert("RGB")
+                    else:
+                        img = img.convert("RGB")
+                    img.thumbnail((size, size), Image.Resampling.LANCZOS)
+                    return np.asarray(img, dtype=np.uint8).copy()
+            except Exception:
+                image = read_image(path)
+                return NexoRawMainWindow._thumbnail_u8(linear_to_srgb_display(image), size)
+
+        @staticmethod
+        def _thumbnail_u8(image_rgb: np.ndarray, size: int) -> np.ndarray:
+            rgb = np.asarray(image_rgb)
+            if rgb.ndim == 2:
+                rgb = np.repeat(rgb[..., None], 3, axis=2)
+            if rgb.shape[-1] > 3:
+                rgb = rgb[..., :3]
+            if np.issubdtype(rgb.dtype, np.integer):
+                maxv = float(np.iinfo(rgb.dtype).max)
+                rgb_f = np.clip(rgb.astype(np.float32) / maxv, 0.0, 1.0)
+            else:
+                rgb_f = np.clip(rgb.astype(np.float32), 0.0, 1.0)
+
+            h, w = int(rgb_f.shape[0]), int(rgb_f.shape[1])
+            if h <= 0 or w <= 0:
+                return np.zeros((1, 1, 3), dtype=np.uint8)
+            scale = min(float(size) / float(max(w, h)), 1.0)
+            if scale < 1.0:
+                nw = max(1, int(round(w * scale)))
+                nh = max(1, int(round(h * scale)))
+                rgb_f = cv2.resize(rgb_f, (nw, nh), interpolation=cv2.INTER_AREA)
+            return np.ascontiguousarray(np.clip(np.round(rgb_f * 255.0), 0, 255).astype(np.uint8))
+
+        def _icon_from_thumbnail_array(self, rgb_u8: np.ndarray) -> QtGui.QIcon:
+            rgb_u8 = np.ascontiguousarray(rgb_u8.astype(np.uint8))
+            h, w = int(rgb_u8.shape[0]), int(rgb_u8.shape[1])
+            qimg = QtGui.QImage(rgb_u8.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
+            return QtGui.QIcon(QtGui.QPixmap.fromImage(qimg))
 
         def _icon_for_file(self, path: Path) -> QtGui.QIcon:
             suffix = path.suffix.lower()
