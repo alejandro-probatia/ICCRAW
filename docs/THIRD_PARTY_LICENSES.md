@@ -56,7 +56,16 @@ Fecha de revision: 2026-04-23.
 - `Pillow`: HPND-like (PIL Software License).
 - `rawpy`: licencia dual LGPL-2.1/CDDL (segun LibRaw/rawpy).
 
-## 7) Regla de distribucion del proyecto
+## 7) Herramientas de empaquetado Windows
+
+- `PyInstaller`: herramienta de build para crear los ejecutables Windows.
+- `Inno Setup`: herramienta externa para generar el instalador `.exe`.
+- Politica en ICCRAW:
+  - se usan como herramientas de construccion,
+  - no se versionan binarios generados en el repositorio,
+  - revisar licencias y avisos antes de publicar una beta redistribuible.
+
+## 8) Regla de distribucion del proyecto
 
 Antes de publicar release/binarios/contenedor:
 

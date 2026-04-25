@@ -238,6 +238,13 @@ bash scripts/run_checks.sh
 iccraw check-tools --strict --out tools_report.json
 ```
 
+En Windows:
+
+```powershell
+.\scripts\run_checks.ps1
+.\scripts\check_tools.ps1 -Strict
+```
+
 ## Interfaz Gráfica Qt
 
 La aplicación incluye una GUI basada en **Qt/PySide6** optimizada para flujo de revelado técnico:
@@ -347,6 +354,7 @@ estandar de `rawpy`; AMaZE requiere el demosaic pack GPL3.
 - [Manual de Usuario](docs/MANUAL_USUARIO.md)
 - [Integración LibRaw + ArgyllCMS](docs/INTEGRACION_LIBRAW_ARGYLL.md)
 - [Paquete Debian beta](docs/DEBIAN_PACKAGE.md)
+- [Instalador Windows beta](docs/WINDOWS_INSTALLER.md)
 - [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
 - [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)
 - [Decisiones](docs/DECISIONS.md)

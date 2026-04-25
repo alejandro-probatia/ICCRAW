@@ -30,6 +30,9 @@ gui = [
 dev = [
   "pytest>=8.0",
 ]
+installer = [
+  "pyinstaller>=6.10",
+]
 
 [project.scripts]
 iccraw = "iccraw.cli:main"

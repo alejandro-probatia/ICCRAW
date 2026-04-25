@@ -20,6 +20,8 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Added
 
+- Preparado el flujo de empaquetado Windows con scripts PowerShell,
+  PyInstaller, plantilla Inno Setup y documentacion de pruebas.
 - La GUI carga automáticamente la previsualización al seleccionar miniaturas y
   añade una barra superior de progreso para tareas largas.
 - El visor permite zoom, reencuadre por arrastre y rotación de 90 grados.
