@@ -9,7 +9,7 @@ from PIL import Image
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtGui, QtWidgets  # noqa: E402
 
 import iccraw.gui as gui_module  # noqa: E402
 from iccraw.core.models import Recipe  # noqa: E402
@@ -185,6 +185,69 @@ def test_raw_thumbnail_payload_falls_back_to_half_size_raw(tmp_path: Path, monke
     assert max(rgb.shape[:2]) <= gui_module.MAX_THUMBNAIL_SIZE
     assert rgb.shape[2] == 3
     assert int(rgb[..., 2].max()) > int(rgb[..., 0].max())
+
+
+def test_selected_color_reference_images_are_marked_in_thumbnail_list(tmp_path: Path, qapp):
+    image_path = tmp_path / "reference.png"
+    Image.new("RGB", (96, 48), (20, 120, 220)).save(image_path)
+
+    window = ICCRawMainWindow()
+    try:
+        window._set_current_directory(tmp_path)
+        base_icon = window._icon_from_thumbnail_array(
+            gui_module.np.full((64, 64, 3), (48, 48, 48), dtype=gui_module.np.uint8)
+        )
+        window._image_thumb_cache[window._thumbnail_cache_key(image_path, 72)] = base_icon
+        window._apply_cached_thumbnails([image_path], 72)
+
+        item = window.file_list.item(0)
+        item.setSelected(True)
+        window.file_list.setCurrentItem(item)
+        window._use_selected_files_as_profile_charts()
+
+        assert window._profile_chart_files_or_none() == [image_path]
+        assert "Referencias colorimétricas seleccionadas: 1" in window.profile_chart_selection_label.text()
+
+        pixmap = item.icon().pixmap(window.file_list.iconSize())
+        image = pixmap.toImage().convertToFormat(QtGui.QImage.Format_RGB32)
+        color = QtGui.QColor(image.pixel(image.width() // 2, 1))
+        assert color.green() > 160
+        assert color.red() < 80
+        assert color.blue() < 140
+    finally:
+        window.close()
+
+
+def test_generate_profile_uses_explicit_color_reference_selection(tmp_path: Path, monkeypatch, qapp):
+    chart_01 = tmp_path / "chart_01.png"
+    chart_02 = tmp_path / "chart_02.png"
+    Image.new("RGB", (16, 16), (20, 120, 220)).save(chart_01)
+    Image.new("RGB", (16, 16), (220, 120, 20)).save(chart_02)
+
+    captured: dict[str, object] = {}
+
+    def fake_auto_generate_profile_from_charts(**kwargs):
+        captured.update(kwargs)
+        return {"chart_captures_used": 2}
+
+    def run_task(_label, task, _on_success):
+        captured["payload"] = task()
+
+    monkeypatch.setattr(gui_module.ReferenceCatalog, "from_path", staticmethod(lambda _path: object()))
+    monkeypatch.setattr(gui_module, "auto_generate_profile_from_charts", fake_auto_generate_profile_from_charts)
+
+    window = ICCRawMainWindow()
+    try:
+        window._start_background_task = run_task
+        window._selected_chart_files = [chart_02, chart_01]
+        window.profile_charts_dir.setText(str(tmp_path / "unused"))
+
+        window._on_generate_profile()
+
+        assert captured["chart_capture_files"] == [chart_02, chart_01]
+        assert captured["chart_captures_dir"] == tmp_path / "unused"
+    finally:
+        window.close()
 
 
 def test_app_icon_resource_is_packaged(qapp):

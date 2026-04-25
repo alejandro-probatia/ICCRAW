@@ -1132,9 +1132,9 @@ if QtWidgets is not None:
             grid = QtWidgets.QGridLayout(box)
 
             self.profile_charts_dir = QtWidgets.QLineEdit(str(self._current_dir))
-            self._add_path_row(grid, 0, "Carpeta de cartas", self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 0, "Carpeta de referencias colorimétricas", self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
 
-            self.profile_chart_selection_label = QtWidgets.QLabel("Cartas: todas las compatibles de la carpeta indicada")
+            self.profile_chart_selection_label = QtWidgets.QLabel("Referencias colorimétricas: todas las compatibles de la carpeta indicada")
             self.profile_chart_selection_label.setWordWrap(True)
             self.profile_chart_selection_label.setStyleSheet("font-size: 12px; color: #374151;")
             grid.addWidget(self.profile_chart_selection_label, 1, 0, 1, 3)
@@ -1445,7 +1445,7 @@ if QtWidgets is not None:
             layout.addWidget(self.file_list, 1)
 
             row = QtWidgets.QHBoxLayout()
-            row.addWidget(self._button("Usar selección como cartas", self._use_selected_files_as_profile_charts))
+            row.addWidget(self._button("Usar selección como referencias colorimétricas", self._use_selected_files_as_profile_charts))
             row.addWidget(self._button("Añadir selección a cola", self._queue_add_selected))
             layout.addLayout(row)
             return pane
@@ -1469,6 +1469,7 @@ if QtWidgets is not None:
             size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
             self._settings.setValue("view/thumbnail_size", size)
             self._apply_thumbnail_size(size)
+            self._refresh_color_reference_thumbnail_markers()
             self._queue_thumbnail_generation(self._file_list_paths(), delay_ms=80)
 
         def _build_center_pane(self) -> QtWidgets.QWidget:
@@ -2940,7 +2941,7 @@ if QtWidgets is not None:
                 item.setData(QtCore.Qt.UserRole, str(p))
                 item.setTextAlignment(QtCore.Qt.AlignHCenter)
                 item.setToolTip(str(p))
-                item.setIcon(self._icon_for_file(p))
+                item.setIcon(self._display_icon_for_path(p, self._icon_for_file(p)))
                 self.file_list.addItem(item)
 
             if truncated:
@@ -2964,7 +2965,8 @@ if QtWidgets is not None:
                 item = self.file_list.item(row)
                 raw_path = item.data(QtCore.Qt.UserRole)
                 if raw_path:
-                    item.setIcon(self._icon_for_file(Path(str(raw_path))))
+                    path = Path(str(raw_path))
+                    item.setIcon(self._display_icon_for_path(path, self._icon_for_file(path)))
 
         def _queue_thumbnail_generation(self, paths: list[Path], *, delay_ms: int = 220) -> None:
             self._thumbnail_generation += 1
@@ -3029,7 +3031,51 @@ if QtWidgets is not None:
             for row in range(self.file_list.count()):
                 item = self.file_list.item(row)
                 if item.data(QtCore.Qt.UserRole) == target:
-                    item.setIcon(icon)
+                    item.setIcon(self._display_icon_for_path(path, icon))
+
+        def _refresh_color_reference_thumbnail_markers(self) -> None:
+            if not hasattr(self, "file_list"):
+                return
+            icon_size = int(self.file_list.iconSize().width() or DEFAULT_THUMBNAIL_SIZE)
+            for row in range(self.file_list.count()):
+                item = self.file_list.item(row)
+                raw_path = item.data(QtCore.Qt.UserRole)
+                if not raw_path:
+                    continue
+                path = Path(str(raw_path))
+                icon = self._image_thumb_cache.get(self._thumbnail_cache_key(path, icon_size))
+                if icon is None:
+                    icon = self._icon_for_file(path)
+                item.setIcon(self._display_icon_for_path(path, icon))
+
+        def _display_icon_for_path(self, path: Path, icon: QtGui.QIcon) -> QtGui.QIcon:
+            if not self._is_color_reference_file(path):
+                return icon
+            size = int(self.file_list.iconSize().width() or DEFAULT_THUMBNAIL_SIZE)
+            size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
+            return self._icon_with_color_reference_marker(icon, size=size)
+
+        def _is_color_reference_file(self, path: Path) -> bool:
+            key = self._normalized_path_key(path)
+            return key in {self._normalized_path_key(p) for p in self._selected_chart_files}
+
+        @staticmethod
+        def _normalized_path_key(path: Path) -> str:
+            try:
+                return str(path.expanduser().resolve(strict=False)).lower()
+            except Exception:
+                return str(path).lower()
+
+        def _icon_with_color_reference_marker(self, icon: QtGui.QIcon, *, size: int) -> QtGui.QIcon:
+            pixmap = icon.pixmap(QtCore.QSize(size, size))
+            if pixmap.isNull():
+                return icon
+            marked = QtGui.QPixmap(pixmap)
+            painter = QtGui.QPainter(marked)
+            marker_h = max(3, int(round(marked.height() * 0.045)))
+            painter.fillRect(0, 0, marked.width(), marker_h, QtGui.QColor("#22c55e"))
+            painter.end()
+            return QtGui.QIcon(marked)
 
         def _thumbnail_cache_key(self, path: Path, size: int | None = None) -> str:
             try:
@@ -3939,7 +3985,8 @@ if QtWidgets is not None:
             self.profile_charts_dir.setText(str(self._current_dir))
             self._selected_chart_files = []
             self._sync_profile_chart_selection_label()
-            self._set_status(f"Directorio cartas: {self._current_dir}")
+            self._refresh_color_reference_thumbnail_markers()
+            self._set_status(f"Directorio de referencias colorimétricas: {self._current_dir}")
             self._save_active_session(silent=True)
 
         def _use_selected_files_as_profile_charts(self) -> None:
@@ -3951,7 +3998,7 @@ if QtWidgets is not None:
                 QtWidgets.QMessageBox.information(
                     self,
                     "Info",
-                    "Selecciona una o más capturas RAW/DNG/TIFF con carta ColorChecker.",
+                    "Selecciona una o más capturas RAW/DNG/TIFF como referencias colorimétricas.",
                 )
                 return
             self._selected_chart_files = sorted(set(files), key=lambda p: str(p))
@@ -3959,21 +4006,24 @@ if QtWidgets is not None:
             if len(parents) == 1:
                 self.profile_charts_dir.setText(str(next(iter(parents))))
             self._sync_profile_chart_selection_label()
-            self._set_status(f"Cartas seleccionadas: {len(self._selected_chart_files)}")
+            self._refresh_color_reference_thumbnail_markers()
+            self._set_status(f"Referencias colorimétricas seleccionadas: {len(self._selected_chart_files)}")
             self._save_active_session(silent=True)
 
         def _sync_profile_chart_selection_label(self) -> None:
             if not hasattr(self, "profile_chart_selection_label"):
                 return
             if not self._selected_chart_files:
-                self.profile_chart_selection_label.setText("Cartas: todas las compatibles de la carpeta indicada")
+                self.profile_chart_selection_label.setText("Referencias colorimétricas: todas las compatibles de la carpeta indicada")
+                self._refresh_color_reference_thumbnail_markers()
                 return
             preview = ", ".join(p.name for p in self._selected_chart_files[:4])
             if len(self._selected_chart_files) > 4:
                 preview += f" (+{len(self._selected_chart_files) - 4} más)"
             self.profile_chart_selection_label.setText(
-                f"Cartas seleccionadas: {len(self._selected_chart_files)} - {preview}"
+                f"Referencias colorimétricas seleccionadas: {len(self._selected_chart_files)} - {preview}"
             )
+            self._refresh_color_reference_thumbnail_markers()
 
         def _profile_chart_files_or_none(self) -> list[Path] | None:
             return list(self._selected_chart_files) if self._selected_chart_files else None
@@ -3993,14 +4043,16 @@ if QtWidgets is not None:
                 parents = {p.parent for p in self._selected_chart_files}
                 if len(parents) == 1:
                     self.profile_charts_dir.setText(str(next(iter(parents))))
-                self._set_status(f"Cartas tomadas de la selección: {len(self._selected_chart_files)}")
+                self._refresh_color_reference_thumbnail_markers()
+                self._set_status(f"Referencias colorimétricas tomadas de la selección: {len(self._selected_chart_files)}")
                 return list(self._selected_chart_files)
 
             if self._selected_file is not None and self._selected_file.suffix.lower() in BROWSABLE_EXTENSIONS:
                 self._selected_chart_files = [self._selected_file]
                 self.profile_charts_dir.setText(str(self._selected_file.parent))
                 self._sync_profile_chart_selection_label()
-                self._set_status(f"Carta tomada del archivo cargado: {self._selected_file.name}")
+                self._refresh_color_reference_thumbnail_markers()
+                self._set_status(f"Referencia colorimétrica tomada del archivo cargado: {self._selected_file.name}")
                 return list(self._selected_chart_files)
 
             return None
