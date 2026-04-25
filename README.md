@@ -4,10 +4,15 @@
 
 # NexoRAW
 
-NexoRAW es una aplicación open source para fotografía técnico-científica,
-documental y forense. Su objetivo es transformar una captura RAW en un flujo
-reproducible y auditable, donde cada decisión técnica queda declarada,
-registrada y puede repetirse con las mismas condiciones.
+NexoRAW es una aplicación gratuita y de código abierto para fotografía
+técnico-científica, documental y forense. Es una iniciativa de **Probatia
+Forensics SL** puesta a disposición de la comunidad como software libre:
+NexoRAW será siempre gratuito y de código abierto, con código fuente público,
+auditable y redistribuible conforme a su licencia AGPL-3.0-or-later.
+
+Su objetivo es transformar una captura RAW en un flujo reproducible y
+auditable, donde cada decisión técnica queda declarada, registrada y puede
+repetirse con las mismas condiciones.
 
 El proyecto nace para cubrir un espacio que los reveladores fotográficos
 convencionales no suelen priorizar: separar el ajuste creativo de la medición
@@ -116,6 +121,8 @@ controladas, discusión técnica y ampliación comunitaria.
 
 Mantenimiento comunitario:
 
+- Iniciativa de **Probatia Forensics SL**, mantenida como proyecto abierto,
+  gratuito y colaborativo.
 - Comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
 
 ## Estado actual (importante)
