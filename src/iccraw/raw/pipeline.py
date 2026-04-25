@@ -4,14 +4,10 @@ from pathlib import Path
 
 import numpy as np
 
-try:
-    import rawpy
-except Exception:  # pragma: no cover - dependency check emits a clearer runtime error.
-    rawpy = None
-
 from ..core.models import DevelopResult, Recipe
 from ..core.recipe import scientific_guard
 from ..core.utils import read_image, write_tiff16
+from .compat import open_rawpy, rawpy
 from .metadata import raw_info
 
 
@@ -108,7 +104,7 @@ def develop_with_libraw(input_path: Path, recipe: Recipe, *, half_size: bool = F
 
     kwargs = _build_libraw_postprocess_kwargs(recipe, half_size=half_size)
     try:
-        with rawpy.imread(str(input_path)) as raw:
+        with open_rawpy(input_path) as raw:
             image = raw.postprocess(**kwargs)
     except Exception as exc:
         raise RuntimeError(f"Fallo de decodificacion RAW con LibRaw/rawpy: {exc}") from exc

@@ -4,13 +4,13 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import rawpy
 
 from ..core.models import Recipe
 from ..core.recipe import load_recipe
 from ..core.utils import RAW_EXTENSIONS, read_image
 from ..profile.builder import load_profile_model
 from ..profile.export import apply_profile_matrix
+from .compat import open_rawpy, rawpy
 from .pipeline import develop_image_array
 
 
@@ -60,7 +60,7 @@ def _develop_raw_fast_preview(input_path: Path, recipe: Recipe) -> np.ndarray:
 
 def extract_embedded_preview(input_path: Path) -> np.ndarray | None:
     try:
-        with rawpy.imread(str(input_path)) as raw:
+        with open_rawpy(input_path) as raw:
             thumb = raw.extract_thumb()
     except Exception:
         return None

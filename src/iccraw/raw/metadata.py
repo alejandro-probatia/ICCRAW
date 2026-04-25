@@ -6,11 +6,7 @@ import subprocess
 from typing import Any
 
 from ..core.external import external_tool_path
-
-try:
-    import rawpy
-except Exception:  # pragma: no cover - optional dependency at runtime.
-    rawpy = None
+from .compat import open_rawpy, rawpy
 
 from ..core.models import RawMetadata
 from ..core.utils import sha256_file
@@ -25,7 +21,7 @@ def raw_info(path: Path) -> RawMetadata:
         return _fallback_metadata(path, exif)
 
     try:
-        with rawpy.imread(str(path)) as raw:
+        with open_rawpy(path) as raw:
             cfa_pattern = _cfa_name(raw)
             wb = raw.camera_whitebalance.tolist() if raw.camera_whitebalance is not None else None
             black_levels = raw.black_level_per_channel.tolist() if raw.black_level_per_channel is not None else None

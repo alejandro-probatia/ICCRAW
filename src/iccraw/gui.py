@@ -55,6 +55,7 @@ from .raw.preview import (
     preview_analysis_text,
     tone_curve_lut,
 )
+from .raw.compat import open_rawpy, rawpy
 from .reporting import check_external_tools
 from .session import create_session, ensure_session_structure, load_session, save_session, session_file_path
 from .workflow import auto_generate_profile_from_charts
@@ -3182,9 +3183,9 @@ if QtWidgets is not None:
         @staticmethod
         def _rawpy_thumbnail_u8(path: Path) -> np.ndarray | None:
             try:
-                import rawpy
-
-                with rawpy.imread(str(path)) as raw:
+                if rawpy is None:
+                    return None
+                with open_rawpy(path) as raw:
                     return raw.postprocess(
                         half_size=True,
                         use_camera_wb=True,
@@ -3197,9 +3198,9 @@ if QtWidgets is not None:
                     )
             except Exception:
                 try:
-                    import rawpy
-
-                    with rawpy.imread(str(path)) as raw:
+                    if rawpy is None:
+                        return None
+                    with open_rawpy(path) as raw:
                         return raw.postprocess(
                             half_size=True,
                             use_camera_wb=False,
