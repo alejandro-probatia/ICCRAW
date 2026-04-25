@@ -1,0 +1,82 @@
+name: Build rawpy-demosaic Windows wheel
+
+on:
+  workflow_dispatch:
+    inputs:
+      python-version:
+        description: "CPython version for the Windows wheel"
+        required: true
+        default: "3.12"
+      rawpy-demosaic-ref:
+        description: "rawpy-demosaic git ref"
+        required: true
+        default: "main"
+
+jobs:
+  windows-wheel:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout ICCRAW
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          architecture: x64
+
+      - name: Clone rawpy-demosaic
+        shell: pwsh
+        run: |
+          git clone --recursive https://github.com/exfab/rawpy-demosaic.git tmp/rawpy-demosaic
+          git -C tmp/rawpy-demosaic checkout "${{ inputs['rawpy-demosaic-ref'] }}"
+          git -C tmp/rawpy-demosaic submodule update --init --recursive
+          New-Item -ItemType Directory -Force -Path tmp/rawpy-demosaic-build-info | Out-Null
+          git -C tmp/rawpy-demosaic rev-parse HEAD | Out-File -Encoding ascii tmp/rawpy-demosaic-build-info/source-commit.txt
+          git -C tmp/rawpy-demosaic submodule status | Out-File -Encoding ascii tmp/rawpy-demosaic-build-info/submodules.txt
+
+      - name: Build wheel
+        shell: pwsh
+        working-directory: tmp/rawpy-demosaic
+        env:
+          USE_CONDA: "0"
+          PYTHON_VERSION: ${{ inputs.python-version }}
+          PYTHON_ARCH: x86_64
+          NUMPY_VERSION: "2.2.*"
+        run: |
+          .\.github\scripts\build-windows.ps1
+
+      - name: Smoke AMaZE support
+        shell: pwsh
+        run: |
+          $wheel = Get-ChildItem -LiteralPath tmp\rawpy-demosaic\dist -Filter "rawpy_demosaic-*.whl" | Select-Object -First 1
+          if (-not $wheel) {
+            throw "No rawpy-demosaic wheel was produced"
+          }
+          python -m venv tmp\amaze-smoke
+          .\tmp\amaze-smoke\Scripts\python.exe -m pip install --upgrade pip
+          .\tmp\amaze-smoke\Scripts\python.exe -m pip install $wheel.FullName
+          @'
+          import json
+          import rawpy
+
+          payload = {
+              "rawpy": getattr(rawpy, "__version__", "unknown"),
+              "libraw": getattr(rawpy, "libraw_version", None),
+              "flags": getattr(rawpy, "flags", {}),
+              "amaze_supported": bool(getattr(rawpy, "flags", {}).get("DEMOSAIC_PACK_GPL3", False)),
+          }
+          print(json.dumps(payload, indent=2, default=str))
+          assert payload["amaze_supported"], payload
+          '@ | .\tmp\amaze-smoke\Scripts\python.exe -
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rawpy-demosaic-${{ inputs.python-version }}-win-amd64
+          path: |
+            tmp/rawpy-demosaic/dist/*.whl
+            tmp/rawpy-demosaic-build-info/*.txt
+          if-no-files-found: error

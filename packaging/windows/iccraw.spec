@@ -2,17 +2,18 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 
 root = Path(SPECPATH).resolve().parents[1]
 datas = collect_data_files("iccraw.resources")
 hiddenimports = collect_submodules("iccraw")
+rawpy_binaries = collect_dynamic_libs("rawpy")
 
 a_cli = Analysis(
     [str(root / "packaging" / "windows" / "launcher_cli.py")],
     pathex=[str(root)],
-    binaries=[],
+    binaries=rawpy_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -45,7 +46,7 @@ cli = EXE(
 a_gui = Analysis(
     [str(root / "packaging" / "windows" / "launcher_gui.py")],
     pathex=[str(root)],
-    binaries=[],
+    binaries=rawpy_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

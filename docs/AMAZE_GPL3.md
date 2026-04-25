@@ -52,6 +52,26 @@ LIBRAW_DEMOSAIC_PACK_GPL3
 La wheel resultante y el instalador de ICCRAW deben incluir avisos de licencia
 GPL3/AGPL y una forma clara de obtener el código fuente correspondiente.
 
+ICCRAW incluye un workflow manual de GitHub Actions para construir la wheel
+Windows de `rawpy-demosaic` con MSVC:
+
+```text
+Build rawpy-demosaic Windows wheel
+```
+
+Una vez descargada la wheel:
+
+```powershell
+.\scripts\install_amaze_backend.ps1 -Wheel .\tmp\wheels\rawpy_demosaic-0.26.0-cp312-cp312-win_amd64.whl
+.\.venv\Scripts\python.exe -m iccraw check-amaze
+```
+
+Para empaquetar Windows con AMaZE:
+
+```powershell
+.\packaging\windows\build_installer.ps1 -RawpyDemosaicWheel .\tmp\wheels\rawpy_demosaic-0.26.0-cp312-cp312-win_amd64.whl -RequireAmaze
+```
+
 ## Comprobación operativa
 
 ICCRAW no infiere soporte AMaZE por la presencia del enum

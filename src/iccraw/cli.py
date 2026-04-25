@@ -33,7 +33,7 @@ from .profile.export import batch_develop
 from .qa_compare import compare_qa_reports
 from .raw.metadata import raw_info
 from .raw.pipeline import develop_controlled
-from .reporting import check_external_tools, gather_run_context
+from .reporting import check_amaze_backend, check_external_tools, gather_run_context
 from .version import __version__
 from .workflow import auto_profile_batch
 
@@ -155,6 +155,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Devuelve codigo 2 si falta una herramienta externa requerida",
     )
+
+    s = sub.add_parser("check-amaze")
+    s.add_argument("--out", default=None, help="JSON de salida opcional")
 
     return p
 
@@ -307,6 +310,13 @@ def main(argv: list[str] | None = None) -> int:
             if args.strict and result.get("status") != "ok":
                 return 2
             return 0
+
+        if args.command == "check-amaze":
+            result = check_amaze_backend()
+            if args.out:
+                write_json(Path(args.out), result)
+            print(json.dumps(result, indent=2))
+            return 0 if result.get("amaze_supported") else 2
 
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

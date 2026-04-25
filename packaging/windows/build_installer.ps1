@@ -8,7 +8,10 @@ param(
   [string]$OutputRoot = "",
   [string]$ArgyllRoot = "",
   [string]$ExifToolRoot = "",
-  [string]$LcmsBin = ""
+  [string]$LcmsBin = "",
+  [string]$RawpyDemosaicWheel = "",
+  [string]$RawpyDemosaicSource = "",
+  [switch]$RequireAmaze
 )
 
 $ErrorActionPreference = "Stop"
@@ -176,6 +179,85 @@ function Copy-ExternalTools {
   Write-Host "Herramientas externas empaquetadas en: $toolsRoot"
 }
 
+function Install-AmazeBackend {
+  if ([string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
+    return
+  }
+
+  if (-not (Test-Path $RawpyDemosaicWheel)) {
+    throw "No existe la wheel rawpy-demosaic indicada: $RawpyDemosaicWheel"
+  }
+
+  $wheelPath = (Resolve-Path $RawpyDemosaicWheel).Path
+  Invoke-Native "Desinstalar backend RAW base" $Python @("-m", "pip", "uninstall", "-y", "rawpy", "rawpy-demosaic")
+  Invoke-Native "Instalar backend AMaZE GPL3" $Python @("-m", "pip", "install", "--force-reinstall", $wheelPath)
+}
+
+function Test-AmazeBackend {
+  if (-not $RequireAmaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
+    return
+  }
+
+  Invoke-Native "Verificar soporte AMaZE" $Python @("scripts\check_amaze_support.py")
+}
+
+function Copy-RawpyDemosaicLegal {
+  param([string]$AppBuildDir)
+
+  if (-not $RequireAmaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
+    return
+  }
+
+  $dest = Join-Path $AppBuildDir "docs\third_party\rawpy-demosaic"
+  New-Item -ItemType Directory -Force -Path $dest | Out-Null
+
+  if (-not [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel) -and (Test-Path $RawpyDemosaicWheel)) {
+    $wheelPath = (Resolve-Path $RawpyDemosaicWheel).Path
+    $wheelHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $wheelPath).Hash
+  } else {
+    $wheelPath = $null
+    $wheelHash = $null
+  }
+
+  $sourcePath = $RawpyDemosaicSource
+  if ([string]::IsNullOrWhiteSpace($sourcePath)) {
+    $sourcePath = Join-Path $Root "tmp\rawpy-demosaic"
+  }
+  if (Test-Path $sourcePath) {
+    $sourcePath = (Resolve-Path $sourcePath).Path
+    foreach ($file in @("LICENSE", "LICENSE.LibRaw", "README.md")) {
+      $path = Join-Path $sourcePath $file
+      if (Test-Path $path) {
+        Copy-Item -LiteralPath $path -Destination (Join-Path $dest $file) -Force
+      }
+    }
+    $commit = (& git -C $sourcePath rev-parse HEAD 2>$null)
+    $submodules = (& git -C $sourcePath submodule status 2>$null)
+    if ($submodules) {
+      $submodules | Out-File -FilePath (Join-Path $dest "submodules.txt") -Encoding utf8
+    }
+  } else {
+    $sourcePath = $null
+    $commit = $null
+  }
+
+  $checkJson = (& $Python "scripts\check_amaze_support.py")
+  if ($LASTEXITCODE -ne 0) {
+    throw "No se pudo registrar AMaZE porque check_amaze_support.py fallo."
+  }
+  $check = $checkJson | ConvertFrom-Json
+
+  $metadata = [ordered]@{
+    rawpy_demosaic_wheel = $wheelPath
+    rawpy_demosaic_wheel_sha256 = $wheelHash
+    rawpy_demosaic_source = $sourcePath
+    rawpy_demosaic_source_commit = $commit
+    source_url = "https://github.com/exfab/rawpy-demosaic"
+    runtime_check = $check
+  }
+  $metadata | ConvertTo-Json -Depth 8 | Out-File -FilePath (Join-Path $dest "build-metadata.json") -Encoding utf8
+}
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = (Resolve-Path (Join-Path $ScriptDir "..\..")).Path
 
@@ -196,6 +278,8 @@ if (-not (Test-Path $Python)) {
 }
 
 Invoke-Native "Instalar dependencias de empaquetado" $Python @("-m", "pip", "install", "-e", ".[dev,gui,installer]")
+Install-AmazeBackend
+Test-AmazeBackend
 
 if (-not $SkipTests) {
   Invoke-Native "Ejecutar tests" $Python @("-m", "pytest")
@@ -240,10 +324,14 @@ Invoke-Native "Construir aplicacion con PyInstaller" $Python @(
 )
 
 Copy-ExternalTools -AppBuildDir $AppBuildDir
+Copy-RawpyDemosaicLegal -AppBuildDir $AppBuildDir
 
 Invoke-Native "Smoke CLI empaquetada" (Join-Path $AppBuildDir "iccraw.exe") @("--version")
 Invoke-Native "Smoke ayuda CLI empaquetada" (Join-Path $AppBuildDir "iccraw.exe") @("--help")
 Invoke-Native "Smoke herramientas empaquetadas" (Join-Path $AppBuildDir "iccraw.exe") @("check-tools", "--strict")
+if ($RequireAmaze) {
+  Invoke-Native "Smoke AMaZE empaquetado" (Join-Path $AppBuildDir "iccraw.exe") @("check-amaze")
+}
 
 if (-not $NoInstaller) {
   $Iscc = Resolve-Iscc

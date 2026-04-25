@@ -123,6 +123,19 @@ def check_external_tools() -> dict[str, Any]:
     }
 
 
+def check_amaze_backend() -> dict[str, Any]:
+    flags = rawpy_feature_flags()
+    supported = bool(flags.get("DEMOSAIC_PACK_GPL3", False))
+    return {
+        "status": "ok" if supported else "missing_gpl3",
+        "rawpy": _safe_import_version("rawpy"),
+        "rawpy_distribution": _rawpy_distribution_version(),
+        "libraw": _libraw_version(),
+        "rawpy_flags": flags,
+        "amaze_supported": supported,
+    }
+
+
 def _check_external_tool(spec: dict[str, Any]) -> ExternalToolCheck:
     commands = [str(c) for c in spec["commands"]]
     selected = next((command for command in commands if external_tool_path(command)), None)

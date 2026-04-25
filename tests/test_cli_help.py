@@ -12,6 +12,7 @@ def test_parser_has_expected_commands():
     assert "auto-profile-batch" in text
     assert "compare-qa-reports" in text
     assert "check-tools" in text
+    assert "check-amaze" in text
 
 
 def test_parser_has_version_option(capsys):

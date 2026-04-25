@@ -57,3 +57,16 @@ def test_check_external_tools_reports_missing_required(monkeypatch):
     assert "argyll-colprof" in result["failing_required"]
     assert all(not tool["available"] for tool in result["tools"])
     assert all(not tool["ok"] for tool in result["tools"])
+
+
+def test_check_amaze_backend_reports_gpl3_support(monkeypatch):
+    monkeypatch.setattr(reporting, "rawpy_feature_flags", lambda: {"DEMOSAIC_PACK_GPL3": True})
+    monkeypatch.setattr(reporting, "_safe_import_version", lambda _module: "0.26.0")
+    monkeypatch.setattr(reporting, "_rawpy_distribution_version", lambda: "rawpy-demosaic==0.26.0")
+    monkeypatch.setattr(reporting, "_libraw_version", lambda: "0.22.0")
+
+    result = reporting.check_amaze_backend()
+
+    assert result["status"] == "ok"
+    assert result["amaze_supported"] is True
+    assert result["rawpy_distribution"] == "rawpy-demosaic==0.26.0"

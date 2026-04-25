@@ -8,16 +8,15 @@ un instalador Windows de ICCRAW.
 El instalador Windows empaqueta la aplicacion Python con PyInstaller y genera un
 `.exe` instalable con Inno Setup 6.
 
-El instalador no redistribuye herramientas externas criticas. Para ejecutar el
-pipeline completo en una maquina instalada, esas herramientas deben estar en
-`PATH`:
+El instalador redistribuye la aplicacion Python y empaqueta las herramientas
+externas criticas bajo `{app}\tools\...` para que el pipeline completo funcione
+sin editar el `PATH` del sistema:
 
 - ArgyllCMS: `colprof` y `xicclu`/`icclu`.
 - ExifTool: `exiftool`.
 - LittleCMS: `tificc`.
 
-Esto mantiene separada la aplicacion de binarios externos con licencias y ciclos
-de actualizacion propios. El diagnostico se comprueba con:
+El diagnostico se comprueba con:
 
 ```powershell
 iccraw check-tools --strict
@@ -84,6 +83,36 @@ Para una preparacion de release, ejecutar con herramientas externas estrictas:
 .\packaging\windows\build_installer.ps1 -StrictExternalTools
 ```
 
+## Build con AMaZE
+
+AMaZE requiere un backend `rawpy` enlazado a LibRaw con
+`DEMOSAIC_PACK_GPL3=True`. Los wheels estandar de `rawpy` no lo incluyen.
+
+Si PyPI no ofrece una wheel compatible de `rawpy-demosaic` para el Python de
+empaquetado, usar el workflow manual:
+
+```text
+Build rawpy-demosaic Windows wheel
+```
+
+El artefacto descargado se instala en el entorno local con:
+
+```powershell
+.\scripts\install_amaze_backend.ps1 -Wheel .\tmp\wheels\rawpy_demosaic-0.26.0-cp312-cp312-win_amd64.whl
+.\.venv\Scripts\python.exe -m iccraw check-amaze
+```
+
+Para publicar un instalador que falle si AMaZE no queda activo:
+
+```powershell
+.\packaging\windows\build_installer.ps1 `
+  -RawpyDemosaicWheel .\tmp\wheels\rawpy_demosaic-0.26.0-cp312-cp312-win_amd64.whl `
+  -RequireAmaze
+```
+
+El instalador copia metadatos de build y avisos de `rawpy-demosaic` en
+`{app}\docs\third_party\rawpy-demosaic\`.
+
 ## Verificacion manual recomendada
 
 En una maquina Windows limpia:
@@ -110,9 +139,7 @@ En una maquina Windows limpia:
 - Para LittleCMS, si `tificc` no esta en `PATH`, el script acepta `-LcmsBin` o
   la variable `ICCRAW_LCMS_BIN` apuntando al directorio que contiene
   `tificc.exe` y sus DLLs.
-- Para publicar un instalador con AMaZE, la wheel incluida debe informar
-  `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`. Si se usa `rawpy-demosaic` o una
-  wheel propia de LibRaw GPL3, incluir tambien los avisos GPL3/AGPL y la ruta
-  de codigo fuente correspondiente descrita en `docs/AMAZE_GPL3.md`.
+- Para publicar un instalador con AMaZE, usar `-RequireAmaze`; la build debe
+  informar `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`.
 - Los binarios generados quedan en `dist\windows\`; los temporales en
   `build\windows\`.
