@@ -18,6 +18,23 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.1.0-beta.4] - 2026-04-25
+
+### Changed
+
+- El instalador Windows AMaZE incluye metadata de distribucion
+  `rawpy-demosaic` dentro del ejecutable PyInstaller para que
+  `iccraw check-amaze` informe el backend exacto.
+- El empaquetado Windows copia avisos/licencias de `rawpy-demosaic`, LibRaw,
+  los demosaic packs GPL2/GPL3 y RawSpeed, junto con hash de wheel y commit de
+  fuente.
+
+### Fixed
+
+- Soporte operativo de AMaZE en Windows mediante wheel GPL3 de
+  `rawpy-demosaic 0.10.1` enlazada a LibRaw 0.18.7 con
+  `DEMOSAIC_PACK_GPL3=True`.
+
 ## [0.1.0-beta.3] - 2026-04-25
 
 ### Added

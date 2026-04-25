@@ -74,7 +74,7 @@ Genera la aplicacion y despues el instalador:
 Artefacto esperado:
 
 ```text
-dist\windows\installer\ICCRAW-0.1.0b3-Setup.exe
+dist\windows\installer\ICCRAW-0.1.0b4-Setup.exe
 ```
 
 Para una preparacion de release, ejecutar con herramientas externas estrictas:

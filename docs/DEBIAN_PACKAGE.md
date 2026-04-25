@@ -2,7 +2,7 @@
 
 La beta `0.1` se distribuye como paquete Debian binario:
 
-- version de aplicacion Python: `0.1.0b3`,
+- version de aplicacion Python: `0.1.0b4`,
 - version Debian: `0.1.0~beta3`,
 - arquitectura generada: la de la maquina de build (`dpkg --print-architecture`).
 
