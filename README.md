@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/nexoraw-logo.svg" alt="NexoRAW" width="560">
+</p>
+
 # NexoRAW
 
 NexoRAW es una aplicación open source para fotografía técnico-científica,
