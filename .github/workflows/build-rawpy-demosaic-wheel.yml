@@ -71,7 +71,7 @@ jobs:
             } catch {
             }
           }
-          python -m pip install --upgrade pip "setuptools<70" wheel "numpy==1.26.4" "Cython<3"
+          python -m pip install --upgrade pip "setuptools<70" wheel "numpy==2.4.4" "Cython<3"
           python -u setup.py bdist_wheel
 
       - name: Smoke AMaZE support
