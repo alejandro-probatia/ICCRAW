@@ -14,6 +14,12 @@ Su objetivo es transformar una captura RAW en un flujo reproducible y
 auditable, donde cada decisión técnica queda declarada, registrada y puede
 repetirse con las mismas condiciones.
 
+El objetivo del proyecto es ofrecer una herramienta que respete de forma
+estricta los requisitos legales y de licencia de las librerías, herramientas y
+proyectos en los que se basa. La trazabilidad del código, las dependencias y los
+artefactos generados debe permitir auditoría técnica independiente, manteniendo
+el acceso gratuito para la comunidad científica y forense.
+
 El proyecto nace para cubrir un espacio que los reveladores fotográficos
 convencionales no suelen priorizar: separar el ajuste creativo de la medición
 colorimétrica, controlar el revelado RAW, generar perfiles de cámara por sesión
@@ -42,7 +48,9 @@ estrecho:
 - producir perfiles ICC específicos para cámara, óptica, iluminante y receta,
 - aplicar ese paquete de sesión a imágenes objetivo sin mezclar decisiones
   estéticas con decisiones de medición,
-- documentar comandos, versiones, rutas, estados de QA y artefactos generados.
+- documentar comandos, versiones, rutas, estados de QA y artefactos generados,
+- mantener un uso verificable y compatible con las licencias de sus
+  dependencias directas e indirectas.
 
 El caso de uso natural es un entorno donde importa poder justificar cómo se
 obtuvo una imagen: fotografía científica, conservación y patrimonio,
@@ -376,6 +384,9 @@ incluye, `amaze`. `dcb` es el valor por defecto instalable; AMaZE requiere
 - Licencia del proyecto: `AGPL-3.0-or-later`.
 - Objetivo del proyecto: científico, forense y comunitario sin finalidad comercial.
 - Nota legal importante: la AGPL es una licencia libre y **no** restringe el uso comercial por terceros; el objetivo no comercial se expresa como gobernanza del proyecto, no como cláusula restrictiva.
+- Compromiso del proyecto: NexoRAW debe seguir siendo gratuito, abierto,
+  auditable y respetuoso con las obligaciones legales de sus dependencias,
+  incluidas librerías, herramientas externas y proyectos de terceros.
 - Para despliegues y redistribución, seguir:
   - [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
   - [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)
