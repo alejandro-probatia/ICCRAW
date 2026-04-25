@@ -101,7 +101,7 @@ def test_raw_develop_layout_prioritizes_viewer_area(qapp):
     try:
         assert window.left_tabs.tabPosition() == QtWidgets.QTabWidget.West
         labels = [window.left_tabs.tabText(i) for i in range(window.left_tabs.count())]
-        assert labels == ["Explorador", "Visor", "Análisis", "Log"]
+        assert labels == ["Explorador", "Visor", "Análisis", "Metadatos", "Log"]
         assert window.viewer_splitter.count() == 2
         assert window.viewer_splitter.widget(0) is window.viewer_stack
         assert hasattr(window, "thumbnail_size_slider")

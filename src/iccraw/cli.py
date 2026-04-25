@@ -27,6 +27,7 @@ from .chart.sampling import (
 )
 from .core.models import to_json_dict, write_json
 from .core.recipe import load_recipe, save_recipe
+from .metadata_viewer import inspect_file_metadata
 from .profile.development import build_development_profile
 from .profile.builder import build_profile, validate_profile, write_samples_cgats
 from .profile.export import batch_develop
@@ -65,6 +66,11 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
 
     s = sub.add_parser("raw-info")
     s.add_argument("input")
+
+    s = sub.add_parser("metadata")
+    s.add_argument("input", help="Archivo RAW/TIFF/imagen a inspeccionar")
+    s.add_argument("--out", default=None, help="JSON de salida opcional")
+    s.add_argument("--no-c2pa", action="store_true", help="No intenta leer manifiestos C2PA")
 
     s = sub.add_parser("develop")
     s.add_argument("input")
@@ -196,6 +202,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "raw-info":
             result = raw_info(Path(args.input))
             print(json.dumps(to_json_dict(result), indent=2))
+            return 0
+
+        if args.command == "metadata":
+            result = inspect_file_metadata(Path(args.input), include_c2pa=not bool(args.no_c2pa))
+            if args.out:
+                write_json(Path(args.out), result)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
             return 0
 
         if args.command == "develop":

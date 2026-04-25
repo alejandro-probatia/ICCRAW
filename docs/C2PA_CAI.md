@@ -89,6 +89,18 @@ La verificacion comprueba:
 Si falta `--manifest`, la verificacion C2PA y RAW se ejecuta igualmente, pero el
 estado global no sera `ok` porque el manifiesto externo no pudo comprobarse.
 
+## Lectura de metadatos
+
+La GUI incluye un visor de metadatos en la pestaña vertical `Metadatos` de la
+columna izquierda. Para uso CLI:
+
+```bash
+nexoraw metadata ./tiffs/captura.tiff --out metadata.json
+```
+
+Esta lectura combina EXIF/GPS mediante `exiftool` y manifiestos C2PA mediante
+`c2pa-python` si el extra opcional esta instalado.
+
 ## Notas operativas
 
 - El campo `technical_manifest_sha256` solo se incluye si el archivo indicado

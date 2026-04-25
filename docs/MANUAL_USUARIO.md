@@ -205,6 +205,7 @@ Pestañas principales:
    - navegación completa de unidades y directorios,
    - selección visual por miniaturas,
    - carga automática en visor al seleccionar una miniatura RAW/TIFF compatible,
+   - visor lateral de metadatos EXIF/GPS y C2PA para el archivo seleccionado,
    - preview RAW rápida,
    - comparación original/resultado,
    - zoom, rotación y reencuadre por arrastre en el visor,
@@ -232,6 +233,20 @@ Flujo recomendado en GUI:
 5. En `Aplicar sesión`, revelar RAW individuales, una selección de miniaturas o una carpeta.
 6. En `Cola de Revelado`, añadir archivos y ejecutar cola cuando se necesite procesado diferido.
 7. Revisar estado, artefactos JSON y monitoreo para trazabilidad e incidencias.
+
+Visor de metadatos:
+
+- En `Calibrar / Aplicar`, la columna izquierda incluye la pestaña vertical
+  `Metadatos`.
+- Al seleccionar un archivo, NexoRAW lee EXIF/GPS con `exiftool` si esta
+  disponible.
+- En TIFFs firmados, la pestaña `C2PA` muestra el manifiesto C2PA, estado de
+  validación, firma y aserciones embebidas.
+- Desde CLI se puede exportar la misma lectura:
+
+```bash
+nexoraw metadata ./tiffs/captura.tiff --out metadata.json
+```
 
 Notas de uso de preview:
 

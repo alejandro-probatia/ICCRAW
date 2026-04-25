@@ -178,6 +178,8 @@ transicion del proyecto:
 ```bash
 nexoraw raw-info input.raw
 
+nexoraw metadata input.raw --out metadata.json
+
 nexoraw develop input.raw --recipe recipe.yml --out output.tiff --audit-linear output_linear.tiff
 
 nexoraw detect-chart chart.tiff --out detection.json --preview overlay.png --chart-type colorchecker24

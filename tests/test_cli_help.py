@@ -7,6 +7,7 @@ def test_parser_has_expected_commands():
     text = parser.format_help()
     assert parser.prog == "nexoraw"
     assert "raw-info" in text
+    assert "metadata" in text
     assert "build-profile" in text
     assert "export-cgats" in text
     assert "batch-develop" in text

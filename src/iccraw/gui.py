@@ -34,6 +34,7 @@ from .chart.sampling import ReferenceCatalog
 from .core.models import Recipe, to_json_dict, write_json
 from .core.recipe import load_recipe
 from .core.utils import RAW_EXTENSIONS, read_image
+from .metadata_viewer import inspect_file_metadata, metadata_sections_text
 from .profile.export import write_profiled_tiff
 from .qa_compare import compare_qa_reports
 from .raw.pipeline import (
@@ -758,6 +759,7 @@ if QtWidgets is not None:
             self._thumb_cache: dict[str, QtGui.QIcon] = {}
             self._image_thumb_cache: dict[str, QtGui.QIcon] = {}
             self._thumbnail_generation = 0
+            self._metadata_generation = 0
             self._pending_thumbnail_paths: list[Path] = []
             self._preview_cache: dict[str, np.ndarray] = {}
             self._preview_cache_order: list[str] = []
@@ -789,6 +791,9 @@ if QtWidgets is not None:
             self._thumbnail_timer = QtCore.QTimer(self)
             self._thumbnail_timer.setSingleShot(True)
             self._thumbnail_timer.timeout.connect(self._start_pending_thumbnail_generation)
+            self._metadata_timer = QtCore.QTimer(self)
+            self._metadata_timer.setSingleShot(True)
+            self._metadata_timer.timeout.connect(self._load_metadata_from_timer)
 
             self._build_ui()
             self._build_menu_bar()
@@ -1318,6 +1323,7 @@ if QtWidgets is not None:
             self.left_tabs.addTab(self._build_browser_panel(), "Explorador")
             self.left_tabs.addTab(self._build_viewer_controls_panel(), "Visor")
             self.left_tabs.addTab(self._build_analysis_panel(), "Análisis")
+            self.left_tabs.addTab(self._build_metadata_panel(), "Metadatos")
             self.left_tabs.addTab(self._build_preview_log_panel(), "Log")
             layout.addWidget(self.left_tabs, 1)
             return pane
@@ -1397,6 +1403,43 @@ if QtWidgets is not None:
             self.preview_analysis.setPlaceholderText("Analisis tecnico lineal")
             layout.addWidget(self.preview_analysis, 1)
             return panel
+
+        def _build_metadata_panel(self) -> QtWidgets.QWidget:
+            panel = QtWidgets.QWidget()
+            layout = QtWidgets.QVBoxLayout(panel)
+            layout.setContentsMargins(4, 4, 4, 4)
+            layout.setSpacing(6)
+
+            self.metadata_file_label = QtWidgets.QLabel("Sin archivo seleccionado")
+            self.metadata_file_label.setWordWrap(True)
+            self.metadata_file_label.setStyleSheet("font-size: 12px; color: #d1d5db;")
+            layout.addWidget(self.metadata_file_label)
+
+            actions = QtWidgets.QHBoxLayout()
+            actions.addWidget(self._button("Leer metadatos", self._refresh_metadata_view))
+            actions.addWidget(self._button("JSON completo", self._show_metadata_all_tab))
+            layout.addLayout(actions)
+
+            self.metadata_tabs = QtWidgets.QTabWidget()
+            self.metadata_summary = self._metadata_text_widget("Resumen de EXIF/GPS y C2PA")
+            self.metadata_exif = self._metadata_text_widget("EXIF")
+            self.metadata_gps = self._metadata_text_widget("GPS")
+            self.metadata_c2pa = self._metadata_text_widget("C2PA")
+            self.metadata_all = self._metadata_text_widget("JSON completo")
+            self.metadata_tabs.addTab(self.metadata_summary, "Resumen")
+            self.metadata_tabs.addTab(self.metadata_exif, "EXIF")
+            self.metadata_tabs.addTab(self.metadata_gps, "GPS")
+            self.metadata_tabs.addTab(self.metadata_c2pa, "C2PA")
+            self.metadata_tabs.addTab(self.metadata_all, "Todo")
+            layout.addWidget(self.metadata_tabs, 1)
+            return panel
+
+        def _metadata_text_widget(self, placeholder: str) -> QtWidgets.QPlainTextEdit:
+            widget = QtWidgets.QPlainTextEdit()
+            widget.setReadOnly(True)
+            widget.setPlaceholderText(placeholder)
+            widget.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+            return widget
 
         def _build_preview_log_panel(self) -> QtWidgets.QWidget:
             panel = QtWidgets.QWidget()
@@ -2918,6 +2961,7 @@ if QtWidgets is not None:
             self._selected_file = None
             self._last_loaded_preview_key = None
             self.selected_file_label.setText("Sin archivo seleccionado")
+            self._clear_metadata_view()
 
             max_items = 500
             shown: list[Path] = []
@@ -3215,14 +3259,19 @@ if QtWidgets is not None:
                 self._selected_file = None
                 self.selected_file_label.setText("Sin archivo seleccionado")
                 self._selection_load_timer.stop()
+                self._metadata_timer.stop()
+                self._clear_metadata_view()
                 return
             raw_path = item.data(QtCore.Qt.UserRole)
             if not raw_path:
                 self._selected_file = None
                 self._selection_load_timer.stop()
+                self._metadata_timer.stop()
+                self._clear_metadata_view()
                 return
             self._selected_file = Path(raw_path)
             self.selected_file_label.setText(str(self._selected_file))
+            self._queue_metadata_load(self._selected_file)
             if self._selected_file.suffix.lower() in BROWSABLE_EXTENSIONS:
                 self._set_status(f"Seleccionado: {self._selected_file.name}. Cargando preview...")
                 self._selection_load_timer.start(250)
@@ -3230,6 +3279,91 @@ if QtWidgets is not None:
         def _on_file_double_clicked(self, _item) -> None:
             self._selection_load_timer.stop()
             self._on_load_selected()
+
+        def _queue_metadata_load(self, path: Path, *, delay_ms: int = 180) -> None:
+            self._metadata_generation += 1
+            if hasattr(self, "metadata_file_label"):
+                self.metadata_file_label.setText(f"Metadatos: {path.name}")
+            if hasattr(self, "metadata_summary"):
+                self.metadata_summary.setPlainText("Leyendo metadatos...")
+            self._metadata_timer.start(max(0, int(delay_ms)))
+
+        def _load_metadata_from_timer(self) -> None:
+            self._refresh_metadata_view()
+
+        def _refresh_metadata_view(self) -> None:
+            if self._selected_file is None:
+                self._clear_metadata_view()
+                return
+            self._metadata_generation += 1
+            selected = self._selected_file
+            generation = self._metadata_generation
+            if hasattr(self, "metadata_file_label"):
+                self.metadata_file_label.setText(f"Metadatos: {selected}")
+            if hasattr(self, "metadata_summary"):
+                self.metadata_summary.setPlainText("Leyendo metadatos...")
+
+            def task():
+                return generation, selected, inspect_file_metadata(selected)
+
+            thread = TaskThread(task)
+            self._threads.append(thread)
+
+            def cleanup() -> None:
+                if thread in self._threads:
+                    self._threads.remove(thread)
+                thread.deleteLater()
+
+            def ok(payload) -> None:
+                try:
+                    payload_generation, payload_path, metadata = payload
+                    if payload_generation != self._metadata_generation or self._selected_file != payload_path:
+                        return
+                    self._apply_metadata_payload(payload_path, metadata)
+                finally:
+                    cleanup()
+
+            def fail(trace: str) -> None:
+                try:
+                    if self._selected_file == selected:
+                        msg = trace.strip().splitlines()[-1] if trace.strip() else "No se pudieron leer metadatos"
+                        self.metadata_summary.setPlainText(msg)
+                        self.metadata_exif.clear()
+                        self.metadata_gps.clear()
+                        self.metadata_c2pa.clear()
+                        self.metadata_all.setPlainText(trace[-4000:])
+                finally:
+                    cleanup()
+
+            thread.succeeded.connect(ok)
+            thread.failed.connect(fail)
+            thread.start()
+
+        def _apply_metadata_payload(self, path: Path, payload: dict[str, Any]) -> None:
+            sections = metadata_sections_text(payload)
+            self.metadata_file_label.setText(f"Metadatos: {path}")
+            self.metadata_summary.setPlainText(sections["summary"])
+            self.metadata_exif.setPlainText(sections["exif"])
+            self.metadata_gps.setPlainText(sections["gps"])
+            self.metadata_c2pa.setPlainText(sections["c2pa"])
+            self.metadata_all.setPlainText(sections["all"])
+
+        def _clear_metadata_view(self) -> None:
+            if not hasattr(self, "metadata_summary"):
+                return
+            self.metadata_file_label.setText("Sin archivo seleccionado")
+            for widget in (
+                self.metadata_summary,
+                self.metadata_exif,
+                self.metadata_gps,
+                self.metadata_c2pa,
+                self.metadata_all,
+            ):
+                widget.clear()
+
+        def _show_metadata_all_tab(self) -> None:
+            if hasattr(self, "metadata_tabs"):
+                self.metadata_tabs.setCurrentWidget(self.metadata_all)
 
         def _toggle_compare(self, enabled: bool) -> None:
             self.viewer_stack.setCurrentIndex(1 if enabled else 0)
