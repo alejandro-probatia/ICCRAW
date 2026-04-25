@@ -2,11 +2,21 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+    copy_metadata,
+)
 
 
 root = Path(SPECPATH).resolve().parents[1]
 datas = collect_data_files("iccraw.resources")
+for dist_name in ("rawpy-demosaic", "rawpy"):
+    try:
+        datas += copy_metadata(dist_name)
+    except Exception:
+        pass
 hiddenimports = collect_submodules("iccraw")
 rawpy_binaries = collect_dynamic_libs("rawpy")
 

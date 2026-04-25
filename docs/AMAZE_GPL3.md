@@ -59,18 +59,33 @@ Windows de `rawpy-demosaic` con MSVC:
 Build rawpy-demosaic Windows wheel
 ```
 
+El workflow usa por defecto el commit legacy `8b17075` de
+`rawpy-demosaic`, que enlaza LibRaw 0.18.7 con los demosaic packs GPL2/GPL3.
+Este punto es deliberado: los wheels estandar recientes de `rawpy` no incluyen
+`DEMOSAIC_PACK_GPL3=True`, y la build moderna de `rawpy-demosaic` no expone
+AMaZE como pack GPL3 en Windows en este flujo. Las releases que redistribuyan
+AMaZE deben conservar el commit exacto, los submodulos y el hash SHA256 de la
+wheel.
+
 Una vez descargada la wheel:
 
 ```powershell
-.\scripts\install_amaze_backend.ps1 -Wheel .\tmp\wheels\rawpy_demosaic-0.26.0-cp312-cp312-win_amd64.whl
+$wheel = (Get-ChildItem -Recurse .\tmp\wheels -Filter "rawpy_demosaic-*.whl" | Select-Object -First 1).FullName
+.\scripts\install_amaze_backend.ps1 -Wheel $wheel
 .\.venv\Scripts\python.exe -m iccraw check-amaze
 ```
 
 Para empaquetar Windows con AMaZE:
 
 ```powershell
-.\packaging\windows\build_installer.ps1 -RawpyDemosaicWheel .\tmp\wheels\rawpy_demosaic-0.26.0-cp312-cp312-win_amd64.whl -RequireAmaze
+.\packaging\windows\build_installer.ps1 -RawpyDemosaicWheel $wheel -RequireAmaze
 ```
+
+`rawpy-demosaic` exporta el modulo Python `rawpy`, pero su distribucion Python
+se llama `rawpy-demosaic`. Por eso `pip` puede avisar de que no esta instalada
+la distribucion `rawpy>=0.26` aunque la importacion runtime `import rawpy`
+funcione con AMaZE. La comprobacion obligatoria para publicar una build es
+`iccraw check-amaze`.
 
 ## Comprobación operativa
 

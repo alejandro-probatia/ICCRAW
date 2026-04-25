@@ -225,10 +225,30 @@ function Copy-RawpyDemosaicLegal {
   }
   if (Test-Path $sourcePath) {
     $sourcePath = (Resolve-Path $sourcePath).Path
-    foreach ($file in @("LICENSE", "LICENSE.LibRaw", "README.md")) {
+    foreach ($file in @("LICENSE", "LICENSE.LibRaw", "README.md", "README.rst", "WINDOWS_COMPILE")) {
       $path = Join-Path $sourcePath $file
       if (Test-Path $path) {
         Copy-Item -LiteralPath $path -Destination (Join-Path $dest $file) -Force
+      }
+    }
+    $thirdPartySources = @{
+      "LibRaw" = @("COPYRIGHT", "LICENSE.CDDL", "LICENSE.LGPL", "README.md")
+      "LibRaw-demosaic-pack-GPL2" = @("COPYRIGHT", "LICENSE", "README")
+      "LibRaw-demosaic-pack-GPL3" = @("COPYRIGHT", "LICENSE.txt", "README", "Changelog")
+      "rawspeed" = @("COPYING", "COPYING.LESSER", "README.md")
+    }
+    foreach ($entry in $thirdPartySources.GetEnumerator()) {
+      $subdir = Join-Path $sourcePath ("external\" + $entry.Key)
+      if (-not (Test-Path $subdir)) {
+        continue
+      }
+      $subdest = Join-Path $dest ("external\" + $entry.Key)
+      New-Item -ItemType Directory -Force -Path $subdest | Out-Null
+      foreach ($file in $entry.Value) {
+        $path = Join-Path $subdir $file
+        if (Test-Path $path) {
+          Copy-Item -LiteralPath $path -Destination (Join-Path $subdest $file) -Force
+        }
       }
     }
     $commit = (& git -C $sourcePath rev-parse HEAD 2>$null)
@@ -248,9 +268,9 @@ function Copy-RawpyDemosaicLegal {
   $check = $checkJson | ConvertFrom-Json
 
   $metadata = [ordered]@{
-    rawpy_demosaic_wheel = $wheelPath
+    rawpy_demosaic_wheel = $(if ($wheelPath) { Split-Path -Leaf $wheelPath } else { $null })
     rawpy_demosaic_wheel_sha256 = $wheelHash
-    rawpy_demosaic_source = $sourcePath
+    rawpy_demosaic_source = $(if ($commit) { "https://github.com/exfab/rawpy-demosaic/tree/$commit" } else { $null })
     rawpy_demosaic_source_commit = $commit
     source_url = "https://github.com/exfab/rawpy-demosaic"
     runtime_check = $check

@@ -98,7 +98,8 @@ Build rawpy-demosaic Windows wheel
 El artefacto descargado se instala en el entorno local con:
 
 ```powershell
-.\scripts\install_amaze_backend.ps1 -Wheel .\tmp\wheels\rawpy_demosaic-0.26.0-cp312-cp312-win_amd64.whl
+$wheel = (Get-ChildItem -Recurse .\tmp\wheels -Filter "rawpy_demosaic-*.whl" | Select-Object -First 1).FullName
+.\scripts\install_amaze_backend.ps1 -Wheel $wheel
 .\.venv\Scripts\python.exe -m iccraw check-amaze
 ```
 
@@ -106,12 +107,16 @@ Para publicar un instalador que falle si AMaZE no queda activo:
 
 ```powershell
 .\packaging\windows\build_installer.ps1 `
-  -RawpyDemosaicWheel .\tmp\wheels\rawpy_demosaic-0.26.0-cp312-cp312-win_amd64.whl `
+  -RawpyDemosaicWheel $wheel `
   -RequireAmaze
 ```
 
 El instalador copia metadatos de build y avisos de `rawpy-demosaic` en
 `{app}\docs\third_party\rawpy-demosaic\`.
+El workflow de wheel usa por defecto el commit legacy `8b17075` de
+`rawpy-demosaic`, con LibRaw 0.18.7 y `DEMOSAIC_PACK_GPL3=True`; conservar el
+hash SHA256 de la wheel y los metadatos incluidos en el instalador forma parte
+de la trazabilidad de release.
 
 ## Verificacion manual recomendada
 
