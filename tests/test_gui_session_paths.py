@@ -95,6 +95,22 @@ def test_file_icons_do_not_decode_image_data(tmp_path: Path, monkeypatch, qapp):
         window.close()
 
 
+def test_app_icon_resource_is_packaged(qapp):
+    icon_path = gui_module._app_icon_path()
+    assert icon_path is not None
+    assert icon_path.name == "nexoraw-icon.png"
+    assert icon_path.exists()
+    assert not gui_module._app_icon().isNull()
+
+
+def test_window_uses_nexoraw_app_icon(qapp):
+    window = ICCRawMainWindow()
+    try:
+        assert not window.windowIcon().isNull()
+    finally:
+        window.close()
+
+
 def test_startup_memory_ignores_stale_paths_and_falls_back_to_home(tmp_path: Path, qapp):
     settings = gui_module._make_app_settings()
     settings.setValue("session/last_root", str(tmp_path / "missing_session"))

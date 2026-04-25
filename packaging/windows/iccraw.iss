@@ -31,6 +31,7 @@ OutputBaseFilename=NexoRAW-{#AppVersion}-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile={#RootDir}\src\iccraw\resources\icons\nexoraw-icon.ico
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=lowest
@@ -57,8 +58,8 @@ Source: "{#RootDir}\scripts\check_amaze_support.py"; DestDir: "{app}\docs"; Flag
 
 [Icons]
 Name: "{group}\NexoRAW"; Filename: "{app}\nexoraw-ui.exe"; WorkingDir: "{app}"
-Name: "{group}\NexoRAW CLI"; Filename: "{cmd}"; Parameters: "/K ""{app}\nexoraw.exe"" --help"; WorkingDir: "{app}"
-Name: "{group}\Diagnostico herramientas"; Filename: "{cmd}"; Parameters: "/K ""{app}\nexoraw.exe"" check-tools"; WorkingDir: "{app}"
+Name: "{group}\NexoRAW CLI"; Filename: "{cmd}"; Parameters: "/K ""{app}\nexoraw.exe"" --help"; WorkingDir: "{app}"; IconFilename: "{app}\nexoraw-ui.exe"
+Name: "{group}\Diagnostico herramientas"; Filename: "{cmd}"; Parameters: "/K ""{app}\nexoraw.exe"" check-tools"; WorkingDir: "{app}"; IconFilename: "{app}\nexoraw-ui.exe"
 Name: "{group}\Desinstalar NexoRAW"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\NexoRAW"; Filename: "{app}\nexoraw-ui.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 

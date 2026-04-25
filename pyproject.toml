@@ -58,7 +58,7 @@ version = {attr = "iccraw.version.__version__"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"iccraw.resources" = ["references/*.json"]
+"iccraw.resources" = ["references/*.json", "icons/*.svg", "icons/*.png", "icons/*.ico"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

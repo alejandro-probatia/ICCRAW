@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from importlib import resources
 import json
 import os
 from pathlib import Path
@@ -67,6 +68,26 @@ BROWSABLE_EXTENSIONS = RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
 LAYOUT_VERSION = 3
 APP_NAME = "NexoRAW"
 ORG_NAME = "NexoRAW"
+APP_ICON_RESOURCE = "icons/nexoraw-icon.png"
+
+
+def _app_icon_path() -> Path | None:
+    try:
+        path = resources.files("iccraw.resources").joinpath(APP_ICON_RESOURCE)
+    except Exception:
+        return None
+    if not path.is_file():
+        return None
+    return Path(str(path))
+
+
+def _app_icon() -> QtGui.QIcon:
+    if QtGui is None:
+        raise RuntimeError("PySide6 no esta disponible")
+    path = _app_icon_path()
+    if path is None:
+        return QtGui.QIcon()
+    return QtGui.QIcon(str(path))
 
 DEMOSAIC_OPTIONS = [
     ("DCB (LibRaw, alta calidad)", "dcb"),
@@ -399,6 +420,9 @@ if QtWidgets is not None:
         def __init__(self) -> None:
             super().__init__()
             self.setWindowTitle(f"{APP_NAME} - Calibración científica de sesión")
+            icon = _app_icon()
+            if not icon.isNull():
+                self.setWindowIcon(icon)
             self.resize(1800, 1020)
             self._settings = _make_app_settings()
 
@@ -3835,6 +3859,10 @@ def main(argv: list[str] | None = None) -> int:
     app = QtWidgets.QApplication(argv if argv is not None else sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(ORG_NAME)
+    app.setDesktopFileName("nexoraw")
+    icon = _app_icon()
+    if not icon.isNull():
+        app.setWindowIcon(icon)
     win = NexoRawMainWindow()
     win.show()
     return app.exec()

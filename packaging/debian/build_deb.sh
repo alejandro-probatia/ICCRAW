@@ -19,6 +19,7 @@ mkdir -p \
   "$BUILD_ROOT/opt/nexoraw" \
   "$BUILD_ROOT/usr/bin" \
   "$BUILD_ROOT/usr/share/applications" \
+  "$BUILD_ROOT/usr/share/icons/hicolor/scalable/apps" \
   "$BUILD_ROOT/usr/share/doc/nexoraw" \
   "$DIST_DIR"
 
@@ -46,22 +47,22 @@ sed -i "s|$VENV_DIR|$VENV_INSTALL_DIR|g" "$VENV_DIR/pyvenv.cfg"
 
 cat > "$BUILD_ROOT/usr/bin/nexoraw" <<'SH'
 #!/usr/bin/env sh
-exec /opt/nexoraw/venv/bin/python -m nexoraw "$@"
+exec /opt/nexoraw/venv/bin/nexoraw "$@"
 SH
 
 cat > "$BUILD_ROOT/usr/bin/nexoraw-ui" <<'SH'
 #!/usr/bin/env sh
-exec /opt/nexoraw/venv/bin/python -m nexoraw.gui "$@"
+exec /opt/nexoraw/venv/bin/nexoraw-ui "$@"
 SH
 
 cat > "$BUILD_ROOT/usr/bin/iccraw" <<'SH'
 #!/usr/bin/env sh
-exec /opt/nexoraw/venv/bin/python -m iccraw "$@"
+exec /opt/nexoraw/venv/bin/iccraw "$@"
 SH
 
 cat > "$BUILD_ROOT/usr/bin/iccraw-ui" <<'SH'
 #!/usr/bin/env sh
-exec /opt/nexoraw/venv/bin/python -m iccraw.gui "$@"
+exec /opt/nexoraw/venv/bin/iccraw-ui "$@"
 SH
 
 chmod 0755 \
@@ -77,10 +78,12 @@ Name=NexoRAW
 GenericName=RAW color profiling
 Comment=Pipeline reproducible RAW -> carta -> perfil ICC de sesion
 Exec=nexoraw-ui
+Icon=nexoraw
 Terminal=false
 Categories=Graphics;Photography;Science;
 DESKTOP
 
+install -m 0644 "$ROOT/src/iccraw/resources/icons/nexoraw-icon.svg" "$BUILD_ROOT/usr/share/icons/hicolor/scalable/apps/nexoraw.svg"
 install -m 0644 "$ROOT/README.md" "$BUILD_ROOT/usr/share/doc/nexoraw/README.md"
 install -m 0644 "$ROOT/CHANGELOG.md" "$BUILD_ROOT/usr/share/doc/nexoraw/CHANGELOG.md"
 install -m 0644 "$ROOT/LICENSE" "$BUILD_ROOT/usr/share/doc/nexoraw/LICENSE"

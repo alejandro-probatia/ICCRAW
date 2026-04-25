@@ -11,6 +11,7 @@ from PyInstaller.utils.hooks import (
 
 
 root = Path(SPECPATH).resolve().parents[1]
+icon_path = root / "src" / "iccraw" / "resources" / "icons" / "nexoraw-icon.ico"
 datas = collect_data_files("iccraw.resources")
 for dist_name in ("rawpy-demosaic", "rawpy"):
     try:
@@ -52,6 +53,7 @@ cli = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(icon_path),
 )
 
 cli_legacy = EXE(
@@ -70,6 +72,7 @@ cli_legacy = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(icon_path),
 )
 
 a_gui = Analysis(
@@ -103,6 +106,7 @@ gui = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(icon_path),
 )
 
 gui_legacy = EXE(
@@ -121,6 +125,7 @@ gui_legacy = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(icon_path),
 )
 
 coll = COLLECT(
