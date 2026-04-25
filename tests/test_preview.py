@@ -15,6 +15,7 @@ from iccraw.raw.preview import (
     apply_profile_preview,
     apply_render_adjustments,
     apply_tone_curve,
+    estimate_temperature_tint_from_neutral_sample,
     linear_to_srgb_display,
     load_image_for_preview,
     normalize_tone_curve_points,
@@ -66,6 +67,23 @@ def test_apply_render_adjustments_changes_tone_and_white_balance():
     assert out.shape == img.shape
     assert np.isfinite(out).all()
     assert not np.allclose(out, img)
+
+
+def test_estimate_temperature_tint_from_neutral_sample_reduces_cast():
+    sample = np.array([0.18, 0.24, 0.34], dtype=np.float32)
+
+    temperature, tint = estimate_temperature_tint_from_neutral_sample(sample)
+    corrected = apply_render_adjustments(
+        sample.reshape((1, 1, 3)),
+        temperature_kelvin=temperature,
+        tint=tint,
+    )[0, 0]
+
+    before = float(np.std(np.log(sample / np.mean(sample))))
+    after = float(np.std(np.log(corrected / np.mean(corrected))))
+    assert 2000 <= temperature <= 12000
+    assert -100.0 <= tint <= 100.0
+    assert after < before * 0.5
 
 
 def test_normalize_tone_curve_points_clamps_sorts_and_keeps_endpoints():

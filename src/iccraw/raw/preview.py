@@ -455,6 +455,20 @@ def _apply_temperature_tint(
     neutral_kelvin: float,
     tint: float,
 ) -> np.ndarray:
+    multipliers = temperature_tint_multipliers(
+        temperature_kelvin=temperature_kelvin,
+        neutral_kelvin=neutral_kelvin,
+        tint=tint,
+    )
+    return image_linear_rgb * multipliers.reshape((1, 1, 3))
+
+
+def temperature_tint_multipliers(
+    *,
+    temperature_kelvin: float,
+    neutral_kelvin: float = 5003.0,
+    tint: float = 0.0,
+) -> np.ndarray:
     temp = float(np.clip(temperature_kelvin, 2000.0, 12000.0))
     neutral = float(np.clip(neutral_kelvin, 2000.0, 12000.0))
     warm = float(np.clip(np.log(temp / neutral), -1.2, 1.2))
@@ -468,8 +482,69 @@ def _apply_temperature_tint(
         ],
         dtype=np.float32,
     )
+    return np.clip(multipliers, 0.55, 1.65)
+
+
+def estimate_temperature_tint_from_neutral_sample(
+    sample_rgb: np.ndarray,
+    *,
+    neutral_kelvin: float = 5003.0,
+) -> tuple[int, float]:
+    """Estimate preview temperature/tint controls from a sampled neutral patch."""
+    sample = np.asarray(sample_rgb, dtype=np.float64).reshape(-1)
+    if sample.size < 3:
+        raise ValueError("La muestra neutra no contiene canales RGB suficientes.")
+    sample = sample[:3]
+    if not np.all(np.isfinite(sample)) or float(np.max(sample)) <= 1e-6:
+        raise ValueError("La muestra neutra no es valida.")
+
+    sample = np.clip(sample, 1e-6, 1.0)
+    if float(np.max(sample)) < 0.01:
+        raise ValueError("La muestra neutra es demasiado oscura.")
+
+    temp, tint = _best_temperature_tint_for_sample(
+        sample,
+        neutral_kelvin=neutral_kelvin,
+        temp_values=np.arange(2000.0, 12000.1, 100.0),
+        tint_values=np.arange(-100.0, 100.1, 2.0),
+    )
+    temp, tint = _best_temperature_tint_for_sample(
+        sample,
+        neutral_kelvin=neutral_kelvin,
+        temp_values=np.arange(max(2000.0, temp - 160.0), min(12000.0, temp + 160.0) + 0.1, 10.0),
+        tint_values=np.arange(max(-100.0, tint - 5.0), min(100.0, tint + 5.0) + 0.001, 0.2),
+    )
+    return int(round(temp)), float(round(tint, 1))
+
+
+def _best_temperature_tint_for_sample(
+    sample_rgb: np.ndarray,
+    *,
+    neutral_kelvin: float,
+    temp_values: np.ndarray,
+    tint_values: np.ndarray,
+) -> tuple[float, float]:
+    temps = np.asarray(temp_values, dtype=np.float64)
+    tints = np.asarray(tint_values, dtype=np.float64)
+    neutral = float(np.clip(neutral_kelvin, 2000.0, 12000.0))
+    warm = np.clip(np.log(temps[:, None] / neutral), -1.2, 1.2)
+    tint_n = np.clip(tints[None, :] / 100.0, -1.0, 1.0)
+
+    multipliers = np.stack(
+        [
+            1.0 + 0.22 * warm + 0.08 * tint_n,
+            np.broadcast_to(1.0 - 0.16 * tint_n, (temps.size, tints.size)),
+            1.0 - 0.22 * warm + 0.08 * tint_n,
+        ],
+        axis=-1,
+    )
     multipliers = np.clip(multipliers, 0.55, 1.65)
-    return image_linear_rgb * multipliers.reshape((1, 1, 3))
+    corrected = multipliers * sample_rgb.reshape((1, 1, 3))
+    mean = np.mean(corrected, axis=-1, keepdims=True)
+    log_chroma = np.log(np.clip(corrected / np.clip(mean, 1e-6, None), 1e-6, None))
+    cost = np.mean(log_chroma * log_chroma, axis=-1)
+    idx = np.unravel_index(int(np.argmin(cost)), cost.shape)
+    return float(temps[idx[0]]), float(tints[idx[1]])
 
 
 def apply_profile_preview(image_linear_rgb: np.ndarray, profile_path: Path) -> np.ndarray:

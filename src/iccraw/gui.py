@@ -48,6 +48,7 @@ from .raw.preview import (
     apply_adjustments,
     apply_render_adjustments,
     apply_profile_preview,
+    estimate_temperature_tint_from_neutral_sample,
     extract_embedded_preview,
     linear_to_srgb_display,
     load_image_for_preview,
@@ -766,6 +767,7 @@ if QtWidgets is not None:
             self._preview_cache_order: list[str] = []
             self._manual_chart_marking = False
             self._manual_chart_points: list[tuple[float, float]] = []
+            self._neutral_picker_active = False
             self._current_dir = self._startup_directory_from_settings()
             self._selected_file: Path | None = None
             self._storage_roots: list[Path] = []
@@ -1537,7 +1539,7 @@ if QtWidgets is not None:
             self.viewer_stack = QtWidgets.QStackedWidget()
 
             self.image_result_single = ImagePanel("Resultado")
-            self.image_result_single.imageClicked.connect(self._on_manual_chart_click)
+            self.image_result_single.imageClicked.connect(self._on_result_image_click)
             single_page = QtWidgets.QWidget()
             single_layout = QtWidgets.QVBoxLayout(single_page)
             single_layout.setContentsMargins(0, 0, 0, 0)
@@ -1546,7 +1548,7 @@ if QtWidgets is not None:
 
             self.image_original_compare = ImagePanel("Original")
             self.image_result_compare = ImagePanel("Resultado")
-            self.image_result_compare.imageClicked.connect(self._on_manual_chart_click)
+            self.image_result_compare.imageClicked.connect(self._on_result_image_click)
             self.compare_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
             self.compare_splitter.setChildrenCollapsible(True)
             self.compare_splitter.setHandleWidth(8)
@@ -1613,6 +1615,17 @@ if QtWidgets is not None:
             self.spin_render_tint.valueChanged.connect(lambda _v: self._on_render_control_change())
             grid.addWidget(self.spin_render_tint, 2, 1, 1, 2)
 
+            neutral_row = QtWidgets.QHBoxLayout()
+            self.btn_neutral_picker = QtWidgets.QPushButton("Cuentagotas neutro")
+            self.btn_neutral_picker.setCheckable(True)
+            self.btn_neutral_picker.clicked.connect(self._toggle_neutral_picker)
+            neutral_row.addWidget(self.btn_neutral_picker)
+            self.label_neutral_picker = QtWidgets.QLabel("Punto neutro: sin muestra")
+            self.label_neutral_picker.setWordWrap(True)
+            self.label_neutral_picker.setStyleSheet("font-size: 12px; color: #cbd5e1;")
+            neutral_row.addWidget(self.label_neutral_picker, 1)
+            grid.addLayout(neutral_row, 3, 0, 1, 3)
+
             self.slider_brightness, self.label_brightness = self._slider(
                 minimum=-200,
                 maximum=200,
@@ -1620,8 +1633,8 @@ if QtWidgets is not None:
                 on_change=self._on_render_control_change,
                 formatter=lambda v: f"Brillo: {v / 100:+.2f} EV",
             )
-            grid.addWidget(self.label_brightness, 3, 0, 1, 3)
-            grid.addWidget(self.slider_brightness, 4, 0, 1, 3)
+            grid.addWidget(self.label_brightness, 4, 0, 1, 3)
+            grid.addWidget(self.slider_brightness, 5, 0, 1, 3)
 
             self.slider_black_point, self.label_black_point = self._slider(
                 minimum=0,
@@ -1630,8 +1643,8 @@ if QtWidgets is not None:
                 on_change=self._on_render_control_change,
                 formatter=lambda v: f"Nivel negro: {v / 1000:.3f}",
             )
-            grid.addWidget(self.label_black_point, 5, 0, 1, 3)
-            grid.addWidget(self.slider_black_point, 6, 0, 1, 3)
+            grid.addWidget(self.label_black_point, 6, 0, 1, 3)
+            grid.addWidget(self.slider_black_point, 7, 0, 1, 3)
 
             self.slider_white_point, self.label_white_point = self._slider(
                 minimum=500,
@@ -1640,8 +1653,8 @@ if QtWidgets is not None:
                 on_change=self._on_render_control_change,
                 formatter=lambda v: f"Nivel blanco: {v / 1000:.3f}",
             )
-            grid.addWidget(self.label_white_point, 7, 0, 1, 3)
-            grid.addWidget(self.slider_white_point, 8, 0, 1, 3)
+            grid.addWidget(self.label_white_point, 8, 0, 1, 3)
+            grid.addWidget(self.slider_white_point, 9, 0, 1, 3)
 
             self.slider_contrast, self.label_contrast = self._slider(
                 minimum=-100,
@@ -1650,8 +1663,8 @@ if QtWidgets is not None:
                 on_change=self._on_render_control_change,
                 formatter=lambda v: f"Contraste: {v / 100:+.2f}",
             )
-            grid.addWidget(self.label_contrast, 9, 0, 1, 3)
-            grid.addWidget(self.slider_contrast, 10, 0, 1, 3)
+            grid.addWidget(self.label_contrast, 10, 0, 1, 3)
+            grid.addWidget(self.slider_contrast, 11, 0, 1, 3)
 
             self.slider_midtone, self.label_midtone = self._slider(
                 minimum=50,
@@ -1660,20 +1673,20 @@ if QtWidgets is not None:
                 on_change=self._on_render_control_change,
                 formatter=lambda v: f"Curva medios: {v / 100:.2f}",
             )
-            grid.addWidget(self.label_midtone, 11, 0, 1, 3)
-            grid.addWidget(self.slider_midtone, 12, 0, 1, 3)
+            grid.addWidget(self.label_midtone, 12, 0, 1, 3)
+            grid.addWidget(self.slider_midtone, 13, 0, 1, 3)
 
             self.check_tone_curve_enabled = QtWidgets.QCheckBox("Curva tonal avanzada")
             self.check_tone_curve_enabled.setChecked(False)
             self.check_tone_curve_enabled.toggled.connect(self._on_tone_curve_enabled_changed)
-            grid.addWidget(self.check_tone_curve_enabled, 13, 0, 1, 3)
+            grid.addWidget(self.check_tone_curve_enabled, 14, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Preset curva"), 14, 0)
+            grid.addWidget(QtWidgets.QLabel("Preset curva"), 15, 0)
             self.combo_tone_curve_preset = QtWidgets.QComboBox()
             for label, key, _points in TONE_CURVE_PRESETS:
                 self.combo_tone_curve_preset.addItem(label, key)
             self.combo_tone_curve_preset.currentIndexChanged.connect(self._on_tone_curve_preset_changed)
-            grid.addWidget(self.combo_tone_curve_preset, 14, 1, 1, 2)
+            grid.addWidget(self.combo_tone_curve_preset, 15, 1, 1, 2)
 
             self.slider_tone_curve_black, self.label_tone_curve_black = self._slider(
                 minimum=0,
@@ -1682,8 +1695,8 @@ if QtWidgets is not None:
                 on_change=self._on_tone_curve_range_changed,
                 formatter=lambda v: f"Negro curva: {v / 1000:.3f}",
             )
-            grid.addWidget(self.label_tone_curve_black, 15, 0, 1, 3)
-            grid.addWidget(self.slider_tone_curve_black, 16, 0, 1, 3)
+            grid.addWidget(self.label_tone_curve_black, 16, 0, 1, 3)
+            grid.addWidget(self.slider_tone_curve_black, 17, 0, 1, 3)
 
             self.slider_tone_curve_white, self.label_tone_curve_white = self._slider(
                 minimum=50,
@@ -1692,16 +1705,16 @@ if QtWidgets is not None:
                 on_change=self._on_tone_curve_range_changed,
                 formatter=lambda v: f"Blanco curva: {v / 1000:.3f}",
             )
-            grid.addWidget(self.label_tone_curve_white, 17, 0, 1, 3)
-            grid.addWidget(self.slider_tone_curve_white, 18, 0, 1, 3)
+            grid.addWidget(self.label_tone_curve_white, 18, 0, 1, 3)
+            grid.addWidget(self.slider_tone_curve_white, 19, 0, 1, 3)
 
             self.tone_curve_editor = ToneCurveEditor()
             self.tone_curve_editor.pointsChanged.connect(self._on_tone_curve_points_changed)
-            grid.addWidget(self.tone_curve_editor, 19, 0, 1, 3)
-            grid.addWidget(self._button("Restablecer curva", self._reset_tone_curve), 20, 0, 1, 3)
+            grid.addWidget(self.tone_curve_editor, 20, 0, 1, 3)
+            grid.addWidget(self._button("Restablecer curva", self._reset_tone_curve), 21, 0, 1, 3)
             self._set_tone_curve_controls_enabled(False)
 
-            grid.addWidget(self._button("Restablecer corrección básica", self._reset_basic_adjustments), 21, 0, 1, 3)
+            grid.addWidget(self._button("Restablecer corrección básica", self._reset_basic_adjustments), 22, 0, 1, 3)
             return tab
 
         def _build_tab_preview_settings(self) -> QtWidgets.QWidget:
@@ -3757,6 +3770,91 @@ if QtWidgets is not None:
                     self.edit_illuminant.setText(self.combo_illuminant_render.currentText().split("(", 1)[0].strip())
             self._on_render_control_change()
 
+        def _set_neutral_picker_active(self, active: bool) -> None:
+            self._neutral_picker_active = bool(active)
+            if hasattr(self, "btn_neutral_picker"):
+                self.btn_neutral_picker.blockSignals(True)
+                self.btn_neutral_picker.setChecked(self._neutral_picker_active)
+                self.btn_neutral_picker.blockSignals(False)
+            cursor = QtCore.Qt.CrossCursor if self._neutral_picker_active else QtCore.Qt.ArrowCursor
+            for panel_name in ("image_result_single", "image_result_compare"):
+                if hasattr(self, panel_name):
+                    getattr(self, panel_name).setCursor(cursor)
+
+        def _toggle_neutral_picker(self, checked: bool = False) -> None:
+            if checked and self._original_linear is None:
+                self._set_neutral_picker_active(False)
+                QtWidgets.QMessageBox.information(self, "Info", "Carga primero una imagen en el visor.")
+                return
+            self._set_neutral_picker_active(bool(checked))
+            if self._neutral_picker_active:
+                self._manual_chart_marking = False
+                self._sync_manual_chart_overlay()
+                self._set_status("Cuentagotas neutro activo: haz clic en un gris/blanco sin saturar")
+            else:
+                self._set_status("Cuentagotas neutro desactivado")
+
+        def _sample_neutral_patch(self, x: float, y: float, *, radius: int = 9) -> tuple[np.ndarray, int]:
+            if self._original_linear is None:
+                raise ValueError("No hay imagen cargada para muestrear.")
+            image = np.asarray(self._original_linear, dtype=np.float32)
+            if image.ndim != 3 or image.shape[2] < 3:
+                raise ValueError("La imagen cargada no contiene datos RGB.")
+
+            h, w = image.shape[:2]
+            xi = int(round(float(np.clip(x, 0, max(0, w - 1)))))
+            yi = int(round(float(np.clip(y, 0, max(0, h - 1)))))
+            r = max(2, int(radius))
+            crop = image[max(0, yi - r) : min(h, yi + r + 1), max(0, xi - r) : min(w, xi + r + 1), :3]
+            flat = crop.reshape((-1, 3))
+            finite = np.all(np.isfinite(flat), axis=1)
+            flat = np.clip(flat[finite], 0.0, 1.0)
+            if flat.shape[0] < 4:
+                raise ValueError("La zona muestreada no contiene suficientes pixeles validos.")
+
+            luminance = flat @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+            max_channel = np.max(flat, axis=1)
+            valid = (luminance > 0.015) & (luminance < 0.98) & (max_channel < 0.995)
+            if int(np.count_nonzero(valid)) < 4:
+                raise ValueError("El punto elegido esta demasiado oscuro o saturado; elige un gris/blanco sin clipping.")
+
+            sample = np.median(flat[valid], axis=0).astype(np.float32)
+            return sample, int(np.count_nonzero(valid))
+
+        def _apply_neutral_picker_at(self, x: float, y: float) -> None:
+            try:
+                sample, count = self._sample_neutral_patch(x, y)
+                temperature, tint = estimate_temperature_tint_from_neutral_sample(sample)
+            except ValueError as exc:
+                QtWidgets.QMessageBox.information(self, "Punto neutro", str(exc))
+                self._set_status(str(exc))
+                return
+
+            self.combo_illuminant_render.blockSignals(True)
+            self._set_combo_text(self.combo_illuminant_render, "Personalizado")
+            self.combo_illuminant_render.blockSignals(False)
+
+            self.spin_render_temperature.blockSignals(True)
+            self.spin_render_tint.blockSignals(True)
+            self.spin_render_temperature.setValue(int(temperature))
+            self.spin_render_tint.setValue(float(tint))
+            self.spin_render_temperature.blockSignals(False)
+            self.spin_render_tint.blockSignals(False)
+
+            if hasattr(self, "label_neutral_picker"):
+                self.label_neutral_picker.setText(
+                    (
+                        "Punto neutro: "
+                        f"RGB {sample[0]:.3f}, {sample[1]:.3f}, {sample[2]:.3f} "
+                        f"({count} px) -> {temperature} K / matiz {tint:+.1f}"
+                    )
+                )
+            self._set_neutral_picker_active(False)
+            if self._original_linear is not None:
+                self._refresh_preview()
+            self._save_active_session(silent=True)
+            self._set_status(f"Balance neutro aplicado: {temperature} K, matiz {tint:+.1f}")
+
         def _on_tone_curve_enabled_changed(self, enabled: bool) -> None:
             self._set_tone_curve_controls_enabled(enabled)
             self._on_render_control_change()
@@ -3800,6 +3898,9 @@ if QtWidgets is not None:
             self._on_render_control_change()
 
         def _reset_basic_adjustments(self) -> None:
+            self._set_neutral_picker_active(False)
+            if hasattr(self, "label_neutral_picker"):
+                self.label_neutral_picker.setText("Punto neutro: sin muestra")
             self.combo_illuminant_render.setCurrentIndex(1)
             self.spin_render_temperature.setValue(5003)
             self.spin_render_tint.setValue(0.0)
@@ -4502,6 +4603,7 @@ if QtWidgets is not None:
             if self._original_linear is None:
                 QtWidgets.QMessageBox.information(self, "Info", "Carga primero la captura de carta en el visor.")
                 return
+            self._set_neutral_picker_active(False)
             self._manual_chart_marking = True
             self._manual_chart_points = []
             self._sync_manual_chart_overlay()
@@ -4512,6 +4614,12 @@ if QtWidgets is not None:
             self._manual_chart_points = []
             self._sync_manual_chart_overlay()
             self._set_status("Marcado manual limpiado")
+
+        def _on_result_image_click(self, x: float, y: float) -> None:
+            if self._neutral_picker_active:
+                self._apply_neutral_picker_at(x, y)
+                return
+            self._on_manual_chart_click(x, y)
 
         def _on_manual_chart_click(self, x: float, y: float) -> None:
             if not self._manual_chart_marking:

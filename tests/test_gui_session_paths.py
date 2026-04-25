@@ -340,6 +340,27 @@ def test_advanced_tone_curve_is_persisted_in_render_state(qapp):
         window.close()
 
 
+def test_neutral_eyedropper_updates_temperature_and_tint(qapp):
+    window = ICCRawMainWindow()
+    try:
+        sample = gui_module.np.array([0.18, 0.24, 0.34], dtype=gui_module.np.float32)
+        window._original_linear = gui_module.np.tile(sample.reshape((1, 1, 3)), (24, 24, 1))
+
+        window.btn_neutral_picker.click()
+        assert window._neutral_picker_active is True
+
+        window._on_result_image_click(12, 12)
+        kwargs = window._render_adjustment_kwargs()
+        corrected = gui_module.apply_render_adjustments(window._original_linear, **kwargs)[12, 12]
+
+        assert window._neutral_picker_active is False
+        assert window.combo_illuminant_render.currentText() == "Personalizado"
+        assert "Punto neutro: RGB" in window.label_neutral_picker.text()
+        assert float(gui_module.np.std(corrected)) < float(gui_module.np.std(sample)) * 0.4
+    finally:
+        window.close()
+
+
 def test_gui_downgrades_amaze_when_gpl3_pack_is_missing(qapp, monkeypatch):
     monkeypatch.setattr(pipeline.rawpy, "flags", {"DEMOSAIC_PACK_GPL3": False})
     window = ICCRawMainWindow()
