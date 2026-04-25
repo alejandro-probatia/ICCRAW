@@ -10,7 +10,7 @@ on:
       rawpy-demosaic-ref:
         description: "rawpy-demosaic git ref"
         required: true
-        default: "main"
+        default: "8b17075"
 
 jobs:
   windows-wheel:
@@ -37,16 +37,37 @@ jobs:
           git -C tmp/rawpy-demosaic rev-parse HEAD | Out-File -Encoding ascii tmp/rawpy-demosaic-build-info/source-commit.txt
           git -C tmp/rawpy-demosaic submodule status | Out-File -Encoding ascii tmp/rawpy-demosaic-build-info/submodules.txt
 
+      - name: Patch GPL3 legacy build
+        shell: pwsh
+        working-directory: tmp/rawpy-demosaic
+        run: |
+          $setup = Get-Content -LiteralPath setup.py -Raw
+          $setup = $setup.Replace("buildGPLCode = False", "buildGPLCode = True")
+          $setup = $setup.Replace("name = 'rawpy'", "name = 'rawpy-demosaic'")
+          $setup = $setup.Replace("License :: OSI Approved :: MIT License", "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)")
+          $setup = $setup.Replace("url = 'https://github.com/letmaik/rawpy'", "url = 'https://github.com/exfab/rawpy-demosaic'")
+          Set-Content -LiteralPath setup.py -Value $setup -Encoding utf8
+
       - name: Build wheel
         shell: pwsh
         working-directory: tmp/rawpy-demosaic
-        env:
-          USE_CONDA: "0"
-          PYTHON_VERSION: ${{ inputs.python-version }}
-          PYTHON_ARCH: x86_64
-          NUMPY_VERSION: "2.2.*"
         run: |
-          .\.github\scripts\build-windows.ps1
+          $vsDevCmd = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat"
+          if (-not (Test-Path $vsDevCmd)) {
+            $vsDevCmd = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"
+          }
+          if (-not (Test-Path $vsDevCmd)) {
+            throw "No Visual Studio developer command prompt found"
+          }
+          & "${env:COMSPEC}" /s /c "`"$vsDevCmd`" -arch=x64 -no_logo && set" | ForEach-Object {
+            $name, $value = $_ -split '=', 2
+            try {
+              Set-Content env:\"$name" $value
+            } catch {
+            }
+          }
+          python -m pip install --upgrade pip "setuptools<70" wheel "numpy==1.26.4" "Cython<3"
+          python -u setup.py bdist_wheel
 
       - name: Smoke AMaZE support
         shell: pwsh
