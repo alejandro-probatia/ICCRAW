@@ -146,6 +146,29 @@ def test_image_thumbnail_payload_uses_real_preview(tmp_path: Path, qapp):
     assert rgb.shape[2] == 3
 
 
+def test_raw_thumbnail_payload_falls_back_to_half_size_raw(tmp_path: Path, monkeypatch, qapp):
+    raw_path = tmp_path / "capture.NEF"
+    raw_path.write_bytes(b"not a real raw but enough for the fallback test")
+
+    monkeypatch.setattr(gui_module, "extract_embedded_preview", lambda _path: None)
+    monkeypatch.setattr(
+        ICCRawMainWindow,
+        "_rawpy_thumbnail_u8",
+        staticmethod(lambda _path: gui_module.np.full((96, 48, 3), (24, 96, 180), dtype=gui_module.np.uint8)),
+    )
+
+    payloads = ICCRawMainWindow._build_thumbnail_payloads([raw_path], 64)
+
+    assert len(payloads) == 1
+    payload_path, key, rgb = payloads[0]
+    assert payload_path == str(raw_path)
+    assert str(raw_path) in key
+    assert rgb.dtype.name == "uint8"
+    assert max(rgb.shape[:2]) <= 64
+    assert rgb.shape[2] == 3
+    assert int(rgb[..., 2].max()) > int(rgb[..., 0].max())
+
+
 def test_app_icon_resource_is_packaged(qapp):
     icon_path = gui_module._app_icon_path()
     assert icon_path is not None

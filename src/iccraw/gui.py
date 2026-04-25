@@ -3067,9 +3067,12 @@ if QtWidgets is not None:
             suffix = path.suffix.lower()
             if suffix in RAW_EXTENSIONS:
                 image = extract_embedded_preview(path)
-                if image is None:
-                    return None
-                return NexoRawMainWindow._thumbnail_u8(linear_to_srgb_display(image), size)
+                if image is not None:
+                    return NexoRawMainWindow._thumbnail_u8(linear_to_srgb_display(image), size)
+                raw_thumb = NexoRawMainWindow._rawpy_thumbnail_u8(path)
+                if raw_thumb is not None:
+                    return NexoRawMainWindow._thumbnail_u8(raw_thumb, size)
+                return None
 
             try:
                 with Image.open(path) as img:
@@ -3086,6 +3089,40 @@ if QtWidgets is not None:
             except Exception:
                 image = read_image(path)
                 return NexoRawMainWindow._thumbnail_u8(linear_to_srgb_display(image), size)
+
+        @staticmethod
+        def _rawpy_thumbnail_u8(path: Path) -> np.ndarray | None:
+            try:
+                import rawpy
+
+                with rawpy.imread(str(path)) as raw:
+                    return raw.postprocess(
+                        half_size=True,
+                        use_camera_wb=True,
+                        use_auto_wb=False,
+                        output_color=rawpy.ColorSpace.sRGB,
+                        output_bps=8,
+                        no_auto_bright=False,
+                        bright=1.0,
+                        demosaic_algorithm=rawpy.DemosaicAlgorithm.LINEAR,
+                    )
+            except Exception:
+                try:
+                    import rawpy
+
+                    with rawpy.imread(str(path)) as raw:
+                        return raw.postprocess(
+                            half_size=True,
+                            use_camera_wb=False,
+                            use_auto_wb=True,
+                            output_color=rawpy.ColorSpace.sRGB,
+                            output_bps=8,
+                            no_auto_bright=False,
+                            bright=1.0,
+                            demosaic_algorithm=rawpy.DemosaicAlgorithm.LINEAR,
+                        )
+                except Exception:
+                    return None
 
         @staticmethod
         def _thumbnail_u8(image_rgb: np.ndarray, size: int) -> np.ndarray:
