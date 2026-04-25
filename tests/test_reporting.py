@@ -6,7 +6,7 @@ from iccraw import reporting
 def test_check_external_tools_reports_available_required_tools(monkeypatch):
     available = {"colprof", "xicclu", "tificc", "exiftool"}
 
-    def fake_which(command):
+    def fake_tool_path(command):
         if command in available:
             return f"/usr/bin/{command}"
         return None
@@ -14,7 +14,7 @@ def test_check_external_tools_reports_available_required_tools(monkeypatch):
     def fake_run(command, **_kwargs):
         return subprocess.CompletedProcess(command, 0, stdout=f"{command[0]} 1.2.3\n")
 
-    monkeypatch.setattr(reporting.shutil, "which", fake_which)
+    monkeypatch.setattr(reporting, "external_tool_path", fake_tool_path)
     monkeypatch.setattr(reporting.subprocess, "run", fake_run)
 
     result = reporting.check_external_tools()
@@ -29,7 +29,7 @@ def test_check_external_tools_reports_available_required_tools(monkeypatch):
 def test_check_external_tools_uses_icclu_fallback(monkeypatch):
     available = {"colprof", "icclu", "tificc", "exiftool"}
 
-    def fake_which(command):
+    def fake_tool_path(command):
         if command in available:
             return f"/usr/bin/{command}"
         return None
@@ -37,7 +37,7 @@ def test_check_external_tools_uses_icclu_fallback(monkeypatch):
     def fake_run(command, **_kwargs):
         return subprocess.CompletedProcess(command, 0, stdout=f"{command[0]} fallback\n")
 
-    monkeypatch.setattr(reporting.shutil, "which", fake_which)
+    monkeypatch.setattr(reporting, "external_tool_path", fake_tool_path)
     monkeypatch.setattr(reporting.subprocess, "run", fake_run)
 
     result = reporting.check_external_tools()
@@ -49,7 +49,7 @@ def test_check_external_tools_uses_icclu_fallback(monkeypatch):
 
 
 def test_check_external_tools_reports_missing_required(monkeypatch):
-    monkeypatch.setattr(reporting.shutil, "which", lambda _command: None)
+    monkeypatch.setattr(reporting, "external_tool_path", lambda _command: None)
 
     result = reporting.check_external_tools()
 

@@ -41,6 +41,8 @@ Para mantener trazabilidad completa, cada cambio debe:
   iniciar la calibracion.
 - Politica AMaZE/GPL3 documentada: ICCRAW mantiene `AGPL-3.0-or-later`, registra
   flags de `rawpy` y solo habilita AMaZE cuando `DEMOSAIC_PACK_GPL3=True`.
+- El instalador Windows empaqueta herramientas externas del flujo completo
+  (`colprof`/`xicclu`, `exiftool` y `tificc`) bajo `tools/`.
 - La GUI carga automáticamente la previsualización al seleccionar miniaturas y
   añade una barra superior de progreso para tareas largas.
 - El visor permite zoom, reencuadre por arrastre y rotación de 90 grados.

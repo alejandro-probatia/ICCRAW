@@ -12,6 +12,7 @@ import numpy as np
 import colour
 
 from ..core.color import delta_e76, delta_e2000, summarize
+from ..core.external import external_tool_path
 from ..core.models import ErrorSummary, PatchError, ProfileBuildResult, Recipe, SampleSet, ValidationResult
 from ..core.models import read_json, write_json
 from ..version import __version__
@@ -143,7 +144,7 @@ def validate_profile(samples: SampleSet, profile_path: Path) -> ValidationResult
 
 
 def _lookup_lab_with_icc(profile_path: Path, measured_rgb: np.ndarray) -> np.ndarray:
-    xicclu = shutil.which("xicclu") or shutil.which("icclu")
+    xicclu = external_tool_path("xicclu") or external_tool_path("icclu")
     if xicclu is None:
         raise RuntimeError("No se puede validar ICC: 'xicclu'/'icclu' no esta disponible en PATH.")
 
@@ -244,7 +245,7 @@ def _build_profile_with_argyll(
     description: str,
     extra_args: list[str] | None,
 ) -> None:
-    colprof = shutil.which("colprof")
+    colprof = external_tool_path("colprof")
     if colprof is None:
         raise RuntimeError("colprof no esta en PATH")
 

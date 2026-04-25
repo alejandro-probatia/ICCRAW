@@ -5,6 +5,8 @@ import json
 import subprocess
 from typing import Any
 
+from ..core.external import external_tool_path
+
 try:
     import rawpy
 except Exception:  # pragma: no cover - optional dependency at runtime.
@@ -57,8 +59,11 @@ def raw_info(path: Path) -> RawMetadata:
 
 
 def _read_exif(path: Path) -> dict:
+    exiftool = external_tool_path("exiftool")
+    if exiftool is None:
+        return {}
     try:
-        output = subprocess.check_output(["exiftool", "-json", str(path)], text=True)
+        output = subprocess.check_output([exiftool, "-json", str(path)], text=True)
         data = json.loads(output)
         if data and isinstance(data, list):
             return data[0]

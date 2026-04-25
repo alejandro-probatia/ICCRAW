@@ -5,7 +5,10 @@ param(
   [switch]$NoInstaller,
   [string]$Version = "",
   [string]$Python = "",
-  [string]$OutputRoot = ""
+  [string]$OutputRoot = "",
+  [string]$ArgyllRoot = "",
+  [string]$ExifToolRoot = "",
+  [string]$LcmsBin = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -68,6 +71,109 @@ function Remove-TreeUnderRoot {
   }
 
   Remove-Item -LiteralPath $targetPath -Recurse -Force
+}
+
+function Copy-DirectoryContents {
+  param(
+    [string]$Source,
+    [string]$Destination
+  )
+
+  if (-not (Test-Path $Source)) {
+    throw "No existe directorio requerido: $Source"
+  }
+  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+  Copy-Item -Path (Join-Path $Source "*") -Destination $Destination -Recurse -Force
+}
+
+function Resolve-CommandDirectory {
+  param([string]$Command)
+  $cmd = Get-Command $Command -ErrorAction SilentlyContinue
+  if (-not $cmd) {
+    return $null
+  }
+  return Split-Path -Parent $cmd.Source
+}
+
+function Resolve-ArgyllBin {
+  if (-not [string]::IsNullOrWhiteSpace($ArgyllRoot)) {
+    $candidate = Join-Path $ArgyllRoot "bin"
+    if (Test-Path $candidate) {
+      return $candidate
+    }
+    return $ArgyllRoot
+  }
+  return Resolve-CommandDirectory "colprof"
+}
+
+function Resolve-ExifToolRoot {
+  if (-not [string]::IsNullOrWhiteSpace($ExifToolRoot)) {
+    return $ExifToolRoot
+  }
+  return Resolve-CommandDirectory "exiftool"
+}
+
+function Resolve-LcmsBin {
+  if (-not [string]::IsNullOrWhiteSpace($LcmsBin)) {
+    return $LcmsBin
+  }
+  if (-not [string]::IsNullOrWhiteSpace($env:ICCRAW_LCMS_BIN)) {
+    return $env:ICCRAW_LCMS_BIN
+  }
+  $fromPath = Resolve-CommandDirectory "tificc"
+  if ($fromPath) {
+    return $fromPath
+  }
+  $condaCandidate = Join-Path $Root "tmp\lcms2-conda\Library\bin"
+  if (Test-Path (Join-Path $condaCandidate "tificc.exe")) {
+    return $condaCandidate
+  }
+  return $null
+}
+
+function Copy-ExternalTools {
+  param([string]$AppBuildDir)
+
+  $toolsRoot = Join-Path $AppBuildDir "tools"
+  $docsRoot = Join-Path $AppBuildDir "docs\third_party"
+  New-Item -ItemType Directory -Force -Path $toolsRoot | Out-Null
+  New-Item -ItemType Directory -Force -Path $docsRoot | Out-Null
+
+  $argyllBin = Resolve-ArgyllBin
+  if (-not $argyllBin -or -not (Test-Path (Join-Path $argyllBin "colprof.exe"))) {
+    throw "No se encontro ArgyllCMS completo para empaquetar (colprof.exe)."
+  }
+  Copy-DirectoryContents -Source $argyllBin -Destination (Join-Path $toolsRoot "argyll\bin")
+  $argyllRoot = Split-Path -Parent $argyllBin
+  foreach ($file in @("License.txt", "Readme.txt")) {
+    $path = Join-Path $argyllRoot $file
+    if (Test-Path $path) {
+      Copy-Item -LiteralPath $path -Destination (Join-Path $docsRoot "ArgyllCMS-$file") -Force
+    }
+  }
+
+  $exifRoot = Resolve-ExifToolRoot
+  if (-not $exifRoot -or -not (Test-Path (Join-Path $exifRoot "exiftool.exe"))) {
+    throw "No se encontro ExifTool completo para empaquetar (exiftool.exe)."
+  }
+  Copy-DirectoryContents -Source $exifRoot -Destination (Join-Path $toolsRoot "exiftool")
+
+  $lcmsSource = Resolve-LcmsBin
+  if (-not $lcmsSource -or -not (Test-Path (Join-Path $lcmsSource "tificc.exe"))) {
+    throw "No se encontro LittleCMS/tificc para empaquetar. Define -LcmsBin o ICCRAW_LCMS_BIN."
+  }
+  Copy-DirectoryContents -Source $lcmsSource -Destination (Join-Path $toolsRoot "lcms\bin")
+  $lcmsRoot = Split-Path -Parent (Split-Path -Parent $lcmsSource)
+  $lcmsMeta = Join-Path $lcmsRoot "conda-meta"
+  if (Test-Path $lcmsMeta) {
+    Copy-DirectoryContents -Source $lcmsMeta -Destination (Join-Path $docsRoot "lcms-conda-meta")
+  }
+  $lcmsDocs = Join-Path $lcmsRoot "Library\share\doc"
+  if (Test-Path $lcmsDocs) {
+    Copy-DirectoryContents -Source $lcmsDocs -Destination (Join-Path $docsRoot "lcms-doc")
+  }
+
+  Write-Host "Herramientas externas empaquetadas en: $toolsRoot"
 }
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -133,8 +239,11 @@ Invoke-Native "Construir aplicacion con PyInstaller" $Python @(
   $SpecPath
 )
 
+Copy-ExternalTools -AppBuildDir $AppBuildDir
+
 Invoke-Native "Smoke CLI empaquetada" (Join-Path $AppBuildDir "iccraw.exe") @("--version")
 Invoke-Native "Smoke ayuda CLI empaquetada" (Join-Path $AppBuildDir "iccraw.exe") @("--help")
+Invoke-Native "Smoke herramientas empaquetadas" (Join-Path $AppBuildDir "iccraw.exe") @("check-tools", "--strict")
 
 if (-not $NoInstaller) {
   $Iscc = Resolve-Iscc

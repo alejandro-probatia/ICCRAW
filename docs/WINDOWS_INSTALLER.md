@@ -104,6 +104,12 @@ En una maquina Windows limpia:
 - La plantilla Inno Setup esta en `packaging/windows/iccraw.iss`.
 - El script `build_installer.ps1` instala los extras `dev`, `gui` e
   `installer` antes de empaquetar.
+- El instalador copia ArgyllCMS (`colprof`/`xicclu`), ExifTool y LittleCMS
+  (`tificc`) en `{app}\tools\...` y la aplicacion los resuelve desde ahi antes
+  de consultar el `PATH` del sistema.
+- Para LittleCMS, si `tificc` no esta en `PATH`, el script acepta `-LcmsBin` o
+  la variable `ICCRAW_LCMS_BIN` apuntando al directorio que contiene
+  `tificc.exe` y sus DLLs.
 - Para publicar un instalador con AMaZE, la wheel incluida debe informar
   `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`. Si se usa `rawpy-demosaic` o una
   wheel propia de LibRaw GPL3, incluir tambien los avisos GPL3/AGPL y la ruta

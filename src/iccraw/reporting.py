@@ -5,10 +5,10 @@ from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
 import os
 import platform
-import shutil
 import subprocess
 from typing import Any
 
+from .core.external import external_tool_path
 from .raw.pipeline import rawpy_feature_flags
 
 
@@ -125,7 +125,8 @@ def check_external_tools() -> dict[str, Any]:
 
 def _check_external_tool(spec: dict[str, Any]) -> ExternalToolCheck:
     commands = [str(c) for c in spec["commands"]]
-    selected = next((command for command in commands if shutil.which(command)), None)
+    selected = next((command for command in commands if external_tool_path(command)), None)
+    selected_path = external_tool_path(selected) if selected is not None else None
     required = bool(spec.get("required", True))
 
     if selected is None:
@@ -143,13 +144,13 @@ def _check_external_tool(spec: dict[str, Any]) -> ExternalToolCheck:
         )
 
     version_args = [str(arg) for arg in spec.get("version_args", [])]
-    version_command = [selected, *version_args]
+    version_command = [selected_path or selected, *version_args]
     version, message = _tool_version(version_command)
     return ExternalToolCheck(
         name=str(spec["name"]),
         commands=commands,
         selected_command=selected,
-        path=shutil.which(selected),
+        path=selected_path,
         available=True,
         required=required,
         version=version,

@@ -4,7 +4,6 @@ from dataclasses import asdict
 from pathlib import Path
 import hashlib
 import json
-import shutil
 import subprocess
 import tempfile
 import numpy as np
@@ -12,6 +11,7 @@ import colour
 from PIL import ImageCms
 
 from ..core.models import BatchManifest, BatchManifestEntry, Recipe
+from ..core.external import external_tool_path
 from ..core.utils import list_raw_files, sha256_file, write_tiff16
 from ..raw.pipeline import develop_scene_linear_array, render_recipe_output_array
 from ..version import __version__
@@ -125,7 +125,7 @@ def write_profiled_tiff(
 
 
 def _write_converted_srgb_tiff(out_tiff: Path, image_linear_rgb: np.ndarray, *, input_profile: Path) -> None:
-    tificc = shutil.which("tificc")
+    tificc = external_tool_path("tificc")
     if tificc is None:
         raise RuntimeError(
             "No se puede convertir ICC: 'tificc' no esta disponible en PATH. "
