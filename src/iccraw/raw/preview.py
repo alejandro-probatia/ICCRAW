@@ -225,6 +225,8 @@ def apply_render_adjustments(
     contrast: float = 0.0,
     midtone: float = 1.0,
     tone_curve_points: list[tuple[float, float]] | None = None,
+    tone_curve_black_point: float = 0.0,
+    tone_curve_white_point: float = 1.0,
 ) -> np.ndarray:
     out = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
 
@@ -254,7 +256,12 @@ def apply_render_adjustments(
         out = np.power(np.clip(out, 0.0, 1.0), gamma)
 
     if tone_curve_points:
-        out = apply_tone_curve(out, tone_curve_points)
+        out = apply_tone_curve(
+            out,
+            tone_curve_points,
+            black_point=tone_curve_black_point,
+            white_point=tone_curve_white_point,
+        )
 
     return np.clip(out, 0.0, 1.0).astype(np.float32)
 
@@ -282,7 +289,41 @@ def normalize_tone_curve_points(points: list[tuple[float, float]] | tuple[tuple[
             deduped.append((x, y))
     deduped[0] = (0.0, 0.0)
     deduped[-1] = (1.0, 1.0)
-    return deduped
+
+    monotonic: list[tuple[float, float]] = []
+    previous_y = 0.0
+    for idx, (x, y) in enumerate(deduped):
+        if idx == 0:
+            y = 0.0
+        elif idx == len(deduped) - 1:
+            y = 1.0
+        else:
+            y = float(np.clip(max(y, previous_y), 0.0, 1.0))
+        monotonic.append((x, y))
+        previous_y = y
+    return monotonic
+
+
+def tone_curve_lut(
+    points: list[tuple[float, float]] | tuple[tuple[float, float], ...],
+    *,
+    lut_size: int = 4096,
+    black_point: float = 0.0,
+    white_point: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    curve = normalize_tone_curve_points(points)
+    xs = np.asarray([p[0] for p in curve], dtype=np.float32)
+    ys = np.asarray([p[1] for p in curve], dtype=np.float32)
+    lut_size = int(np.clip(lut_size, 256, 65536))
+
+    bp = float(np.clip(black_point, 0.0, 0.95))
+    wp = float(np.clip(white_point, bp + 1e-4, 1.0))
+    lut_x = np.linspace(0.0, 1.0, lut_size, dtype=np.float32)
+    curve_x = np.clip((lut_x - bp) / max(1e-4, wp - bp), 0.0, 1.0).astype(np.float32)
+    lut_y = _monotone_cubic_interpolate(xs, ys, curve_x)
+    lut_y = np.maximum.accumulate(np.clip(lut_y, 0.0, 1.0)).astype(np.float32)
+    lut_y[-1] = 1.0
+    return lut_x, lut_y
 
 
 def apply_tone_curve(
@@ -290,13 +331,23 @@ def apply_tone_curve(
     points: list[tuple[float, float]] | tuple[tuple[float, float], ...],
     *,
     lut_size: int = 4096,
+    black_point: float = 0.0,
+    white_point: float = 1.0,
 ) -> np.ndarray:
     curve = normalize_tone_curve_points(points)
     xs = np.asarray([p[0] for p in curve], dtype=np.float32)
     ys = np.asarray([p[1] for p in curve], dtype=np.float32)
+    bp = float(np.clip(black_point, 0.0, 0.95))
+    wp = float(np.clip(white_point, bp + 1e-4, 1.0))
 
     out = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
-    if len(curve) <= 2 and np.allclose(xs, [0.0, 1.0], atol=1e-6) and np.allclose(ys, [0.0, 1.0], atol=1e-6):
+    if (
+        len(curve) <= 2
+        and np.allclose(xs, [0.0, 1.0], atol=1e-6)
+        and np.allclose(ys, [0.0, 1.0], atol=1e-6)
+        and abs(bp) <= 1e-6
+        and abs(wp - 1.0) <= 1e-6
+    ):
         return out.astype(np.float32)
 
     # Apply the curve to scene luminance and scale RGB by the luminance ratio.
@@ -304,9 +355,13 @@ def apply_tone_curve(
     # applying an arbitrary display curve independently to each channel.
     weights = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
     luminance = np.clip(np.sum(out[..., :3] * weights.reshape((1, 1, 3)), axis=2), 0.0, 1.0)
-    lut_size = int(np.clip(lut_size, 256, 65536))
-    lut_x = np.linspace(0.0, 1.0, lut_size, dtype=np.float32)
-    lut_y = np.interp(lut_x, xs, ys).astype(np.float32)
+    _lut_x, lut_y = tone_curve_lut(
+        curve,
+        lut_size=lut_size,
+        black_point=bp,
+        white_point=wp,
+    )
+    lut_size = int(lut_y.size)
     indices = np.clip(np.rint(luminance * (lut_size - 1)), 0, lut_size - 1).astype(np.int32)
     curved_luminance = lut_y[indices]
 
@@ -316,6 +371,62 @@ def apply_tone_curve(
     adjusted = out.copy()
     adjusted[..., :3] *= scale[..., None]
     return np.clip(adjusted, 0.0, 1.0).astype(np.float32)
+
+
+def _monotone_cubic_interpolate(x: np.ndarray, y: np.ndarray, x_new: np.ndarray) -> np.ndarray:
+    x = np.asarray(x, dtype=np.float32)
+    y = np.asarray(y, dtype=np.float32)
+    x_new = np.asarray(x_new, dtype=np.float32)
+    if x.size < 3:
+        return np.interp(x_new, x, y).astype(np.float32)
+
+    h = np.diff(x)
+    if np.any(h <= 0.0):
+        return np.interp(x_new, x, y).astype(np.float32)
+    delta = np.diff(y) / h
+
+    slopes = np.zeros_like(y, dtype=np.float32)
+    slopes[0] = _pchip_endpoint_slope(h[0], h[1], delta[0], delta[1])
+    slopes[-1] = _pchip_endpoint_slope(h[-1], h[-2], delta[-1], delta[-2])
+    for idx in range(1, x.size - 1):
+        left = float(delta[idx - 1])
+        right = float(delta[idx])
+        if left <= 0.0 or right <= 0.0:
+            slopes[idx] = 0.0
+        else:
+            w1 = 2.0 * float(h[idx]) + float(h[idx - 1])
+            w2 = float(h[idx]) + 2.0 * float(h[idx - 1])
+            slopes[idx] = (w1 + w2) / ((w1 / left) + (w2 / right))
+
+    interval = np.searchsorted(x, x_new, side="right") - 1
+    interval = np.clip(interval, 0, x.size - 2)
+    x0 = x[interval]
+    x1 = x[interval + 1]
+    y0 = y[interval]
+    y1 = y[interval + 1]
+    m0 = slopes[interval]
+    m1 = slopes[interval + 1]
+    width = np.maximum(x1 - x0, 1e-6)
+    t = (x_new - x0) / width
+    t2 = t * t
+    t3 = t2 * t
+
+    h00 = 2.0 * t3 - 3.0 * t2 + 1.0
+    h10 = t3 - 2.0 * t2 + t
+    h01 = -2.0 * t3 + 3.0 * t2
+    h11 = t3 - t2
+    return (h00 * y0 + h10 * width * m0 + h01 * y1 + h11 * width * m1).astype(np.float32)
+
+
+def _pchip_endpoint_slope(h0: float, h1: float, delta0: float, delta1: float) -> np.float32:
+    d = ((2.0 * h0 + h1) * delta0 - h0 * delta1) / max(1e-6, h0 + h1)
+    if d <= 0.0:
+        return np.float32(0.0)
+    if delta0 <= 0.0:
+        return np.float32(0.0)
+    if delta1 <= 0.0 and d > 3.0 * delta0:
+        return np.float32(3.0 * delta0)
+    return np.float32(d)
 
 
 def _scale_channel_radially(channel: np.ndarray, scale: float) -> np.ndarray:

@@ -20,6 +20,7 @@ from iccraw.raw.preview import (
     normalize_tone_curve_points,
     preview_analysis_text,
     srgb_to_linear_display,
+    tone_curve_lut,
 )
 
 
@@ -76,6 +77,12 @@ def test_normalize_tone_curve_points_clamps_sorts_and_keeps_endpoints():
     assert all(0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 for x, y in points)
 
 
+def test_normalize_tone_curve_points_prevents_descending_segments():
+    points = normalize_tone_curve_points([(0.25, 0.75), (0.75, 0.25)])
+
+    assert np.all(np.diff([y for _x, y in points]) >= 0.0)
+
+
 def test_apply_tone_curve_identity_for_linear_points():
     img = np.linspace(0.0, 1.0, 3 * 8 * 9, dtype=np.float32).reshape((8, 9, 3))
     out = apply_tone_curve(img, [(0.0, 0.0), (1.0, 1.0)])
@@ -93,6 +100,20 @@ def test_apply_render_adjustments_uses_advanced_tone_curve():
 
     assert out.shape == img.shape
     assert float(np.mean(out)) > float(np.mean(img))
+
+
+def test_tone_curve_lut_is_smooth_monotonic_and_honors_black_white_points():
+    lut_x, lut_y = tone_curve_lut(
+        [(0.0, 0.0), (0.25, 0.12), (0.55, 0.72), (1.0, 1.0)],
+        lut_size=256,
+        black_point=0.2,
+        white_point=0.82,
+    )
+
+    assert lut_x.shape == lut_y.shape
+    assert float(np.max(lut_y[lut_x <= 0.2])) == 0.0
+    assert float(np.min(lut_y[lut_x >= 0.82])) == 1.0
+    assert np.all(np.diff(lut_y) >= -1e-6)
 
 
 def test_lateral_chromatic_aberration_identity_at_neutral_scales():

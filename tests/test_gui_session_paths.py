@@ -211,6 +211,7 @@ def test_advanced_tone_curve_is_persisted_in_render_state(qapp):
     window = ICCRawMainWindow()
     try:
         window.check_tone_curve_enabled.setChecked(True)
+        window._set_tone_curve_range_controls(0.08, 0.92)
         window.tone_curve_editor.set_points([(0.0, 0.0), (0.5, 0.72), (1.0, 1.0)])
 
         state = window._render_adjustment_state()
@@ -218,8 +219,14 @@ def test_advanced_tone_curve_is_persisted_in_render_state(qapp):
 
         assert state["tone_curve_enabled"] is True
         assert state["tone_curve_preset"] == "custom"
+        assert state["tone_curve_black_point"] == 0.08
+        assert state["tone_curve_white_point"] == 0.92
         assert state["tone_curve_points"][1] == [0.5, 0.72]
         assert kwargs["tone_curve_points"] == state["tone_curve_points"]
+        assert kwargs["tone_curve_black_point"] == 0.08
+        assert kwargs["tone_curve_white_point"] == 0.92
+        assert window.tone_curve_editor.sizeHint().width() == window.tone_curve_editor.sizeHint().height()
+        assert window.tone_curve_editor.hasHeightForWidth()
     finally:
         window.close()
 

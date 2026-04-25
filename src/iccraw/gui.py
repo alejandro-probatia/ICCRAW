@@ -52,6 +52,7 @@ from .raw.preview import (
     load_image_for_preview,
     normalize_tone_curve_points,
     preview_analysis_text,
+    tone_curve_lut,
 )
 from .reporting import check_external_tools
 from .session import create_session, ensure_session_structure, load_session, save_session, session_file_path
@@ -320,9 +321,20 @@ if QtWidgets is not None:
             self._points = normalize_tone_curve_points([(0.0, 0.0), (1.0, 1.0)])
             self._drag_index: int | None = None
             self._histogram: np.ndarray | None = None
-            self.setMinimumHeight(190)
+            self._black_point = 0.0
+            self._white_point = 1.0
+            self.setMinimumHeight(320)
             self.setMouseTracking(True)
-            self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+            self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+
+        def hasHeightForWidth(self) -> bool:  # noqa: N802
+            return True
+
+        def heightForWidth(self, width: int) -> int:  # noqa: N802
+            return int(np.clip(width, 300, 460))
+
+        def sizeHint(self) -> QtCore.QSize:  # noqa: N802
+            return QtCore.QSize(340, 340)
 
         def points(self) -> list[tuple[float, float]]:
             return list(self._points)
@@ -333,6 +345,13 @@ if QtWidgets is not None:
             self.update()
             if emit:
                 self.pointsChanged.emit(self.points())
+
+        def set_input_range(self, black_point: float, white_point: float) -> None:
+            black = float(np.clip(black_point, 0.0, 0.95))
+            white = float(np.clip(white_point, black + 0.01, 1.0))
+            self._black_point = black
+            self._white_point = white
+            self.update()
 
         def set_histogram_from_image(self, image_linear_rgb: np.ndarray | None) -> None:
             if image_linear_rgb is None:
@@ -377,13 +396,30 @@ if QtWidgets is not None:
 
             diagonal_pen = QtGui.QPen(QtGui.QColor("#8a8a8a"), 1, QtCore.Qt.DashLine)
             painter.setPen(diagonal_pen)
-            painter.drawLine(self._point_to_widget((0.0, 0.0)), self._point_to_widget((1.0, 1.0)))
+            painter.drawLine(self._domain_point_to_widget(0.0, 0.0), self._domain_point_to_widget(1.0, 1.0))
+
+            range_pen = QtGui.QPen(QtGui.QColor("#bdbdbd"), 1, QtCore.Qt.DotLine)
+            painter.setPen(range_pen)
+            painter.drawLine(
+                self._domain_point_to_widget(self._black_point, 0.0),
+                self._domain_point_to_widget(self._black_point, 1.0),
+            )
+            painter.drawLine(
+                self._domain_point_to_widget(self._white_point, 0.0),
+                self._domain_point_to_widget(self._white_point, 1.0),
+            )
 
             curve_pen = QtGui.QPen(QtGui.QColor("#d9d9d9"), 2)
             painter.setPen(curve_pen)
-            path = QtGui.QPainterPath(self._point_to_widget(self._points[0]))
-            for point in self._points[1:]:
-                path.lineTo(self._point_to_widget(point))
+            curve_x, curve_y = tone_curve_lut(
+                self._points,
+                lut_size=256,
+                black_point=self._black_point,
+                white_point=self._white_point,
+            )
+            path = QtGui.QPainterPath(self._domain_point_to_widget(float(curve_x[0]), float(curve_y[0])))
+            for x, y in zip(curve_x[1:], curve_y[1:]):
+                path.lineTo(self._domain_point_to_widget(float(x), float(y)))
             painter.drawPath(path)
 
             painter.setBrush(QtGui.QBrush(QtGui.QColor("#d9d9d9")))
@@ -419,7 +455,12 @@ if QtWidgets is not None:
             x, y = self._widget_to_point(event.position())
             left = self._points[idx - 1][0] + 0.01
             right = self._points[idx + 1][0] - 0.01
-            self._points[idx] = (float(np.clip(x, left, right)), float(np.clip(y, 0.0, 1.0)))
+            lower_y = self._points[idx - 1][1]
+            upper_y = self._points[idx + 1][1]
+            self._points[idx] = (
+                float(np.clip(x, left, right)),
+                float(np.clip(y, lower_y, upper_y)),
+            )
             self.update()
             self.pointsChanged.emit(self.points())
 
@@ -430,17 +471,27 @@ if QtWidgets is not None:
             return super().mouseReleaseEvent(event)
 
         def _plot_rect(self) -> QtCore.QRectF:
-            return QtCore.QRectF(12, 12, max(20, self.width() - 24), max(20, self.height() - 24))
+            available_w = max(20.0, float(self.width() - 24))
+            available_h = max(20.0, float(self.height() - 24))
+            side = min(available_w, available_h)
+            left = (float(self.width()) - side) / 2.0
+            top = (float(self.height()) - side) / 2.0
+            return QtCore.QRectF(left, top, side, side)
 
         def _point_to_widget(self, point: tuple[float, float]) -> QtCore.QPointF:
+            domain_x = self._black_point + float(point[0]) * max(1e-4, self._white_point - self._black_point)
+            return self._domain_point_to_widget(domain_x, float(point[1]))
+
+        def _domain_point_to_widget(self, x_value: float, y_value: float) -> QtCore.QPointF:
             rect = self._plot_rect()
-            x = rect.left() + float(point[0]) * rect.width()
-            y = rect.bottom() - float(point[1]) * rect.height()
+            x = rect.left() + float(np.clip(x_value, 0.0, 1.0)) * rect.width()
+            y = rect.bottom() - float(np.clip(y_value, 0.0, 1.0)) * rect.height()
             return QtCore.QPointF(x, y)
 
         def _widget_to_point(self, pos: QtCore.QPointF) -> tuple[float, float]:
             rect = self._plot_rect()
-            x = (pos.x() - rect.left()) / max(1.0, rect.width())
+            domain_x = (pos.x() - rect.left()) / max(1.0, rect.width())
+            x = (domain_x - self._black_point) / max(1e-4, self._white_point - self._black_point)
             y = (rect.bottom() - pos.y()) / max(1.0, rect.height())
             return float(np.clip(x, 0.0, 1.0)), float(np.clip(y, 0.0, 1.0))
 
@@ -1538,13 +1589,33 @@ if QtWidgets is not None:
             self.combo_tone_curve_preset.currentIndexChanged.connect(self._on_tone_curve_preset_changed)
             grid.addWidget(self.combo_tone_curve_preset, 14, 1, 1, 2)
 
+            self.slider_tone_curve_black, self.label_tone_curve_black = self._slider(
+                minimum=0,
+                maximum=950,
+                value=0,
+                on_change=self._on_tone_curve_range_changed,
+                formatter=lambda v: f"Negro curva: {v / 1000:.3f}",
+            )
+            grid.addWidget(self.label_tone_curve_black, 15, 0, 1, 3)
+            grid.addWidget(self.slider_tone_curve_black, 16, 0, 1, 3)
+
+            self.slider_tone_curve_white, self.label_tone_curve_white = self._slider(
+                minimum=50,
+                maximum=1000,
+                value=1000,
+                on_change=self._on_tone_curve_range_changed,
+                formatter=lambda v: f"Blanco curva: {v / 1000:.3f}",
+            )
+            grid.addWidget(self.label_tone_curve_white, 17, 0, 1, 3)
+            grid.addWidget(self.slider_tone_curve_white, 18, 0, 1, 3)
+
             self.tone_curve_editor = ToneCurveEditor()
             self.tone_curve_editor.pointsChanged.connect(self._on_tone_curve_points_changed)
-            grid.addWidget(self.tone_curve_editor, 15, 0, 1, 3)
-            grid.addWidget(self._button("Restablecer curva", self._reset_tone_curve), 16, 0, 1, 3)
+            grid.addWidget(self.tone_curve_editor, 19, 0, 1, 3)
+            grid.addWidget(self._button("Restablecer curva", self._reset_tone_curve), 20, 0, 1, 3)
             self._set_tone_curve_controls_enabled(False)
 
-            grid.addWidget(self._button("Restablecer corrección básica", self._reset_basic_adjustments), 17, 0, 1, 3)
+            grid.addWidget(self._button("Restablecer corrección básica", self._reset_basic_adjustments), 21, 0, 1, 3)
             return tab
 
         def _build_tab_preview_settings(self) -> QtWidgets.QWidget:
@@ -1859,6 +1930,8 @@ if QtWidgets is not None:
                 "midtone": self.slider_midtone.value() / 100.0,
                 "tone_curve_enabled": bool(self.check_tone_curve_enabled.isChecked()),
                 "tone_curve_preset": self._tone_curve_preset_key(),
+                "tone_curve_black_point": self.slider_tone_curve_black.value() / 1000.0,
+                "tone_curve_white_point": self.slider_tone_curve_white.value() / 1000.0,
                 "tone_curve_points": [
                     [float(x), float(y)]
                     for x, y in normalize_tone_curve_points(self.tone_curve_editor.points())
@@ -1877,6 +1950,8 @@ if QtWidgets is not None:
                 "contrast": float(state["contrast"]),
                 "midtone": float(state["midtone"]),
                 "tone_curve_points": state["tone_curve_points"] if state["tone_curve_enabled"] else None,
+                "tone_curve_black_point": float(state["tone_curve_black_point"]),
+                "tone_curve_white_point": float(max(state["tone_curve_black_point"] + 0.01, state["tone_curve_white_point"])),
             }
 
         def _detail_adjustment_state(self) -> dict[str, Any]:
@@ -2352,7 +2427,10 @@ if QtWidgets is not None:
                 curve_enabled = bool(render_adjustments.get("tone_curve_enabled", False))
                 curve_preset = str(render_adjustments.get("tone_curve_preset") or "linear")
                 curve_points = self._coerce_tone_curve_points(render_adjustments.get("tone_curve_points"))
+                curve_black = float(render_adjustments.get("tone_curve_black_point", 0.0))
+                curve_white = float(render_adjustments.get("tone_curve_white_point", 1.0))
                 self._set_combo_data(self.combo_tone_curve_preset, curve_preset)
+                self._set_tone_curve_range_controls(curve_black, curve_white)
                 self.tone_curve_editor.set_points(
                     curve_points or self._tone_curve_preset_points(curve_preset),
                     emit=False,
@@ -3303,7 +3381,34 @@ if QtWidgets is not None:
 
         def _set_tone_curve_controls_enabled(self, enabled: bool) -> None:
             self.combo_tone_curve_preset.setEnabled(bool(enabled))
+            self.label_tone_curve_black.setEnabled(bool(enabled))
+            self.slider_tone_curve_black.setEnabled(bool(enabled))
+            self.label_tone_curve_white.setEnabled(bool(enabled))
+            self.slider_tone_curve_white.setEnabled(bool(enabled))
             self.tone_curve_editor.setEnabled(bool(enabled))
+
+        def _tone_curve_range_values(self) -> tuple[float, float]:
+            black = self.slider_tone_curve_black.value() / 1000.0
+            white = self.slider_tone_curve_white.value() / 1000.0
+            black = float(np.clip(black, 0.0, 0.95))
+            white = float(np.clip(white, black + 0.01, 1.0))
+            return black, white
+
+        def _set_tone_curve_range_controls(self, black_point: float, white_point: float) -> None:
+            black = float(np.clip(black_point, 0.0, 0.95))
+            white = float(np.clip(white_point, black + 0.01, 1.0))
+            self.slider_tone_curve_black.blockSignals(True)
+            self.slider_tone_curve_white.blockSignals(True)
+            self.slider_tone_curve_black.setValue(int(round(black * 1000.0)))
+            self.slider_tone_curve_white.setValue(int(round(white * 1000.0)))
+            self.slider_tone_curve_black.blockSignals(False)
+            self.slider_tone_curve_white.blockSignals(False)
+            self.label_tone_curve_black.setText(f"Negro curva: {self.slider_tone_curve_black.value() / 1000:.3f}")
+            self.label_tone_curve_white.setText(f"Blanco curva: {self.slider_tone_curve_white.value() / 1000:.3f}")
+            self.tone_curve_editor.set_input_range(
+                self.slider_tone_curve_black.value() / 1000.0,
+                self.slider_tone_curve_white.value() / 1000.0,
+            )
 
         def _coerce_tone_curve_points(self, value: Any) -> list[tuple[float, float]] | None:
             if not isinstance(value, (list, tuple)):
@@ -3343,6 +3448,19 @@ if QtWidgets is not None:
                 self.tone_curve_editor.set_points(self._tone_curve_preset_points(key), emit=False)
             self._on_render_control_change()
 
+        def _on_tone_curve_range_changed(self, *_args) -> None:
+            black = self.slider_tone_curve_black.value() / 1000.0
+            white = self.slider_tone_curve_white.value() / 1000.0
+            if white <= black + 0.01:
+                if self.sender() is self.slider_tone_curve_black:
+                    black = max(0.0, white - 0.01)
+                else:
+                    white = min(1.0, black + 0.01)
+                self._set_tone_curve_range_controls(black, white)
+            else:
+                self.tone_curve_editor.set_input_range(black, white)
+            self._on_render_control_change()
+
         def _on_tone_curve_points_changed(self, _points: object) -> None:
             if self._tone_curve_preset_key() != "custom":
                 self.combo_tone_curve_preset.blockSignals(True)
@@ -3357,6 +3475,7 @@ if QtWidgets is not None:
         def _reset_tone_curve(self) -> None:
             self.check_tone_curve_enabled.setChecked(False)
             self._set_combo_data(self.combo_tone_curve_preset, "linear")
+            self._set_tone_curve_range_controls(0.0, 1.0)
             self.tone_curve_editor.set_points(self._tone_curve_preset_points("linear"), emit=False)
             self._set_tone_curve_controls_enabled(False)
             self._on_render_control_change()
