@@ -201,8 +201,13 @@ def test_right_column_uses_independent_collapsible_sections(qapp):
         assert window.config_tabs.isItemExpanded(1)
 
         window.config_tabs.setItemExpanded(0, False)
+        qapp.processEvents()
         assert not window.config_tabs.isItemExpanded(0)
         assert window.config_tabs.isItemExpanded(1)
+        first_section = window.config_tabs._items[0]["section"]
+        first_header = window.config_tabs._items[0]["header"]
+        assert first_section.maximumHeight() <= first_header.sizeHint().height() + 4
+        assert window.config_tabs._items[0]["body"].isHidden()
     finally:
         window.close()
 

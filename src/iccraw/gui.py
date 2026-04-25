@@ -240,17 +240,19 @@ if QtWidgets is not None:
             self._layout = QtWidgets.QVBoxLayout(self._content)
             self._layout.setContentsMargins(0, 0, 0, 0)
             self._layout.setSpacing(6)
+            self._layout.setSizeConstraint(QtWidgets.QLayout.SetMinAndMaxSize)
             self._layout.addStretch(1)
             self.setWidget(self._content)
 
         def addItem(self, widget: QtWidgets.QWidget, title: str, expanded: bool = True) -> int:  # noqa: N802
             section = QtWidgets.QFrame()
             section.setFrameShape(QtWidgets.QFrame.StyledPanel)
-            section.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Maximum)
+            section.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
 
             section_layout = QtWidgets.QVBoxLayout(section)
             section_layout.setContentsMargins(0, 0, 0, 0)
             section_layout.setSpacing(0)
+            section_layout.setSizeConstraint(QtWidgets.QLayout.SetMinAndMaxSize)
 
             header = QtWidgets.QToolButton()
             header.setText(title)
@@ -271,13 +273,21 @@ if QtWidgets is not None:
             body = QtWidgets.QWidget()
             body_layout = QtWidgets.QVBoxLayout(body)
             body_layout.setContentsMargins(8, 8, 8, 8)
+            body_layout.setSpacing(6)
+            body_layout.setSizeConstraint(QtWidgets.QLayout.SetMinAndMaxSize)
             body_layout.addWidget(widget)
             body.setVisible(bool(expanded))
-            body.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Maximum)
+            body.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
 
-            def toggle(checked: bool, *, body_widget=body, button=header) -> None:
-                body_widget.setVisible(bool(checked))
+            def toggle(
+                checked: bool,
+                *,
+                section_widget=section,
+                body_widget=body,
+                button=header,
+            ) -> None:
                 button.setArrowType(QtCore.Qt.DownArrow if checked else QtCore.Qt.RightArrow)
+                self._set_section_expanded(section_widget, body_widget, button, bool(checked))
 
             header.toggled.connect(toggle)
             section_layout.addWidget(header)
@@ -285,6 +295,7 @@ if QtWidgets is not None:
 
             self._layout.insertWidget(max(0, self._layout.count() - 1), section)
             self._items.append({"title": title, "header": header, "body": body, "widget": widget, "section": section})
+            self._set_section_expanded(section, body, header, bool(expanded))
             return len(self._items) - 1
 
         def count(self) -> int:
@@ -311,6 +322,26 @@ if QtWidgets is not None:
             if index < 0 or index >= len(self._items):
                 return False
             return bool(self._items[index]["header"].isChecked())
+
+        def _set_section_expanded(
+            self,
+            section: QtWidgets.QFrame,
+            body: QtWidgets.QWidget,
+            header: QtWidgets.QToolButton,
+            expanded: bool,
+        ) -> None:
+            body.setVisible(expanded)
+            if expanded:
+                section.setMinimumHeight(0)
+                section.setMaximumHeight(16777215)
+            else:
+                collapsed_height = header.sizeHint().height() + 2 * section.frameWidth()
+                section.setMinimumHeight(collapsed_height)
+                section.setMaximumHeight(collapsed_height)
+            body.updateGeometry()
+            section.updateGeometry()
+            self._content.updateGeometry()
+            QtCore.QTimer.singleShot(0, self._content.adjustSize)
 
 
     class ToneCurveEditor(QtWidgets.QWidget):
