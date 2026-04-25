@@ -131,6 +131,24 @@ def test_thumbnail_size_control_resizes_file_list(qapp):
         window.close()
 
 
+def test_thumbnail_resize_keeps_cache_and_existing_icons(tmp_path: Path, qapp):
+    image_path = tmp_path / "patch.png"
+    Image.new("RGB", (96, 48), (20, 120, 220)).save(image_path)
+
+    window = ICCRawMainWindow()
+    try:
+        assert window._thumbnail_cache_key(image_path, 72) == window._thumbnail_cache_key(image_path, 180)
+
+        def fail_placeholder_reset():
+            raise AssertionError("thumbnail resize must keep existing preview icons")
+
+        window._set_file_list_placeholder_icons = fail_placeholder_reset
+        window._on_thumbnail_size_changed(180)
+        assert window.file_list.iconSize().width() == 180
+    finally:
+        window.close()
+
+
 def test_image_thumbnail_payload_uses_real_preview(tmp_path: Path, qapp):
     image_path = tmp_path / "patch.png"
     Image.new("RGB", (96, 48), (20, 120, 220)).save(image_path)
@@ -142,7 +160,7 @@ def test_image_thumbnail_payload_uses_real_preview(tmp_path: Path, qapp):
     assert raw_path == str(image_path)
     assert str(image_path) in key
     assert rgb.dtype.name == "uint8"
-    assert max(rgb.shape[:2]) <= 64
+    assert max(rgb.shape[:2]) <= gui_module.MAX_THUMBNAIL_SIZE
     assert rgb.shape[2] == 3
 
 
@@ -164,7 +182,7 @@ def test_raw_thumbnail_payload_falls_back_to_half_size_raw(tmp_path: Path, monke
     assert payload_path == str(raw_path)
     assert str(raw_path) in key
     assert rgb.dtype.name == "uint8"
-    assert max(rgb.shape[:2]) <= 64
+    assert max(rgb.shape[:2]) <= gui_module.MAX_THUMBNAIL_SIZE
     assert rgb.shape[2] == 3
     assert int(rgb[..., 2].max()) > int(rgb[..., 0].max())
 

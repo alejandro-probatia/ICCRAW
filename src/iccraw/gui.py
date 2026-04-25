@@ -1469,7 +1469,6 @@ if QtWidgets is not None:
             size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
             self._settings.setValue("view/thumbnail_size", size)
             self._apply_thumbnail_size(size)
-            self._set_file_list_placeholder_icons()
             self._queue_thumbnail_generation(self._file_list_paths(), delay_ms=80)
 
         def _build_center_pane(self) -> QtWidgets.QWidget:
@@ -3032,20 +3031,20 @@ if QtWidgets is not None:
                 if item.data(QtCore.Qt.UserRole) == target:
                     item.setIcon(icon)
 
-        def _thumbnail_cache_key(self, path: Path, size: int) -> str:
+        def _thumbnail_cache_key(self, path: Path, size: int | None = None) -> str:
             try:
                 st = path.stat()
                 stamp = f"{st.st_mtime_ns}:{st.st_size}"
             except OSError:
                 stamp = "nostat"
-            return f"{path}|{stamp}|{int(size)}"
+            return f"{path}|{stamp}|thumb-v2"
 
         @staticmethod
         def _build_thumbnail_payloads(paths: list[Path], size: int) -> list[tuple[str, str, np.ndarray]]:
             payloads: list[tuple[str, str, np.ndarray]] = []
             for path in paths:
                 try:
-                    rgb_u8 = NexoRawMainWindow._thumbnail_array_for_path(path, size)
+                    rgb_u8 = NexoRawMainWindow._thumbnail_array_for_path(path, MAX_THUMBNAIL_SIZE)
                 except Exception:
                     continue
                 if rgb_u8 is None:
@@ -3054,13 +3053,13 @@ if QtWidgets is not None:
             return payloads
 
         @staticmethod
-        def _thumbnail_cache_key_for_path(path: Path, size: int) -> str:
+        def _thumbnail_cache_key_for_path(path: Path, size: int | None = None) -> str:
             try:
                 st = path.stat()
                 stamp = f"{st.st_mtime_ns}:{st.st_size}"
             except OSError:
                 stamp = "nostat"
-            return f"{path}|{stamp}|{int(size)}"
+            return f"{path}|{stamp}|thumb-v2"
 
         @staticmethod
         def _thumbnail_array_for_path(path: Path, size: int) -> np.ndarray | None:
