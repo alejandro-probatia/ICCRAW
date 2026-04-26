@@ -27,6 +27,10 @@ Dependencias de sistema declaradas:
 - librerias minimas de Qt/OpenGL/XCB para la GUI,
 - `desktop-file-utils` y `hicolor-icon-theme` para registrar lanzador e icono.
 
+El paquete `nexoraw` declara `Replaces/Conflicts: iccraw` para retirar
+correctamente instalaciones beta antiguas publicadas con el nombre `iccraw`.
+El instalador Linux no crea lanzadores con el nombre antiguo.
+
 ## Construccion
 
 Desde la raiz del repositorio:

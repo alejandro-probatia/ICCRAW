@@ -122,21 +122,9 @@ cat > "$BUILD_ROOT/usr/bin/nexoraw-ui" <<'SH'
 exec /opt/nexoraw/venv/bin/nexoraw-ui "$@"
 SH
 
-cat > "$BUILD_ROOT/usr/bin/iccraw" <<'SH'
-#!/usr/bin/env sh
-exec /opt/nexoraw/venv/bin/iccraw "$@"
-SH
-
-cat > "$BUILD_ROOT/usr/bin/iccraw-ui" <<'SH'
-#!/usr/bin/env sh
-exec /opt/nexoraw/venv/bin/iccraw-ui "$@"
-SH
-
 chmod 0755 \
   "$BUILD_ROOT/usr/bin/nexoraw" \
-  "$BUILD_ROOT/usr/bin/nexoraw-ui" \
-  "$BUILD_ROOT/usr/bin/iccraw" \
-  "$BUILD_ROOT/usr/bin/iccraw-ui"
+  "$BUILD_ROOT/usr/bin/nexoraw-ui"
 
 cat > "$BUILD_ROOT/usr/share/applications/nexoraw.desktop" <<'DESKTOP'
 [Desktop Entry]
@@ -174,6 +162,8 @@ Architecture: $ARCH
 Maintainer: Comunidad AEICF <release@nexoraw.local>
 Installed-Size: $INSTALLED_SIZE
 Depends: python3 (>= 3.11), argyll, exiftool, libgl1, libegl1, libxkbcommon0, libxcb-cursor0, libxcb-xinerama0, desktop-file-utils, hicolor-icon-theme
+Replaces: iccraw
+Conflicts: iccraw
 Homepage: https://github.com/alejandro-probatia/ICCRAW
 Description: NexoRAW beta $APP_VERSION reproducible RAW and ICC session profiling
  NexoRAW is a technical/scientific RAW workflow for controlled development,
