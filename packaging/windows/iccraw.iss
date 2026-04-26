@@ -11,7 +11,7 @@
 #endif
 
 #ifndef AppVersion
-#define AppVersion "0.1.0-dev"
+#define AppVersion "0.2.0"
 #endif
 
 [Setup]
@@ -53,6 +53,10 @@ Source: "{#RootDir}\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RootDir}\docs\THIRD_PARTY_LICENSES.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RootDir}\docs\LEGAL_COMPLIANCE.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RootDir}\docs\AMAZE_GPL3.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RootDir}\docs\MANUAL_USUARIO.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RootDir}\docs\METODOLOGIA_COLOR_RAW.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RootDir}\docs\COLOR_PIPELINE.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#RootDir}\docs\DECISIONS.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RootDir}\docs\WINDOWS_INSTALLER.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RootDir}\scripts\check_amaze_support.py"; DestDir: "{app}\docs"; Flags: ignoreversion
 

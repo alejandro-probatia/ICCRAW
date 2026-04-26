@@ -38,7 +38,8 @@ criterios de aceptacion completos estan en:
 9. [x] Añadir referencia ColorChecker 2005 D50 no sintetica para flujo operativo.
 10. [x] Añadir perfil de revelado científico previo al ICC.
 11. [x] Ejecutar `auto-profile-batch` en doble pasada: receta base -> receta calibrada -> ICC.
-12. [x] Reorganizar GUI como flujo de sesión: calibrar con cartas y aplicar a imágenes objetivo.
+12. [x] Reorganizar GUI como flujo por archivo: perfil avanzado con carta,
+    perfil basico manual, mochila por RAW y copia/pegado de ajustes.
 13. [x] Integrar detecciones manuales guardadas por captura en `auto-profile-batch`.
 14. [ ] Añadir QA de nitidez/MTF y contraste local con criterio medible, no slider subjetivo.
 
@@ -46,10 +47,11 @@ criterios de aceptacion completos estan en:
 
 1. Validar determinismo del pipeline en ejecuciones repetidas.
 2. Benchmark de rendimiento y paralelizacion de lote.
-3. Paquetizacion reproducible (wheel + contenedor).
+3. Paquetizacion reproducible (instaladores Linux/Windows; wheel/contenedor pendientes).
 4. Guia de contribucion cientifica (captura, iluminacion, QA colorimetrico).
-5. Tests automaticos de smoke para GUI Qt en CI (modo headless).
-6. Automatizar auditoria de licencias y avisos para releases AGPL.
+5. [x] Tests automaticos de smoke para GUI Qt en modo headless local.
+6. Llevar los smoke GUI a CI multiplataforma.
+7. Automatizar auditoria de licencias y avisos para releases AGPL.
 
 ## P3
 

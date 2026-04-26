@@ -9,6 +9,7 @@ from iccraw.core.models import Recipe
 from iccraw.core.external import external_tool_path
 from iccraw.core.utils import read_image
 from iccraw.profile.export import _argyll_reference_profile, batch_develop, color_management_mode, write_profiled_tiff
+from iccraw.profile.generic import ensure_generic_output_profile
 from iccraw.provenance.c2pa import C2PASignConfig
 from iccraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity, verify_nexoraw_proof
 
@@ -65,6 +66,31 @@ def test_color_management_mode_requires_non_linear_srgb_output():
     recipe = Recipe(output_space="srgb", output_linear=True)
     with pytest.raises(RuntimeError, match="output_space=srgb requiere output_linear=false"):
         color_management_mode(recipe)
+
+
+def test_color_management_mode_accepts_generic_output_spaces():
+    assert color_management_mode(Recipe(output_space="adobe_rgb", output_linear=False)) == "converted_adobe_rgb"
+    assert color_management_mode(Recipe(output_space="prophoto_rgb", output_linear=False)) == "converted_prophoto_rgb"
+
+
+def test_write_profiled_tiff_assigns_generic_output_profile_without_chart(tmp_path: Path):
+    out = tmp_path / "manual_prophoto.tiff"
+    image = np.full((6, 8, 3), 0.25, dtype=np.float32)
+
+    mode = write_profiled_tiff(
+        out,
+        image,
+        recipe=Recipe(output_space="prophoto_rgb", output_linear=False, tone_curve="gamma:1.8"),
+        profile_path=None,
+        generic_profile_dir=tmp_path / "profiles",
+    )
+
+    assert mode == "assigned_prophoto_rgb_output_icc"
+    assert ensure_generic_output_profile("prophoto_rgb", directory=tmp_path / "profiles").exists()
+    with tifffile.TiffFile(out) as tif:
+        tags = tif.pages[0].tags
+        assert 34675 in tags
+        assert len(bytes(tags[34675].value)) > 128
 
 
 def test_write_profiled_tiff_assigns_input_profile_without_conversion(tmp_path: Path):

@@ -1,4 +1,4 @@
-# Instalador Windows beta
+# Instalador Windows
 
 Este documento deja preparado el flujo de construccion y pruebas para generar
 un instalador Windows de NexoRAW.
@@ -16,6 +16,9 @@ sin editar el `PATH` del sistema:
 - ExifTool: `exiftool`.
 - `c2pa-python` y su libreria nativa `c2pa_c.dll` para leer e incrustar
   manifiestos C2PA cuando se exportan TIFFs finales.
+
+Tambien copia en `{app}\docs\` el manual de usuario, la metodologia RAW/ICC, la
+politica AMaZE, decisiones tecnicas, licencias y notas de release.
 
 El diagnostico se comprueba con:
 
@@ -55,7 +58,7 @@ Pruebas con dependencias externas obligatorias:
 
 En equipos donde falta `cctiff`, la suite Python puede pasar con una prueba
 saltada, pero `-StrictExternalTools` debe fallar. Ese fallo es intencionado para
-evitar publicar una beta sin CMM operativo.
+evitar publicar una release sin CMM operativo.
 
 ## Build de aplicacion sin instalador
 
@@ -76,7 +79,7 @@ Genera la aplicacion y despues el instalador:
 Artefacto esperado:
 
 ```text
-dist\windows\installer\NexoRAW-0.1.0b5-Setup.exe
+dist\windows\installer\NexoRAW-0.2.0-Setup.exe
 ```
 
 Para una preparacion de release, ejecutar con herramientas externas estrictas:

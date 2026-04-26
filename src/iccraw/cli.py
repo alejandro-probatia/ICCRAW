@@ -28,6 +28,7 @@ from .chart.sampling import (
 from .core.models import to_json_dict, write_json
 from .core.utils import versioned_output_path
 from .core.recipe import load_recipe, save_recipe
+from .display_color import detect_system_display_profile, display_profile_label
 from .metadata_viewer import inspect_file_metadata
 from .profile.development import build_development_profile
 from .profile.builder import build_profile, validate_profile, write_samples_cgats
@@ -219,6 +220,9 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     s.add_argument("--out", default=None, help="JSON de salida opcional")
 
     s = sub.add_parser("check-c2pa")
+    s.add_argument("--out", default=None, help="JSON de salida opcional")
+
+    s = sub.add_parser("check-display-profile")
     s.add_argument("--out", default=None, help="JSON de salida opcional")
 
     s = sub.add_parser("verify-c2pa")
@@ -469,6 +473,19 @@ def main(argv: list[str] | None = None) -> int:
                 write_json(Path(args.out), result)
             print(json.dumps(result, indent=2))
             return 0 if result.get("status") == "ok" else 2
+
+        if args.command == "check-display-profile":
+            detected = detect_system_display_profile()
+            result = {
+                "status": "ok" if detected is not None else "fallback_srgb",
+                "platform": sys.platform,
+                "monitor_profile": str(detected) if detected is not None else None,
+                "label": display_profile_label(detected) if detected is not None else "sRGB",
+            }
+            if args.out:
+                write_json(Path(args.out), result)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0
 
         if args.command == "verify-c2pa":
             result = verify_c2pa_raw_link(

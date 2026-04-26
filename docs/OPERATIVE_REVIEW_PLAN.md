@@ -5,6 +5,11 @@ Fecha de revision: 2026-04-24.
 Estado: documento rector para convertir el prototipo actual en una herramienta
 operativa, auditable y apta para validacion cientifica.
 
+Nota de estado 0.2: varios hallazgos P0/P1 de esta revision ya estan mitigados
+o implementados en la rama actual. Este documento se conserva como registro
+metodologico y plan de contraste; el estado operativo resumido vive en
+`docs/ISSUES.md`, `docs/COLOR_PIPELINE.md` y `CHANGELOG.md`.
+
 ## 1. Alcance
 
 Este documento recoge los hallazgos tecnicos detectados en la revision del

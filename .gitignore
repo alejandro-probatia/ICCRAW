@@ -9,5 +9,6 @@ __pycache__/
 **/*.rs.bk
 .DS_Store
 /tmp/
+/config/
 *.swp
 *.swo

@@ -7,15 +7,16 @@ from typing import Any
 
 
 SESSION_VERSION = 1
-SESSION_FILE_RELATIVE_PATH = Path("config") / "session.json"
+SESSION_FILE_RELATIVE_PATH = Path("00_configuraciones") / "session.json"
+LEGACY_SESSION_FILE_RELATIVE_PATH = Path("config") / "session.json"
 
 DEFAULT_SUBDIRECTORIES: dict[str, str] = {
-    "charts": "charts",
-    "raw": "raw",
-    "profiles": "profiles",
-    "exports": "exports",
-    "config": "config",
-    "work": "work",
+    "config": "00_configuraciones",
+    "raw": "01_ORG",
+    "exports": "02_DRV",
+    "charts": "01_ORG",
+    "profiles": "00_configuraciones/profiles",
+    "work": "00_configuraciones/work",
 }
 
 
@@ -29,7 +30,11 @@ def _as_path(value: str | Path) -> Path:
 
 def session_file_path(root_dir: str | Path) -> Path:
     root = _as_path(root_dir)
-    return root / SESSION_FILE_RELATIVE_PATH
+    current = root / SESSION_FILE_RELATIVE_PATH
+    legacy = root / LEGACY_SESSION_FILE_RELATIVE_PATH
+    if not current.exists() and legacy.exists():
+        return legacy
+    return current
 
 
 def ensure_session_structure(root_dir: str | Path) -> dict[str, Path]:
@@ -98,6 +103,7 @@ def _normalize_queue(payload: Any) -> list[dict[str, str]]:
         queue.append(
             {
                 "source": source,
+                "development_profile_id": str(item.get("development_profile_id") or ""),
                 "status": str(item.get("status") or "pending"),
                 "output_tiff": str(item.get("output_tiff") or ""),
                 "message": str(item.get("message") or ""),

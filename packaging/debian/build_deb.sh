@@ -189,6 +189,10 @@ install -m 0644 "$ROOT/docs/LEGAL_COMPLIANCE.md" "$BUILD_ROOT/usr/share/doc/nexo
 install -m 0644 "$ROOT/docs/AMAZE_GPL3.md" "$BUILD_ROOT/usr/share/doc/nexoraw/AMAZE_GPL3.md"
 install -m 0644 "$ROOT/docs/DEBIAN_PACKAGE.md" "$BUILD_ROOT/usr/share/doc/nexoraw/DEBIAN_PACKAGE.md"
 install -m 0644 "$ROOT/docs/RELEASE_INSTALLERS.md" "$BUILD_ROOT/usr/share/doc/nexoraw/RELEASE_INSTALLERS.md"
+install -m 0644 "$ROOT/docs/MANUAL_USUARIO.md" "$BUILD_ROOT/usr/share/doc/nexoraw/MANUAL_USUARIO.md"
+install -m 0644 "$ROOT/docs/METODOLOGIA_COLOR_RAW.md" "$BUILD_ROOT/usr/share/doc/nexoraw/METODOLOGIA_COLOR_RAW.md"
+install -m 0644 "$ROOT/docs/COLOR_PIPELINE.md" "$BUILD_ROOT/usr/share/doc/nexoraw/COLOR_PIPELINE.md"
+install -m 0644 "$ROOT/docs/DECISIONS.md" "$BUILD_ROOT/usr/share/doc/nexoraw/DECISIONS.md"
 install -m 0644 "$ROOT/docs/C2PA_CAI.md" "$BUILD_ROOT/usr/share/doc/nexoraw/C2PA_CAI.md"
 install -m 0644 "$ROOT/docs/NEXORAW_PROOF.md" "$BUILD_ROOT/usr/share/doc/nexoraw/NEXORAW_PROOF.md"
 install -m 0755 "$ROOT/scripts/check_amaze_support.py" "$BUILD_ROOT/usr/share/doc/nexoraw/check_amaze_support.py"
@@ -202,16 +206,16 @@ Priority: optional
 Architecture: $ARCH
 Maintainer: Comunidad AEICF <release@nexoraw.local>
 Installed-Size: $INSTALLED_SIZE
-Depends: python3 (>= 3.11), argyll, exiftool, libgl1, libegl1, libxkbcommon0, libxcb-cursor0, libxcb-xinerama0, libgomp1, liblcms2-2, libjpeg-turbo8, libstdc++6, desktop-file-utils, hicolor-icon-theme
+Depends: python3 (>= 3.11), argyll, exiftool, colord, libgl1, libegl1, libxkbcommon0, libxcb-cursor0, libxcb-xinerama0, libgomp1, liblcms2-2, libjpeg-turbo8, libstdc++6, desktop-file-utils, hicolor-icon-theme
 Replaces: iccraw
 Conflicts: iccraw
 Homepage: https://github.com/alejandro-probatia/NexoRAW
-Description: NexoRAW beta $APP_VERSION reproducible RAW and ICC session profiling
+Description: NexoRAW $APP_VERSION reproducible RAW and ICC session profiling
  NexoRAW is a technical/scientific RAW workflow for controlled development,
  color chart sampling, session development profiles and ICC camera profiles.
- This beta package installs a bundled Python environment under /opt/nexoraw
- and command launchers under /usr/bin. AMaZE builds install rawpy-demosaic
- during package construction and record the runtime check in documentation.
+ This package installs a bundled Python environment under /opt/nexoraw and
+ command launchers under /usr/bin. AMaZE builds install rawpy-demosaic during
+ package construction and record the runtime check in documentation.
 EOF
 
 cat > "$BUILD_ROOT/DEBIAN/postinst" <<'SH'

@@ -4,7 +4,11 @@
 
 Pipeline científico reproducible:
 
-`RAW -> develop base -> detect-chart -> sample-chart -> perfil de revelado -> receta calibrada -> sample-chart calibrado -> build-profile ICC -> batch-develop -> validate-profile`
+`RAW -> ajuste parametrico por archivo -> mochila -> perfil avanzado con carta o perfil basico manual -> ICC de entrada o ICC generico -> cola -> TIFF 16-bit -> proof/manifiesto`
+
+El flujo con carta mantiene la cadena tecnica completa:
+
+`RAW carta -> develop base -> detect-chart -> sample-chart -> perfil de ajuste avanzado -> receta calibrada -> sample-chart calibrado -> build-profile ICC -> asignar perfil al RAW -> copiar/pegar a RAW equivalentes -> batch-develop`
 
 Gobernanza y licencia:
 
@@ -22,6 +26,8 @@ src/iccraw/
   gui.py                       # interfaz gráfica Qt/PySide6
   workflow.py                  # orquestación end-to-end
   session.py                   # modelo y persistencia de sesiones
+  sidecar.py                   # mochilas RAW.nexoraw.json por imagen
+  display_color.py             # perfil ICC de monitor por plataforma
   reporting.py                 # contexto de ejecución y trazabilidad
 
   core/                        # dominio compartido, sin deps cruzadas al resto
@@ -42,8 +48,24 @@ src/iccraw/
   profile/                     # perfil ICC y export
     development.py             # perfil de revelado cientifico: WB + densidad + EV
     builder.py                 # build_profile / validate_profile (ArgyllCMS)
+    generic.py                 # perfiles ICC genericos para flujos sin carta
     export.py                  # batch_develop + export ICC/CMM + matriz diagnostica
 ```
+
+## Estructura de proyecto
+
+Una sesion NexoRAW 0.2 usa tres carpetas principales:
+
+```text
+proyecto/
+  00_configuraciones/          # session.json, perfiles, ICC, reportes, cache
+  01_ORG/                      # originales RAW y cartas
+  02_DRV/                      # TIFF, previews, manifiestos y proof
+```
+
+Las sesiones heredadas con `charts/`, `raw/`, `profiles/`, `exports/`,
+`config/` y `work/` se abren por compatibilidad. La GUI resuelve rutas antiguas
+como `raw/captura.NEF` contra `01_ORG/captura.NEF` cuando existe el archivo.
 
 ## Reglas de dependencia
 
@@ -57,6 +79,20 @@ src/iccraw/
 
 - Motor único: `ArgyllCMS (colprof)`.
 - Siempre se guarda sidecar `.profile.json` con matriz, recipe y métricas para reproducibilidad.
+- Si hay carta, el ICC se trata como perfil de entrada de sesion y se incrusta
+  en el TIFF maestro sin convertir a un espacio generico.
+- Si no hay carta, NexoRAW genera o selecciona un ICC generico de salida
+  (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`) y lo declara como
+  `generic_output_icc`.
+
+## Perfiles de ajuste
+
+- El perfil avanzado nace de carta de color, queda marcado en azul y puede
+  llevar ICC de entrada de sesion asociado.
+- El perfil basico nace de ajustes manuales, queda marcado en verde y puede usar
+  ICC generico.
+- Ambos se asignan a RAW concretos mediante mochilas y se pueden copiar/pegar
+  entre miniaturas.
 
 ## Reproducibilidad
 

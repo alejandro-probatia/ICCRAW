@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DEB_PATH="${1:-$ROOT/dist/nexoraw_0.1.0~beta5_$(dpkg --print-architecture).deb}"
+DEB_PATH="${1:-$ROOT/dist/nexoraw_0.2.0_$(dpkg --print-architecture).deb}"
 REQUIRE_AMAZE="${NEXORAW_REQUIRE_AMAZE:-1}"
 
 fail() {
@@ -74,6 +74,9 @@ require_executable "$EXTRACT_ROOT/usr/bin/nexoraw-ui"
 require_file "$EXTRACT_ROOT/usr/share/applications/nexoraw.desktop"
 require_file "$EXTRACT_ROOT/usr/share/icons/hicolor/scalable/apps/nexoraw.svg"
 require_file "$EXTRACT_ROOT/usr/share/pixmaps/nexoraw.png"
+require_file "$EXTRACT_ROOT/usr/share/doc/nexoraw/MANUAL_USUARIO.md"
+require_file "$EXTRACT_ROOT/usr/share/doc/nexoraw/METODOLOGIA_COLOR_RAW.md"
+require_file "$EXTRACT_ROOT/usr/share/doc/nexoraw/COLOR_PIPELINE.md"
 
 desktop="$EXTRACT_ROOT/usr/share/applications/nexoraw.desktop"
 grep -Fxq "Name=NexoRAW" "$desktop" || fail "desktop Name no es NexoRAW"
@@ -83,6 +86,9 @@ grep -Eq '^Categories=.*Graphics.*Photography.*;$' "$desktop" || fail "desktop C
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate "$desktop"
 fi
+
+depends="$(dpkg-deb --field "$DEB_PATH" Depends)"
+echo "$depends" | grep -qw colord || fail "falta dependencia de gestion de color de monitor: colord"
 
 for size in 16 32 48 64 128 256 512; do
   icon="$EXTRACT_ROOT/usr/share/icons/hicolor/${size}x${size}/apps/nexoraw.png"
@@ -94,7 +100,6 @@ actual_pixmap="$(png_size "$EXTRACT_ROOT/usr/share/pixmaps/nexoraw.png")"
 [[ "$actual_pixmap" == "512x512" ]] || fail "pixmap nexoraw.png debe ser 512x512, es $actual_pixmap"
 
 if is_true "$REQUIRE_AMAZE"; then
-  depends="$(dpkg-deb --field "$DEB_PATH" Depends)"
   for dep in libgomp1 liblcms2-2 libjpeg-turbo8 libstdc++6; do
     echo "$depends" | grep -qw "$dep" || fail "falta dependencia runtime AMaZE: $dep"
   done

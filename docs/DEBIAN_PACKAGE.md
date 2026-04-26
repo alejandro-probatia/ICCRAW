@@ -1,9 +1,9 @@
-# Paquete Debian beta
+# Paquete Debian
 
-La beta `0.1` se distribuye como paquete Debian binario:
+La release `0.2.0` se distribuye como paquete Debian binario:
 
-- version de aplicacion Python: `0.1.0b5`,
-- version Debian: `0.1.0~beta5`,
+- version de aplicacion Python: `0.2.0`,
+- version Debian: `0.2.0`,
 - arquitectura generada: la de la maquina de build (`dpkg --print-architecture`).
 
 El paquete instala:
@@ -19,13 +19,15 @@ El paquete instala:
 - iconos hicolor SVG/PNG para integracion con el menu del sistema,
 - fallback `/usr/share/pixmaps/nexoraw.png` para menus que no resuelvan el
   tema hicolor,
-- documentacion basica en `/usr/share/doc/nexoraw/`.
+- documentacion de usuario, metodologia, release y licencias en
+  `/usr/share/doc/nexoraw/`.
 
 Dependencias de sistema declaradas:
 
 - `python3`,
 - `argyll`,
 - `exiftool`,
+- `colord` para detectar el perfil ICC de monitor configurado en el sistema,
 - librerias minimas de Qt/OpenGL/XCB para la GUI,
 - runtime nativo de LibRaw AMaZE embebido (`libgomp1`, `liblcms2-2`,
   `libjpeg-turbo8`, `libstdc++6`),
@@ -73,7 +75,7 @@ bash packaging/debian/build_deb.sh
 El artefacto queda en:
 
 ```text
-dist/nexoraw_0.1.0~beta5_amd64.deb
+dist/nexoraw_0.2.0_amd64.deb
 ```
 
 El nombre exacto puede variar si se construye en otra arquitectura.
@@ -81,23 +83,24 @@ El nombre exacto puede variar si se construye en otra arquitectura.
 ## Instalacion local
 
 ```bash
-sudo apt install ./dist/nexoraw_0.1.0~beta5_amd64.deb
+sudo apt install ./dist/nexoraw_0.2.0_amd64.deb
 nexoraw --version
 nexoraw check-tools --strict
 nexoraw check-c2pa
+nexoraw check-display-profile
 nexoraw-ui
 ```
 
 ## Verificacion recomendada
 
-Antes de publicar o entregar una beta, esta verificacion es obligatoria:
+Antes de publicar o entregar una release, esta verificacion es obligatoria:
 
 ```bash
 .venv/bin/python -m pytest
 bash scripts/check_tools.sh
 bash packaging/debian/build_deb.sh
-packaging/debian/validate_deb.sh dist/nexoraw_0.1.0~beta5_amd64.deb
-sudo apt install ./dist/nexoraw_0.1.0~beta5_amd64.deb
+packaging/debian/validate_deb.sh dist/nexoraw_0.2.0_amd64.deb
+sudo apt install ./dist/nexoraw_0.2.0_amd64.deb
 scripts/validate_linux_install.sh
 ```
 
@@ -112,11 +115,13 @@ estos puntos:
   categoria `Graphics;Photography;`,
 - iconos `nexoraw.png` reales en hicolor `16/32/48/64/128/256/512`, icono SVG
   y fallback `/usr/share/pixmaps/nexoraw.png`,
+- manual de usuario y metodologia incluidos en `/usr/share/doc/nexoraw/`,
 - `nexoraw check-tools --strict`,
 - `nexoraw check-c2pa`,
+- `nexoraw check-display-profile`,
 - `nexoraw check-amaze`.
 
-Para validar soporte AMaZE en la beta instalada:
+Para validar soporte AMaZE en la release instalada:
 
 ```bash
 /opt/nexoraw/venv/bin/python /usr/share/doc/nexoraw/check_amaze_support.py

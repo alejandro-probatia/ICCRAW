@@ -79,7 +79,7 @@ Fecha de revision: 2026-04-25.
 - Politica en NexoRAW:
   - se usan como herramientas de construccion,
   - no se versionan binarios generados en el repositorio,
-  - revisar licencias y avisos antes de publicar una beta redistribuible.
+  - revisar licencias y avisos antes de publicar una release redistribuible.
 
 ## 9) Regla de distribucion del proyecto
 

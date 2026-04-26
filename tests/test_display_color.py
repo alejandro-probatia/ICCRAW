@@ -4,6 +4,9 @@ import numpy as np
 from PIL import ImageCms
 
 from iccraw.display_color import (
+    _colord_display_device_candidates,
+    _parse_colord_profile_filename,
+    _parse_xprop_icc_profile_bytes,
     display_profile_label,
     srgb_float_to_u8,
     srgb_to_display_u8,
@@ -40,3 +43,39 @@ def test_srgb_to_display_u8_with_srgb_monitor_profile_is_stable(tmp_path: Path):
     assert out.shape == rgb.shape
     assert np.max(np.abs(out.astype(np.int16) - rgb.astype(np.int16))) <= 1
     assert display_profile_label(profile)
+
+
+def test_colord_parser_prefers_primary_enabled_display():
+    output = """
+Object Path:   /org/freedesktop/ColorManager/devices/display_secondary
+Enabled:       Yes
+Metadata:      OutputPriority=secondary
+Object Path:   /org/freedesktop/ColorManager/devices/display_primary
+Enabled:       Yes
+Metadata:      OutputPriority=primary
+"""
+
+    candidates = _colord_display_device_candidates(output)
+
+    assert candidates[0][1] == "/org/freedesktop/ColorManager/devices/display_primary"
+
+
+def test_colord_profile_filename_parser_returns_existing_icc(tmp_path: Path):
+    profile = tmp_path / "monitor.icc"
+    profile.write_bytes(b"0" * 128)
+    output = f"""
+Object Path:   /org/freedesktop/ColorManager/profiles/display
+Filename:      {profile}
+"""
+
+    assert _parse_colord_profile_filename(output) == profile
+
+
+def test_xprop_icc_profile_parser_trims_to_declared_profile_size():
+    data = bytearray(b"0" * 132)
+    data[:4] = (128).to_bytes(4, "big")
+    output = "_ICC_PROFILE(CARDINAL) = " + ", ".join(str(value) for value in data)
+
+    parsed = _parse_xprop_icc_profile_bytes(output)
+
+    assert parsed == bytes(data[:128])

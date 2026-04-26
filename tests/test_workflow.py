@@ -549,9 +549,9 @@ def test_auto_generate_profile_persists_profile_and_render_recipes(tmp_path: Pat
     assert profile_recipe.output_space == "scene_linear_camera_rgb"
     assert profile_recipe.denoise == "off"
     assert profile_recipe.sharpen == "off"
-    assert render_recipe.tone_curve == "srgb"
-    assert render_recipe.output_linear is False
-    assert render_recipe.output_space == "srgb"
+    assert render_recipe.tone_curve == "linear"
+    assert render_recipe.output_linear is True
+    assert render_recipe.output_space == "scene_linear_camera_rgb"
     assert render_recipe.denoise == "mild"
     assert render_recipe.sharpen == "medium"
 
@@ -640,9 +640,9 @@ def test_auto_profile_batch_uses_render_recipe_after_profile_calibration(tmp_pat
         proof_config=_proof_config(tmp_path),
     )
 
-    assert captured["recipe"].tone_curve == "srgb"
-    assert captured["recipe"].output_linear is False
-    assert captured["recipe"].output_space == "srgb"
+    assert captured["recipe"].tone_curve == "linear"
+    assert captured["recipe"].output_linear is True
+    assert captured["recipe"].output_space == "scene_linear_camera_rgb"
     assert captured["recipe"].denoise == "mild"
     assert captured["recipe"].sharpen == "medium"
 

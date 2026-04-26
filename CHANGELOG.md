@@ -18,6 +18,54 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-26
+
+### Added
+
+- Manual de usuario orientado a instaladores y flujos GUI, con capturas
+  actualizadas para sesion, flujo con carta, flujo sin carta, mochilas,
+  cola de revelado, metadatos y configuracion global.
+- Flujo documentado para sesiones sin carta: perfil de revelado manual con ICC
+  generico de salida (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`) y mochila
+  `RAW.nexoraw.json` por imagen.
+- Paquete Debian de release `0.2.0`, instalable como aplicacion NexoRAW con
+  lanzadores `nexoraw`/`nexoraw-ui`, iconos hicolor y AMaZE validado en build.
+
+### Changed
+
+- El manual deja de explicar instalacion desde codigo y dependencias manuales;
+  la instalacion de usuario se considera cubierta por instaladores
+  multiplataforma.
+- La GUI trata los perfiles como ajustes asignados a RAW: perfil avanzado desde
+  carta marcado en azul y perfil basico/manual marcado en verde, ambos
+  copiables y pegables desde miniaturas.
+- La columna derecha de `2. Ajustar / Aplicar` abandona el modelo de
+  "calibrar sesion" y agrupa los ajustes parametricos por archivo en
+  `Brillo y contraste`, `Color`, `Nitidez`, `Gestión de color y calibración` y
+  `RAW Global`.
+- La tira de miniaturas funciona como scroll horizontal con tamaño ajustable y
+  genera miniaturas visuales para RAW aunque no exista preview embebida,
+  usando un revelado rápido cacheado.
+- Se elimina la cabecera persistente con nombre/subtítulo de la aplicación para
+  recuperar espacio vertical de trabajo.
+- La elección de directorio de proyecto es más reactiva: el árbol vigila cambios
+  del sistema, una raíz de proyecto abre `01_ORG/` para navegar RAW y
+  `Usar carpeta actual` promueve `01_ORG/` a su raíz de proyecto.
+- La estructura de proyectos nuevos se simplifica a `00_configuraciones/`,
+  `01_ORG/` y `02_DRV/`; las sesiones heredadas con `config/session.json`
+  siguen abriendose sin conversion destructiva.
+
+### Fixed
+
+- GUI: crear o abrir una sesion nueva ya no hereda rutas, miniaturas, cola ni
+  perfiles de revelado de la sesion anterior; las rutas persistidas fuera de la
+  raiz de proyecto se migran a la estructura propia de la sesion.
+- GUI: las miniaturas y selecciones que aun apunten a rutas heredadas
+  `raw/archivo` se resuelven automaticamente contra `01_ORG/archivo`, evitando
+  tracebacks al abrir proyectos migrados.
+- GUI: al generar un perfil desde carta, el perfil avanzado queda asignado a los
+  RAW de carta mediante su mochila `RAW.nexoraw.json`.
+
 ## [0.1.0-beta.5] - 2026-04-25
 
 ### Changed

@@ -417,17 +417,22 @@ def sanitize_recipe_for_profiling(recipe: Recipe) -> tuple[Recipe, list[dict[str
 
 
 def apply_profile_calibration_to_render_recipe(render_recipe: Recipe, profile_recipe: Recipe) -> Recipe:
-    """Transfer measured session calibration to the user-facing render recipe.
+    """Transfer measured session calibration to the session-master render recipe.
 
-    Only calibration terms derived from the chart are copied. Creative or final
-    rendering choices such as tone curve, output space, denoise and sharpen stay
-    exactly as requested by the user.
+    Once a chart has produced a session ICC, the master TIFF must stay in the
+    same linear camera/session RGB domain used to build that ICC. Generic output
+    spaces such as sRGB are reserved for derivative exports without a session
+    profile, or for an explicit CMM conversion step after the master render.
     """
     return replace(
         render_recipe,
         white_balance_mode="fixed",
         wb_multipliers=[float(v) for v in profile_recipe.wb_multipliers],
         exposure_compensation=float(profile_recipe.exposure_compensation),
+        tone_curve="linear",
+        output_linear=True,
+        working_space="scene_linear_camera_rgb",
+        output_space="scene_linear_camera_rgb",
     )
 
 

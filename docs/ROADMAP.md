@@ -12,6 +12,7 @@ Documento rector del plan operativo:
 - tests iniciales,
 - trazabilidad JSON,
 - GUI Qt inicial para previsualización técnica y flujo automático.
+- paquete Linux instalable con nombre NexoRAW, icono y lanzadores propios.
 
 ## Fase 1 - Contrato RAW y trazabilidad (P0)
 
@@ -46,7 +47,8 @@ aparentemente validos.
 - referencia ColorChecker 2005 D50 para uso operativo,
 - perfil de revelado cientifico derivado de fila neutra: WB, densidad y EV,
 - doble pasada carta -> receta calibrada -> ICC,
-- flujo GUI en dos pasos: calibrar sesion y aplicar esa sesion a imagenes objetivo,
+- flujo GUI por archivo: ajustar/aplicar, generar perfil avanzado con carta,
+  guardar perfil basico, copiar/pegar ajustes entre miniaturas,
 - parametros de muestreo completos desde receta,
 - deteccion de saturacion, bajo nivel y estimacion de iluminacion irregular,
 - reportes de outliers por parche en QA de sesion,
@@ -70,7 +72,7 @@ Objetivo: hacer que el comportamiento sea sostenible por la comunidad.
 - CI con tests unitarios e integracion con herramientas externas,
 - checks de versiones de LibRaw/rawpy, ArgyllCMS y `exiftool` mediante
   CLI/GUI,
-- paquete Debian beta reproducible para instalacion local,
+- paquete Debian reproducible para instalacion local,
 - contenedor o entorno reproducible,
 - benchmarks de determinismo y rendimiento,
 - benchmarks de navegacion RAW, cache persistente de miniaturas y cache
@@ -82,7 +84,8 @@ Objetivo: hacer que el comportamiento sea sostenible por la comunidad.
 Objetivo: ampliar capacidades sin comprometer trazabilidad.
 
 - sidecars por imagen para separar ajustes globales de sesión y ajustes
-  particulares de captura, evaluando interoperabilidad parcial con `.pp3`,
+  particulares de captura, con mochilas JSON propias y posible
+  interoperabilidad futura con `.pp3`,
 - soporte IT8 completo,
 - perfiles LUT si el caso de uso lo justifica,
 - comparador automatico de perfiles entre sesiones/iluminantes,

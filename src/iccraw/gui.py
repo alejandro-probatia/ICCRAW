@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime, timezone
 import hashlib
 from importlib import resources
 import json
@@ -33,7 +34,7 @@ except Exception:
 from .chart.detection import detect_chart_from_corners_array, draw_detection_overlay_array
 from .chart.sampling import ReferenceCatalog
 from .core.models import Recipe, to_json_dict, write_json
-from .core.recipe import load_recipe
+from .core.recipe import load_recipe, save_recipe
 from .core.utils import RAW_EXTENSIONS, read_image, versioned_output_path, write_tiff16
 from .display_color import (
     detect_system_display_profile,
@@ -42,7 +43,8 @@ from .display_color import (
     srgb_u8_to_display_u8,
 )
 from .metadata_viewer import inspect_file_metadata, metadata_display_sections, metadata_sections_text
-from .profile.export import write_signed_profiled_tiff
+from .profile.export import profile_path_for_render_settings, write_signed_profiled_tiff
+from .profile.generic import ensure_generic_output_profile, generic_output_profile, is_generic_output_space
 from .provenance.c2pa import C2PASignConfig, DEFAULT_TIMESTAMP_URL, auto_c2pa_config
 from .provenance.nexoraw_proof import (
     NexoRawProofConfig,
@@ -70,6 +72,7 @@ from .raw.preview import (
 )
 from .reporting import check_external_tools
 from .session import create_session, ensure_session_structure, load_session, save_session, session_file_path
+from .sidecar import load_raw_sidecar, raw_sidecar_path, write_raw_sidecar
 from .workflow import auto_generate_profile_from_charts
 
 try:
@@ -99,12 +102,24 @@ MIN_THUMBNAIL_SIZE = 72
 MAX_THUMBNAIL_SIZE = 220
 PREVIEW_CACHE_MAX_ENTRIES = 8
 PREVIEW_CACHE_MAX_BYTES = 384 * 1024 * 1024
+PREVIEW_DISK_CACHE_MAX_ENTRIES = 48
+PREVIEW_DISK_CACHE_MAX_BYTES = 2 * 1024 * 1024 * 1024
 THUMBNAIL_CACHE_MAX_ENTRIES = 512
+THUMBNAIL_DISK_CACHE_MAX_ENTRIES = 4096
+THUMBNAIL_DISK_CACHE_MAX_BYTES = 512 * 1024 * 1024
 THUMBNAIL_BATCH_SIZE = 48
 THUMBNAIL_PREFETCH_MARGIN_PAGES = 2
 IMAGE_PANEL_BACKGROUND = "#2b2b2b"
 IMAGE_PANEL_BORDER = "#5a5a5a"
 IMAGE_PANEL_TEXT = "#e6e6e6"
+LEGACY_PROJECT_DIR_RENAMES = {
+    "charts": Path("01_ORG"),
+    "raw": Path("01_ORG"),
+    "exports": Path("02_DRV"),
+    "config": Path("00_configuraciones"),
+    "profiles": Path("00_configuraciones") / "profiles",
+    "work": Path("00_configuraciones") / "work",
+}
 
 
 def _app_icon_path() -> Path | None:
@@ -176,6 +191,8 @@ TONE_CURVE_PRESETS: list[tuple[str, str, list[tuple[float, float]]]] = [
 SPACE_OPTIONS = [
     "scene_linear_camera_rgb",
     "srgb",
+    "adobe_rgb",
+    "prophoto_rgb",
     "camera_rgb",
 ]
 
@@ -331,6 +348,12 @@ if QtWidgets is not None:
             if index < 0 or index >= len(self._items):
                 return ""
             return str(self._items[index]["title"])
+
+        def indexOf(self, title: str) -> int:  # noqa: N802
+            for index, item in enumerate(self._items):
+                if str(item["title"]) == title:
+                    return index
+            return -1
 
         def setCurrentIndex(self, index: int) -> None:  # noqa: N802
             self.setItemExpanded(index, True)
@@ -782,7 +805,7 @@ if QtWidgets is not None:
     class NexoRawMainWindow(QtWidgets.QMainWindow):
         def __init__(self) -> None:
             super().__init__()
-            self.setWindowTitle(f"{APP_NAME} - Calibración científica de sesión")
+            self.setWindowTitle(f"{APP_NAME} - Ajuste paramétrico RAW")
             icon = _app_icon()
             if not icon.isNull():
                 self.setWindowIcon(icon)
@@ -814,6 +837,9 @@ if QtWidgets is not None:
             self._active_session_root: Path | None = None
             self._active_session_payload: dict[str, Any] | None = None
             self._develop_queue: list[dict[str, str]] = []
+            self._development_profiles: list[dict[str, Any]] = []
+            self._active_development_profile_id = ""
+            self._development_settings_clipboard: dict[str, Any] | None = None
             self._selected_chart_files: list[Path] = []
             self._manual_chart_detections: dict[str, dict[str, Any]] = {}
 
@@ -840,6 +866,9 @@ if QtWidgets is not None:
             self._metadata_timer = QtCore.QTimer(self)
             self._metadata_timer.setSingleShot(True)
             self._metadata_timer.timeout.connect(self._load_metadata_from_timer)
+            self._session_root_update_timer = QtCore.QTimer(self)
+            self._session_root_update_timer.setSingleShot(True)
+            self._session_root_update_timer.timeout.connect(self._on_session_root_edited)
 
             self._build_ui()
             self._build_menu_bar()
@@ -858,16 +887,12 @@ if QtWidgets is not None:
         def _build_ui(self) -> None:
             root = QtWidgets.QWidget()
             root_layout = QtWidgets.QVBoxLayout(root)
-            root_layout.setContentsMargins(6, 6, 6, 6)
-            root_layout.setSpacing(6)
+            root_layout.setContentsMargins(4, 4, 4, 4)
+            root_layout.setSpacing(4)
 
             header = QtWidgets.QHBoxLayout()
-            title = QtWidgets.QLabel(APP_NAME)
-            title.setStyleSheet("font-size: 22px; font-weight: 700;")
-            subtitle = QtWidgets.QLabel("Flujo tecnico reproducible: RAW -> carta -> perfil de revelado + ICC -> TIFF 16-bit")
-            subtitle.setStyleSheet("font-size: 12px; color: #4b5563;")
-            header.addWidget(title)
-            header.addWidget(subtitle)
+            header.setContentsMargins(0, 0, 0, 0)
+            header.setSpacing(6)
             header.addStretch(1)
             header.addWidget(self._button("Inicio", self._go_home_directory))
             header.addWidget(self._button("Abrir carpeta...", self._pick_directory))
@@ -893,7 +918,7 @@ if QtWidgets is not None:
             queue_tab = self._build_tab_queue()
 
             self.main_tabs.addTab(session_tab, "1. Sesión")
-            self.main_tabs.addTab(raw_tab, "2. Calibrar / Aplicar")
+            self.main_tabs.addTab(raw_tab, "2. Ajustar / Aplicar")
             self.main_tabs.addTab(queue_tab, "3. Cola de Revelado")
 
             root_layout.addWidget(self.main_tabs, 1)
@@ -911,7 +936,7 @@ if QtWidgets is not None:
             menu_file.addSeparator()
             menu_file.addAction(self._action("Abrir carpeta...", self._pick_directory, "Ctrl+O"))
             menu_file.addAction(self._action("Guardar preview PNG", self._on_save_preview, "Ctrl+S"))
-            menu_file.addAction(self._action("Aplicar sesión a selección", self._on_batch_develop_selected, "Ctrl+R"))
+            menu_file.addAction(self._action("Aplicar ajustes a selección", self._on_batch_develop_selected, "Ctrl+R"))
             menu_file.addSeparator()
             menu_file.addAction(self._action("Salir", self.close, "Ctrl+Q"))
 
@@ -947,7 +972,8 @@ if QtWidgets is not None:
 
         def _go_to_nitidez_tab(self) -> None:
             self.main_tabs.setCurrentIndex(1)
-            self.config_tabs.setCurrentIndex(2)
+            index = self.config_tabs.indexOf("Nitidez") if hasattr(self.config_tabs, "indexOf") else -1
+            self.config_tabs.setCurrentIndex(index if index >= 0 else 3)
 
         def _menu_toggle_fullscreen(self, _checked: bool = False) -> None:
             if self.isFullScreen():
@@ -1105,6 +1131,7 @@ if QtWidgets is not None:
             self.session_root_path = QtWidgets.QLineEdit(str(self._current_dir / "nexoraw_session"))
             self._add_path_row(grid, 0, "Directorio raíz de sesión", self.session_root_path, file_mode=False, save_mode=False, dir_mode=True)
             self.session_root_path.editingFinished.connect(self._on_session_root_edited)
+            self.session_root_path.textChanged.connect(lambda _text: self._session_root_update_timer.start(150))
 
             grid.addWidget(QtWidgets.QLabel("Nombre de sesión"), 1, 0)
             self.session_name_edit = QtWidgets.QLineEdit("")
@@ -1132,7 +1159,7 @@ if QtWidgets is not None:
 
             outer.addWidget(session_box)
 
-            dirs_box = QtWidgets.QGroupBox("Estructura persistente de la sesión")
+            dirs_box = QtWidgets.QGroupBox("Estructura persistente del proyecto")
             dirs_grid = QtWidgets.QGridLayout(dirs_box)
 
             self.session_dir_charts = QtWidgets.QLineEdit("")
@@ -1148,20 +1175,15 @@ if QtWidgets is not None:
             self.session_dir_work = QtWidgets.QLineEdit("")
             self.session_dir_work.setReadOnly(True)
 
-            dirs_grid.addWidget(QtWidgets.QLabel("Cartas de color"), 0, 0)
-            dirs_grid.addWidget(self.session_dir_charts, 0, 1)
-            dirs_grid.addWidget(QtWidgets.QLabel("RAW de sesión"), 1, 0)
+            dirs_grid.addWidget(QtWidgets.QLabel("00_configuraciones"), 0, 0)
+            dirs_grid.addWidget(self.session_dir_config, 0, 1)
+            dirs_grid.addWidget(QtWidgets.QLabel("01_ORG originales RAW"), 1, 0)
             dirs_grid.addWidget(self.session_dir_raw, 1, 1)
-            dirs_grid.addWidget(QtWidgets.QLabel("Perfiles ICC"), 2, 0)
-            dirs_grid.addWidget(self.session_dir_profiles, 2, 1)
-            dirs_grid.addWidget(QtWidgets.QLabel("Exportaciones"), 3, 0)
-            dirs_grid.addWidget(self.session_dir_exports, 3, 1)
-            dirs_grid.addWidget(QtWidgets.QLabel("Configuración"), 4, 0)
-            dirs_grid.addWidget(self.session_dir_config, 4, 1)
-            dirs_grid.addWidget(QtWidgets.QLabel("Artefactos/work"), 5, 0)
-            dirs_grid.addWidget(self.session_dir_work, 5, 1)
+            dirs_grid.addWidget(QtWidgets.QLabel("02_DRV derivados"), 2, 0)
+            dirs_grid.addWidget(self.session_dir_exports, 2, 1)
 
             outer.addWidget(dirs_box)
+
             outer.addStretch(1)
             return tab
 
@@ -1190,7 +1212,7 @@ if QtWidgets is not None:
             outer.setContentsMargins(8, 8, 8, 8)
             outer.setSpacing(8)
 
-            box = QtWidgets.QGroupBox("Generación científica desde carta: revelado + ICC")
+            box = QtWidgets.QGroupBox("Carta de color: perfil avanzado de ajuste + ICC de entrada")
             grid = QtWidgets.QGridLayout(box)
 
             self.profile_charts_dir = QtWidgets.QLineEdit(str(self._current_dir))
@@ -1206,7 +1228,7 @@ if QtWidgets is not None:
 
             self.profile_out_path_edit = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
             self.path_profile_out = self.profile_out_path_edit
-            self._add_path_row(grid, 3, "Perfil ICC de salida", self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
+            self._add_path_row(grid, 3, "Perfil ICC de entrada", self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
 
             self.profile_report_out = QtWidgets.QLineEdit("/tmp/profile_report_gui.json")
             self._hide_row_widgets(self._add_path_row(grid, 4, "Reporte perfil JSON", self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False))
@@ -1215,7 +1237,7 @@ if QtWidgets is not None:
             self._hide_row_widgets(self._add_path_row(grid, 5, "Directorio artefactos", self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True))
 
             self.develop_profile_out = QtWidgets.QLineEdit("/tmp/development_profile_gui.json")
-            self._hide_row_widgets(self._add_path_row(grid, 6, "Perfil de revelado JSON", self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False))
+            self._hide_row_widgets(self._add_path_row(grid, 6, "Perfil de ajuste avanzado JSON", self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False))
 
             self.calibrated_recipe_out = QtWidgets.QLineEdit("/tmp/recipe_calibrated_gui.yml")
             self._hide_row_widgets(self._add_path_row(grid, 7, "Receta calibrada", self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False))
@@ -1275,8 +1297,6 @@ if QtWidgets is not None:
             self.profile_lens.hide()
 
             outer.addWidget(box)
-            self._advanced_raw_config = self._build_tab_raw_config("RAW global: criterios de revelado del perfil")
-            outer.addWidget(self._advanced_raw_config)
 
             manual_box = QtWidgets.QGroupBox("Marcado manual de carta")
             manual_layout = QtWidgets.QVBoxLayout(manual_box)
@@ -1292,10 +1312,10 @@ if QtWidgets is not None:
             outer.addWidget(manual_box)
 
             row_generate = QtWidgets.QHBoxLayout()
-            row_generate.addWidget(self._button("Generar perfil de sesión", self._on_generate_profile))
+            row_generate.addWidget(self._button("Generar perfil avanzado con carta", self._on_generate_profile))
             outer.addLayout(row_generate)
 
-            self.profile_summary_label = QtWidgets.QLabel("Sin perfil de sesión generado")
+            self.profile_summary_label = QtWidgets.QLabel("Sin perfil avanzado generado")
             self.profile_summary_label.setWordWrap(True)
             self.profile_summary_label.setStyleSheet("font-size: 12px; color: #d1d5db;")
             outer.addWidget(self.profile_summary_label)
@@ -1305,6 +1325,69 @@ if QtWidgets is not None:
             self.profile_output.setPlaceholderText("Resultado JSON de la generación de perfil")
             self.profile_output.setMaximumHeight(170)
             outer.addWidget(self.profile_output, 1)
+            return tab
+
+        def _build_development_profiles_panel(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            grid = QtWidgets.QGridLayout(tab)
+
+            grid.addWidget(QtWidgets.QLabel("Perfil de ajuste activo"), 0, 0)
+            self.development_profile_combo = QtWidgets.QComboBox()
+            self.development_profile_combo.setToolTip(
+                "Perfil de ajuste guardado. Al aplicarlo, sus parametros pasan a los controles de revelado del RAW."
+            )
+            grid.addWidget(self.development_profile_combo, 0, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("Nombre del ajuste"), 1, 0)
+            self.development_profile_name_edit = QtWidgets.QLineEdit("Perfil manual")
+            grid.addWidget(self.development_profile_name_edit, 1, 1, 1, 2)
+
+            grid.addWidget(QtWidgets.QLabel("ICC sin carta"), 2, 0)
+            self.development_output_space_combo = QtWidgets.QComboBox()
+            self.development_output_space_combo.setToolTip(
+                "Para imagenes sin carta, asigna un perfil ICC generico de salida al TIFF. "
+                "Con carta se recomienda mantener RGB de camara e incrustar el ICC de entrada generado."
+            )
+            self.development_output_space_combo.addItem("Carta / RGB de cámara", "scene_linear_camera_rgb")
+            self.development_output_space_combo.addItem("sRGB genérico", "srgb")
+            self.development_output_space_combo.addItem("Adobe RGB (1998) genérico", "adobe_rgb")
+            self.development_output_space_combo.addItem("ProPhoto RGB genérico", "prophoto_rgb")
+            self.development_output_space_combo.currentIndexChanged.connect(self._on_development_output_space_changed)
+            grid.addWidget(self.development_output_space_combo, 2, 1, 1, 2)
+
+            profile_buttons = QtWidgets.QGridLayout()
+            profile_buttons.addWidget(self._button("Guardar perfil básico", self._save_current_development_profile), 0, 0)
+            profile_buttons.addWidget(self._button("Aplicar a controles", self._activate_selected_development_profile), 0, 1)
+            profile_buttons.addWidget(self._button("Asignar activo a cola", self._queue_assign_active_development_profile), 1, 0, 1, 2)
+            grid.addLayout(profile_buttons, 3, 0, 1, 3)
+
+            self.development_profile_status_label = QtWidgets.QLabel("Sin perfiles de ajuste guardados")
+            self.development_profile_status_label.setWordWrap(True)
+            self.development_profile_status_label.setStyleSheet("font-size: 12px; color: #374151;")
+            grid.addWidget(self.development_profile_status_label, 4, 0, 1, 3)
+
+            self._refresh_development_profile_combo()
+            return tab
+
+        def _build_color_management_calibration_panel(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            layout = QtWidgets.QVBoxLayout(tab)
+            layout.setContentsMargins(8, 8, 8, 8)
+            layout.setSpacing(10)
+
+            profile_box = QtWidgets.QGroupBox("Perfiles de ajuste por archivo")
+            profile_layout = QtWidgets.QVBoxLayout(profile_box)
+            profile_layout.addWidget(self._build_development_profiles_panel())
+            layout.addWidget(profile_box)
+
+            layout.addWidget(self._build_tab_profile_generation())
+
+            self._advanced_profile_config = self._build_tab_profile_config()
+            icc_box = QtWidgets.QGroupBox("ICC activo para preview y exportación")
+            icc_layout = QtWidgets.QVBoxLayout(icc_box)
+            icc_layout.addWidget(self._advanced_profile_config)
+            layout.addWidget(icc_box)
+            layout.addStretch(1)
             return tab
 
         def _build_tab_queue(self) -> QtWidgets.QWidget:
@@ -1319,6 +1402,7 @@ if QtWidgets is not None:
             queue_actions = QtWidgets.QHBoxLayout()
             queue_actions.addWidget(self._button("Añadir selección", self._queue_add_selected))
             queue_actions.addWidget(self._button("Añadir RAW de sesión", self._queue_add_session_raws))
+            queue_actions.addWidget(self._button("Asignar perfil activo", self._queue_assign_active_development_profile))
             queue_actions.addWidget(self._button("Quitar seleccionados", self._queue_remove_selected))
             queue_actions.addWidget(self._button("Limpiar cola", self._queue_clear))
             queue_actions.addWidget(self._button("Revelar cola", self._queue_process))
@@ -1328,11 +1412,12 @@ if QtWidgets is not None:
             self.queue_status_label.setStyleSheet("font-size: 12px; color: #374151;")
             queue_layout.addWidget(self.queue_status_label)
 
-            self.queue_table = QtWidgets.QTableWidget(0, 4)
-            self.queue_table.setHorizontalHeaderLabels(["Archivo", "Estado", "TIFF salida", "Mensaje"])
+            self.queue_table = QtWidgets.QTableWidget(0, 5)
+            self.queue_table.setHorizontalHeaderLabels(["Archivo", "Perfil", "Estado", "TIFF salida", "Mensaje"])
             self.queue_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-            self.queue_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
+            self.queue_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
             self.queue_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+            self.queue_table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Stretch)
             self.queue_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
             self.queue_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
             queue_layout.addWidget(self.queue_table, 1)
@@ -1544,15 +1629,23 @@ if QtWidgets is not None:
 
             self.file_list = QtWidgets.QListWidget()
             self.file_list.setViewMode(QtWidgets.QListView.IconMode)
+            self.file_list.setFlow(QtWidgets.QListView.LeftToRight)
+            self.file_list.setWrapping(False)
             self.file_list.setResizeMode(QtWidgets.QListView.Adjust)
             self.file_list.setMovement(QtWidgets.QListView.Static)
             self.file_list.setSpacing(8)
             self.file_list.setWordWrap(True)
             self.file_list.setUniformItemSizes(True)
+            self.file_list.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+            self.file_list.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+            self.file_list.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+            self.file_list.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
             self.file_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+            self.file_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
             self.file_list.itemSelectionChanged.connect(self._on_file_selection_changed)
             self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
-            self.file_list.verticalScrollBar().valueChanged.connect(self._on_thumbnail_scroll_changed)
+            self.file_list.customContextMenuRequested.connect(self._show_file_list_context_menu)
+            self.file_list.horizontalScrollBar().valueChanged.connect(self._on_thumbnail_scroll_changed)
             self._apply_thumbnail_size(thumbnail_size)
             layout.addWidget(self.file_list, 1)
 
@@ -1560,6 +1653,12 @@ if QtWidgets is not None:
             row.addWidget(self._button("Usar selección como referencias colorimétricas", self._use_selected_files_as_profile_charts))
             row.addWidget(self._button("Añadir selección a cola", self._queue_add_selected))
             layout.addLayout(row)
+
+            profile_row = QtWidgets.QHBoxLayout()
+            profile_row.addWidget(self._button("Guardar perfil básico en imagen", self._save_current_development_settings_to_selected))
+            profile_row.addWidget(self._button("Copiar perfil de ajuste", self._copy_development_settings_from_selected))
+            profile_row.addWidget(self._button("Pegar perfil de ajuste", self._paste_development_settings_to_selected))
+            layout.addLayout(profile_row)
             return pane
 
         def _thumbnail_size_from_settings(self) -> int:
@@ -1632,17 +1731,18 @@ if QtWidgets is not None:
             layout.setSpacing(6)
 
             self.config_tabs = CollapsibleToolPanel()
-            self.config_tabs.addItem(self._build_tab_profile_generation(), "Calibrar sesión", expanded=True)
-            self.config_tabs.addItem(self._build_tab_basic_adjustments(), "Corrección básica", expanded=True)
+            self.config_tabs.addItem(self._build_tab_brightness_contrast(), "Brillo y contraste", expanded=True)
+            self.config_tabs.addItem(self._build_tab_color_adjustments(), "Color", expanded=True)
             self.config_tabs.addItem(self._build_tab_preview_settings(), "Nitidez", expanded=True)
-            self._advanced_profile_config = self._build_tab_profile_config()
-            self.config_tabs.addItem(self._advanced_profile_config, "Perfil activo", expanded=False)
-            self.config_tabs.addItem(self._build_tab_batch_config(), "Aplicar sesión", expanded=False)
+            self.config_tabs.addItem(self._build_color_management_calibration_panel(), "Gestión de color y calibración", expanded=True)
+            self._advanced_raw_config = self._build_tab_raw_config("Criterios RAW globales")
+            self.config_tabs.addItem(self._advanced_raw_config, "RAW Global", expanded=False)
+            self.config_tabs.addItem(self._build_tab_batch_config(), "Exportar derivados", expanded=False)
             layout.addWidget(self.config_tabs, 1)
 
             return pane
 
-        def _build_tab_basic_adjustments(self) -> QtWidgets.QWidget:
+        def _build_tab_color_adjustments(self) -> QtWidgets.QWidget:
             tab = QtWidgets.QWidget()
             grid = QtWidgets.QGridLayout(tab)
 
@@ -1681,6 +1781,13 @@ if QtWidgets is not None:
             neutral_row.addWidget(self.label_neutral_picker, 1)
             grid.addLayout(neutral_row, 3, 0, 1, 3)
 
+            grid.addWidget(self._button("Restablecer color", self._reset_color_adjustments), 4, 0, 1, 3)
+            return tab
+
+        def _build_tab_brightness_contrast(self) -> QtWidgets.QWidget:
+            tab = QtWidgets.QWidget()
+            grid = QtWidgets.QGridLayout(tab)
+
             self.slider_brightness, self.label_brightness = self._slider(
                 minimum=-200,
                 maximum=200,
@@ -1688,8 +1795,8 @@ if QtWidgets is not None:
                 on_change=self._on_render_control_change,
                 formatter=lambda v: f"Brillo: {v / 100:+.2f} EV",
             )
-            grid.addWidget(self.label_brightness, 4, 0, 1, 3)
-            grid.addWidget(self.slider_brightness, 5, 0, 1, 3)
+            grid.addWidget(self.label_brightness, 0, 0, 1, 3)
+            grid.addWidget(self.slider_brightness, 1, 0, 1, 3)
 
             self.slider_black_point, self.label_black_point = self._slider(
                 minimum=0,
@@ -1698,8 +1805,8 @@ if QtWidgets is not None:
                 on_change=self._on_render_control_change,
                 formatter=lambda v: f"Nivel negro: {v / 1000:.3f}",
             )
-            grid.addWidget(self.label_black_point, 6, 0, 1, 3)
-            grid.addWidget(self.slider_black_point, 7, 0, 1, 3)
+            grid.addWidget(self.label_black_point, 2, 0, 1, 3)
+            grid.addWidget(self.slider_black_point, 3, 0, 1, 3)
 
             self.slider_white_point, self.label_white_point = self._slider(
                 minimum=500,
@@ -1708,8 +1815,8 @@ if QtWidgets is not None:
                 on_change=self._on_render_control_change,
                 formatter=lambda v: f"Nivel blanco: {v / 1000:.3f}",
             )
-            grid.addWidget(self.label_white_point, 8, 0, 1, 3)
-            grid.addWidget(self.slider_white_point, 9, 0, 1, 3)
+            grid.addWidget(self.label_white_point, 4, 0, 1, 3)
+            grid.addWidget(self.slider_white_point, 5, 0, 1, 3)
 
             self.slider_contrast, self.label_contrast = self._slider(
                 minimum=-100,
@@ -1718,8 +1825,8 @@ if QtWidgets is not None:
                 on_change=self._on_render_control_change,
                 formatter=lambda v: f"Contraste: {v / 100:+.2f}",
             )
-            grid.addWidget(self.label_contrast, 10, 0, 1, 3)
-            grid.addWidget(self.slider_contrast, 11, 0, 1, 3)
+            grid.addWidget(self.label_contrast, 6, 0, 1, 3)
+            grid.addWidget(self.slider_contrast, 7, 0, 1, 3)
 
             self.slider_midtone, self.label_midtone = self._slider(
                 minimum=50,
@@ -1728,20 +1835,20 @@ if QtWidgets is not None:
                 on_change=self._on_render_control_change,
                 formatter=lambda v: f"Curva medios: {v / 100:.2f}",
             )
-            grid.addWidget(self.label_midtone, 12, 0, 1, 3)
-            grid.addWidget(self.slider_midtone, 13, 0, 1, 3)
+            grid.addWidget(self.label_midtone, 8, 0, 1, 3)
+            grid.addWidget(self.slider_midtone, 9, 0, 1, 3)
 
             self.check_tone_curve_enabled = QtWidgets.QCheckBox("Curva tonal avanzada")
             self.check_tone_curve_enabled.setChecked(False)
             self.check_tone_curve_enabled.toggled.connect(self._on_tone_curve_enabled_changed)
-            grid.addWidget(self.check_tone_curve_enabled, 14, 0, 1, 3)
+            grid.addWidget(self.check_tone_curve_enabled, 10, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Preset curva"), 15, 0)
+            grid.addWidget(QtWidgets.QLabel("Preset curva"), 11, 0)
             self.combo_tone_curve_preset = QtWidgets.QComboBox()
             for label, key, _points in TONE_CURVE_PRESETS:
                 self.combo_tone_curve_preset.addItem(label, key)
             self.combo_tone_curve_preset.currentIndexChanged.connect(self._on_tone_curve_preset_changed)
-            grid.addWidget(self.combo_tone_curve_preset, 15, 1, 1, 2)
+            grid.addWidget(self.combo_tone_curve_preset, 11, 1, 1, 2)
 
             self.slider_tone_curve_black, self.label_tone_curve_black = self._slider(
                 minimum=0,
@@ -1750,8 +1857,8 @@ if QtWidgets is not None:
                 on_change=self._on_tone_curve_range_changed,
                 formatter=lambda v: f"Negro curva: {v / 1000:.3f}",
             )
-            grid.addWidget(self.label_tone_curve_black, 16, 0, 1, 3)
-            grid.addWidget(self.slider_tone_curve_black, 17, 0, 1, 3)
+            grid.addWidget(self.label_tone_curve_black, 12, 0, 1, 3)
+            grid.addWidget(self.slider_tone_curve_black, 13, 0, 1, 3)
 
             self.slider_tone_curve_white, self.label_tone_curve_white = self._slider(
                 minimum=50,
@@ -1760,16 +1867,16 @@ if QtWidgets is not None:
                 on_change=self._on_tone_curve_range_changed,
                 formatter=lambda v: f"Blanco curva: {v / 1000:.3f}",
             )
-            grid.addWidget(self.label_tone_curve_white, 18, 0, 1, 3)
-            grid.addWidget(self.slider_tone_curve_white, 19, 0, 1, 3)
+            grid.addWidget(self.label_tone_curve_white, 14, 0, 1, 3)
+            grid.addWidget(self.slider_tone_curve_white, 15, 0, 1, 3)
 
             self.tone_curve_editor = ToneCurveEditor()
             self.tone_curve_editor.pointsChanged.connect(self._on_tone_curve_points_changed)
-            grid.addWidget(self.tone_curve_editor, 20, 0, 1, 3)
-            grid.addWidget(self._button("Restablecer curva", self._reset_tone_curve), 21, 0, 1, 3)
+            grid.addWidget(self.tone_curve_editor, 16, 0, 1, 3)
+            grid.addWidget(self._button("Restablecer curva", self._reset_tone_curve), 17, 0, 1, 3)
             self._set_tone_curve_controls_enabled(False)
 
-            grid.addWidget(self._button("Restablecer corrección básica", self._reset_basic_adjustments), 22, 0, 1, 3)
+            grid.addWidget(self._button("Restablecer brillo y contraste", self._reset_tone_adjustments), 18, 0, 1, 3)
             return tab
 
         def _build_tab_preview_settings(self) -> QtWidgets.QWidget:
@@ -1962,8 +2069,8 @@ if QtWidgets is not None:
             grid.addWidget(self.edit_illuminant, 16, 1, 1, 2)
 
             scientific_note = QtWidgets.QLabel(
-                "Durante la generación de perfil, NexoRAW fuerza estos parámetros a "
-                "modo científico: tone_curve=linear, salida lineal=on, output_space=scene_linear_camera_rgb. "
+                "Durante la generación de un perfil avanzado con carta, NexoRAW fuerza estos parámetros a "
+                "modo objetivo: tone_curve=linear, salida lineal=on, output_space=scene_linear_camera_rgb. "
                 "Denoise y sharpen quedan desactivados durante la medición de carta y se "
                 "configuran en la pestaña Nitidez para el revelado final."
             )
@@ -1977,7 +2084,7 @@ if QtWidgets is not None:
             grid = QtWidgets.QGridLayout(tab)
 
             self.path_profile_active = QtWidgets.QLineEdit("/tmp/camera_profile.icc")
-            self._add_path_row(grid, 0, "Perfil ICC activo (preview/export)", self.path_profile_active, file_mode=True, save_mode=False, dir_mode=False)
+            self._add_path_row(grid, 0, "Perfil ICC de entrada activo", self.path_profile_active, file_mode=True, save_mode=False, dir_mode=False)
 
             row = QtWidgets.QHBoxLayout()
             row.addWidget(self._button("Cargar perfil activo", self._menu_load_profile))
@@ -1994,9 +2101,9 @@ if QtWidgets is not None:
             self._add_path_row(grid, 0, "RAW a revelar (carpeta)", self.batch_input_dir, file_mode=False, save_mode=False, dir_mode=True)
 
             self.batch_out_dir = QtWidgets.QLineEdit("/tmp/nexoraw_batch_tiffs")
-            self._add_path_row(grid, 1, "Salida TIFF de sesión", self.batch_out_dir, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 1, "Salida TIFF derivados", self.batch_out_dir, file_mode=False, save_mode=False, dir_mode=True)
 
-            self.batch_embed_profile = QtWidgets.QCheckBox("Aplicar perfil de sesión (ICC) en TIFF")
+            self.batch_embed_profile = QtWidgets.QCheckBox("Incrustar/aplicar ICC en TIFF")
             self.batch_embed_profile.setChecked(True)
             self.batch_embed_profile.setEnabled(False)
             grid.addWidget(self.batch_embed_profile, 2, 0, 1, 3)
@@ -2012,7 +2119,7 @@ if QtWidgets is not None:
 
             self.batch_output = QtWidgets.QPlainTextEdit()
             self.batch_output.setReadOnly(True)
-            self.batch_output.setPlaceholderText("Salida JSON de aplicación de sesión")
+            self.batch_output.setPlaceholderText("Salida JSON de exportación de derivados")
 
             layout.addLayout(grid)
             layout.addLayout(row_1)
@@ -2148,6 +2255,7 @@ if QtWidgets is not None:
             return tab
 
         def _build_preview_monitor_settings_panel(self) -> QtWidgets.QWidget:
+            self._migrate_display_color_settings()
             tab = QtWidgets.QWidget()
             grid = QtWidgets.QGridLayout(tab)
 
@@ -2180,8 +2288,12 @@ if QtWidgets is not None:
             self.spin_preview_max_side.valueChanged.connect(lambda _value: self._save_preview_monitor_settings())
             grid.addWidget(self.spin_preview_max_side, 2, 1, 1, 2)
 
-            self.check_display_color_management = QtWidgets.QCheckBox("Gestion ICC del monitor")
-            self.check_display_color_management.setChecked(self._settings_bool("display/color_management_enabled", False))
+            self.check_display_color_management = QtWidgets.QCheckBox("Gestion ICC del monitor del sistema")
+            self.check_display_color_management.setToolTip(
+                "Usa automaticamente el perfil ICC configurado para el monitor en el sistema. "
+                "Si necesitas revisar otro monitor o flujo, puedes seleccionar un perfil manualmente."
+            )
+            self.check_display_color_management.setChecked(self._settings_bool("display/color_management_enabled", True))
             self.check_display_color_management.toggled.connect(self._on_display_color_settings_changed)
             grid.addWidget(self.check_display_color_management, 3, 0, 1, 3)
 
@@ -2196,6 +2308,7 @@ if QtWidgets is not None:
             self.display_profile_status.setStyleSheet("font-size: 12px; color: #6b7280;")
             display_row.addWidget(self.display_profile_status, 1)
             grid.addLayout(display_row, 5, 0, 1, 3)
+            self._ensure_display_profile_if_enabled()
             self._update_display_profile_status()
 
             self.path_preview_png = QtWidgets.QLineEdit(str(self._settings.value("preview/png_path") or "/tmp/nexoraw_preview.png"))
@@ -2204,6 +2317,17 @@ if QtWidgets is not None:
 
             grid.setRowStretch(7, 1)
             return tab
+
+        def _migrate_display_color_settings(self) -> None:
+            marker = "display/system_profile_default_v1"
+            if self._settings_bool(marker, False):
+                return
+            detected = detect_system_display_profile()
+            self._settings.setValue("display/color_management_enabled", True)
+            if detected is not None and not str(self._settings.value("display/monitor_profile") or "").strip():
+                self._settings.setValue("display/monitor_profile", str(detected))
+            self._settings.setValue(marker, True)
+            self._settings.sync()
 
         def _open_global_settings_dialog(self, *_args) -> None:
             if not hasattr(self, "global_settings_dialog"):
@@ -2377,7 +2501,6 @@ if QtWidgets is not None:
         def _init_fs_model(self) -> None:
             self._dir_model = QtWidgets.QFileSystemModel(self)
             for option in (
-                "DontWatchForChanges",
                 "DontResolveSymlinks",
                 "DontUseCustomDirectoryIcons",
             ):
@@ -2449,21 +2572,25 @@ if QtWidgets is not None:
                 ],
             }
 
-        def _render_adjustment_kwargs(self) -> dict[str, Any]:
-            state = self._render_adjustment_state()
+        def _render_adjustment_kwargs_from_state(self, state: dict[str, Any]) -> dict[str, Any]:
             return {
-                "temperature_kelvin": float(state["temperature_kelvin"]),
+                "temperature_kelvin": float(state.get("temperature_kelvin", 5003.0)),
                 "neutral_kelvin": 5003.0,
-                "tint": float(state["tint"]),
-                "brightness_ev": float(state["brightness_ev"]),
-                "black_point": float(state["black_point"]),
-                "white_point": float(max(state["black_point"] + 0.001, state["white_point"])),
-                "contrast": float(state["contrast"]),
-                "midtone": float(state["midtone"]),
-                "tone_curve_points": state["tone_curve_points"] if state["tone_curve_enabled"] else None,
-                "tone_curve_black_point": float(state["tone_curve_black_point"]),
-                "tone_curve_white_point": float(max(state["tone_curve_black_point"] + 0.01, state["tone_curve_white_point"])),
+                "tint": float(state.get("tint", 0.0)),
+                "brightness_ev": float(state.get("brightness_ev", 0.0)),
+                "black_point": float(state.get("black_point", 0.0)),
+                "white_point": float(max(float(state.get("black_point", 0.0)) + 0.001, float(state.get("white_point", 1.0)))),
+                "contrast": float(state.get("contrast", 0.0)),
+                "midtone": float(state.get("midtone", 1.0)),
+                "tone_curve_points": state.get("tone_curve_points") if state.get("tone_curve_enabled") else None,
+                "tone_curve_black_point": float(state.get("tone_curve_black_point", 0.0)),
+                "tone_curve_white_point": float(
+                    max(float(state.get("tone_curve_black_point", 0.0)) + 0.01, float(state.get("tone_curve_white_point", 1.0)))
+                ),
             }
+
+        def _render_adjustment_kwargs(self) -> dict[str, Any]:
+            return self._render_adjustment_kwargs_from_state(self._render_adjustment_state())
 
         def _detail_adjustment_state(self) -> dict[str, Any]:
             return {
@@ -2474,6 +2601,50 @@ if QtWidgets is not None:
                 "ca_red": int(self.slider_ca_red.value()),
                 "ca_blue": int(self.slider_ca_blue.value()),
             }
+
+        def _detail_adjustment_kwargs_from_state(self, state: dict[str, Any]) -> dict[str, float]:
+            return {
+                "denoise_luma": float(state.get("noise_luma", 0)) / 100.0,
+                "denoise_color": float(state.get("noise_color", 0)) / 100.0,
+                "sharpen_amount": float(state.get("sharpen", 0)) / 100.0,
+                "sharpen_radius": float(state.get("radius", 10)) / 10.0,
+                "lateral_ca_red_scale": 1.0 + float(state.get("ca_red", 0)) / 10000.0,
+                "lateral_ca_blue_scale": 1.0 + float(state.get("ca_blue", 0)) / 10000.0,
+            }
+
+        def _apply_detail_adjustment_state(self, state: dict[str, Any]) -> None:
+            self.slider_sharpen.setValue(int(state.get("sharpen", self.slider_sharpen.value())))
+            self.slider_radius.setValue(int(state.get("radius", self.slider_radius.value())))
+            self.slider_noise_luma.setValue(int(state.get("noise_luma", self.slider_noise_luma.value())))
+            self.slider_noise_color.setValue(int(state.get("noise_color", self.slider_noise_color.value())))
+            self.slider_ca_red.setValue(int(state.get("ca_red", self.slider_ca_red.value())))
+            self.slider_ca_blue.setValue(int(state.get("ca_blue", self.slider_ca_blue.value())))
+
+        def _apply_render_adjustment_state(self, state: dict[str, Any]) -> None:
+            self._set_combo_text(
+                self.combo_illuminant_render,
+                str(state.get("illuminant") or self.combo_illuminant_render.currentText()),
+            )
+            self.spin_render_temperature.setValue(int(state.get("temperature_kelvin", self.spin_render_temperature.value())))
+            self.spin_render_tint.setValue(float(state.get("tint", self.spin_render_tint.value())))
+            self.slider_brightness.setValue(int(round(float(state.get("brightness_ev", 0.0)) * 100)))
+            self.slider_black_point.setValue(int(round(float(state.get("black_point", 0.0)) * 1000)))
+            self.slider_white_point.setValue(int(round(float(state.get("white_point", 1.0)) * 1000)))
+            self.slider_contrast.setValue(int(round(float(state.get("contrast", 0.0)) * 100)))
+            self.slider_midtone.setValue(int(round(float(state.get("midtone", 1.0)) * 100)))
+            curve_enabled = bool(state.get("tone_curve_enabled", False))
+            curve_preset = str(state.get("tone_curve_preset") or "linear")
+            curve_points = self._coerce_tone_curve_points(state.get("tone_curve_points"))
+            curve_black = float(state.get("tone_curve_black_point", 0.0))
+            curve_white = float(state.get("tone_curve_white_point", 1.0))
+            self._set_combo_data(self.combo_tone_curve_preset, curve_preset)
+            self._set_tone_curve_range_controls(curve_black, curve_white)
+            self.tone_curve_editor.set_points(
+                curve_points or self._tone_curve_preset_points(curve_preset),
+                emit=False,
+            )
+            self.check_tone_curve_enabled.setChecked(curve_enabled)
+            self._set_tone_curve_controls_enabled(curve_enabled)
 
         def _ca_scale_factors(self) -> tuple[float, float]:
             return 1.0 + self.slider_ca_red.value() / 10000.0, 1.0 + self.slider_ca_blue.value() / 10000.0
@@ -2640,13 +2811,21 @@ if QtWidgets is not None:
             self.check_display_color_management.setChecked(True)
             self._on_display_color_settings_changed()
 
+        def _ensure_display_profile_if_enabled(self) -> None:
+            if not hasattr(self, "check_display_color_management") or not hasattr(self, "path_display_profile"):
+                return
+            if not self.check_display_color_management.isChecked():
+                return
+            if self.path_display_profile.text().strip():
+                return
+            detected = detect_system_display_profile()
+            if detected is not None:
+                self.path_display_profile.setText(str(detected))
+
         def _on_display_color_settings_changed(self, *_args) -> None:
             if not hasattr(self, "check_display_color_management"):
                 return
-            if self.check_display_color_management.isChecked() and not self.path_display_profile.text().strip():
-                detected = detect_system_display_profile()
-                if detected is not None:
-                    self.path_display_profile.setText(str(detected))
+            self._ensure_display_profile_if_enabled()
 
             self._settings.setValue(
                 "display/color_management_enabled",
@@ -2701,7 +2880,10 @@ if QtWidgets is not None:
                 return
             profile_path = self._active_display_profile_path()
             if profile_path is None:
-                self.display_profile_status.setText("Monitor: sRGB")
+                if hasattr(self, "check_display_color_management") and not self.check_display_color_management.isChecked():
+                    self.display_profile_status.setText("Monitor: gestion ICC desactivada")
+                else:
+                    self.display_profile_status.setText("Monitor: sRGB (sin perfil de sistema detectado)")
                 return
             if not profile_path.exists():
                 self.display_profile_status.setText(f"Monitor: perfil no encontrado ({profile_path.name})")
@@ -2718,12 +2900,12 @@ if QtWidgets is not None:
             absolute = root.expanduser().resolve()
             return {
                 "root": absolute,
-                "charts": absolute / "charts",
-                "raw": absolute / "raw",
-                "profiles": absolute / "profiles",
-                "exports": absolute / "exports",
-                "config": absolute / "config",
-                "work": absolute / "work",
+                "config": absolute / "00_configuraciones",
+                "raw": absolute / "01_ORG",
+                "exports": absolute / "02_DRV",
+                "charts": absolute / "01_ORG",
+                "profiles": absolute / "00_configuraciones" / "profiles",
+                "work": absolute / "00_configuraciones" / "work",
             }
 
         def _populate_session_directory_fields(self, paths: dict[str, Path]) -> None:
@@ -2741,7 +2923,29 @@ if QtWidgets is not None:
             except Exception:
                 return False
 
-        def _session_reference_source_dirs(self, *, paths: dict[str, Path] | None = None) -> list[Path]:
+        def _session_relative_or_absolute(self, path: Path | str | None) -> str:
+            if path is None:
+                return ""
+            candidate = Path(str(path)).expanduser()
+            if self._active_session_root is not None:
+                try:
+                    root = self._active_session_root.expanduser().resolve(strict=False)
+                    resolved = candidate.resolve(strict=False)
+                    return resolved.relative_to(root).as_posix()
+                except Exception:
+                    pass
+            return str(candidate)
+
+        def _session_stored_path(self, value: Any) -> Path | None:
+            text = str(value or "").strip()
+            if not text:
+                return None
+            candidate = Path(text).expanduser()
+            if candidate.is_absolute() or self._active_session_root is None:
+                return candidate
+            return self._active_session_root / candidate
+
+        def _session_reference_source_dirs(self, *, paths: dict[str, Path] | None = None) -> list[tuple[str, Path]]:
             if paths is None:
                 paths = self._session_paths_from_root(self._active_session_root) if self._active_session_root else {}
                 if isinstance(self._active_session_payload, dict) and isinstance(
@@ -2753,12 +2957,26 @@ if QtWidgets is not None:
                         for key, value in self._active_session_payload["directories"].items()
                         if isinstance(value, str) and value.strip()
                     }
-            return [p for key in ("raw", "charts") if (p := paths.get(key)) is not None]
+            seen: set[str] = set()
+            result: list[tuple[str, Path]] = []
+            for key in ("raw", "charts"):
+                p = paths.get(key)
+                if p is None:
+                    continue
+                try:
+                    marker = str(p.expanduser().resolve(strict=False))
+                except Exception:
+                    marker = str(p)
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                result.append((key, p))
+            return result
 
         def _preferred_profile_reference_dir(self, *, paths: dict[str, Path] | None = None) -> Path | None:
-            for candidate in self._session_reference_source_dirs(paths=paths):
+            for key, candidate in self._session_reference_source_dirs(paths=paths):
                 if candidate.exists() and candidate.is_dir():
-                    if self._directory_has_chart_captures(candidate) or candidate.name.lower() == "raw":
+                    if self._directory_has_chart_captures(candidate) or key == "raw":
                         return candidate
             return None
 
@@ -2905,6 +3123,19 @@ if QtWidgets is not None:
                 return default
             return candidate
 
+        def _session_state_dir_or_default(
+            self,
+            value: Any,
+            default: Path,
+            *,
+            root: Path | None = None,
+        ) -> Path:
+            candidate = self._session_state_path_or_default(value, default)
+            session_root = root or self._active_session_root
+            if session_root is not None and not self._path_is_inside(candidate, session_root):
+                return default.expanduser()
+            return candidate
+
         def _is_legacy_temp_output_path(self, value: Any) -> bool:
             text = str(value or "").strip()
             if not text:
@@ -2955,10 +3186,10 @@ if QtWidgets is not None:
                     paths = {}
 
             root = paths.get("root", self._active_session_root or Path.cwd())
-            exports_dir = paths.get("exports", root / "exports")
-            profiles_dir = paths.get("profiles", root / "profiles")
-            config_dir = paths.get("config", root / "config")
-            work_dir = paths.get("work", root / "work")
+            exports_dir = paths.get("exports", root / "02_DRV")
+            profiles_dir = paths.get("profiles", root / "00_configuraciones" / "profiles")
+            config_dir = paths.get("config", root / "00_configuraciones")
+            work_dir = paths.get("work", root / "00_configuraciones" / "work")
 
             safe_name = (session_name or self.session_name_edit.text().strip() or root.name or "session").strip()
             return {
@@ -2968,8 +3199,8 @@ if QtWidgets is not None:
                 "development_profile": config_dir / "development_profile.json",
                 "calibrated_recipe": config_dir / "recipe_calibrated.yml",
                 "recipe": config_dir / "recipe.yml",
-                "preview": exports_dir / "preview" / "preview.png",
-                "tiff_dir": exports_dir / "tiff",
+                "preview": exports_dir / "preview.png",
+                "tiff_dir": exports_dir,
             }
 
         def _ensure_session_output_controls(self) -> None:
@@ -3002,15 +3233,23 @@ if QtWidgets is not None:
 
             charts_default = paths.get("charts", root)
             raw_default = paths.get("raw", root)
-            charts_state = self._session_state_path_or_default(state.get("profile_charts_dir"), charts_default)
-            raw_state = self._session_state_path_or_default(state.get("batch_input_dir"), raw_default)
+            charts_state = self._session_state_dir_or_default(
+                state.get("profile_charts_dir"),
+                charts_default,
+                root=root,
+            )
+            raw_state = self._session_state_dir_or_default(
+                state.get("batch_input_dir"),
+                raw_default,
+                root=root,
+            )
 
             candidates: list[Path] = []
             for chart_file in self._selected_chart_files:
                 if chart_file.exists() and chart_file.is_file():
                     candidates.append(chart_file.parent)
                     break
-            candidates.extend([charts_state, raw_state, charts_default, raw_default, root])
+            candidates.extend([raw_state, charts_state, raw_default, charts_default, root])
 
             seen: set[str] = set()
             unique_candidates: list[Path] = []
@@ -3064,17 +3303,762 @@ if QtWidgets is not None:
             if self._should_replace_operational_dir(self.batch_input_dir.text(), folder):
                 self.batch_input_dir.setText(str(folder))
 
+        def _profile_timestamp(self) -> str:
+            return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+        def _slug_for_development_profile(self, name: str) -> str:
+            raw = "".join(ch.lower() if ch.isalnum() else "-" for ch in name.strip())
+            slug = "-".join(part for part in raw.split("-") if part) or "perfil"
+            return slug[:48]
+
+        def _unique_development_profile_id(self, name: str) -> str:
+            base = self._slug_for_development_profile(name)
+            existing = {str(profile.get("id") or "") for profile in self._development_profiles}
+            if base not in existing:
+                return base
+            index = 2
+            while f"{base}-{index}" in existing:
+                index += 1
+            return f"{base}-{index}"
+
+        def _development_profile_dir(self, profile_id: str) -> Path:
+            root = self._active_session_root or Path(self.session_root_path.text().strip() or Path.cwd())
+            return self._session_paths_from_root(root)["config"] / "development_profiles" / profile_id
+
+        def _session_generic_profile_dir(self) -> Path | None:
+            root = self._active_session_root
+            if root is None and hasattr(self, "session_root_path"):
+                text = self.session_root_path.text().strip()
+                root = Path(text).expanduser() if text else None
+            if root is None:
+                return None
+            return self._session_paths_from_root(Path(root).expanduser())["profiles"] / "generic"
+
+        def _render_profile_path_for_recipe(
+            self,
+            recipe: Recipe,
+            *,
+            input_profile_path: Path | None,
+            color_management_mode: str,
+        ) -> Path | None:
+            try:
+                return profile_path_for_render_settings(
+                    recipe,
+                    input_profile_path=input_profile_path,
+                    color_management_mode=color_management_mode,
+                    generic_profile_dir=self._session_generic_profile_dir(),
+                )
+            except Exception:
+                return input_profile_path
+
+        def _configured_color_profile_for_recipe(self, recipe: Recipe) -> tuple[Path | None, Path | None, str]:
+            input_profile_path = self._active_session_icc_for_settings()
+            if is_generic_output_space(recipe.output_space):
+                output_profile = ensure_generic_output_profile(
+                    recipe.output_space,
+                    directory=self._session_generic_profile_dir(),
+                )
+                mode = (
+                    f"assigned_{generic_output_profile(recipe.output_space).key}_output_icc"
+                    if input_profile_path is None
+                    else f"converted_{generic_output_profile(recipe.output_space).key}"
+                )
+                if generic_output_profile(recipe.output_space).key == "srgb" and input_profile_path is not None:
+                    mode = "converted_srgb"
+                return input_profile_path, output_profile, mode
+            if input_profile_path is not None:
+                return input_profile_path, input_profile_path, "camera_rgb_with_input_icc"
+            return None, None, "no_profile"
+
+        def _development_profile_by_id(self, profile_id: str) -> dict[str, Any] | None:
+            for profile in self._development_profiles:
+                if str(profile.get("id") or "") == profile_id:
+                    return profile
+            return None
+
+        @staticmethod
+        def _adjustment_profile_type_for_kind(kind: str) -> str:
+            return "advanced" if str(kind or "").strip().lower() in {"chart", "advanced"} else "basic"
+
+        def _development_profile_label(self, profile_id: str) -> str:
+            if not profile_id:
+                return "Actual"
+            profile = self._development_profile_by_id(profile_id)
+            if profile is None:
+                return profile_id
+            return str(profile.get("name") or profile_id)
+
+        def _refresh_development_profile_combo(self) -> None:
+            if not hasattr(self, "development_profile_combo"):
+                return
+            current = self._active_development_profile_id
+            self.development_profile_combo.blockSignals(True)
+            self.development_profile_combo.clear()
+            self.development_profile_combo.addItem("Ajustes actuales", "")
+            for profile in self._development_profiles:
+                profile_id = str(profile.get("id") or "").strip()
+                if not profile_id:
+                    continue
+                label = str(profile.get("name") or profile_id)
+                kind = str(profile.get("kind") or "manual")
+                self.development_profile_combo.addItem(f"{label} ({kind})", profile_id)
+            index = self.development_profile_combo.findData(current)
+            self.development_profile_combo.setCurrentIndex(index if index >= 0 else 0)
+            self.development_profile_combo.blockSignals(False)
+            if hasattr(self, "development_profile_status_label"):
+                active = self._development_profile_label(current)
+                self.development_profile_status_label.setText(
+                    f"Perfiles de ajuste: {len(self._development_profiles)} | Activo: {active}"
+                )
+
+        def _on_development_output_space_changed(self) -> None:
+            if not hasattr(self, "development_output_space_combo") or not hasattr(self, "combo_output_space"):
+                return
+            output_space = str(self.development_output_space_combo.currentData() or "scene_linear_camera_rgb")
+            self._set_combo_text(self.combo_output_space, output_space)
+            if output_space == "scene_linear_camera_rgb":
+                self.check_output_linear.setChecked(True)
+                self._set_combo_data(self.combo_tone_curve, "linear")
+            elif output_space == "srgb":
+                self.check_output_linear.setChecked(False)
+                self._set_combo_data(self.combo_tone_curve, "srgb")
+            else:
+                self.check_output_linear.setChecked(False)
+                self._set_combo_data(self.combo_tone_curve, "gamma")
+                self.spin_gamma.setValue(1.8 if output_space == "prophoto_rgb" else 2.2)
+            if self._original_linear is not None:
+                self._schedule_preview_refresh()
+
+        def _sync_development_output_space_combo(self, output_space: str) -> None:
+            if not hasattr(self, "development_output_space_combo"):
+                return
+            target = output_space if is_generic_output_space(output_space) else "scene_linear_camera_rgb"
+            index = self.development_output_space_combo.findData(target)
+            if index >= 0 and self.development_output_space_combo.currentIndex() != index:
+                self.development_output_space_combo.blockSignals(True)
+                self.development_output_space_combo.setCurrentIndex(index)
+                self.development_output_space_combo.blockSignals(False)
+
+        def _register_development_profile(self, descriptor: dict[str, Any], *, activate: bool = True) -> None:
+            profile_id = str(descriptor.get("id") or "").strip()
+            if not profile_id:
+                return
+            now = self._profile_timestamp()
+            descriptor = dict(descriptor)
+            descriptor.setdefault("created_at", now)
+            descriptor["updated_at"] = now
+            replaced = False
+            for idx, existing in enumerate(self._development_profiles):
+                if str(existing.get("id") or "") == profile_id:
+                    merged = dict(existing)
+                    merged.update(descriptor)
+                    self._development_profiles[idx] = merged
+                    replaced = True
+                    break
+            if not replaced:
+                self._development_profiles.append(descriptor)
+            self._development_profiles.sort(key=lambda item: str(item.get("name") or item.get("id") or ""))
+            if activate:
+                self._active_development_profile_id = profile_id
+            self._refresh_development_profile_combo()
+            self._save_active_session(silent=True)
+
+        def _development_profile_manifest(self, profile: dict[str, Any]) -> dict[str, Any]:
+            manifest_path = self._session_stored_path(profile.get("manifest_path"))
+            if manifest_path is None or not manifest_path.exists():
+                return {}
+            try:
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                return payload if isinstance(payload, dict) else {}
+            except Exception:
+                return {}
+
+        def _development_profile_recipe(self, profile: dict[str, Any], manifest: dict[str, Any]) -> Recipe:
+            recipe_path = self._session_stored_path(profile.get("recipe_path") or manifest.get("render_recipe_path"))
+            if recipe_path is not None and recipe_path.exists():
+                return load_recipe(recipe_path)
+            recipe_payload = manifest.get("recipe") or manifest.get("calibrated_recipe")
+            if isinstance(recipe_payload, dict):
+                allowed = set(Recipe.__dataclass_fields__.keys())
+                filtered = {k: v for k, v in recipe_payload.items() if k in allowed}
+                return Recipe(**filtered)
+            return self._build_effective_recipe()
+
+        def _development_profile_settings(self, profile_id: str) -> dict[str, Any]:
+            profile = self._development_profile_by_id(profile_id) if profile_id else None
+            if profile is None:
+                detail_state = self._detail_adjustment_state()
+                render_state = self._render_adjustment_state()
+                profile_path = self._active_session_icc_for_settings()
+                return {
+                    "id": "",
+                    "name": "Ajustes actuales",
+                    "kind": "manual",
+                    "profile_type": "basic",
+                    "recipe": self._build_effective_recipe(),
+                    "detail_adjustments": detail_state,
+                    "render_adjustments": render_state,
+                    "icc_profile_path": profile_path,
+                    "output_icc_profile_path": None,
+                }
+
+            manifest = self._development_profile_manifest(profile)
+            detail_state = manifest.get("detail_adjustments") if isinstance(manifest.get("detail_adjustments"), dict) else {}
+            render_state = manifest.get("render_adjustments") if isinstance(manifest.get("render_adjustments"), dict) else {}
+            icc_profile_path = self._session_stored_path(profile.get("icc_profile_path") or manifest.get("icc_profile_path"))
+            output_icc_profile_path = self._session_stored_path(
+                profile.get("output_icc_profile_path") or manifest.get("output_icc_profile_path")
+            )
+            kind = str(profile.get("kind") or manifest.get("kind") or "manual")
+            profile_type = str(profile.get("profile_type") or manifest.get("profile_type") or "")
+            if profile_type not in {"advanced", "basic"}:
+                profile_type = self._adjustment_profile_type_for_kind(kind)
+            return {
+                "id": str(profile.get("id") or ""),
+                "name": str(profile.get("name") or profile.get("id") or ""),
+                "kind": kind,
+                "profile_type": profile_type,
+                "recipe": self._development_profile_recipe(profile, manifest),
+                "detail_adjustments": detail_state or self._detail_adjustment_state(),
+                "render_adjustments": render_state or self._render_adjustment_state(),
+                "icc_profile_path": icc_profile_path,
+                "output_icc_profile_path": output_icc_profile_path,
+            }
+
+        def _recipe_from_payload(self, payload: Any) -> Recipe | None:
+            if not isinstance(payload, dict):
+                return None
+            try:
+                allowed = set(Recipe.__dataclass_fields__.keys())
+                filtered = {k: v for k, v in payload.items() if k in allowed}
+                return Recipe(**filtered)
+            except Exception:
+                return None
+
+        def _development_profile_from_sidecar(self, path: Path) -> str:
+            try:
+                payload = load_raw_sidecar(path)
+            except Exception:
+                return ""
+            profile = payload.get("development_profile") if isinstance(payload, dict) else {}
+            profile_id = str(profile.get("id") or "") if isinstance(profile, dict) else ""
+            if profile_id and self._development_profile_by_id(profile_id) is not None:
+                return profile_id
+            return ""
+
+        def _development_profile_payload_for_active_settings(self) -> dict[str, str]:
+            profile_id = self._active_development_profile_id
+            if not profile_id and hasattr(self, "development_profile_combo"):
+                profile_id = str(self.development_profile_combo.currentData() or "")
+            profile = self._development_profile_by_id(profile_id) if profile_id else None
+            if profile is None:
+                return {"id": "", "name": "Ajustes actuales", "kind": "manual", "profile_type": "basic"}
+            kind = str(profile.get("kind") or "manual")
+            return {
+                "id": profile_id,
+                "name": str(profile.get("name") or profile_id),
+                "kind": kind,
+                "profile_type": str(profile.get("profile_type") or self._adjustment_profile_type_for_kind(kind)),
+            }
+
+        def _profile_payload_from_development_settings(self, settings: dict[str, Any]) -> dict[str, str]:
+            kind = str(settings.get("kind") or "manual")
+            profile_type = str(settings.get("profile_type") or self._adjustment_profile_type_for_kind(kind))
+            return {
+                "id": str(settings.get("id") or ""),
+                "name": str(settings.get("name") or "Ajustes actuales"),
+                "kind": kind,
+                "profile_type": profile_type,
+            }
+
+        def _render_profile_and_mode_for_development_settings(
+            self,
+            settings: dict[str, Any],
+        ) -> tuple[Path | None, str]:
+            recipe = settings["recipe"]
+            input_profile = settings.get("icc_profile_path") if isinstance(settings.get("icc_profile_path"), Path) else None
+            if is_generic_output_space(recipe.output_space):
+                rendered_profile = ensure_generic_output_profile(
+                    recipe.output_space,
+                    directory=self._session_generic_profile_dir(),
+                )
+                generic_key = generic_output_profile(recipe.output_space).key
+                if input_profile is not None:
+                    mode = "converted_srgb" if generic_key == "srgb" else f"converted_{generic_key}"
+                else:
+                    mode = f"assigned_{generic_key}_output_icc"
+                return rendered_profile, mode
+            return input_profile, "camera_rgb_with_input_icc" if input_profile is not None else "no_profile"
+
+        def _assign_development_profile_to_raw_files(
+            self,
+            profile_id: str,
+            files: list[Path],
+            *,
+            status: str = "assigned",
+        ) -> int:
+            if not profile_id:
+                return 0
+            settings = self._development_profile_settings(profile_id)
+            rendered_profile, mode = self._render_profile_and_mode_for_development_settings(settings)
+            development_profile = self._profile_payload_from_development_settings(settings)
+            written = 0
+            for path in files:
+                if path.suffix.lower() not in RAW_EXTENSIONS:
+                    continue
+                sidecar = self._write_raw_settings_sidecar(
+                    path,
+                    recipe=settings["recipe"],
+                    development_profile=development_profile,
+                    detail_adjustments=settings["detail_adjustments"],
+                    render_adjustments=settings["render_adjustments"],
+                    profile_path=rendered_profile,
+                    color_management_mode=mode,
+                    status=status,
+                )
+                if sidecar is not None:
+                    written += 1
+            if written:
+                self._refresh_color_reference_thumbnail_markers()
+            return written
+
+        def _active_session_icc_for_settings(self) -> Path | None:
+            if not hasattr(self, "path_profile_active") or not hasattr(self, "chk_apply_profile"):
+                return None
+            if not self.chk_apply_profile.isChecked():
+                return None
+            text = self.path_profile_active.text().strip()
+            if not text:
+                return None
+            path = Path(text).expanduser()
+            return path if path.exists() else None
+
+        def _write_current_development_settings_to_raw(self, path: Path, *, status: str = "configured") -> Path | None:
+            recipe = self._build_effective_recipe()
+            _input_profile, rendered_profile, mode = self._configured_color_profile_for_recipe(recipe)
+            sidecar = self._write_raw_settings_sidecar(
+                path,
+                recipe=recipe,
+                development_profile=self._development_profile_payload_for_active_settings(),
+                detail_adjustments=self._detail_adjustment_state(),
+                render_adjustments=self._render_adjustment_state(),
+                profile_path=rendered_profile,
+                color_management_mode=mode,
+                status=status,
+            )
+            if sidecar is not None:
+                self._refresh_color_reference_thumbnail_markers()
+            return sidecar
+
+        def _raw_sidecar_development_summary(self, path: Path) -> str:
+            try:
+                payload = load_raw_sidecar(path)
+            except Exception:
+                return ""
+            profile = payload.get("development_profile") if isinstance(payload.get("development_profile"), dict) else {}
+            profile_type = self._adjustment_profile_type_from_sidecar(payload)
+            name = str(profile.get("name") or profile.get("id") or "").strip()
+            status = str(payload.get("status") or "").strip()
+            label = "Perfil de ajuste avanzado" if profile_type == "advanced" else "Perfil de ajuste básico"
+            if name:
+                return f"{label}: {name}"
+            if isinstance(payload.get("recipe"), dict):
+                return f"{label} guardado"
+            return f"Mochila NexoRAW: {status}" if status else ""
+
+        def _has_raw_development_settings(self, path: Path) -> bool:
+            if path.suffix.lower() not in RAW_EXTENSIONS:
+                return False
+            return bool(self._raw_sidecar_development_summary(path))
+
+        def _adjustment_profile_type_from_sidecar(self, payload: dict[str, Any]) -> str:
+            profile = payload.get("development_profile") if isinstance(payload.get("development_profile"), dict) else {}
+            profile_type = str(profile.get("profile_type") or "").strip().lower()
+            if profile_type in {"advanced", "basic"}:
+                return profile_type
+            kind = str(profile.get("kind") or "").strip().lower()
+            if kind in {"chart", "advanced"}:
+                return "advanced"
+            return "basic" if isinstance(payload.get("recipe"), dict) else ""
+
+        def _raw_adjustment_profile_type(self, path: Path) -> str:
+            if path.suffix.lower() not in RAW_EXTENSIONS:
+                return ""
+            try:
+                payload = load_raw_sidecar(path)
+            except Exception:
+                return ""
+            return self._adjustment_profile_type_from_sidecar(payload)
+
+        def _development_settings_payload_from_sidecar(self, source: Path, sidecar: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "source": str(source),
+                "recipe": sidecar.get("recipe") if isinstance(sidecar.get("recipe"), dict) else {},
+                "development_profile": sidecar.get("development_profile")
+                if isinstance(sidecar.get("development_profile"), dict)
+                else {},
+                "detail_adjustments": sidecar.get("detail_adjustments")
+                if isinstance(sidecar.get("detail_adjustments"), dict)
+                else {},
+                "render_adjustments": sidecar.get("render_adjustments")
+                if isinstance(sidecar.get("render_adjustments"), dict)
+                else {},
+                "color_management": sidecar.get("color_management")
+                if isinstance(sidecar.get("color_management"), dict)
+                else {},
+            }
+
+        def _selected_or_current_file_paths(self) -> list[Path]:
+            files = self._collect_selected_file_paths()
+            if files:
+                return files
+            if self._selected_file is not None and self._selected_file.exists():
+                return [self._selected_file]
+            return []
+
+        def _save_current_development_settings_to_selected(self) -> None:
+            files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
+            if not files:
+                QtWidgets.QMessageBox.information(self, "Info", "Selecciona uno o más RAW para guardar un perfil básico.")
+                return
+            written = 0
+            for path in files:
+                if self._write_current_development_settings_to_raw(path) is not None:
+                    written += 1
+            if self._selected_file is not None and any(self._normalized_path_key(self._selected_file) == self._normalized_path_key(p) for p in files):
+                self._apply_raw_sidecar_to_controls(self._selected_file)
+            self._set_status(f"Perfil básico guardado en {written} imagen(es)")
+
+        def _copy_development_settings_from_selected(self) -> None:
+            files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
+            if not files:
+                QtWidgets.QMessageBox.information(self, "Info", "Selecciona un RAW con perfil de ajuste.")
+                return
+            source = files[0]
+            try:
+                sidecar = load_raw_sidecar(source)
+            except FileNotFoundError:
+                QtWidgets.QMessageBox.information(
+                    self,
+                    "Info",
+                    "Esta imagen todavía no tiene perfil de ajuste guardado. Usa primero 'Guardar perfil básico en imagen' o genera un perfil con carta.",
+                )
+                return
+            except Exception as exc:
+                QtWidgets.QMessageBox.warning(self, "Mochila no válida", str(exc))
+                return
+            self._development_settings_clipboard = self._development_settings_payload_from_sidecar(source, sidecar)
+            profile_type = self._adjustment_profile_type_from_sidecar(sidecar)
+            label = "avanzado" if profile_type == "advanced" else "básico"
+            self._set_status(f"Perfil de ajuste {label} copiado: {source.name}")
+
+        def _icc_profile_path_from_copied_settings(self, copied: dict[str, Any]) -> Path | None:
+            color = copied.get("color_management") if isinstance(copied.get("color_management"), dict) else {}
+            raw_path = str(color.get("icc_profile_path") or "").strip()
+            if not raw_path:
+                return None
+            stored = self._session_stored_path(raw_path)
+            if stored is not None and stored.exists():
+                return stored
+            path = Path(raw_path).expanduser()
+            return path if path.exists() else None
+
+        def _paste_development_settings_to_selected(self) -> None:
+            copied = self._development_settings_clipboard
+            if not copied:
+                QtWidgets.QMessageBox.information(self, "Info", "Copia primero un perfil de ajuste desde una miniatura.")
+                return
+            files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
+            if not files:
+                QtWidgets.QMessageBox.information(self, "Info", "Selecciona uno o más RAW de destino.")
+                return
+            recipe = self._recipe_from_payload(copied.get("recipe"))
+            if recipe is None:
+                QtWidgets.QMessageBox.warning(self, "Mochila no válida", "El perfil de ajuste copiado no contiene una receta válida.")
+                return
+            profile = copied.get("development_profile") if isinstance(copied.get("development_profile"), dict) else {}
+            detail = copied.get("detail_adjustments") if isinstance(copied.get("detail_adjustments"), dict) else {}
+            render = copied.get("render_adjustments") if isinstance(copied.get("render_adjustments"), dict) else {}
+            icc_path = self._icc_profile_path_from_copied_settings(copied)
+            mode = str((copied.get("color_management") or {}).get("mode") or "")
+            written = 0
+            targets = {self._normalized_path_key(path) for path in files}
+            profile_id = str(profile.get("id") or "")
+            for path in files:
+                sidecar = self._write_raw_settings_sidecar(
+                    path,
+                    recipe=recipe,
+                    development_profile=profile,
+                    detail_adjustments=detail,
+                    render_adjustments=render,
+                    profile_path=icc_path,
+                    color_management_mode=mode or ("camera_rgb_with_input_icc" if icc_path is not None else "no_profile"),
+                    status="configured",
+                )
+                if sidecar is not None:
+                    written += 1
+                if profile_id:
+                    for item in self._develop_queue:
+                        if self._normalized_path_key(Path(str(item.get("source") or ""))) == self._normalized_path_key(path):
+                            item["development_profile_id"] = profile_id
+                            item["status"] = "pending"
+                            item["message"] = ""
+            self._refresh_queue_table()
+            self._refresh_color_reference_thumbnail_markers()
+            self._save_active_session(silent=True)
+            if self._selected_file is not None and self._normalized_path_key(self._selected_file) in targets:
+                self._apply_raw_sidecar_to_controls(self._selected_file)
+                if self._original_linear is not None:
+                    self._on_load_selected(show_message=False)
+            self._set_status(f"Perfil de ajuste pegado en {written} imagen(es)")
+
+        def _apply_raw_sidecar_to_controls(self, path: Path) -> bool:
+            try:
+                payload = load_raw_sidecar(path)
+            except FileNotFoundError:
+                return False
+            except Exception as exc:
+                self._log_preview(f"Aviso: no se pudo leer mochila NexoRAW ({raw_sidecar_path(path).name}): {exc}")
+                return False
+
+            recipe = self._recipe_from_payload(payload.get("recipe"))
+            if recipe is not None:
+                self._apply_recipe_to_controls(recipe)
+            detail_state = payload.get("detail_adjustments")
+            if isinstance(detail_state, dict):
+                self._apply_detail_adjustment_state(detail_state)
+            render_state = payload.get("render_adjustments")
+            if isinstance(render_state, dict):
+                self._apply_render_adjustment_state(render_state)
+
+            profile = payload.get("development_profile") if isinstance(payload.get("development_profile"), dict) else {}
+            profile_id = str(profile.get("id") or "")
+            if profile_id and self._development_profile_by_id(profile_id) is not None:
+                self._active_development_profile_id = profile_id
+                self._refresh_development_profile_combo()
+
+            color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
+            icc_path = self._session_stored_path(color.get("icc_profile_path")) if color else None
+            icc_role = str(color.get("icc_profile_role") or "") if color else ""
+            if icc_role == "session_input_icc" and icc_path is not None and icc_path.exists() and self._profile_can_be_active(icc_path):
+                self.path_profile_active.setText(str(icc_path))
+                self.chk_apply_profile.setChecked(True)
+
+            self._invalidate_preview_cache()
+            self._log_preview(f"Mochila NexoRAW aplicada: {raw_sidecar_path(path).name}")
+            return True
+
+        def _write_raw_settings_sidecar(
+            self,
+            source: Path,
+            *,
+            recipe: Recipe,
+            development_profile: dict[str, Any] | None,
+            detail_adjustments: dict[str, Any],
+            render_adjustments: dict[str, Any],
+            profile_path: Path | None,
+            color_management_mode: str | None = None,
+            output_tiff: Path | None = None,
+            proof_path: Path | None = None,
+            status: str = "configured",
+        ) -> Path | None:
+            if source.suffix.lower() not in RAW_EXTENSIONS:
+                return None
+            try:
+                session_name = self.session_name_edit.text().strip() if hasattr(self, "session_name_edit") else ""
+                return write_raw_sidecar(
+                    source,
+                    recipe=recipe,
+                    development_profile=development_profile,
+                    detail_adjustments=detail_adjustments,
+                    render_adjustments=render_adjustments,
+                    icc_profile_path=profile_path,
+                    color_management_mode=color_management_mode,
+                    session_root=self._active_session_root,
+                    session_name=session_name,
+                    output_tiff=output_tiff,
+                    proof_path=proof_path,
+                    status=status,
+                )
+            except Exception as exc:
+                del exc
+                return None
+
+        def _save_current_development_profile(self) -> None:
+            if self._active_session_root is None:
+                self._on_create_session()
+                if self._active_session_root is None:
+                    return
+            name = self.development_profile_name_edit.text().strip() or "Perfil manual"
+            profile_id = self._unique_development_profile_id(name)
+            profile_dir = self._development_profile_dir(profile_id)
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            recipe_path = profile_dir / "recipe.yml"
+            manifest_path = profile_dir / "development_profile.json"
+            recipe = self._build_effective_recipe()
+            save_recipe(recipe, recipe_path)
+            active_icc = self._active_session_icc_for_settings()
+            output_icc = None
+            if is_generic_output_space(recipe.output_space):
+                output_icc = ensure_generic_output_profile(recipe.output_space, directory=self._session_generic_profile_dir())
+            manifest = {
+                "id": profile_id,
+                "name": name,
+                "kind": "manual",
+                "profile_type": "basic",
+                "created_at": self._profile_timestamp(),
+                "recipe_path": self._session_relative_or_absolute(recipe_path),
+                "recipe": asdict(recipe),
+                "detail_adjustments": self._detail_adjustment_state(),
+                "render_adjustments": self._render_adjustment_state(),
+                "icc_profile_path": self._session_relative_or_absolute(active_icc) if active_icc and active_icc.exists() else "",
+                "generic_output_space": generic_output_profile(recipe.output_space).key if is_generic_output_space(recipe.output_space) else "",
+                "output_icc_profile_path": self._session_relative_or_absolute(output_icc) if output_icc and output_icc.exists() else "",
+            }
+            write_json(manifest_path, manifest)
+            self._register_development_profile(
+                {
+                    "id": profile_id,
+                    "name": name,
+                    "kind": "manual",
+                    "profile_type": "basic",
+                    "recipe_path": self._session_relative_or_absolute(recipe_path),
+                    "manifest_path": self._session_relative_or_absolute(manifest_path),
+                    "icc_profile_path": manifest["icc_profile_path"],
+                    "generic_output_space": manifest["generic_output_space"],
+                    "output_icc_profile_path": manifest["output_icc_profile_path"],
+                },
+                activate=True,
+            )
+            self._set_status(f"Perfil de ajuste básico guardado: {name}")
+
+        def _activate_selected_development_profile(self) -> None:
+            profile_id = str(self.development_profile_combo.currentData() or "")
+            self._apply_development_profile_to_controls(profile_id)
+
+        def _apply_development_profile_to_controls(self, profile_id: str) -> None:
+            settings = self._development_profile_settings(profile_id)
+            self._apply_recipe_to_controls(settings["recipe"])
+            profile = self._development_profile_by_id(profile_id) if profile_id else None
+            recipe_path = self._session_stored_path(profile.get("recipe_path")) if profile else None
+            if recipe_path is not None:
+                self.path_recipe.setText(str(recipe_path))
+            self._apply_detail_adjustment_state(settings["detail_adjustments"])
+            self._apply_render_adjustment_state(settings["render_adjustments"])
+            icc_path = settings.get("icc_profile_path")
+            if isinstance(icc_path, Path) and icc_path.exists() and self._profile_can_be_active(icc_path):
+                self.path_profile_active.setText(str(icc_path))
+                self.chk_apply_profile.setChecked(True)
+            elif is_generic_output_space(settings["recipe"].output_space):
+                self.path_profile_active.clear()
+                self.chk_apply_profile.setChecked(False)
+            self._active_development_profile_id = profile_id
+            self._refresh_development_profile_combo()
+            self._invalidate_preview_cache()
+            self._save_active_session(silent=True)
+            self._set_status(f"Perfil de ajuste activo: {settings['name']}")
+
+        def _register_chart_development_profile(
+            self,
+            *,
+            name: str,
+            development_profile_path: Path,
+            calibrated_recipe_path: Path,
+            icc_profile_path: Path,
+            profile_report_path: Path,
+        ) -> str:
+            if self._active_session_root is None:
+                return ""
+            base_id = self._slug_for_development_profile(name)
+            existing = self._development_profile_by_id(base_id)
+            profile_id = base_id if existing is None else str(existing.get("id") or base_id)
+            try:
+                payload = json.loads(development_profile_path.read_text(encoding="utf-8")) if development_profile_path.exists() else {}
+                if not isinstance(payload, dict):
+                    payload = {}
+                payload.update(
+                    {
+                        "id": profile_id,
+                        "name": name,
+                        "kind": "chart",
+                        "profile_type": "advanced",
+                        "recipe_path": self._session_relative_or_absolute(calibrated_recipe_path),
+                        "icc_profile_path": self._session_relative_or_absolute(icc_profile_path),
+                        "profile_report_path": self._session_relative_or_absolute(profile_report_path),
+                        "detail_adjustments": self._detail_adjustment_state(),
+                        "render_adjustments": self._render_adjustment_state(),
+                    }
+                )
+                write_json(development_profile_path, payload)
+            except Exception:
+                pass
+            self._register_development_profile(
+                {
+                    "id": profile_id,
+                    "name": name,
+                    "kind": "chart",
+                    "profile_type": "advanced",
+                    "recipe_path": self._session_relative_or_absolute(calibrated_recipe_path),
+                    "manifest_path": self._session_relative_or_absolute(development_profile_path),
+                    "icc_profile_path": self._session_relative_or_absolute(icc_profile_path),
+                    "profile_report_path": self._session_relative_or_absolute(profile_report_path),
+                },
+                activate=True,
+            )
+            return profile_id
+
+        def _queue_assign_active_development_profile(self) -> None:
+            profile_id = self._active_development_profile_id
+            if not profile_id and hasattr(self, "development_profile_combo"):
+                profile_id = str(self.development_profile_combo.currentData() or "")
+            if not profile_id:
+                QtWidgets.QMessageBox.information(self, "Info", "Activa o guarda primero un perfil de ajuste.")
+                return
+            try:
+                settings = self._development_profile_settings(profile_id)
+            except Exception as exc:
+                QtWidgets.QMessageBox.warning(self, "Perfil de ajuste no válido", str(exc))
+                return
+            rows = sorted({i.row() for i in self.queue_table.selectionModel().selectedRows()})
+            if not rows:
+                QtWidgets.QMessageBox.information(self, "Info", "Selecciona filas de la cola.")
+                return
+            rendered_profile, mode = self._render_profile_and_mode_for_development_settings(settings)
+            development_profile = self._profile_payload_from_development_settings(settings)
+            for row in rows:
+                if 0 <= row < len(self._develop_queue):
+                    self._develop_queue[row]["development_profile_id"] = profile_id
+                    self._develop_queue[row]["status"] = "pending"
+                    self._develop_queue[row]["message"] = ""
+                    self._write_raw_settings_sidecar(
+                        Path(str(self._develop_queue[row].get("source") or "")),
+                        recipe=settings["recipe"],
+                        development_profile=development_profile,
+                        detail_adjustments=settings["detail_adjustments"],
+                        render_adjustments=settings["render_adjustments"],
+                        profile_path=rendered_profile,
+                        color_management_mode=mode,
+                        status="assigned",
+                    )
+            self._refresh_queue_table()
+            self._refresh_color_reference_thumbnail_markers()
+            self._save_active_session(silent=True)
+            self._set_status(f"Perfil asignado a {len(rows)} elemento(s) de cola")
+
         def _use_current_dir_as_session_root(self) -> None:
-            self.session_root_path.setText(str(self._current_dir))
-            self.session_name_edit.setText(self._current_dir.name)
-            self._populate_session_directory_fields(self._session_paths_from_root(self._current_dir))
-            self._set_status(f"Raíz de sesión: {self._current_dir}")
+            root = self._project_root_for_path(self._current_dir) or self._current_dir
+            self.session_root_path.setText(str(root))
+            self.session_name_edit.setText(root.name)
+            self._populate_session_directory_fields(self._session_paths_from_root(root))
+            self._set_status(f"Raíz de sesión: {root}")
 
         def _on_session_root_edited(self) -> None:
             text = self.session_root_path.text().strip()
             if not text:
                 return
             root = Path(text).expanduser()
+            if not self.session_name_edit.text().strip() and root.name:
+                self.session_name_edit.setText(root.name)
             self._populate_session_directory_fields(self._session_paths_from_root(root))
 
         def _session_state_snapshot(self) -> dict[str, Any]:
@@ -3098,6 +4082,8 @@ if QtWidgets is not None:
                 "profile_lens": self.profile_lens.text().strip(),
                 "recipe_path": self.path_recipe.text().strip(),
                 "profile_active_path": active_profile if active_profile_valid else "",
+                "development_profiles": list(self._development_profiles),
+                "active_development_profile_id": self._active_development_profile_id,
                 "batch_input_dir": self.batch_input_dir.text().strip(),
                 "batch_output_dir": self.batch_out_dir.text().strip(),
                 "preview_png_path": self.path_preview_png.text().strip(),
@@ -3111,6 +4097,67 @@ if QtWidgets is not None:
                 "recipe": asdict(self._build_effective_recipe()),
             }
 
+        def _default_detail_adjustment_state(self) -> dict[str, int]:
+            return {
+                "sharpen": 0,
+                "radius": 10,
+                "noise_luma": 0,
+                "noise_color": 0,
+                "ca_red": 0,
+                "ca_blue": 0,
+            }
+
+        def _default_render_adjustment_state(self) -> dict[str, Any]:
+            return {
+                "illuminant": "D50 (5003 K)",
+                "temperature_kelvin": 5003,
+                "tint": 0.0,
+                "brightness_ev": 0.0,
+                "black_point": 0.0,
+                "white_point": 1.0,
+                "contrast": 0.0,
+                "midtone": 1.0,
+                "tone_curve_enabled": False,
+                "tone_curve_preset": "linear",
+                "tone_curve_black_point": 0.0,
+                "tone_curve_white_point": 1.0,
+                "tone_curve_points": [[0.0, 0.0], [1.0, 1.0]],
+            }
+
+        def _new_session_initial_state(self, root: Path, session_name: str) -> dict[str, Any]:
+            paths = self._session_paths_from_root(root)
+            defaults = self._session_default_outputs(paths=paths, session_name=session_name)
+            return {
+                "profile_charts_dir": str(paths["charts"]),
+                "profile_chart_files": [],
+                "reference_path": self.path_reference.text().strip(),
+                "profile_output_path": str(defaults["profile_out"]),
+                "profile_report_path": str(defaults["profile_report"]),
+                "profile_workdir": str(defaults["workdir"]),
+                "development_profile_path": str(defaults["development_profile"]),
+                "calibrated_recipe_path": str(defaults["calibrated_recipe"]),
+                "profile_chart_type": "colorchecker24",
+                "profile_min_confidence": 0.35,
+                "profile_allow_fallback_detection": False,
+                "profile_camera": "",
+                "profile_lens": "",
+                "recipe_path": str(defaults["recipe"]),
+                "profile_active_path": "",
+                "development_profiles": [],
+                "active_development_profile_id": "",
+                "batch_input_dir": str(paths["raw"]),
+                "batch_output_dir": str(defaults["tiff_dir"]),
+                "preview_png_path": str(defaults["preview"]),
+                "preview_apply_profile": False,
+                "batch_embed_profile": True,
+                "batch_apply_adjustments": True,
+                "fast_raw_preview": bool(self.check_fast_raw_preview.isChecked()),
+                "preview_max_side": int(self.spin_preview_max_side.value()),
+                "adjustments": self._default_detail_adjustment_state(),
+                "render_adjustments": self._default_render_adjustment_state(),
+                "recipe": asdict(Recipe()),
+            }
+
         def _apply_state_to_ui_from_session(
             self,
             *,
@@ -3119,17 +4166,28 @@ if QtWidgets is not None:
             session_name: str,
         ) -> None:
             paths = {k: Path(v) for k, v in directories.items() if isinstance(v, str)}
-            charts_dir = self._session_state_path_or_default(
+            session_root = paths.get("root", self._active_session_root)
+            charts_dir = self._session_state_dir_or_default(
                 state.get("profile_charts_dir"),
                 paths.get("charts", Path.cwd()),
+                root=session_root,
             )
             if self._profile_reference_rejection_reason(charts_dir, paths=paths) is not None:
                 charts_dir = paths.get("raw") or paths.get("charts") or charts_dir
-            raw_dir = self._session_state_path_or_default(
+            raw_dir = self._session_state_dir_or_default(
                 state.get("batch_input_dir"),
                 paths.get("raw", Path.cwd()),
+                root=session_root,
             )
             defaults = self._session_default_outputs(paths=paths, session_name=session_name)
+            raw_profiles = state.get("development_profiles")
+            self._development_profiles = [
+                dict(profile)
+                for profile in raw_profiles
+                if isinstance(profile, dict) and str(profile.get("id") or "").strip()
+            ] if isinstance(raw_profiles, list) else []
+            self._active_development_profile_id = str(state.get("active_development_profile_id") or "")
+            self._refresh_development_profile_combo()
 
             self.profile_charts_dir.setText(str(charts_dir))
             chart_files_state = state.get("profile_chart_files")
@@ -3139,6 +4197,8 @@ if QtWidgets is not None:
                     for p in chart_files_state
                     if str(p).strip() and Path(str(p)).expanduser().exists()
                 ]
+                if session_root is not None:
+                    chart_files = [p for p in chart_files if self._path_is_inside(p, session_root)]
                 self._selected_chart_files, _rejected_chart_files = self._filter_profile_reference_files(
                     chart_files,
                     paths=paths,
@@ -3220,49 +4280,13 @@ if QtWidgets is not None:
 
             adjustments = state.get("adjustments") if isinstance(state.get("adjustments"), dict) else {}
             try:
-                self.slider_sharpen.setValue(int(adjustments.get("sharpen", self.slider_sharpen.value())))
-                self.slider_radius.setValue(int(adjustments.get("radius", self.slider_radius.value())))
-                self.slider_noise_luma.setValue(int(adjustments.get("noise_luma", self.slider_noise_luma.value())))
-                self.slider_noise_color.setValue(int(adjustments.get("noise_color", self.slider_noise_color.value())))
-                self.slider_ca_red.setValue(int(adjustments.get("ca_red", self.slider_ca_red.value())))
-                self.slider_ca_blue.setValue(int(adjustments.get("ca_blue", self.slider_ca_blue.value())))
+                self._apply_detail_adjustment_state(adjustments)
             except Exception:
                 pass
 
             render_adjustments = state.get("render_adjustments") if isinstance(state.get("render_adjustments"), dict) else {}
             try:
-                self._set_combo_text(
-                    self.combo_illuminant_render,
-                    str(render_adjustments.get("illuminant") or self.combo_illuminant_render.currentText()),
-                )
-                self.spin_render_temperature.setValue(
-                    int(render_adjustments.get("temperature_kelvin", self.spin_render_temperature.value()))
-                )
-                self.spin_render_tint.setValue(float(render_adjustments.get("tint", self.spin_render_tint.value())))
-                self.slider_brightness.setValue(
-                    int(round(float(render_adjustments.get("brightness_ev", 0.0)) * 100))
-                )
-                self.slider_black_point.setValue(
-                    int(round(float(render_adjustments.get("black_point", 0.0)) * 1000))
-                )
-                self.slider_white_point.setValue(
-                    int(round(float(render_adjustments.get("white_point", 1.0)) * 1000))
-                )
-                self.slider_contrast.setValue(int(round(float(render_adjustments.get("contrast", 0.0)) * 100)))
-                self.slider_midtone.setValue(int(round(float(render_adjustments.get("midtone", 1.0)) * 100)))
-                curve_enabled = bool(render_adjustments.get("tone_curve_enabled", False))
-                curve_preset = str(render_adjustments.get("tone_curve_preset") or "linear")
-                curve_points = self._coerce_tone_curve_points(render_adjustments.get("tone_curve_points"))
-                curve_black = float(render_adjustments.get("tone_curve_black_point", 0.0))
-                curve_white = float(render_adjustments.get("tone_curve_white_point", 1.0))
-                self._set_combo_data(self.combo_tone_curve_preset, curve_preset)
-                self._set_tone_curve_range_controls(curve_black, curve_white)
-                self.tone_curve_editor.set_points(
-                    curve_points or self._tone_curve_preset_points(curve_preset),
-                    emit=False,
-                )
-                self.check_tone_curve_enabled.setChecked(curve_enabled)
-                self._set_tone_curve_controls_enabled(curve_enabled)
+                self._apply_render_adjustment_state(render_adjustments)
             except Exception:
                 pass
 
@@ -3313,6 +4337,7 @@ if QtWidgets is not None:
                     "status": str(item.get("status") or "pending"),
                     "output_tiff": str(item.get("output_tiff") or ""),
                     "message": str(item.get("message") or ""),
+                    "development_profile_id": str(item.get("development_profile_id") or ""),
                 }
                 for item in queue
                 if isinstance(item, dict) and str(item.get("source") or "").strip()
@@ -3357,8 +4382,8 @@ if QtWidgets is not None:
                 name=name,
                 illumination_notes=illumination,
                 capture_notes=capture,
-                state=self._session_state_snapshot(),
-                queue=self._develop_queue,
+                state=self._new_session_initial_state(root, name),
+                queue=[],
             )
             self._activate_session(root, payload)
 
@@ -3445,9 +4470,11 @@ if QtWidgets is not None:
                 source = str(src)
                 if source in existing:
                     continue
+                profile_id = self._development_profile_from_sidecar(src) or self._active_development_profile_id
                 self._develop_queue.append(
                     {
                         "source": source,
+                        "development_profile_id": profile_id,
                         "status": "pending",
                         "output_tiff": "",
                         "message": "",
@@ -3524,9 +4551,10 @@ if QtWidgets is not None:
                 row = self.queue_table.rowCount()
                 self.queue_table.insertRow(row)
                 self.queue_table.setItem(row, 0, QtWidgets.QTableWidgetItem(str(item.get("source") or "")))
-                self.queue_table.setItem(row, 1, QtWidgets.QTableWidgetItem(status))
-                self.queue_table.setItem(row, 2, QtWidgets.QTableWidgetItem(str(item.get("output_tiff") or "")))
-                self.queue_table.setItem(row, 3, QtWidgets.QTableWidgetItem(str(item.get("message") or "")))
+                self.queue_table.setItem(row, 1, QtWidgets.QTableWidgetItem(self._development_profile_label(str(item.get("development_profile_id") or ""))))
+                self.queue_table.setItem(row, 2, QtWidgets.QTableWidgetItem(status))
+                self.queue_table.setItem(row, 3, QtWidgets.QTableWidgetItem(str(item.get("output_tiff") or "")))
+                self.queue_table.setItem(row, 4, QtWidgets.QTableWidgetItem(str(item.get("message") or "")))
 
             self.queue_status_label.setText(
                 f"Elementos: {len(self._develop_queue)} | Pendientes: {pending} | OK: {done} | Error: {errors}"
@@ -3537,23 +4565,23 @@ if QtWidgets is not None:
                 QtWidgets.QMessageBox.information(self, "Info", "No hay elementos en cola.")
                 return
 
-            files: list[Path] = []
+            valid_entries: list[tuple[dict[str, str], Path]] = []
             for item in self._develop_queue:
                 src = Path(str(item.get("source") or ""))
                 if src.exists() and src.is_file() and src.suffix.lower() in BROWSABLE_EXTENSIONS:
-                    files.append(src)
+                    valid_entries.append((item, src))
                 else:
                     item["status"] = "error"
                     item["message"] = "Archivo no encontrado o extensión incompatible"
                     item["output_tiff"] = ""
 
-            if not files:
+            if not valid_entries:
                 self._refresh_queue_table()
                 self._save_active_session(silent=True)
                 QtWidgets.QMessageBox.information(self, "Info", "No hay archivos válidos para procesar en la cola.")
                 return
 
-            valid_sources = {str(p) for p in files}
+            valid_sources = {str(p) for _item, p in valid_entries}
             for item in self._develop_queue:
                 source = str(item.get("source") or "")
                 if source and source in valid_sources:
@@ -3564,17 +4592,20 @@ if QtWidgets is not None:
 
             self._ensure_session_output_controls()
             out_dir = Path(self.batch_out_dir.text().strip())
-            recipe = self._build_effective_recipe()
             apply_adjust = bool(self.batch_apply_adjustments.isChecked())
-            use_profile = bool(self.batch_embed_profile.isChecked()) and self.path_profile_active.text().strip() != ""
-            profile_path = Path(self.path_profile_active.text().strip()) if use_profile else None
-
-            nl = self.slider_noise_luma.value() / 100.0
-            nc = self.slider_noise_color.value() / 100.0
-            sharpen = self.slider_sharpen.value() / 100.0
-            radius = self.slider_radius.value() / 10.0
-            ca_red, ca_blue = self._ca_scale_factors()
-            render_adjustments = self._render_adjustment_kwargs()
+            embed_profile = bool(self.batch_embed_profile.isChecked())
+            groups: dict[str, list[Path]] = {}
+            for item, src in valid_entries:
+                profile_id = str(item.get("development_profile_id") or "")
+                groups.setdefault(profile_id, []).append(src)
+            try:
+                settings_by_profile = {
+                    profile_id: self._development_profile_settings(profile_id)
+                    for profile_id in groups
+                }
+            except Exception as exc:
+                QtWidgets.QMessageBox.warning(self, "Perfil de ajuste no válido", str(exc))
+                return
             try:
                 proof_config = self._resolve_proof_config_for_gui()
                 c2pa_config = self._resolve_c2pa_config_for_gui()
@@ -3583,25 +4614,41 @@ if QtWidgets is not None:
                 return
 
             def task():
-                payload = self._process_batch_files(
-                    files=files,
-                    out_dir=out_dir,
-                    recipe=recipe,
-                    apply_adjust=apply_adjust,
-                    use_profile=use_profile,
-                    profile_path=profile_path,
-                    denoise_luma=nl,
-                    denoise_color=nc,
-                    sharpen_amount=sharpen,
-                    sharpen_radius=radius,
-                    lateral_ca_red_scale=ca_red,
-                    lateral_ca_blue_scale=ca_blue,
-                    render_adjustments=render_adjustments,
-                    c2pa_config=c2pa_config,
-                    proof_config=proof_config,
-                )
-                payload["task"] = "Cola de revelado"
-                return payload
+                combined = {"input_files": len(valid_entries), "output_dir": str(out_dir), "outputs": [], "errors": [], "profiles": []}
+                for profile_id, group_files in groups.items():
+                    settings = settings_by_profile[profile_id]
+                    detail = self._detail_adjustment_kwargs_from_state(settings["detail_adjustments"])
+                    profile_path = settings.get("icc_profile_path")
+                    use_profile = bool(embed_profile and isinstance(profile_path, Path) and str(profile_path))
+                    payload = self._process_batch_files(
+                        files=group_files,
+                        out_dir=out_dir,
+                        recipe=settings["recipe"],
+                        apply_adjust=apply_adjust,
+                        use_profile=use_profile,
+                        profile_path=profile_path if use_profile else None,
+                        denoise_luma=detail["denoise_luma"],
+                        denoise_color=detail["denoise_color"],
+                        sharpen_amount=detail["sharpen_amount"],
+                        sharpen_radius=detail["sharpen_radius"],
+                        lateral_ca_red_scale=detail["lateral_ca_red_scale"],
+                        lateral_ca_blue_scale=detail["lateral_ca_blue_scale"],
+                        render_adjustments=self._render_adjustment_kwargs_from_state(settings["render_adjustments"]),
+                        sidecar_detail_adjustments=settings["detail_adjustments"],
+                        sidecar_render_adjustments=settings["render_adjustments"],
+                        c2pa_config=c2pa_config,
+                        proof_config=proof_config,
+                        development_profile={
+                            "id": settings["id"],
+                            "name": settings["name"],
+                            "kind": str((self._development_profile_by_id(settings["id"]) or {}).get("kind") or ""),
+                        },
+                    )
+                    combined["outputs"].extend(payload.get("outputs", []))
+                    combined["errors"].extend(payload.get("errors", []))
+                    combined["profiles"].append({"id": settings["id"], "name": settings["name"], "files": len(group_files)})
+                combined["task"] = "Cola de revelado"
+                return combined
 
             def on_success(payload) -> None:
                 ok_by_source = {str(o["source"]): str(o["output"]) for o in payload.get("outputs", [])}
@@ -3631,6 +4678,10 @@ if QtWidgets is not None:
             if not p:
                 return
             selected = Path(p)
+            project_root = self._project_root_for_path(selected)
+            if project_root is not None:
+                self.session_root_path.setText(str(project_root))
+                self._on_session_root_edited()
             self.dir_tree.setCurrentIndex(self._dir_model.index(str(selected)))
             self._set_current_directory(selected)
 
@@ -3694,9 +4745,11 @@ if QtWidgets is not None:
             self._set_current_directory(p)
 
         def _set_current_directory(self, folder: Path) -> None:
-            if not folder.exists() or not folder.is_dir():
+            resolved_folder = self._resolve_existing_directory(folder)
+            if resolved_folder is None:
+                self._set_status(f"Directorio no encontrado: {folder}")
                 return
-            folder = folder.expanduser().resolve()
+            folder = self._preferred_browsing_directory(resolved_folder)
             self._current_dir = folder
             self.current_dir_label.setText(str(folder))
             self._settings.setValue("browser/last_dir", str(folder))
@@ -3745,7 +4798,7 @@ if QtWidgets is not None:
                 item = QtWidgets.QListWidgetItem(p.name)
                 item.setData(QtCore.Qt.UserRole, str(p))
                 item.setTextAlignment(QtCore.Qt.AlignHCenter)
-                item.setToolTip(str(p))
+                item.setToolTip(self._file_item_tooltip(p))
                 item.setIcon(self._display_icon_for_path(p, self._icon_for_file(p)))
                 self.file_list.addItem(item)
 
@@ -3762,7 +4815,11 @@ if QtWidgets is not None:
                 item = self.file_list.item(row)
                 raw_path = item.data(QtCore.Qt.UserRole)
                 if raw_path:
-                    paths.append(Path(str(raw_path)))
+                    path = self._resolve_existing_browsable_path(Path(str(raw_path)))
+                    if path is not None:
+                        if self._normalized_path_key(path) != self._normalized_path_key(Path(str(raw_path))):
+                            self._update_file_item_path(item, path)
+                        paths.append(path)
             return paths
 
         def _set_file_list_placeholder_icons(self) -> None:
@@ -3771,6 +4828,7 @@ if QtWidgets is not None:
                 raw_path = item.data(QtCore.Qt.UserRole)
                 if raw_path:
                     path = Path(str(raw_path))
+                    item.setToolTip(self._file_item_tooltip(path))
                     item.setIcon(self._display_icon_for_path(path, self._icon_for_file(path)))
 
         def _queue_thumbnail_generation(self, paths: list[Path], *, delay_ms: int = 220) -> None:
@@ -3796,8 +4854,10 @@ if QtWidgets is not None:
             if not missing:
                 return
 
+            payload_inputs = [(path, self._thumbnail_cache_key(path, size)) for path in missing]
+
             def task():
-                return generation, size, self._build_thumbnail_payloads(missing, size)
+                return generation, size, self._build_thumbnail_payloads_for_keys(payload_inputs, size)
 
             thread = TaskThread(task)
             self._thumbnail_task_active = True
@@ -3819,8 +4879,9 @@ if QtWidgets is not None:
                     for raw_path, key, rgb_u8 in thumbnails:
                         icon = self._icon_from_thumbnail_array(rgb_u8)
                         self._image_thumb_cache[key] = icon
-                        self._write_thumbnail_to_disk_cache(key, rgb_u8)
-                        self._set_item_icon_for_path(Path(raw_path), icon)
+                        path = Path(raw_path)
+                        self._write_thumbnail_to_disk_cache(key, rgb_u8, path=path)
+                        self._set_item_icon_for_path(path, icon)
                     self._prune_thumbnail_cache()
                     self._apply_cached_thumbnails(self._file_list_paths(), int(payload_size))
                     if self._should_prefetch_more_thumbnails():
@@ -3841,7 +4902,7 @@ if QtWidgets is not None:
             while self._thumbnail_scan_index < len(paths) and len(batch) < THUMBNAIL_BATCH_SIZE:
                 path = paths[self._thumbnail_scan_index]
                 self._thumbnail_scan_index += 1
-                if self._cached_thumbnail_icon(self._thumbnail_cache_key(path, size)) is None:
+                if self._cached_thumbnail_icon(self._thumbnail_cache_key(path, size), path=path) is None:
                     batch.append(path)
             return batch
 
@@ -3858,7 +4919,7 @@ if QtWidgets is not None:
                 return False
             if self._thumbnail_scan_index >= len(self._pending_thumbnail_paths):
                 return False
-            scrollbar = self.file_list.verticalScrollBar()
+            scrollbar = self.file_list.horizontalScrollBar()
             maximum = int(scrollbar.maximum())
             if maximum <= 0:
                 return False
@@ -3867,46 +4928,76 @@ if QtWidgets is not None:
 
         def _apply_cached_thumbnails(self, paths: list[Path], size: int) -> None:
             for p in paths:
-                icon = self._cached_thumbnail_icon(self._thumbnail_cache_key(p, size))
+                icon = self._cached_thumbnail_icon(self._thumbnail_cache_key(p, size), path=p)
                 if icon is not None:
                     self._set_item_icon_for_path(p, icon)
 
-        def _cached_thumbnail_icon(self, key: str) -> QtGui.QIcon | None:
+        def _cached_thumbnail_icon(self, key: str, *, path: Path | None = None) -> QtGui.QIcon | None:
             icon = self._image_thumb_cache.get(key)
             if icon is not None:
                 return icon
-            icon = self._read_thumbnail_from_disk_cache(key)
+            icon = self._read_thumbnail_from_disk_cache(key, path=path)
             if icon is None:
                 return None
             self._image_thumb_cache[key] = icon
             self._prune_thumbnail_cache()
             return icon
 
-        def _thumbnail_disk_cache_dir(self) -> Path:
+        def _user_disk_cache_dir(self, kind: str) -> Path:
             if sys.platform == "win32":
                 base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
             elif sys.platform == "darwin":
                 base = Path.home() / "Library" / "Caches"
             else:
                 base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-            return base / APP_NAME / "thumbnails"
+            return base / APP_NAME / kind
 
-        def _thumbnail_disk_cache_path(self, key: str) -> Path:
+        def _project_disk_cache_dir(self, path: Path | None, kind: str) -> Path | None:
+            if path is None or self._active_session_root is None:
+                return None
+            if not self._path_is_inside(path, self._active_session_root):
+                return None
+            return self._session_paths_from_root(self._active_session_root)["work"] / "cache" / kind
+
+        def _disk_cache_dirs(self, path: Path | None, kind: str) -> list[Path]:
+            dirs: list[Path] = []
+            project_dir = self._project_disk_cache_dir(path, kind)
+            if project_dir is not None:
+                dirs.append(project_dir)
+            user_dir = self._user_disk_cache_dir(kind)
+            if user_dir not in dirs:
+                dirs.append(user_dir)
+            return dirs
+
+        def _thumbnail_disk_cache_dir(self, path: Path | None = None) -> Path:
+            return self._disk_cache_dirs(path, "thumbnails")[0]
+
+        def _disk_cache_path(self, base_dir: Path, key: str, suffix: str) -> Path:
             digest = hashlib.sha256(key.encode("utf-8", errors="surrogatepass")).hexdigest()
-            return self._thumbnail_disk_cache_dir() / digest[:2] / f"{digest}.png"
+            return base_dir / digest[:2] / f"{digest}{suffix}"
 
-        def _read_thumbnail_from_disk_cache(self, key: str) -> QtGui.QIcon | None:
-            cache_path = self._thumbnail_disk_cache_path(key)
-            if not cache_path.is_file():
-                return None
-            pixmap = QtGui.QPixmap(str(cache_path))
-            if pixmap.isNull():
-                return None
-            return QtGui.QIcon(pixmap)
+        def _thumbnail_disk_cache_path(self, key: str, *, base_dir: Path | None = None, path: Path | None = None) -> Path:
+            return self._disk_cache_path(base_dir or self._thumbnail_disk_cache_dir(path), key, ".png")
 
-        def _write_thumbnail_to_disk_cache(self, key: str, rgb_u8: np.ndarray) -> None:
+        def _read_thumbnail_from_disk_cache(self, key: str, *, path: Path | None = None) -> QtGui.QIcon | None:
+            for cache_dir in self._disk_cache_dirs(path, "thumbnails"):
+                cache_path = self._thumbnail_disk_cache_path(key, base_dir=cache_dir)
+                if not cache_path.is_file():
+                    continue
+                pixmap = QtGui.QPixmap(str(cache_path))
+                if pixmap.isNull():
+                    continue
+                try:
+                    os.utime(cache_path, None)
+                except Exception:
+                    pass
+                return QtGui.QIcon(pixmap)
+            return None
+
+        def _write_thumbnail_to_disk_cache(self, key: str, rgb_u8: np.ndarray, *, path: Path | None = None) -> None:
             try:
-                cache_path = self._thumbnail_disk_cache_path(key)
+                cache_dir = self._thumbnail_disk_cache_dir(path)
+                cache_path = self._thumbnail_disk_cache_path(key, base_dir=cache_dir)
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 image = np.asarray(rgb_u8, dtype=np.uint8)
                 if image.ndim == 2:
@@ -3914,8 +5005,38 @@ if QtWidgets is not None:
                 if image.shape[-1] > 3:
                     image = image[..., :3]
                 Image.fromarray(np.ascontiguousarray(image)).save(cache_path, format="PNG")
+                self._prune_disk_cache(
+                    cache_dir,
+                    pattern="*.png",
+                    max_entries=THUMBNAIL_DISK_CACHE_MAX_ENTRIES,
+                    max_bytes=THUMBNAIL_DISK_CACHE_MAX_BYTES,
+                )
             except Exception:
                 return
+
+        def _prune_disk_cache(self, cache_dir: Path, *, pattern: str, max_entries: int, max_bytes: int) -> None:
+            try:
+                files = [p for p in cache_dir.glob(f"*/*{pattern.removeprefix('*')}") if p.is_file()]
+            except Exception:
+                return
+            records: list[tuple[float, int, Path]] = []
+            total_bytes = 0
+            for file_path in files:
+                try:
+                    stat = file_path.stat()
+                except OSError:
+                    continue
+                size = int(stat.st_size)
+                total_bytes += size
+                records.append((float(stat.st_mtime), size, file_path))
+            records.sort(key=lambda item: item[0])
+            while records and (len(records) > max_entries or total_bytes > max_bytes):
+                _mtime, size, file_path = records.pop(0)
+                try:
+                    file_path.unlink()
+                    total_bytes -= size
+                except OSError:
+                    pass
 
         def _prune_thumbnail_cache(self) -> None:
             overflow = len(self._image_thumb_cache) - THUMBNAIL_CACHE_MAX_ENTRIES
@@ -3941,17 +5062,32 @@ if QtWidgets is not None:
                 if not raw_path:
                     continue
                 path = Path(str(raw_path))
-                icon = self._image_thumb_cache.get(self._thumbnail_cache_key(path, icon_size))
+                icon = self._cached_thumbnail_icon(self._thumbnail_cache_key(path, icon_size), path=path)
                 if icon is None:
                     icon = self._icon_for_file(path)
+                item.setToolTip(self._file_item_tooltip(path))
                 item.setIcon(self._display_icon_for_path(path, icon))
 
         def _display_icon_for_path(self, path: Path, icon: QtGui.QIcon) -> QtGui.QIcon:
-            if not self._is_color_reference_file(path):
+            adjustment_profile_type = self._raw_adjustment_profile_type(path)
+            if not adjustment_profile_type:
                 return icon
             size = int(self.file_list.iconSize().width() or DEFAULT_THUMBNAIL_SIZE)
             size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
-            return self._icon_with_color_reference_marker(icon, size=size)
+            return self._icon_with_thumbnail_markers(
+                icon,
+                size=size,
+                adjustment_profile_type=adjustment_profile_type,
+            )
+
+        def _file_item_tooltip(self, path: Path) -> str:
+            lines = [str(path)]
+            summary = self._raw_sidecar_development_summary(path)
+            if summary:
+                lines.append(summary)
+            if self._is_color_reference_file(path):
+                lines.append("Referencia colorimétrica seleccionada")
+            return "\n".join(lines)
 
         def _is_color_reference_file(self, path: Path) -> bool:
             key = self._normalized_path_key(path)
@@ -3965,13 +5101,23 @@ if QtWidgets is not None:
                 return str(path).lower()
 
         def _icon_with_color_reference_marker(self, icon: QtGui.QIcon, *, size: int) -> QtGui.QIcon:
+            return self._icon_with_thumbnail_markers(icon, size=size, adjustment_profile_type="advanced")
+
+        def _icon_with_thumbnail_markers(
+            self,
+            icon: QtGui.QIcon,
+            *,
+            size: int,
+            adjustment_profile_type: str,
+        ) -> QtGui.QIcon:
             pixmap = icon.pixmap(QtCore.QSize(size, size))
             if pixmap.isNull():
                 return icon
             marked = QtGui.QPixmap(pixmap)
             painter = QtGui.QPainter(marked)
             marker_h = max(3, int(round(marked.height() * 0.045)))
-            painter.fillRect(0, 0, marked.width(), marker_h, QtGui.QColor("#22c55e"))
+            marker_color = "#38bdf8" if adjustment_profile_type == "advanced" else "#22c55e"
+            painter.fillRect(0, marked.height() - marker_h, marked.width(), marker_h, QtGui.QColor(marker_color))
             painter.end()
             return QtGui.QIcon(marked)
 
@@ -3981,19 +5127,137 @@ if QtWidgets is not None:
                 stamp = f"{st.st_mtime_ns}:{st.st_size}"
             except OSError:
                 stamp = "nostat"
-            return f"{path}|{stamp}|thumb-v2"
+            return f"{self._cache_path_identity(path)}|{stamp}|thumb-v4"
+
+        def _cache_path_identity(self, path: Path) -> str:
+            try:
+                resolved = path.expanduser().resolve(strict=False)
+            except Exception:
+                resolved = path
+            if self._active_session_root is not None:
+                try:
+                    root = self._active_session_root.expanduser().resolve(strict=False)
+                    relative = resolved.relative_to(root)
+                    return f"session:{relative.as_posix()}"
+                except Exception:
+                    pass
+            return str(resolved)
+
+        def _legacy_project_path_candidate(self, path: Path) -> Path | None:
+            candidate = Path(path).expanduser()
+            roots: list[Path] = []
+            if self._active_session_root is not None:
+                roots.append(self._active_session_root)
+            for parent in candidate.parents:
+                if (parent / "00_configuraciones").is_dir() or (parent / "01_ORG").is_dir() or (parent / "02_DRV").is_dir():
+                    roots.append(parent)
+                    break
+
+            seen: set[str] = set()
+            for root in roots:
+                try:
+                    root = root.expanduser().resolve(strict=False)
+                    rel = candidate.resolve(strict=False).relative_to(root)
+                except Exception:
+                    continue
+                if not rel.parts:
+                    continue
+                replacement = LEGACY_PROJECT_DIR_RENAMES.get(rel.parts[0])
+                if replacement is None:
+                    continue
+                mapped = root / replacement
+                if len(rel.parts) > 1:
+                    mapped = mapped.joinpath(*rel.parts[1:])
+                key = str(mapped)
+                if key in seen:
+                    continue
+                seen.add(key)
+                if mapped.exists():
+                    return mapped
+            return None
+
+        def _project_root_for_path(self, path: Path) -> Path | None:
+            candidate = Path(path).expanduser()
+            search = [candidate, *candidate.parents]
+            for parent in search:
+                if (
+                    (parent / "00_configuraciones").is_dir()
+                    and (parent / "01_ORG").is_dir()
+                    and (parent / "02_DRV").is_dir()
+                ):
+                    try:
+                        return parent.resolve()
+                    except Exception:
+                        return parent
+            return None
+
+        def _preferred_browsing_directory(self, folder: Path) -> Path:
+            project_root = self._project_root_for_path(folder)
+            if project_root is not None:
+                org_dir = project_root / "01_ORG"
+                if folder == project_root and org_dir.is_dir():
+                    return org_dir.resolve()
+            return folder
+
+        def _resolve_existing_directory(self, folder: Path) -> Path | None:
+            candidate = Path(folder).expanduser()
+            if candidate.exists() and candidate.is_dir():
+                return candidate.resolve()
+            mapped = self._legacy_project_path_candidate(candidate)
+            if mapped is not None and mapped.exists() and mapped.is_dir():
+                return mapped.resolve()
+            return None
+
+        def _resolve_existing_browsable_path(self, path: Path) -> Path | None:
+            candidate = Path(path).expanduser()
+            if candidate.exists() and candidate.is_file() and candidate.suffix.lower() in BROWSABLE_EXTENSIONS:
+                return candidate.resolve()
+            mapped = self._legacy_project_path_candidate(candidate)
+            if mapped is not None and mapped.exists() and mapped.is_file() and mapped.suffix.lower() in BROWSABLE_EXTENSIONS:
+                return mapped.resolve()
+            return None
+
+        def _update_file_item_path(self, item: QtWidgets.QListWidgetItem, path: Path) -> None:
+            item.setData(QtCore.Qt.UserRole, str(path))
+            item.setToolTip(self._file_item_tooltip(path))
+            icon_size = int(self.file_list.iconSize().width() or DEFAULT_THUMBNAIL_SIZE)
+            icon = self._cached_thumbnail_icon(self._thumbnail_cache_key(path, icon_size), path=path)
+            if icon is None:
+                icon = self._icon_for_file(path)
+            item.setIcon(self._display_icon_for_path(path, icon))
+
+        def _remove_stale_file_item(self, item: QtWidgets.QListWidgetItem, path: Path) -> None:
+            row = self.file_list.row(item)
+            if row >= 0:
+                self.file_list.takeItem(row)
+            self._selected_file = None
+            self._clear_manual_chart_points_for_file_change()
+            self.selected_file_label.setText("Sin archivo seleccionado")
+            self._selection_load_timer.stop()
+            self._metadata_timer.stop()
+            self._clear_metadata_view()
+            self._set_status(f"Archivo no encontrado, miniatura retirada: {path.name}")
 
         @staticmethod
         def _build_thumbnail_payloads(paths: list[Path], size: int) -> list[tuple[str, str, np.ndarray]]:
+            return NexoRawMainWindow._build_thumbnail_payloads_for_keys(
+                [(path, NexoRawMainWindow._thumbnail_cache_key_for_path(path, size)) for path in paths],
+                size,
+            )
+
+        @staticmethod
+        def _build_thumbnail_payloads_for_keys(
+            items: list[tuple[Path, str]], size: int
+        ) -> list[tuple[str, str, np.ndarray]]:
             payloads: list[tuple[str, str, np.ndarray]] = []
-            for path in paths:
+            for path, key in items:
                 try:
                     rgb_u8 = NexoRawMainWindow._thumbnail_array_for_path(path, MAX_THUMBNAIL_SIZE)
                 except Exception:
                     continue
                 if rgb_u8 is None:
                     continue
-                payloads.append((str(path), NexoRawMainWindow._thumbnail_cache_key_for_path(path, size), rgb_u8))
+                payloads.append((str(path), key, rgb_u8))
             return payloads
 
         @staticmethod
@@ -4003,13 +5267,20 @@ if QtWidgets is not None:
                 stamp = f"{st.st_mtime_ns}:{st.st_size}"
             except OSError:
                 stamp = "nostat"
-            return f"{path}|{stamp}|thumb-v2"
+            try:
+                identity = str(path.expanduser().resolve(strict=False))
+            except Exception:
+                identity = str(path)
+            return f"{identity}|{stamp}|thumb-v4"
 
         @staticmethod
         def _thumbnail_array_for_path(path: Path, size: int) -> np.ndarray | None:
             suffix = path.suffix.lower()
             if suffix in RAW_EXTENSIONS:
                 image = extract_embedded_preview(path)
+                if image is not None:
+                    return NexoRawMainWindow._thumbnail_u8(linear_to_srgb_display(image), size)
+                image = NexoRawMainWindow._raw_thumbnail_fallback(path)
                 if image is not None:
                     return NexoRawMainWindow._thumbnail_u8(linear_to_srgb_display(image), size)
                 return None
@@ -4029,6 +5300,38 @@ if QtWidgets is not None:
             except Exception:
                 image = read_image(path)
                 return NexoRawMainWindow._thumbnail_u8(linear_to_srgb_display(image), size)
+
+        @staticmethod
+        def _raw_thumbnail_fallback(path: Path) -> np.ndarray | None:
+            recipe = Recipe(
+                demosaic_algorithm="linear",
+                white_balance_mode="camera_metadata",
+                output_space="scene_linear_camera_rgb",
+                output_linear=True,
+                tone_curve="linear",
+                profiling_mode=False,
+            )
+            try:
+                image = develop_image_array(path, recipe, half_size=True)
+            except Exception:
+                return None
+            image = np.clip(np.asarray(image, dtype=np.float32), 0.0, 1.0)
+            if image.ndim != 3 or image.shape[2] < 3:
+                return None
+            return NexoRawMainWindow._neutralize_camera_rgb_thumbnail(image[..., :3])
+
+        @staticmethod
+        def _neutralize_camera_rgb_thumbnail(image: np.ndarray) -> np.ndarray:
+            rgb = np.clip(np.asarray(image, dtype=np.float32), 0.0, 1.0)
+            means = np.mean(rgb, axis=(0, 1), dtype=np.float64)
+            if not np.all(np.isfinite(means)) or float(np.min(means)) <= 1e-6:
+                return rgb
+            if float(np.max(means) / np.min(means)) < 1.35:
+                return rgb
+            target = float(np.median(means))
+            gains = np.clip(target / means, 0.35, 2.8).astype(np.float32)
+            balanced = rgb * gains.reshape((1, 1, 3))
+            return np.clip(balanced, 0.0, 1.0).astype(np.float32)
 
         @staticmethod
         def _thumbnail_u8(image_rgb: np.ndarray, size: int) -> np.ndarray:
@@ -4089,11 +5392,18 @@ if QtWidgets is not None:
                 self._metadata_timer.stop()
                 self._clear_metadata_view()
                 return
-            selected = Path(raw_path)
+            stale_path = Path(str(raw_path))
+            selected = self._resolve_existing_browsable_path(stale_path)
+            if selected is None:
+                self._remove_stale_file_item(item, stale_path)
+                return
+            if self._normalized_path_key(selected) != self._normalized_path_key(stale_path):
+                self._update_file_item_path(item, selected)
             if self._selected_file is None or self._normalized_path_key(self._selected_file) != self._normalized_path_key(selected):
                 self._clear_manual_chart_points_for_file_change()
             self._selected_file = selected
             self.selected_file_label.setText(str(self._selected_file))
+            self._apply_raw_sidecar_to_controls(self._selected_file)
             self._queue_metadata_load(self._selected_file, include_c2pa=False)
             if self._selected_file.suffix.lower() in BROWSABLE_EXTENSIONS:
                 self._set_status(f"Seleccionado: {self._selected_file.name}. Cargando preview...")
@@ -4102,6 +5412,23 @@ if QtWidgets is not None:
         def _on_file_double_clicked(self, _item) -> None:
             self._selection_load_timer.stop()
             self._on_load_selected()
+
+        def _show_file_list_context_menu(self, pos: QtCore.QPoint) -> None:
+            item = self.file_list.itemAt(pos)
+            if item is not None and not item.isSelected():
+                self.file_list.clearSelection()
+                item.setSelected(True)
+                self.file_list.setCurrentItem(item)
+
+            menu = QtWidgets.QMenu(self)
+            menu.addAction("Guardar perfil básico en imagen", self._save_current_development_settings_to_selected)
+            menu.addAction("Copiar perfil de ajuste", self._copy_development_settings_from_selected)
+            paste_action = menu.addAction("Pegar perfil de ajuste", self._paste_development_settings_to_selected)
+            paste_action.setEnabled(self._development_settings_clipboard is not None)
+            menu.addSeparator()
+            menu.addAction("Usar como referencia colorimétrica", self._use_selected_files_as_profile_charts)
+            menu.addAction("Añadir a cola", self._queue_add_selected)
+            menu.exec(self.file_list.mapToGlobal(pos))
 
         def _queue_metadata_load(self, path: Path, *, delay_ms: int = 180, include_c2pa: bool = True) -> None:
             self._metadata_generation += 1
@@ -4423,6 +5750,7 @@ if QtWidgets is not None:
             self._set_combo_text(self.combo_recipe_sharpen, recipe.sharpen)
             self._set_combo_text(self.combo_working_space, recipe.working_space)
             self._set_combo_text(self.combo_output_space, recipe.output_space)
+            self._sync_development_output_space_combo(recipe.output_space)
             self._set_combo_text(self.combo_sampling, recipe.sampling_strategy)
             self.check_profiling_mode.setChecked(bool(recipe.profiling_mode))
             self.edit_input_color.setText(recipe.input_color_assumption)
@@ -4706,19 +6034,29 @@ if QtWidgets is not None:
             self._set_tone_curve_controls_enabled(False)
             self._on_render_control_change()
 
-        def _reset_basic_adjustments(self) -> None:
+        def _reset_color_adjustments(self, *_args: object, refresh: bool = True) -> None:
             self._set_neutral_picker_active(False)
             if hasattr(self, "label_neutral_picker"):
                 self.label_neutral_picker.setText("Punto neutro: sin muestra")
             self.combo_illuminant_render.setCurrentIndex(1)
             self.spin_render_temperature.setValue(5003)
             self.spin_render_tint.setValue(0.0)
+            if refresh and self._original_linear is not None:
+                self._refresh_preview()
+
+        def _reset_tone_adjustments(self, *_args: object, refresh: bool = True) -> None:
             self.slider_brightness.setValue(0)
             self.slider_black_point.setValue(0)
             self.slider_white_point.setValue(1000)
             self.slider_contrast.setValue(0)
             self.slider_midtone.setValue(100)
             self._reset_tone_curve()
+            if refresh and self._original_linear is not None:
+                self._refresh_preview()
+
+        def _reset_basic_adjustments(self) -> None:
+            self._reset_color_adjustments(refresh=False)
+            self._reset_tone_adjustments(refresh=False)
             if self._original_linear is not None:
                 self._refresh_preview()
 
@@ -4873,9 +6211,9 @@ if QtWidgets is not None:
                     wb,
                 ]
             )
-            return f"{selected}|{stamp}|{int(fast_raw)}|{max_preview_side}|{recipe_sig}"
+            return f"{self._cache_path_identity(selected)}|{stamp}|preview-v2|{int(fast_raw)}|{max_preview_side}|{recipe_sig}"
 
-        def _cache_preview_image(self, key: str, image: np.ndarray) -> None:
+        def _cache_preview_memory(self, key: str, image: np.ndarray) -> None:
             if key in self._preview_cache:
                 self._preview_cache.pop(key, None)
                 self._preview_cache_order = [k for k in self._preview_cache_order if k != key]
@@ -4888,13 +6226,67 @@ if QtWidgets is not None:
                 old = self._preview_cache_order.pop(0)
                 self._preview_cache.pop(old, None)
 
-        def _cached_preview_image(self, key: str) -> np.ndarray | None:
+        def _cache_preview_image(self, key: str, image: np.ndarray, *, selected: Path | None = None) -> None:
+            self._cache_preview_memory(key, image)
+            self._write_preview_to_disk_cache(key, image, selected=selected)
+
+        def _cached_preview_image(self, key: str, *, selected: Path | None = None) -> np.ndarray | None:
             image = self._preview_cache.get(key)
-            if image is None:
-                return None
+            if image is not None:
+                self._preview_cache_order = [k for k in self._preview_cache_order if k != key]
+                self._preview_cache_order.append(key)
+                return image
+            image = self._read_preview_from_disk_cache(key, selected=selected)
+            if image is not None:
+                self._cache_preview_memory(key, image)
+                return image
             self._preview_cache_order = [k for k in self._preview_cache_order if k != key]
-            self._preview_cache_order.append(key)
-            return image
+            return None
+
+        def _preview_disk_cache_dir(self, selected: Path | None = None) -> Path:
+            return self._disk_cache_dirs(selected, "previews")[0]
+
+        def _preview_disk_cache_path(self, key: str, *, base_dir: Path | None = None, selected: Path | None = None) -> Path:
+            return self._disk_cache_path(base_dir or self._preview_disk_cache_dir(selected), key, ".npy")
+
+        def _read_preview_from_disk_cache(self, key: str, *, selected: Path | None = None) -> np.ndarray | None:
+            for cache_dir in self._disk_cache_dirs(selected, "previews"):
+                cache_path = self._preview_disk_cache_path(key, base_dir=cache_dir)
+                if not cache_path.is_file():
+                    continue
+                try:
+                    with cache_path.open("rb") as handle:
+                        image = np.load(handle, allow_pickle=False)
+                    image = np.asarray(image, dtype=np.float32)
+                    if image.ndim != 3 or image.shape[-1] < 3:
+                        continue
+                    try:
+                        os.utime(cache_path, None)
+                    except Exception:
+                        pass
+                    return np.ascontiguousarray(image[..., :3])
+                except Exception:
+                    continue
+            return None
+
+        def _write_preview_to_disk_cache(self, key: str, image: np.ndarray, *, selected: Path | None = None) -> None:
+            try:
+                cache_dir = self._preview_disk_cache_dir(selected)
+                cache_path = self._preview_disk_cache_path(key, base_dir=cache_dir)
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp_path = cache_path.with_name(f"{cache_path.name}.tmp")
+                array = np.ascontiguousarray(np.asarray(image, dtype=np.float32)[..., :3])
+                with tmp_path.open("wb") as handle:
+                    np.save(handle, array, allow_pickle=False)
+                os.replace(tmp_path, cache_path)
+                self._prune_disk_cache(
+                    cache_dir,
+                    pattern="*.npy",
+                    max_entries=PREVIEW_DISK_CACHE_MAX_ENTRIES,
+                    max_bytes=PREVIEW_DISK_CACHE_MAX_BYTES,
+                )
+            except Exception:
+                return
 
         def _preview_cache_bytes(self) -> int:
             return int(sum(int(image.nbytes) for image in self._preview_cache.values()))
@@ -4917,7 +6309,23 @@ if QtWidgets is not None:
                     QtWidgets.QMessageBox.information(self, "Info", "Selecciona primero un archivo.")
                 return
 
-            selected = self._selected_file
+            original_selected = self._selected_file
+            selected = self._resolve_existing_browsable_path(original_selected)
+            if selected is None:
+                self._selection_load_timer.stop()
+                self._metadata_timer.stop()
+                self._selected_file = None
+                self._last_loaded_preview_key = None
+                self._clear_manual_chart_points_for_file_change()
+                self.selected_file_label.setText("Sin archivo seleccionado")
+                self._clear_metadata_view()
+                self._set_status(f"Archivo no encontrado: {original_selected}")
+                if show_message:
+                    QtWidgets.QMessageBox.information(self, "Info", f"No existe el archivo:\n{original_selected}")
+                return
+            if self._normalized_path_key(selected) != self._normalized_path_key(original_selected):
+                self._selected_file = selected
+                self.selected_file_label.setText(str(selected))
             recipe = self._build_effective_recipe()
             fast_raw = bool(self.check_fast_raw_preview.isChecked())
             max_preview_side = int(self.spin_preview_max_side.value())
@@ -4934,7 +6342,7 @@ if QtWidgets is not None:
                     self._begin_manual_chart_marking()
                 return
 
-            cached = self._cached_preview_image(cache_key)
+            cached = self._cached_preview_image(cache_key, selected=selected)
             if cached is not None:
                 self._original_linear = cached.copy()
                 self._adjusted_linear = self._original_linear.copy()
@@ -4964,7 +6372,7 @@ if QtWidgets is not None:
                 self._adjusted_linear = self._original_linear.copy()
                 self._last_loaded_preview_key = cache_key
                 self._clear_adjustment_caches()
-                self._cache_preview_image(cache_key, self._original_linear)
+                self._cache_preview_image(cache_key, self._original_linear, selected=selected)
                 self._refresh_preview()
                 self._log_preview(msg)
                 if self._manual_chart_marking_after_reload:
@@ -5147,7 +6555,7 @@ if QtWidgets is not None:
                     lateral_ca_blue_scale=ca_blue,
                     render_adjustments=render_adjustments,
                 )
-                _mode, proof_result = write_signed_profiled_tiff(
+                mode, proof_result = write_signed_profiled_tiff(
                     out_path,
                     image,
                     source_raw=in_path,
@@ -5158,11 +6566,41 @@ if QtWidgets is not None:
                     detail_adjustments=detail_adjustments,
                     render_adjustments=c2pa_render_adjustments,
                     render_context={"entrypoint": "gui_single_develop"},
+                    generic_profile_dir=self._session_generic_profile_dir(),
+                )
+                rendered_profile_path = self._render_profile_path_for_recipe(
+                    recipe,
+                    input_profile_path=profile_path,
+                    color_management_mode=mode,
+                )
+                profile_id = self._active_development_profile_id
+                development_profile = None
+                if profile_id:
+                    profile_descriptor = self._development_profile_by_id(profile_id) or {}
+                    kind = str(profile_descriptor.get("kind") or "manual")
+                    development_profile = {
+                        "id": profile_id,
+                        "name": str(profile_descriptor.get("name") or profile_id),
+                        "kind": kind,
+                        "profile_type": str(profile_descriptor.get("profile_type") or self._adjustment_profile_type_for_kind(kind)),
+                    }
+                sidecar = self._write_raw_settings_sidecar(
+                    in_path,
+                    recipe=recipe,
+                    development_profile=development_profile,
+                    detail_adjustments=self._detail_adjustment_state(),
+                    render_adjustments=self._render_adjustment_state(),
+                    profile_path=rendered_profile_path,
+                    color_management_mode=mode,
+                    output_tiff=out_path,
+                    proof_path=Path(proof_result.proof_path),
+                    status="rendered",
                 )
                 return {
                     "output_tiff": str(out_path),
                     "requested_tiff": str(requested_out_path),
                     "proof": proof_result.proof_path,
+                    "raw_sidecar": str(sidecar) if sidecar is not None else "",
                 }
 
             def on_success(payload) -> None:
@@ -5170,6 +6608,9 @@ if QtWidgets is not None:
                     self._log_preview(f"Salida existente preservada; nueva version: {payload['output_tiff']}")
                 self._log_preview(f"TIFF revelado: {payload['output_tiff']}")
                 self._log_preview(f"NexoRAW Proof: {payload['proof']}")
+                if payload.get("raw_sidecar"):
+                    self._log_preview(f"Mochila NexoRAW: {payload['raw_sidecar']}")
+                self._refresh_color_reference_thumbnail_markers()
                 self._set_status(f"Revelado completado: {payload['output_tiff']}")
                 self._save_active_session(silent=True)
 
@@ -5197,7 +6638,7 @@ if QtWidgets is not None:
                         self,
                         "Referencias no validas",
                         "Las referencias colorimetricas deben ser RAW/DNG o TIFFs originales de carta, "
-                        f"no {reason}. Selecciona las capturas en la carpeta raw/charts.",
+                        f"no {reason}. Selecciona las capturas en 01_ORG.",
                     )
                     fallback = self._preferred_profile_reference_dir()
                     if fallback is not None:
@@ -5366,6 +6807,22 @@ if QtWidgets is not None:
             except Exception:
                 return False
 
+        def _raw_files_for_chart_profile_assignment(
+            self,
+            charts: Path,
+            chart_capture_files: list[Path] | None,
+        ) -> list[Path]:
+            candidates = list(chart_capture_files or [])
+            if not candidates:
+                try:
+                    candidates = [
+                        p for p in sorted(charts.iterdir())
+                        if p.is_file() and p.suffix.lower() in PROFILE_CHART_EXTENSIONS
+                    ]
+                except Exception:
+                    candidates = []
+            return [p for p in candidates if p.suffix.lower() in RAW_EXTENSIONS and p.exists()]
+
         def _use_current_dir_as_batch_input(self) -> None:
             self.batch_input_dir.setText(str(self._current_dir))
             self._set_status(f"Directorio lote: {self._current_dir}")
@@ -5390,7 +6847,7 @@ if QtWidgets is not None:
                             self,
                             "Referencias no validas",
                             "La generacion de perfil no puede usar carpetas operativas de la sesion "
-                            f"({reason}). Selecciona capturas RAW/DNG originales en raw/charts.",
+                            f"({reason}). Selecciona capturas RAW/DNG originales en 01_ORG.",
                         )
                         return
             if chart_capture_files is None and not self._directory_has_chart_captures(charts):
@@ -5494,14 +6951,30 @@ if QtWidgets is not None:
                         QtCore.QTimer.singleShot(0, lambda: self._on_load_selected(show_message=False))
                     except Exception as exc:
                         self._log_preview(f"No se pudo cargar receta calibrada en la GUI: {exc}")
+                if payload.get("development_profile_path") and payload.get("calibrated_recipe_path"):
+                    chart_profile_name = f"{self.session_name_edit.text().strip() or profile_out.stem} - carta"
+                    profile_id = self._register_chart_development_profile(
+                        name=chart_profile_name,
+                        development_profile_path=Path(str(payload["development_profile_path"])),
+                        calibrated_recipe_path=Path(str(payload["calibrated_recipe_path"])),
+                        icc_profile_path=profile_out,
+                        profile_report_path=profile_report,
+                    )
+                    assigned = self._assign_development_profile_to_raw_files(
+                        profile_id,
+                        self._raw_files_for_chart_profile_assignment(charts, chart_capture_files),
+                        status="assigned",
+                    )
+                    if assigned:
+                        self._log_preview(f"Perfil de ajuste avanzado asignado a {assigned} RAW de carta")
                 if hasattr(self, "profile_summary_label"):
                     self.profile_summary_label.setText(self._profile_success_summary(payload, profile_out))
-                self._log_preview(f"Perfil de revelado: {payload.get('development_profile_path')}")
-                self._log_preview(f"Perfil ICC generado: {profile_out}")
-                self._set_status(f"Revelado calibrado + ICC generado: {profile_out}")
+                self._log_preview(f"Perfil de ajuste avanzado: {payload.get('development_profile_path')}")
+                self._log_preview(f"Perfil ICC de entrada generado: {profile_out}")
+                self._set_status(f"Perfil avanzado con carta + ICC de entrada generado: {profile_out}")
                 self._save_active_session(silent=True)
 
-            self._start_background_task("Generación de perfil de revelado + ICC", task, on_success)
+            self._start_background_task("Generación de perfil avanzado con carta + ICC", task, on_success)
 
         def _profile_chart_candidate_count(self, charts: Path, chart_capture_files: list[Path] | None) -> int:
             if chart_capture_files is not None:
@@ -5524,7 +6997,7 @@ if QtWidgets is not None:
             status = str(profile_status.get("status") or "draft")
             parts = [
                 f"Estado perfil: {status}",
-                f"Perfil generado: {profile_out}",
+                f"ICC de entrada generado: {profile_out}",
                 f"Entrenamiento: {payload.get('chart_captures_used', 0)}/{payload.get('training_captures_total', payload.get('chart_captures_total', 0))}",
                 f"Receta calibrada: {payload.get('calibrated_recipe_path') or 'no generada'}",
             ]
@@ -5743,8 +7216,11 @@ if QtWidgets is not None:
                 value = item.data(QtCore.Qt.UserRole)
                 if not value:
                     continue
-                p = Path(str(value))
-                if p.exists() and p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS:
+                stale_path = Path(str(value))
+                p = self._resolve_existing_browsable_path(stale_path)
+                if p is not None:
+                    if self._normalized_path_key(p) != self._normalized_path_key(stale_path):
+                        self._update_file_item_path(item, p)
                     files.append(p)
             files.sort()
             return files
@@ -5788,6 +7264,9 @@ if QtWidgets is not None:
             render_adjustments: dict[str, Any],
             c2pa_config: C2PASignConfig | None,
             proof_config: NexoRawProofConfig,
+            sidecar_detail_adjustments: dict[str, Any] | None = None,
+            sidecar_render_adjustments: dict[str, Any] | None = None,
+            development_profile: dict[str, str] | None = None,
         ) -> dict[str, Any]:
             out_dir.mkdir(parents=True, exist_ok=True)
             outputs: list[dict[str, str]] = []
@@ -5805,6 +7284,15 @@ if QtWidgets is not None:
                 "lateral_ca_blue_scale": lateral_ca_blue_scale if apply_adjust else 1.0,
             }
             c2pa_render_adjustments = {"applied": True, **render_adjustments} if apply_adjust else {"applied": False}
+            sidecar_detail_state = sidecar_detail_adjustments or {
+                "sharpen": int(round((sharpen_amount if apply_adjust else 0.0) * 100)),
+                "radius": int(round((sharpen_radius if apply_adjust else 1.0) * 10)),
+                "noise_luma": int(round((denoise_luma if apply_adjust else 0.0) * 100)),
+                "noise_color": int(round((denoise_color if apply_adjust else 0.0) * 100)),
+                "ca_red": int(round(((lateral_ca_red_scale if apply_adjust else 1.0) - 1.0) * 10000)),
+                "ca_blue": int(round(((lateral_ca_blue_scale if apply_adjust else 1.0) - 1.0) * 10000)),
+            }
+            sidecar_render_state = sidecar_render_adjustments or render_adjustments
 
             for src in files:
                 try:
@@ -5827,7 +7315,7 @@ if QtWidgets is not None:
 
                     requested_out_path = out_dir / f"{src.stem}.tiff"
                     out_path = versioned_output_path(requested_out_path)
-                    _mode, proof_result = write_signed_profiled_tiff(
+                    mode, proof_result = write_signed_profiled_tiff(
                         out_path,
                         image,
                         source_raw=src,
@@ -5838,8 +7326,31 @@ if QtWidgets is not None:
                         detail_adjustments=detail_adjustments,
                         render_adjustments=c2pa_render_adjustments,
                         render_context={"entrypoint": "gui_batch_develop", "apply_adjustments": bool(apply_adjust)},
+                        generic_profile_dir=self._session_generic_profile_dir(),
+                    )
+                    rendered_profile_path = self._render_profile_path_for_recipe(
+                        recipe,
+                        input_profile_path=profile_path if use_profile else None,
+                        color_management_mode=mode,
                     )
                     output = {"source": str(src), "output": str(out_path), "proof": proof_result.proof_path}
+                    if development_profile:
+                        output["development_profile_id"] = str(development_profile.get("id") or "")
+                        output["development_profile_name"] = str(development_profile.get("name") or "")
+                    sidecar = self._write_raw_settings_sidecar(
+                        src,
+                        recipe=recipe,
+                        development_profile=development_profile,
+                        detail_adjustments=sidecar_detail_state,
+                        render_adjustments=sidecar_render_state,
+                        profile_path=rendered_profile_path,
+                        color_management_mode=mode,
+                        output_tiff=out_path,
+                        proof_path=Path(proof_result.proof_path),
+                        status="rendered",
+                    )
+                    if sidecar is not None:
+                        output["raw_sidecar"] = str(sidecar)
                     if out_path != requested_out_path:
                         output["requested_output"] = str(requested_out_path)
                     outputs.append(output)
@@ -5851,22 +7362,18 @@ if QtWidgets is not None:
                 "output_dir": str(out_dir),
                 "outputs": outputs,
                 "errors": errors,
+                "development_profile": development_profile or {},
             }
 
         def _start_batch_develop(self, files: list[Path], task_label: str) -> None:
             self._ensure_session_output_controls()
             out_dir = Path(self.batch_out_dir.text().strip())
-            recipe = self._build_effective_recipe()
             apply_adjust = bool(self.batch_apply_adjustments.isChecked())
-            use_profile = bool(self.batch_embed_profile.isChecked()) and self.path_profile_active.text().strip() != ""
-            profile_path = Path(self.path_profile_active.text().strip()) if use_profile else None
-
-            nl = self.slider_noise_luma.value() / 100.0
-            nc = self.slider_noise_color.value() / 100.0
-            sharpen = self.slider_sharpen.value() / 100.0
-            radius = self.slider_radius.value() / 10.0
-            ca_red, ca_blue = self._ca_scale_factors()
-            render_adjustments = self._render_adjustment_kwargs()
+            embed_profile = bool(self.batch_embed_profile.isChecked())
+            settings = self._development_profile_settings(self._active_development_profile_id)
+            detail = self._detail_adjustment_kwargs_from_state(settings["detail_adjustments"])
+            profile_path = settings.get("icc_profile_path")
+            use_profile = bool(embed_profile and isinstance(profile_path, Path) and str(profile_path))
             try:
                 proof_config = self._resolve_proof_config_for_gui()
                 c2pa_config = self._resolve_c2pa_config_for_gui()
@@ -5878,19 +7385,22 @@ if QtWidgets is not None:
                 payload = self._process_batch_files(
                     files=files,
                     out_dir=out_dir,
-                    recipe=recipe,
+                    recipe=settings["recipe"],
                     apply_adjust=apply_adjust,
                     use_profile=use_profile,
                     profile_path=profile_path,
-                    denoise_luma=nl,
-                    denoise_color=nc,
-                    sharpen_amount=sharpen,
-                    sharpen_radius=radius,
-                    lateral_ca_red_scale=ca_red,
-                    lateral_ca_blue_scale=ca_blue,
-                    render_adjustments=render_adjustments,
+                    denoise_luma=detail["denoise_luma"],
+                    denoise_color=detail["denoise_color"],
+                    sharpen_amount=detail["sharpen_amount"],
+                    sharpen_radius=detail["sharpen_radius"],
+                    lateral_ca_red_scale=detail["lateral_ca_red_scale"],
+                    lateral_ca_blue_scale=detail["lateral_ca_blue_scale"],
+                    render_adjustments=self._render_adjustment_kwargs_from_state(settings["render_adjustments"]),
+                    sidecar_detail_adjustments=settings["detail_adjustments"],
+                    sidecar_render_adjustments=settings["render_adjustments"],
                     c2pa_config=c2pa_config,
                     proof_config=proof_config,
+                    development_profile=self._profile_payload_from_development_settings(settings),
                 )
                 payload["task"] = task_label
                 return payload
@@ -5907,6 +7417,7 @@ if QtWidgets is not None:
                     f"Lote finalizado en {payload['output_dir']} "
                     f"(OK={ok_count}, errores={error_count})"
                 )
+                self._refresh_color_reference_thumbnail_markers()
                 self._save_active_session(silent=True)
 
             self._start_background_task(task_label, task, on_success)
@@ -5914,7 +7425,7 @@ if QtWidgets is not None:
         def _use_generated_profile_as_active(self) -> None:
             p = self._normalized_profile_out_path()
             if not p.exists():
-                QtWidgets.QMessageBox.information(self, "Info", "El perfil de salida aun no existe.")
+                QtWidgets.QMessageBox.information(self, "Info", "El perfil ICC de entrada aún no existe.")
                 return
             if not self._profile_can_be_active(p):
                 status = self._profile_status_for_path(p) or "no disponible"

@@ -4,12 +4,12 @@ import os
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageCms
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
-from PySide6 import QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 import iccraw.gui as gui_module  # noqa: E402
 from iccraw.core.models import Recipe  # noqa: E402
@@ -17,7 +17,8 @@ from iccraw.gui import ICCRawMainWindow  # noqa: E402
 from iccraw.provenance.c2pa import C2PASignConfig  # noqa: E402
 from iccraw.provenance.nexoraw_proof import NexoRawProofConfig, NexoRawProofResult  # noqa: E402
 from iccraw.raw import pipeline  # noqa: E402
-from iccraw.session import load_session  # noqa: E402
+from iccraw.session import create_session, load_session  # noqa: E402
+from iccraw.sidecar import load_raw_sidecar, raw_sidecar_path  # noqa: E402
 
 
 @pytest.fixture
@@ -127,6 +128,86 @@ def test_activate_session_sanitizes_profile_reference_outputs_and_rejected_profi
         window.close()
 
 
+def test_create_session_does_not_inherit_previous_project_images_or_profiles(tmp_path: Path, qapp):
+    old_root = tmp_path / "old_session"
+    old_raw = old_root / "raw"
+    old_raw.mkdir(parents=True)
+    old_image = old_raw / "old_capture.tif"
+    Image.new("RGB", (16, 16), (80, 120, 160)).save(old_image)
+
+    old_payload = create_session(
+        old_root,
+        name="old",
+        state={
+            "profile_charts_dir": str(old_raw),
+            "profile_chart_files": [str(old_image)],
+            "batch_input_dir": str(old_raw),
+            "development_profiles": [{"id": "old-profile", "name": "Old profile"}],
+            "active_development_profile_id": "old-profile",
+        },
+        queue=[{"source": str(old_image), "status": "pending"}],
+    )
+    new_root = tmp_path / "new_session"
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(old_root, old_payload)
+        window._set_current_directory(old_raw)
+        assert window.file_list.count() == 1
+
+        window.session_root_path.setText(str(new_root))
+        window.session_name_edit.setText("new")
+        window._on_create_session()
+
+        new_paths = window._session_paths_from_root(new_root)
+        saved = load_session(new_root)
+        serialized = gui_module.json.dumps(saved)
+
+        assert window._active_session_root == new_root.resolve()
+        assert window._current_dir == new_paths["raw"]
+        assert window.file_list.count() == 0
+        assert window.profile_charts_dir.text() == str(new_paths["charts"])
+        assert window.batch_input_dir.text() == str(new_paths["raw"])
+        assert window._selected_chart_files == []
+        assert window._develop_queue == []
+        assert window._development_profiles == []
+        assert str(old_root) not in serialized
+    finally:
+        window.close()
+
+
+def test_activate_session_rejects_existing_state_paths_outside_project_root(tmp_path: Path, qapp):
+    old_root = tmp_path / "old_session"
+    old_raw = old_root / "raw"
+    old_raw.mkdir(parents=True)
+    old_image = old_raw / "old_chart.tif"
+    Image.new("RGB", (16, 16), (80, 120, 160)).save(old_image)
+
+    new_root = tmp_path / "new_session"
+    window = ICCRawMainWindow()
+    paths = window._session_paths_from_root(new_root)
+    payload = create_session(
+        new_root,
+        name="new",
+        state={
+            "profile_charts_dir": str(old_raw),
+            "profile_chart_files": [str(old_image)],
+            "batch_input_dir": str(old_raw),
+        },
+    )
+
+    try:
+        window._activate_session(new_root, payload)
+
+        assert window._current_dir == paths["raw"]
+        assert window.file_list.count() == 0
+        assert window.profile_charts_dir.text() == str(paths["charts"])
+        assert window.batch_input_dir.text() == str(paths["raw"])
+        assert window._selected_chart_files == []
+    finally:
+        window.close()
+
+
 def test_file_icons_do_not_decode_image_data(tmp_path: Path, monkeypatch, qapp):
     image_path = tmp_path / "frame.tiff"
     raw_path = tmp_path / "capture.dng"
@@ -155,6 +236,18 @@ def test_raw_develop_layout_prioritizes_viewer_area(qapp):
         assert window.viewer_splitter.count() == 2
         assert window.viewer_splitter.widget(0) is window.viewer_stack
         assert hasattr(window, "thumbnail_size_slider")
+        if hasattr(QtWidgets.QFileSystemModel, "DontWatchForChanges"):
+            assert not window._dir_model.testOption(QtWidgets.QFileSystemModel.DontWatchForChanges)
+    finally:
+        window.close()
+
+
+def test_main_window_omits_redundant_app_title_header(qapp):
+    window = ICCRawMainWindow()
+    try:
+        label_texts = [label.text() for label in window.centralWidget().findChildren(QtWidgets.QLabel)]
+        assert gui_module.APP_NAME not in label_texts
+        assert not any("RAW -> ajuste por archivo" in text for text in label_texts)
     finally:
         window.close()
 
@@ -173,6 +266,10 @@ def test_image_panels_use_neutral_gray_background(qapp):
 def test_thumbnail_size_control_resizes_file_list(qapp):
     window = ICCRawMainWindow()
     try:
+        assert window.file_list.flow() == QtWidgets.QListView.LeftToRight
+        assert not window.file_list.isWrapping()
+        assert window.file_list.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarAsNeeded
+        assert window.file_list.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarAlwaysOff
         window.thumbnail_size_slider.setValue(180)
         assert window.file_list.iconSize().width() == 180
         assert window.file_list.gridSize().width() > 180
@@ -199,6 +296,95 @@ def test_thumbnail_resize_keeps_cache_and_existing_icons(tmp_path: Path, qapp):
         window.close()
 
 
+def test_legacy_raw_directory_selection_maps_to_new_org_directory(tmp_path: Path, qapp):
+    root = tmp_path / "project"
+    raw_dir = root / "01_ORG"
+    raw_dir.mkdir(parents=True)
+    (root / "00_configuraciones").mkdir()
+    (root / "02_DRV").mkdir()
+    raw_path = raw_dir / "capture.NEF"
+    raw_path.write_bytes(b"raw")
+
+    window = ICCRawMainWindow()
+    try:
+        window._active_session_root = root
+        window._set_current_directory(root / "raw")
+
+        assert window._current_dir == raw_dir.resolve()
+        assert window.file_list.count() == 1
+        assert Path(window.file_list.item(0).data(QtCore.Qt.UserRole)) == raw_path.resolve()
+    finally:
+        window.close()
+
+
+def test_project_root_selection_opens_org_directory_for_browsing(tmp_path: Path, qapp):
+    root = tmp_path / "project"
+    raw_dir = root / "01_ORG"
+    raw_dir.mkdir(parents=True)
+    (root / "00_configuraciones").mkdir()
+    (root / "02_DRV").mkdir()
+    raw_path = raw_dir / "capture.NEF"
+    raw_path.write_bytes(b"raw")
+
+    window = ICCRawMainWindow()
+    try:
+        window._set_current_directory(root)
+
+        assert window._current_dir == raw_dir.resolve()
+        assert window.file_list.count() == 1
+        assert Path(window.file_list.item(0).data(QtCore.Qt.UserRole)) == raw_path.resolve()
+    finally:
+        window.close()
+
+
+def test_use_current_dir_as_session_root_promotes_org_directory_to_project_root(tmp_path: Path, qapp):
+    root = tmp_path / "project"
+    raw_dir = root / "01_ORG"
+    raw_dir.mkdir(parents=True)
+    (root / "00_configuraciones").mkdir()
+    (root / "02_DRV").mkdir()
+
+    window = ICCRawMainWindow()
+    try:
+        window._set_current_directory(raw_dir)
+        window._use_current_dir_as_session_root()
+
+        assert Path(window.session_root_path.text()) == root.resolve()
+        assert window.session_name_edit.text() == root.name
+        assert Path(window.session_dir_raw.text()) == root.resolve() / "01_ORG"
+    finally:
+        window.close()
+
+
+def test_legacy_raw_thumbnail_item_maps_to_existing_org_file(tmp_path: Path, qapp):
+    root = tmp_path / "project"
+    raw_dir = root / "01_ORG"
+    raw_dir.mkdir(parents=True)
+    (root / "00_configuraciones").mkdir()
+    (root / "02_DRV").mkdir()
+    raw_path = raw_dir / "capture.NEF"
+    raw_path.write_bytes(b"raw")
+
+    window = ICCRawMainWindow()
+    try:
+        window._active_session_root = root
+        stale_path = root / "raw" / raw_path.name
+        item = QtWidgets.QListWidgetItem(raw_path.name)
+        item.setData(QtCore.Qt.UserRole, str(stale_path))
+        window.file_list.addItem(item)
+        item.setSelected(True)
+        window.file_list.setCurrentItem(item)
+        window._on_file_selection_changed()
+        window._selection_load_timer.stop()
+        window._metadata_timer.stop()
+
+        assert window._selected_file == raw_path.resolve()
+        assert Path(item.data(QtCore.Qt.UserRole)) == raw_path.resolve()
+        assert str(raw_path) in window.selected_file_label.text()
+    finally:
+        window.close()
+
+
 def test_image_thumbnail_payload_uses_real_preview(tmp_path: Path, qapp):
     image_path = tmp_path / "patch.png"
     Image.new("RGB", (96, 48), (20, 120, 220)).save(image_path)
@@ -214,21 +400,29 @@ def test_image_thumbnail_payload_uses_real_preview(tmp_path: Path, qapp):
     assert rgb.shape[2] == 3
 
 
-def test_raw_thumbnail_payload_skips_expensive_raw_fallback(tmp_path: Path, monkeypatch, qapp):
+def test_raw_thumbnail_payload_uses_fast_raw_fallback_when_embedded_preview_is_missing(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "capture.NEF"
     raw_path.write_bytes(b"not a real raw but enough for the thumbnail test")
 
     monkeypatch.setattr(gui_module, "extract_embedded_preview", lambda _path: None)
+    fallback = gui_module.np.full((80, 120, 3), (0.18, 0.36, 0.72), dtype=gui_module.np.float32)
+    monkeypatch.setattr(gui_module, "develop_image_array", lambda _path, _recipe, half_size=False: fallback)
 
     payloads = ICCRawMainWindow._build_thumbnail_payloads([raw_path], 64)
 
-    assert payloads == []
+    assert len(payloads) == 1
+    raw_path_text, key, rgb = payloads[0]
+    assert raw_path_text == str(raw_path)
+    assert str(raw_path) in key
+    assert rgb.dtype.name == "uint8"
+    assert max(rgb.shape[:2]) <= gui_module.MAX_THUMBNAIL_SIZE
+    assert rgb.shape[2] == 3
 
 
 def test_thumbnail_disk_cache_restores_icon(tmp_path: Path, qapp):
     window = ICCRawMainWindow()
     try:
-        window._thumbnail_disk_cache_dir = lambda: tmp_path / "thumb-cache"
+        window._disk_cache_dirs = lambda _path=None, _kind="thumbnails": [tmp_path / "thumb-cache"]
         key = "example|123|thumb-v2"
         rgb = gui_module.np.full((24, 16, 3), (20, 120, 220), dtype=gui_module.np.uint8)
 
@@ -240,6 +434,60 @@ def test_thumbnail_disk_cache_restores_icon(tmp_path: Path, qapp):
         assert icon is not None
         assert not icon.pixmap(16, 16).isNull()
         assert key in window._image_thumb_cache
+    finally:
+        window.close()
+
+
+def test_session_thumbnail_cache_uses_relative_project_key(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_path = root / "01_ORG" / "capture.NEF"
+    raw_path.parent.mkdir(parents=True)
+    raw_path.write_bytes(b"raw")
+
+    window = ICCRawMainWindow()
+    try:
+        window._active_session_root = root.resolve()
+        key = window._thumbnail_cache_key(raw_path, 64)
+        rgb = gui_module.np.full((24, 16, 3), (20, 120, 220), dtype=gui_module.np.uint8)
+
+        window._write_thumbnail_to_disk_cache(key, rgb, path=raw_path)
+        window._image_thumb_cache.clear()
+        icon = window._cached_thumbnail_icon(key, path=raw_path)
+
+        assert key.startswith("session:01_ORG/capture.NEF|")
+        assert icon is not None
+        assert list((root / "00_configuraciones" / "work" / "cache" / "thumbnails").glob("*/*.png"))
+    finally:
+        window.close()
+
+
+def test_session_preview_cache_survives_memory_clear(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_path = root / "01_ORG" / "capture.NEF"
+    raw_path.parent.mkdir(parents=True)
+    raw_path.write_bytes(b"raw")
+
+    window = ICCRawMainWindow()
+    try:
+        window._active_session_root = root.resolve()
+        key = window._preview_cache_key(
+            selected=raw_path,
+            recipe=Recipe(),
+            fast_raw=True,
+            max_preview_side=900,
+        )
+        image = gui_module.np.linspace(0.0, 1.0, 8 * 6 * 3, dtype=gui_module.np.float32).reshape(8, 6, 3)
+
+        window._cache_preview_image(key, image, selected=raw_path)
+        window._preview_cache.clear()
+        window._preview_cache_order.clear()
+
+        restored = window._cached_preview_image(key, selected=raw_path)
+
+        assert key.startswith("session:01_ORG/capture.NEF|")
+        assert restored is not None
+        assert gui_module.np.allclose(restored, image)
+        assert list((root / "00_configuraciones" / "work" / "cache" / "previews").glob("*/*.npy"))
     finally:
         window.close()
 
@@ -262,7 +510,7 @@ def test_thumbnail_batch_limits_background_work(tmp_path: Path, qapp):
         window.close()
 
 
-def test_selected_color_reference_images_are_marked_in_thumbnail_list(tmp_path: Path, qapp):
+def test_selected_color_reference_images_update_reference_label_without_profile_marker(tmp_path: Path, qapp):
     image_path = tmp_path / "reference.tiff"
     Image.new("RGB", (96, 48), (20, 120, 220)).save(image_path)
 
@@ -282,13 +530,218 @@ def test_selected_color_reference_images_are_marked_in_thumbnail_list(tmp_path: 
 
         assert window._profile_chart_files_or_none() == [image_path]
         assert "Referencias colorimétricas seleccionadas: 1" in window.profile_chart_selection_label.text()
+        assert "Referencia colorimétrica seleccionada" in item.toolTip()
 
         pixmap = item.icon().pixmap(window.file_list.iconSize())
         image = pixmap.toImage().convertToFormat(QtGui.QImage.Format_RGB32)
-        color = QtGui.QColor(image.pixel(image.width() // 2, 1))
-        assert color.green() > 160
-        assert color.red() < 80
-        assert color.blue() < 140
+        top = QtGui.QColor(image.pixel(image.width() // 2, 1))
+        bottom = QtGui.QColor(image.pixel(image.width() // 2, image.height() - 2))
+        assert not (top.blue() > 160 and top.red() < 120)
+        assert not (bottom.blue() > 160 and bottom.red() < 120)
+        assert not (bottom.green() > 160 and bottom.red() < 120 and bottom.blue() < 140)
+    finally:
+        window.close()
+
+
+def test_manual_development_profile_is_saved_relative_to_session(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    payload = create_session(root, name="Sesion perfiles")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window.development_profile_name_edit.setText("Luz norte")
+        window.spin_exposure.setValue(0.65)
+        window.slider_brightness.setValue(12)
+
+        window._save_current_development_profile()
+
+        assert len(window._development_profiles) == 1
+        profile = window._development_profiles[0]
+        assert profile["id"] == "luz-norte"
+        assert profile["recipe_path"] == "00_configuraciones/development_profiles/luz-norte/recipe.yml"
+        assert profile["manifest_path"] == "00_configuraciones/development_profiles/luz-norte/development_profile.json"
+        assert (root / profile["recipe_path"]).exists()
+        assert (root / profile["manifest_path"]).exists()
+
+        saved_state = load_session(root)["state"]
+        assert saved_state["active_development_profile_id"] == "luz-norte"
+        assert saved_state["development_profiles"][0]["id"] == "luz-norte"
+    finally:
+        window.close()
+
+
+def test_manual_development_profile_can_use_generic_icc_without_chart(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    payload = create_session(root, name="Sesion sin carta")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window.development_profile_name_edit.setText("A ojo ProPhoto")
+        index = window.development_output_space_combo.findData("prophoto_rgb")
+        assert index >= 0
+        window.development_output_space_combo.setCurrentIndex(index)
+        window.spin_exposure.setValue(0.35)
+
+        window._save_current_development_profile()
+
+        profile = window._development_profiles[0]
+        manifest = load_session(root)["state"]["development_profiles"][0]
+        manifest_path = root / profile["manifest_path"]
+        payload = gui_module.json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert payload["kind"] == "manual"
+        assert payload["recipe"]["output_space"] == "prophoto_rgb"
+        assert payload["recipe"]["output_linear"] is False
+        assert payload["generic_output_space"] == "prophoto_rgb"
+        assert payload["icc_profile_path"] == ""
+        assert payload["output_icc_profile_path"] == "00_configuraciones/profiles/generic/nexoraw-generic-prophoto-rgb.icc"
+        assert (root / payload["output_icc_profile_path"]).exists()
+        assert manifest["generic_output_space"] == "prophoto_rgb"
+    finally:
+        window.close()
+
+
+def test_development_profile_applies_to_controls_and_queue(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion perfiles")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window.development_profile_name_edit.setText("Ajuste base")
+        window.spin_exposure.setValue(0.4)
+        window.slider_noise_luma.setValue(18)
+        window._save_current_development_profile()
+        profile_id = window._active_development_profile_id
+
+        window.spin_exposure.setValue(-0.6)
+        window.slider_noise_luma.setValue(0)
+        window._apply_development_profile_to_controls(profile_id)
+        assert abs(window.spin_exposure.value() - 0.4) < 0.001
+        assert window.slider_noise_luma.value() == 18
+
+        window._queue_add_files([raw])
+        assert window._develop_queue[0]["development_profile_id"] == profile_id
+        saved_queue = load_session(root)["queue"]
+        assert saved_queue[0]["development_profile_id"] == profile_id
+    finally:
+        window.close()
+
+
+def test_queue_assignment_writes_and_reuses_raw_sidecar(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion mochila")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window.development_profile_name_edit.setText("Carta base")
+        window.spin_exposure.setValue(0.35)
+        window._save_current_development_profile()
+        profile_id = window._active_development_profile_id
+
+        window._queue_add_files([raw])
+        window.queue_table.selectRow(0)
+        window._queue_assign_active_development_profile()
+
+        assert raw_sidecar_path(raw).exists()
+        sidecar = load_raw_sidecar(raw)
+        assert sidecar["development_profile"]["id"] == profile_id
+        assert sidecar["recipe"]["exposure_compensation"] == 0.35
+
+        window._develop_queue = []
+        window._active_development_profile_id = ""
+        window._queue_add_files([raw])
+        assert window._develop_queue[0]["development_profile_id"] == profile_id
+    finally:
+        window.close()
+
+
+def test_chart_profile_assignment_marks_raw_as_advanced_and_can_be_pasted(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_dir = root / "01_ORG"
+    source = raw_dir / "chart.NEF"
+    target = raw_dir / "target.NEF"
+    raw_dir.mkdir(parents=True)
+    source.write_bytes(b"chart raw")
+    target.write_bytes(b"target raw")
+    payload = create_session(root, name="Sesion carta")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._set_current_directory(raw_dir)
+
+        paths = window._session_paths_from_root(root)
+        profile_path = paths["profiles"] / "session.icc"
+        profile_report = paths["config"] / "profile_report.json"
+        recipe_path = paths["config"] / "recipe_calibrated.yml"
+        manifest_path = paths["config"] / "development_profile.json"
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        profile_report.parent.mkdir(parents=True, exist_ok=True)
+        profile_path.write_bytes(b"icc")
+        profile_report.write_text("{}", encoding="utf-8")
+        gui_module.save_recipe(Recipe(exposure_compensation=0.45), recipe_path)
+        manifest_path.write_text("{}", encoding="utf-8")
+
+        profile_id = window._register_chart_development_profile(
+            name="Carta D50",
+            development_profile_path=manifest_path,
+            calibrated_recipe_path=recipe_path,
+            icc_profile_path=profile_path,
+            profile_report_path=profile_report,
+        )
+        assert window._assign_development_profile_to_raw_files(profile_id, [source]) == 1
+
+        source_sidecar = load_raw_sidecar(source)
+        assert source_sidecar["development_profile"]["kind"] == "chart"
+        assert source_sidecar["development_profile"]["profile_type"] == "advanced"
+        marked = window._display_icon_for_path(
+            source,
+            window._icon_from_thumbnail_array(gui_module.np.full((48, 48, 3), 96, dtype=gui_module.np.uint8)),
+        )
+        pixmap = marked.pixmap(window.file_list.iconSize())
+        image = pixmap.toImage().convertToFormat(QtGui.QImage.Format_RGB32)
+        marker = QtGui.QColor(image.pixel(image.width() // 2, image.height() - 2))
+        assert marker.blue() > 160
+        assert marker.red() < 120
+
+        source_item = next(
+            window.file_list.item(row)
+            for row in range(window.file_list.count())
+            if window.file_list.item(row).data(QtCore.Qt.UserRole) == str(source)
+        )
+        target_item = next(
+            window.file_list.item(row)
+            for row in range(window.file_list.count())
+            if window.file_list.item(row).data(QtCore.Qt.UserRole) == str(target)
+        )
+        window.file_list.clearSelection()
+        source_item.setSelected(True)
+        window.file_list.setCurrentItem(source_item)
+        window._selection_load_timer.stop()
+        window._metadata_timer.stop()
+        window._copy_development_settings_from_selected()
+
+        window.file_list.clearSelection()
+        target_item.setSelected(True)
+        window.file_list.setCurrentItem(target_item)
+        window._selection_load_timer.stop()
+        window._metadata_timer.stop()
+        window._paste_development_settings_to_selected()
+
+        pasted = load_raw_sidecar(target)
+        assert pasted["development_profile"]["kind"] == "chart"
+        assert pasted["development_profile"]["profile_type"] == "advanced"
+        assert pasted["recipe"]["exposure_compensation"] == 0.45
+        assert "Perfil de ajuste avanzado" in target_item.toolTip()
     finally:
         window.close()
 
@@ -356,14 +809,114 @@ def test_startup_memory_ignores_stale_paths_and_falls_back_to_home(tmp_path: Pat
         window.close()
 
 
-def test_raw_global_options_live_in_calibration_flow(qapp):
+def test_thumbnail_copy_paste_development_settings_writes_raw_sidecars(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_dir = root / "01_ORG"
+    source = raw_dir / "source.NEF"
+    target = raw_dir / "target.NEF"
+    raw_dir.mkdir(parents=True)
+    source.write_bytes(b"source raw")
+    target.write_bytes(b"target raw")
+    payload = create_session(root, name="Sesion copiar pegar")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._set_current_directory(raw_dir)
+
+        source_item = next(
+            window.file_list.item(row)
+            for row in range(window.file_list.count())
+            if window.file_list.item(row).data(QtCore.Qt.UserRole) == str(source)
+        )
+        target_item = next(
+            window.file_list.item(row)
+            for row in range(window.file_list.count())
+            if window.file_list.item(row).data(QtCore.Qt.UserRole) == str(target)
+        )
+
+        window.file_list.clearSelection()
+        source_item.setSelected(True)
+        window.file_list.setCurrentItem(source_item)
+        window._selection_load_timer.stop()
+        window._metadata_timer.stop()
+        window.spin_exposure.setValue(0.75)
+        window.slider_brightness.setValue(22)
+        window._save_current_development_settings_to_selected()
+
+        assert raw_sidecar_path(source).exists()
+        source_sidecar = load_raw_sidecar(source)
+        assert source_sidecar["development_profile"]["profile_type"] == "basic"
+        assert "Perfil de ajuste básico" in source_item.toolTip()
+        marked = window._display_icon_for_path(
+            source,
+            window._icon_from_thumbnail_array(gui_module.np.full((48, 48, 3), 96, dtype=gui_module.np.uint8)),
+        )
+        pixmap = marked.pixmap(window.file_list.iconSize())
+        image = pixmap.toImage().convertToFormat(QtGui.QImage.Format_RGB32)
+        marker = QtGui.QColor(image.pixel(image.width() // 2, image.height() - 2))
+        assert marker.green() > 160
+        assert marker.red() < 120
+        assert marker.blue() < 140
+
+        window._copy_development_settings_from_selected()
+
+        window.file_list.clearSelection()
+        target_item.setSelected(True)
+        window.file_list.setCurrentItem(target_item)
+        window._selection_load_timer.stop()
+        window._metadata_timer.stop()
+        window.spin_exposure.setValue(-0.5)
+        window.slider_brightness.setValue(0)
+        window._paste_development_settings_to_selected()
+
+        pasted = load_raw_sidecar(target)
+        assert pasted["development_profile"]["profile_type"] == "basic"
+        assert pasted["recipe"]["exposure_compensation"] == 0.75
+        assert pasted["render_adjustments"]["brightness_ev"] == 0.22
+        assert "Perfil de ajuste básico" in target_item.toolTip()
+    finally:
+        window.close()
+
+
+def test_raw_adjustment_groups_follow_editor_flow(qapp):
     window = ICCRawMainWindow()
     try:
         panel_labels = [window.config_tabs.itemText(i) for i in range(window.config_tabs.count())]
-        assert "RAW global" not in panel_labels
-        assert "Calibrar sesión" in panel_labels
+        assert panel_labels[:6] == [
+            "Brillo y contraste",
+            "Color",
+            "Nitidez",
+            "Gestión de color y calibración",
+            "RAW Global",
+            "Exportar derivados",
+        ]
+        assert "Calibrar sesión" not in panel_labels
+        assert "Corrección básica" not in panel_labels
         assert isinstance(window._advanced_raw_config, QtWidgets.QGroupBox)
-        assert window._advanced_raw_config.title().startswith("RAW global")
+        assert window._advanced_raw_config.title() == "Criterios RAW globales"
+    finally:
+        window.close()
+
+
+def test_development_profile_controls_live_in_color_management_flow(qapp):
+    window = ICCRawMainWindow()
+    try:
+        panel_labels = [window.config_tabs.itemText(i) for i in range(window.config_tabs.count())]
+        assert "Gestión de color y calibración" in panel_labels
+        assert "Perfiles de revelado" not in panel_labels
+        assert window.config_tabs.indexOf("Nitidez") == panel_labels.index("Nitidez")
+
+        def is_descendant(widget: QtWidgets.QWidget, ancestor: QtWidgets.QWidget) -> bool:
+            parent = widget.parentWidget()
+            while parent is not None:
+                if parent is ancestor:
+                    return True
+                parent = parent.parentWidget()
+            return False
+
+        assert is_descendant(window.development_profile_combo, window.config_tabs)
+        assert not is_descendant(window.development_profile_combo, window.main_tabs.widget(0))
     finally:
         window.close()
 
@@ -396,6 +949,39 @@ def test_global_configuration_dialog_owns_non_image_settings(qapp):
         assert not is_descendant(window.batch_c2pa_cert_path, window.config_tabs)
         assert not is_descendant(window.check_fast_raw_preview, window.config_tabs)
         assert not is_descendant(window.path_display_profile, window.config_tabs)
+    finally:
+        window.close()
+
+
+def test_display_color_management_defaults_to_system_profile(tmp_path: Path, monkeypatch, qapp):
+    profile = tmp_path / "system-monitor.icc"
+    srgb_profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
+    profile.write_bytes(srgb_profile.tobytes())
+    monkeypatch.setattr(gui_module, "detect_system_display_profile", lambda: profile)
+
+    window = ICCRawMainWindow()
+    try:
+        assert window.check_display_color_management.isChecked()
+        assert window.path_display_profile.text() == str(profile)
+        assert "Monitor:" in window.display_profile_status.text()
+    finally:
+        window.close()
+
+
+def test_display_color_settings_migrate_old_disabled_default(tmp_path: Path, monkeypatch, qapp):
+    profile = tmp_path / "system-monitor.icc"
+    srgb_profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
+    profile.write_bytes(srgb_profile.tobytes())
+    settings = gui_module._make_app_settings()
+    settings.setValue("display/color_management_enabled", False)
+    settings.remove("display/system_profile_default_v1")
+    settings.sync()
+    monkeypatch.setattr(gui_module, "detect_system_display_profile", lambda: profile)
+
+    window = ICCRawMainWindow()
+    try:
+        assert window.check_display_color_management.isChecked()
+        assert window.path_display_profile.text() == str(profile)
     finally:
         window.close()
 

@@ -32,9 +32,14 @@ En términos prácticos, NexoRAW implementa:
 1. revelado RAW controlado y reproducible,
 2. detección automática de carta de color,
 3. muestreo robusto por parche,
-4. generación de perfil de revelado científico + perfil ICC específico de sesión,
-5. aplicación de ese paquete de sesión a RAW/TIFF seleccionados,
-6. trazabilidad y auditoría (JSON sidecars + hashes + manifiestos).
+4. perfiles de ajuste asignados a cada RAW, con mochila
+   `RAW.nexoraw.json`,
+5. generación de perfil avanzado desde carta + perfil ICC de entrada propio de
+   la sesión,
+6. perfiles básicos manuales cuando no existe carta, con ICC genéricos
+   declarados,
+7. aplicación de ajustes por copia/pegado entre imágenes y cola de revelado,
+8. trazabilidad y auditoría (JSON sidecars + hashes + manifiestos).
 
 ## Objetivo del proyecto
 
@@ -45,7 +50,8 @@ alternativa creativa a Lightroom, Darktable o RawTherapee. Su foco es más
 estrecho:
 
 - revelar RAW con parámetros explícitos y compatibles con auditoría,
-- calibrar una sesión a partir de capturas de carta bajo un iluminante concreto,
+- generar perfiles avanzados de ajuste a partir de capturas de carta bajo un
+  iluminante concreto,
 - generar una receta de revelado científica antes de construir el ICC,
 - producir perfiles ICC específicos para cámara, óptica, iluminante y receta,
 - aplicar ese paquete de sesión a imágenes objetivo sin mezclar decisiones
@@ -114,7 +120,7 @@ Principios de diseño:
 ## Alcance y límites
 
 NexoRAW trabaja por sesiones. Una sesión agrupa capturas de carta, RAW objetivo,
-recetas, perfiles, exportaciones, reportes y artefactos de trabajo. Esto evita
+mochilas, recetas, perfiles, exportaciones, reportes y artefactos de trabajo. Esto evita
 tratar el perfil ICC como una propiedad permanente de la cámara: el perfil se
 entiende como una descripción operativa de una configuración concreta.
 
@@ -126,8 +132,8 @@ NexoRAW no pretende:
 - generar un perfil universal para cualquier luz o escena,
 - ocultar dependencias críticas como LibRaw/rawpy, ArgyllCMS o ExifTool.
 
-La meta de la beta es ofrecer una base instalable y verificable para pruebas
-controladas, discusión técnica y ampliación comunitaria.
+La meta de la release 0.2 es ofrecer una base instalable y verificable para
+pruebas controladas, discusión técnica y ampliación comunitaria.
 
 Mantenimiento comunitario:
 
@@ -137,7 +143,9 @@ Mantenimiento comunitario:
 
 ## Estado actual (importante)
 
-NexoRAW esta en fase activa de desarrollo. Aunque ya hay CLI y GUI operativas para pruebas, la aplicacion **todavia no es plenamente funcional ni esta validada para produccion cientifica/forense**.
+NexoRAW esta en fase activa de desarrollo. Aunque ya hay CLI, GUI e instalador
+Linux operativos para pruebas, la aplicacion **todavia no esta validada para
+produccion cientifica/forense**.
 
 Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas controladas.
 
@@ -155,6 +163,12 @@ Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas control
 - GUI (opcional): **Qt for Python (`PySide6`)**.
 
 ## Instalación
+
+Para usuarios finales, NexoRAW se distribuye mediante instaladores. El usuario
+no debe instalar Python ni dependencias manualmente: el instalador deja la GUI,
+CLI, icono, herramientas externas y backend RAW listos para uso.
+
+Para desarrollo desde código:
 
 ```bash
 python3 -m venv .venv
@@ -175,24 +189,25 @@ bash scripts/check_tools.sh
 nexoraw check-tools --out tools_report.json
 ```
 
-## Paquete Debian beta
+## Paquete Debian
 
-La beta `0.1` puede construirse como paquete `.deb` instalable:
+La release `0.2.0` puede construirse como paquete `.deb` instalable:
 
 ```bash
 bash packaging/debian/build_deb.sh
-sudo apt install ./dist/nexoraw_0.1.0~beta5_amd64.deb
+sudo apt install ./dist/nexoraw_0.2.0_amd64.deb
 ```
 
 El paquete instala la aplicacion en `/opt/nexoraw`, crea los lanzadores
 `nexoraw`/`nexoraw-ui` y declara las dependencias externas del pipeline. Ver
-[Paquete Debian beta](docs/DEBIAN_PACKAGE.md).
+[Paquete Debian](docs/DEBIAN_PACKAGE.md).
 
 ## CLI
 
 El entry point nuevo es `nexoraw` (también invocable como `python -m nexoraw`).
-Los comandos heredados `iccraw` e `iccraw-ui` se mantienen como alias durante la
-transicion del proyecto:
+Los instaladores publicados solo exponen los lanzadores `nexoraw` y
+`nexoraw-ui`; las rutas internas `iccraw` se conservan como compatibilidad de
+código durante la transición del nombre del proyecto:
 
 ```bash
 nexoraw raw-info input.raw
@@ -228,6 +243,7 @@ nexoraw batch-develop ./raws \
   --recipe recipe_calibrated.yml \
   --profile camera_profile.icc \
   --out ./tiffs
+```
 
 Las salidas TIFF no se sobrescriben. Si `output.tiff` o
 `./tiffs/captura.tiff` ya existen, NexoRAW conserva el archivo anterior y
@@ -235,6 +251,7 @@ escribe la nueva version como `output_v002.tiff`, `captura_v002.tiff`,
 `captura_v003.tiff`, etc. En `batch-develop`, el TIFF de auditoria lineal en
 `_linear_audit/` usa el mismo numero de version que el TIFF final.
 
+```bash
 # Firma autonoma NexoRAW Proof y C2PA
 pip install -e .
 pip install -e .[c2pa]
@@ -251,6 +268,7 @@ nexoraw batch-develop ./raws \
 # Opcional: credenciales externas si el laboratorio ya las tiene.
 # set NEXORAW_C2PA_CERT=G:\ruta\chain.pem
 # set NEXORAW_C2PA_KEY=G:\ruta\signing.key
+```
 
 NexoRAW Proof se genera automaticamente como firma autonoma del proyecto. C2PA
 tambien se intenta incrustar automaticamente si `c2pa-python` esta disponible:
@@ -262,6 +280,7 @@ de confianza CAI, no una ausencia del vinculo RAW-TIFF. El sidecar
 perfil ICC, ajustes de nitidez, correccion basica/curvas, gestion de color,
 clave publica del firmante y contexto de exportacion.
 
+```bash
 nexoraw verify-proof ./tiffs/captura.tiff.nexoraw.proof.json --tiff ./tiffs/captura.tiff --raw ./raws/captura.NEF
 nexoraw verify-c2pa ./tiffs/captura.tiff --raw ./raws/captura.NEF --manifest ./tiffs/batch_manifest.json
 
@@ -340,23 +359,33 @@ La interfaz principal se organiza en 3 pestañas:
   - crear o abrir sesión de trabajo,
   - guardar metadatos de iluminación y toma,
   - definir un directorio raíz y crear automáticamente estructura persistente:
-    - `charts/`, `raw/`, `profiles/`, `exports/`, `config/`, `work/`,
-  - persistir estado de la sesión (`config/session.json`) con configuración y cola.
-- `2. Calibrar / Aplicar`:
+    - `00_configuraciones/`, `01_ORG/`, `02_DRV/`,
+  - persistir estado, perfiles, cache y cola en
+    `00_configuraciones/session.json`.
+- `2. Ajustar / Aplicar`:
   - explorador visual completo del sistema (unidades + árbol + miniaturas),
+  - selección de raíz de proyecto con apertura automática de `01_ORG/` para
+    navegar originales,
   - selección directa desde miniaturas: al elegir un RAW/TIFF compatible se
     carga automáticamente en el visor,
+  - tira horizontal de miniaturas con tamaño ajustable, JPEG embebido y fallback
+    RAW rápido cacheado,
   - preview RAW/DNG de alta fidelidad por defecto, con modo rapido opcional
     para navegacion (miniatura embebida / half-size),
   - gestion ICC de monitor opcional para convertir el preview sRGB al perfil
     de pantalla configurado antes de pintar en Qt,
   - visor con zoom, arrastre de reencuadre, rotación y comparación original/resultado,
-  - panel lateral por secciones verticales: calibración con criterios RAW,
-    corrección básica, nitidez, perfil activo y aplicación de sesión,
+  - panel lateral por secciones verticales: `Brillo y contraste`, `Color`,
+    `Nitidez`, `Gestión de color y calibración` y `RAW Global`,
   - `Configuracion -> Configuracion global`: identidad NexoRAW Proof, C2PA
     opcional, modo de preview y gestion ICC del monitor,
-  - `Calibrar sesión`: selección de una o varias capturas de carta, ajuste de
-    criterios RAW globales y generación conjunta de perfil de revelado + ICC,
+  - `Generar perfil avanzado con carta`: selección de capturas de carta,
+    ajuste de criterios RAW globales y generación conjunta de perfil de ajuste
+    avanzado + ICC de entrada,
+  - `Guardar perfil basico en imagen`: escritura de mochila para perfiles
+    manuales sin carta,
+  - `Copiar perfil de ajuste` / `Pegar perfil de ajuste`: reutilización de
+    ajustes entre miniaturas,
   - `Corrección básica`: iluminante final, temperatura, matiz, brillo, niveles,
     contraste y curva de medios,
   - `Nitidez`: ruido de luminancia, ruido cromático, nitidez y corrección de
@@ -384,8 +413,8 @@ Compatibilidad prevista de GUI:
 La GUI usa los mismos módulos de la CLI y escribe los mismos artefactos JSON/TIFF/ICC, manteniendo trazabilidad.
 Además, conserva tamaño/estado de ventana y splitters entre sesiones.
 Las salidas de sesión se normalizan dentro del directorio raíz: perfiles en
-`profiles/`, recetas/reportes en `config/`, artefactos de trabajo en `work/` y
-TIFF/preview en `exports/`.
+`00_configuraciones/`, originales en `01_ORG/` y TIFF/preview/manifiestos en
+`02_DRV/`.
 
 Notas de preview y rendimiento:
 
@@ -399,6 +428,9 @@ Notas de preview y rendimiento:
 - Las previsualizaciones base se cachean con clave de archivo, receta y modo de
   preview, con limite de memoria. Las miniaturas se generan a tamano maximo y
   se reescalan desde cache al mover el control de tamano.
+- Cuando el archivo pertenece a una sesión, la cache persistente se guarda bajo
+  `00_configuraciones/work/cache/` con rutas relativas para que una carpeta de
+  proyecto pueda moverse o compartirse con otro usuario.
 
 ## Receta reproducible
 
@@ -455,9 +487,9 @@ construccion, con `scripts/install_amaze_backend.py`, y fallar si
 - [NexoRAW Proof](docs/NEXORAW_PROOF.md)
 - [C2PA/CAI](docs/C2PA_CAI.md)
 - [Integración LibRaw + ArgyllCMS](docs/INTEGRACION_LIBRAW_ARGYLL.md)
-- [Paquete Debian beta](docs/DEBIAN_PACKAGE.md)
+- [Paquete Debian](docs/DEBIAN_PACKAGE.md)
 - [Instalacion en macOS](docs/MACOS_INSTALL.md)
-- [Instalador Windows beta](docs/WINDOWS_INSTALLER.md)
+- [Instalador Windows](docs/WINDOWS_INSTALLER.md)
 - [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
 - [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)
 - [Decisiones](docs/DECISIONS.md)

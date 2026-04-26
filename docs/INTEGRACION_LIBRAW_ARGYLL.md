@@ -15,6 +15,10 @@ ramas de código y sin mapeos implícitos entre motores RAW distintos.
 
 ## Instalación del sistema
 
+Para usuarios finales, las dependencias externas deben llegar mediante los
+instaladores de NexoRAW. La instalacion manual siguiente queda reservada a
+desarrollo, CI o entornos de prueba.
+
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
@@ -82,6 +86,10 @@ Regla operativa:
   disponible, la CLI/backend fallan con error explicito y la GUI degrada la
   receta interactiva a `dcb` para no bloquear la calibracion.
 
+En los instaladores de release, AMaZE debe verificarse durante la construccion
+y de nuevo en la instalacion con `nexoraw check-amaze`. Un instalador que no
+pueda demostrar `amaze_supported: true` no debe publicarse como build AMaZE.
+
 ## Integración ArgyllCMS
 
 Archivo clave:
@@ -119,9 +127,18 @@ Archivo clave:
 Modos de salida:
 
 1. `camera_rgb_with_input_icc`: mantiene píxeles en RGB de cámara e incrusta el
-   perfil ICC de entrada generado para la sesión.
+   perfil ICC de entrada generado para la sesión. Es el modo del TIFF maestro
+   cuando hay carta de color.
 2. `converted_srgb`: usa `cctiff` como CMM para transformar desde el perfil ICC
-   de entrada al perfil de referencia sRGB incluido en ArgyllCMS.
+   de entrada a un perfil sRGB generico de salida. Existen modos equivalentes
+   `converted_adobe_rgb` y `converted_prophoto_rgb`.
+3. `assigned_<espacio>_output_icc`: para sesiones sin carta. No hay ICC de
+   entrada medido; NexoRAW guarda la receta manual, genera sRGB, Adobe RGB
+   (1998) o ProPhoto RGB en `00_configuraciones/profiles/generic/` y lo incrusta como perfil de
+   salida.
+
+La metodologia completa se documenta en
+[`docs/METODOLOGIA_COLOR_RAW.md`](METODOLOGIA_COLOR_RAW.md).
 
 ## Validación local
 

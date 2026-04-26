@@ -14,7 +14,13 @@ import colour
 
 from ..core.models import BatchManifest, BatchManifestEntry, Recipe
 from ..core.external import external_tool_path, run_external
-from ..core.utils import list_raw_files, sha256_file, write_tiff16
+from ..core.utils import RAW_EXTENSIONS, list_raw_files, sha256_file, write_tiff16
+from .generic import (
+    canonical_generic_output_space,
+    ensure_generic_output_profile,
+    generic_output_profile,
+    is_generic_output_space,
+)
 from ..provenance.c2pa import (
     C2PASignConfig,
     C2PASigningError,
@@ -28,6 +34,7 @@ from ..provenance.nexoraw_proof import (
     sign_nexoraw_proof,
 )
 from ..raw.pipeline import develop_scene_linear_array, render_recipe_output_array
+from ..sidecar import write_raw_sidecar
 from ..version import __version__
 
 
@@ -87,6 +94,24 @@ def batch_develop(
             proof_config=proof_sign_config,
             render_context={"entrypoint": "batch_develop", "linear_audit_tiff": str(out_linear)},
         )
+        rendered_profile_path = profile_path_for_render_settings(
+            recipe,
+            input_profile_path=profile_path,
+            color_management_mode=write_mode,
+        )
+        if raw.suffix.lower() in RAW_EXTENSIONS:
+            write_raw_sidecar(
+                raw,
+                recipe=recipe,
+                development_profile=None,
+                detail_adjustments={},
+                render_adjustments={},
+                icc_profile_path=rendered_profile_path,
+                color_management_mode=write_mode,
+                output_tiff=out_final,
+                proof_path=Path(proof_result.proof_path),
+                status="rendered",
+            )
 
         entries.append(
             BatchManifestEntry(
@@ -94,7 +119,7 @@ def batch_develop(
                 source_sha256=sha256_file(raw),
                 output_tiff=str(out_final),
                 output_sha256=sha256_file(out_final),
-                profile_path=str(profile_path),
+                profile_path=str(rendered_profile_path or profile_path),
                 color_management_mode=color_mode,
                 output_color_space=recipe.output_space,
                 linear_audit_tiff=str(out_linear),
@@ -128,17 +153,19 @@ def color_management_mode(recipe: Recipe) -> str:
     space = recipe.output_space.strip().lower()
     if space in {"scene_linear_camera_rgb", "camera_rgb", "camera"}:
         return "camera_rgb_with_input_icc"
-    if space in {"srgb", "s_rgb", "s-rgb"}:
+    generic_space = canonical_generic_output_space(space)
+    if generic_space is not None:
         if recipe.output_linear:
             raise RuntimeError(
-                "output_space=srgb requiere output_linear=false para conversion ICC "
-                "con perfil sRGB estandar. Linear sRGB necesita un perfil de salida "
-                "explicito que aun no esta implementado."
+                f"output_space={recipe.output_space} requiere output_linear=false para usar "
+                "un perfil ICC generico de salida."
             )
-        return "converted_srgb"
+        if generic_space == "srgb":
+            return "converted_srgb"
+        return f"converted_{generic_space}"
     raise RuntimeError(
         f"output_space no soportado para export ICC: {recipe.output_space!r}. "
-        "Valores soportados: scene_linear_camera_rgb, camera_rgb, camera, srgb."
+        "Valores soportados: scene_linear_camera_rgb, camera_rgb, camera, srgb, adobe_rgb, prophoto_rgb."
     )
 
 
@@ -148,8 +175,19 @@ def write_profiled_tiff(
     *,
     recipe: Recipe,
     profile_path: Path | None,
+    generic_profile_dir: Path | None = None,
 ) -> str:
     if profile_path is None:
+        if is_generic_output_space(recipe.output_space):
+            if recipe.output_linear:
+                raise RuntimeError(
+                    f"output_space={recipe.output_space} requiere output_linear=false para incrustar "
+                    "un perfil ICC generico de salida."
+                )
+            output_profile = ensure_generic_output_profile(recipe.output_space, directory=generic_profile_dir)
+            space = generic_output_profile(recipe.output_space).key
+            write_tiff16(out_tiff, image_linear_rgb, icc_profile=output_profile.read_bytes())
+            return f"assigned_{space}_output_icc"
         write_tiff16(out_tiff, image_linear_rgb)
         return "no_profile"
 
@@ -162,7 +200,24 @@ def write_profiled_tiff(
         return mode
 
     if mode == "converted_srgb":
-        _write_converted_srgb_tiff_with_argyll(out_tiff, image_linear_rgb, input_profile=profile_path)
+        _write_converted_output_tiff_with_argyll(
+            out_tiff,
+            image_linear_rgb,
+            input_profile=profile_path,
+            output_space="srgb",
+            generic_profile_dir=generic_profile_dir,
+        )
+        return mode
+
+    if mode.startswith("converted_"):
+        output_space = mode.removeprefix("converted_")
+        _write_converted_output_tiff_with_argyll(
+            out_tiff,
+            image_linear_rgb,
+            input_profile=profile_path,
+            output_space=output_space,
+            generic_profile_dir=generic_profile_dir,
+        )
         return mode
 
     raise RuntimeError(f"Modo de gestion de color no soportado: {mode}")
@@ -180,20 +235,38 @@ def write_signed_profiled_tiff(
     detail_adjustments: dict[str, Any] | None = None,
     render_adjustments: dict[str, Any] | None = None,
     render_context: dict[str, Any] | None = None,
+    generic_profile_dir: Path | None = None,
 ) -> tuple[str, NexoRawProofResult]:
     proof_sign_config = proof_config or proof_config_from_environment()
     out_tiff = Path(out_tiff)
     out_tiff.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=f".{out_tiff.stem}.nexoraw_", dir=out_tiff.parent) as tmp:
         staged_tiff = Path(tmp) / out_tiff.name
-        mode = write_profiled_tiff(staged_tiff, image_linear_rgb, recipe=recipe, profile_path=profile_path)
-        settings = build_render_settings(
+        mode = write_profiled_tiff(
+            staged_tiff,
+            image_linear_rgb,
             recipe=recipe,
             profile_path=profile_path,
+            generic_profile_dir=generic_profile_dir,
+        )
+        rendered_profile_path = profile_path_for_render_settings(
+            recipe,
+            input_profile_path=profile_path,
+            color_management_mode=mode,
+            generic_profile_dir=generic_profile_dir,
+        )
+        enriched_context = dict(render_context or {})
+        if _uses_input_profile_for_conversion(mode) and profile_path is not None:
+            enriched_context["source_input_icc_path_auxiliary"] = str(profile_path)
+            if profile_path.exists():
+                enriched_context["source_input_icc_sha256"] = sha256_file(profile_path)
+        settings = build_render_settings(
+            recipe=recipe,
+            profile_path=rendered_profile_path,
             color_management_mode=mode,
             detail_adjustments=detail_adjustments,
             render_adjustments=render_adjustments,
-            context=render_context,
+            context=enriched_context,
         )
         c2pa_status: dict[str, Any] = {"embedded": False, "status": "not_configured"}
         if c2pa_config is not None:
@@ -202,7 +275,7 @@ def write_signed_profiled_tiff(
                     staged_tiff,
                     source_raw=source_raw,
                     recipe=recipe,
-                    profile_path=profile_path,
+                    profile_path=rendered_profile_path,
                     color_management_mode=mode,
                     config=c2pa_config,
                     render_settings=settings,
@@ -230,7 +303,7 @@ def write_signed_profiled_tiff(
                 output_tiff=out_tiff,
                 source_raw=source_raw,
                 recipe=recipe,
-                profile_path=profile_path,
+                profile_path=rendered_profile_path,
                 color_management_mode=mode,
                 render_settings=settings,
                 config=proof_sign_config,
@@ -245,14 +318,59 @@ def write_signed_profiled_tiff(
         return mode, proof_result
 
 
+def profile_path_for_render_settings(
+    recipe: Recipe,
+    *,
+    input_profile_path: Path | None,
+    color_management_mode: str,
+    generic_profile_dir: Path | None = None,
+) -> Path | None:
+    if color_management_mode == "camera_rgb_with_input_icc":
+        return input_profile_path
+    if color_management_mode.startswith("assigned_") or color_management_mode.startswith("converted_"):
+        if is_generic_output_space(recipe.output_space):
+            return ensure_generic_output_profile(recipe.output_space, directory=generic_profile_dir)
+    return None
+
+
+def profile_role_for_color_management(color_management_mode: str, profile_path: Path | None) -> str | None:
+    if profile_path is None:
+        return None
+    if color_management_mode == "camera_rgb_with_input_icc":
+        return "session_input_icc"
+    if color_management_mode.startswith("assigned_") or color_management_mode.startswith("converted_"):
+        return "generic_output_icc"
+    return "icc_profile"
+
+
+def _uses_input_profile_for_conversion(color_management_mode: str) -> bool:
+    return color_management_mode.startswith("converted_")
+
+
 def _write_converted_srgb_tiff_with_argyll(out_tiff: Path, image_linear_rgb: np.ndarray, *, input_profile: Path) -> None:
+    _write_converted_output_tiff_with_argyll(
+        out_tiff,
+        image_linear_rgb,
+        input_profile=input_profile,
+        output_space="srgb",
+    )
+
+
+def _write_converted_output_tiff_with_argyll(
+    out_tiff: Path,
+    image_linear_rgb: np.ndarray,
+    *,
+    input_profile: Path,
+    output_space: str,
+    generic_profile_dir: Path | None = None,
+) -> None:
     cctiff = external_tool_path("cctiff")
     if cctiff is None:
         raise RuntimeError(
             "No se puede convertir ICC: 'cctiff' de ArgyllCMS no esta disponible en PATH. "
             "Instala ArgyllCMS completo o configura su directorio bin."
         )
-    srgb_icc = _argyll_reference_profile("sRGB.icm")
+    output_icc = ensure_generic_output_profile(output_space, directory=generic_profile_dir)
 
     out_tiff.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="nexoraw_argyll_cctiff_") as tmp:
@@ -267,9 +385,9 @@ def _write_converted_srgb_tiff_with_argyll(out_tiff: Path, image_linear_rgb: np.
             "-p",  # precise correction path
             "-ir",
             str(input_profile),
-            str(srgb_icc),
+            str(output_icc),
             "-e",
-            str(srgb_icc),
+            str(output_icc),
             str(source_tiff),
             str(out_tiff),
         ]

@@ -23,6 +23,7 @@ fi
 
 command -v nexoraw >/dev/null 2>&1 || fail "nexoraw no esta en PATH"
 command -v nexoraw-ui >/dev/null 2>&1 || fail "nexoraw-ui no esta en PATH"
+command -v colormgr >/dev/null 2>&1 || fail "colormgr/colord no esta instalado para detectar perfiles ICC de monitor"
 if command -v iccraw >/dev/null 2>&1 || command -v iccraw-ui >/dev/null 2>&1; then
   fail "hay comandos iccraw heredados en PATH"
 fi
@@ -46,6 +47,7 @@ done
 nexoraw --version >/dev/null
 nexoraw check-tools --strict >/dev/null
 nexoraw check-c2pa >/dev/null
+nexoraw check-display-profile >/dev/null
 if is_true "$REQUIRE_AMAZE"; then
   nexoraw check-amaze >/dev/null
 fi

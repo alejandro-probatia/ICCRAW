@@ -1,7 +1,9 @@
 # Instalacion en macOS
 
-NexoRAW funciona en macOS desde entorno Python. La ruta soportada para beta es
-instalacion desde codigo con dependencias externas del sistema.
+NexoRAW debe distribuirse preferentemente mediante instalador cuando exista
+artefacto macOS validado. Mientras no haya instalador macOS publicado, la ruta
+soportada para pruebas es instalacion desde codigo con dependencias externas del
+sistema.
 
 ## Dependencias del sistema
 

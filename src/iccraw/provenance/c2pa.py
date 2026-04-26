@@ -360,6 +360,7 @@ def build_render_settings(
     render_adjustments: dict[str, Any] | None = None,
     context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    profile_role = _icc_profile_role(color_management_mode, profile_path)
     payload: dict[str, Any] = {
         "schema": RENDER_SETTINGS_SCHEMA,
         "schema_version": 1,
@@ -368,6 +369,7 @@ def build_render_settings(
         "render_adjustments": _normalize_json(render_adjustments or {}),
         "color_management": {
             "mode": color_management_mode,
+            "icc_profile_role": profile_role,
             "icc_profile_path_auxiliary": str(profile_path) if profile_path is not None else None,
             "icc_profile_sha256": sha256_file(profile_path) if profile_path is not None and profile_path.exists() else None,
             "output_space": recipe.output_space,
@@ -378,6 +380,17 @@ def build_render_settings(
     }
     payload["settings_sha256"] = _json_sha256(payload)
     return payload
+
+
+def _icc_profile_role(color_management_mode: str, profile_path: Path | None) -> str | None:
+    if profile_path is None:
+        return None
+    mode = str(color_management_mode or "")
+    if mode == "camera_rgb_with_input_icc":
+        return "session_input_icc"
+    if mode.startswith("assigned_") or mode.startswith("converted_"):
+        return "generic_output_icc"
+    return "icc_profile"
 
 
 def estimate_mime_type(path: Path) -> str:
@@ -433,6 +446,7 @@ def build_raw_link_assertion(
             "software_version": __version__,
             "recipe_sha256": recipe_sha256(recipe),
             "icc_profile_sha256": sha256_file(profile_path) if profile_path is not None and profile_path.exists() else None,
+            "icc_profile_role": _icc_profile_role(color_management_mode, profile_path),
             "raw_backend": recipe.raw_developer,
             "demosaicing_algorithm": recipe.demosaic_algorithm,
             "output_space": recipe.output_space,

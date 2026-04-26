@@ -273,6 +273,7 @@ def build_nexoraw_proof_payload(
             "demosaicing_algorithm": recipe.demosaic_algorithm,
             "recipe_sha256": recipe_sha256(recipe),
             "recipe_parameters": _normalize_json(asdict(recipe)),
+            "icc_profile_role": _icc_profile_role(color_management_mode, profile_path),
             "icc_profile_path_auxiliary": str(profile_path) if profile_path else None,
             "icc_profile_sha256": sha256_file(profile_path) if profile_path is not None and profile_path.exists() else None,
             "color_management_mode": color_management_mode,
@@ -299,6 +300,17 @@ def build_nexoraw_proof_payload(
             "public_key_pem": public_key_pem,
         },
     }
+
+
+def _icc_profile_role(color_management_mode: str, profile_path: Path | None) -> str | None:
+    if profile_path is None:
+        return None
+    mode = str(color_management_mode or "")
+    if mode == "camera_rgb_with_input_icc":
+        return "session_input_icc"
+    if mode.startswith("assigned_") or mode.startswith("converted_"):
+        return "generic_output_icc"
+    return "icc_profile"
 
 
 def verify_nexoraw_proof(
