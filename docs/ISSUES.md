@@ -5,6 +5,9 @@ criterios de aceptacion completos estan en:
 
 - [Revision operativa y plan de profesionalizacion](OPERATIVE_REVIEW_PLAN.md)
 
+Este documento es la fuente canonica de planificacion. Los issues de GitHub
+son su reflejo operativo y deben enlazar a las secciones correspondientes.
+
 ## P0
 
 1. [x] Validar recetas de forma estricta y eliminar mapeos silenciosos de algoritmos

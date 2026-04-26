@@ -1,0 +1,82 @@
+﻿name: Validacion colorimetrica de campo
+description: Reporta resultados de validacion colorimetrica en una sesion real
+title: "[Colorimetria]: "
+labels:
+  - validation
+  - colorimetry
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version de NexoRAW
+      placeholder: "Ej: v0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: camera
+    attributes:
+      label: Camara
+      placeholder: "Ej: Nikon D850"
+    validations:
+      required: true
+  - type: input
+    id: lens
+    attributes:
+      label: Optica
+      placeholder: "Ej: 60mm macro"
+    validations:
+      required: true
+  - type: input
+    id: illuminant
+    attributes:
+      label: Iluminante
+      placeholder: "Ej: D50 LED calibrado"
+    validations:
+      required: true
+  - type: input
+    id: chart
+    attributes:
+      label: Carta usada
+      placeholder: "Ej: ColorChecker 24 (2005)"
+    validations:
+      required: true
+  - type: textarea
+    id: recipe
+    attributes:
+      label: Receta utilizada
+      description: Ruta o contenido relevante de `recipe.yml` / `recipe_calibrated.yml`.
+    validations:
+      required: true
+  - type: input
+    id: de76_mean
+    attributes:
+      label: DeltaE76 medio
+      placeholder: "Ej: 2.8"
+    validations:
+      required: true
+  - type: input
+    id: de2000_mean
+    attributes:
+      label: DeltaE2000 medio
+      placeholder: "Ej: 1.9"
+    validations:
+      required: true
+  - type: input
+    id: worst_patch
+    attributes:
+      label: Peor parche
+      placeholder: "Ej: P13, dE2000=4.2"
+    validations:
+      required: true
+  - type: input
+    id: validation_samples
+    attributes:
+      label: Numero de muestras de validacion
+      placeholder: "Ej: 24"
+    validations:
+      required: true
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Artefactos adjuntos
+      description: Adjunta `qa_session_report.json`, `.profile.json` y manifiesto si es posible.
