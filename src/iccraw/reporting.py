@@ -4,6 +4,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
 import os
+from pathlib import Path
 import platform
 import subprocess
 from typing import Any
@@ -136,6 +137,37 @@ def check_amaze_backend() -> dict[str, Any]:
     }
 
 
+def check_c2pa_support() -> dict[str, Any]:
+    try:
+        import c2pa  # type: ignore[import-not-found]
+    except Exception as exc:
+        return {
+            "status": "not_available",
+            "available": False,
+            "c2pa_python_distribution": _safe_distribution_version("c2pa-python"),
+            "module_path": None,
+            "native_libraries": [],
+            "missing_api": [],
+            "message": f"c2pa-python no disponible: {exc}",
+        }
+
+    required_api = ["Builder", "C2paSignerInfo", "C2paSigningAlg", "Reader", "Signer"]
+    missing_api = [name for name in required_api if not hasattr(c2pa, name)]
+    module_path = Path(getattr(c2pa, "__file__", "") or "")
+    package_dir = module_path.parent if module_path else Path()
+    native_libraries = sorted(str(path) for path in (package_dir / "libs").glob("c2pa_c.*"))
+    ok = not missing_api and any(path.lower().endswith((".dll", ".so", ".dylib")) for path in native_libraries)
+    return {
+        "status": "ok" if ok else "incomplete",
+        "available": True,
+        "c2pa_python_distribution": _safe_distribution_version("c2pa-python"),
+        "module_path": str(module_path) if module_path else None,
+        "native_libraries": native_libraries,
+        "missing_api": missing_api,
+        "message": "ok" if ok else "c2pa-python instalado, pero faltan API o libreria nativa",
+    }
+
+
 def _check_external_tool(spec: dict[str, Any]) -> ExternalToolCheck:
     commands = [str(c) for c in spec["commands"]]
     selected = next((command for command in commands if external_tool_path(command)), None)
@@ -208,6 +240,13 @@ def _rawpy_distribution_version() -> str:
         except importlib_metadata.PackageNotFoundError:
             continue
     return ", ".join(found) if found else "not-available"
+
+
+def _safe_distribution_version(dist_name: str) -> str:
+    try:
+        return importlib_metadata.version(dist_name)
+    except importlib_metadata.PackageNotFoundError:
+        return "not-available"
 
 
 def _rawpy_flags_summary() -> str:

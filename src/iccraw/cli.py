@@ -32,7 +32,13 @@ from .metadata_viewer import inspect_file_metadata
 from .profile.development import build_development_profile
 from .profile.builder import build_profile, validate_profile, write_samples_cgats
 from .profile.export import batch_develop
-from .provenance.c2pa import DEFAULT_TIMESTAMP_URL, C2PASignConfig, c2pa_config_from_environment, verify_c2pa_raw_link
+from .provenance.c2pa import (
+    DEFAULT_TIMESTAMP_URL,
+    C2PASignConfig,
+    auto_c2pa_config,
+    c2pa_config_from_environment,
+    verify_c2pa_raw_link,
+)
 from .provenance.nexoraw_proof import (
     NexoRawProofConfig,
     generate_ed25519_identity,
@@ -42,7 +48,7 @@ from .provenance.nexoraw_proof import (
 from .qa_compare import compare_qa_reports
 from .raw.metadata import raw_info
 from .raw.pipeline import develop_controlled
-from .reporting import check_amaze_backend, check_external_tools, gather_run_context
+from .reporting import check_amaze_backend, check_c2pa_support, check_external_tools, gather_run_context
 from .version import __version__
 from .workflow import auto_profile_batch
 
@@ -129,6 +135,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     s.add_argument("--profile", required=True)
     s.add_argument("--out", required=True)
     s.add_argument("--c2pa-sign", action="store_true", help="Firma C2PA opcional si hay certificado disponible")
+    s.add_argument("--no-c2pa", action="store_true", help="No intenta firma C2PA automatica; mantiene NexoRAW Proof")
     s.add_argument("--c2pa-cert", default=None, help="Cadena de certificado PEM para C2PA")
     s.add_argument("--c2pa-key", default=None, help="Clave privada PEM para C2PA")
     s.add_argument("--c2pa-alg", default="ps256", help="Algoritmo de firma C2PA: ps256, ps384, es256...")
@@ -209,6 +216,9 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
 
     s = sub.add_parser("check-amaze")
+    s.add_argument("--out", default=None, help="JSON de salida opcional")
+
+    s = sub.add_parser("check-c2pa")
     s.add_argument("--out", default=None, help="JSON de salida opcional")
 
     s = sub.add_parser("verify-c2pa")
@@ -319,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "batch-develop":
             recipe = load_recipe(Path(args.recipe))
             c2pa_config = None
-            if args.c2pa_sign or args.c2pa_cert or args.c2pa_key:
+            if not args.no_c2pa and (args.c2pa_sign or args.c2pa_cert or args.c2pa_key):
                 if args.c2pa_cert and args.c2pa_key:
                     c2pa_config = C2PASignConfig(
                         cert_path=Path(args.c2pa_cert),
@@ -341,6 +351,15 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 else:
                     raise RuntimeError("Configura --c2pa-cert y --c2pa-key, o usa --c2pa-sign con variables de entorno")
+            elif not args.no_c2pa:
+                c2pa_config = auto_c2pa_config(
+                    technical_manifest_path=Path(args.c2pa_technical_manifest)
+                    if args.c2pa_technical_manifest
+                    else None,
+                    session_id=args.session_id,
+                    signer_name=args.c2pa_signer_name or "NexoRAW local signer",
+                    timestamp_url=args.c2pa_timestamp_url,
+                )
 
             if args.proof_key:
                 proof_config = NexoRawProofConfig(
@@ -443,6 +462,13 @@ def main(argv: list[str] | None = None) -> int:
                 write_json(Path(args.out), result)
             print(json.dumps(result, indent=2))
             return 0 if result.get("amaze_supported") else 2
+
+        if args.command == "check-c2pa":
+            result = check_c2pa_support()
+            if args.out:
+                write_json(Path(args.out), result)
+            print(json.dumps(result, indent=2))
+            return 0 if result.get("status") == "ok" else 2
 
         if args.command == "verify-c2pa":
             result = verify_c2pa_raw_link(

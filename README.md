@@ -225,9 +225,7 @@ nexoraw build-profile samples.json --recipe recipe_calibrated.yml --out camera_p
 nexoraw batch-develop ./raws \
   --recipe recipe_calibrated.yml \
   --profile camera_profile.icc \
-  --out ./tiffs \
-  --proof-key ~/.nexoraw/proof/nexoraw-proof-private.pem \
-  --proof-public-key ~/.nexoraw/proof/nexoraw-proof-public.pem
+  --out ./tiffs
 
 Las salidas TIFF no se sobrescriben. Si `output.tiff` o
 `./tiffs/captura.tiff` ya existen, NexoRAW conserva el archivo anterior y
@@ -235,37 +233,32 @@ escribe la nueva version como `output_v002.tiff`, `captura_v002.tiff`,
 `captura_v003.tiff`, etc. En `batch-develop`, el TIFF de auditoria lineal en
 `_linear_audit/` usa el mismo numero de version que el TIFF final.
 
-# Firma autonoma NexoRAW Proof y C2PA opcional
+# Firma autonoma NexoRAW Proof y C2PA
 pip install -e .
-nexoraw proof-keygen \
-  --private-key ~/.nexoraw/proof/nexoraw-proof-private.pem \
-  --public-key ~/.nexoraw/proof/nexoraw-proof-public.pem
-
-# C2PA/CAI opcional en TIFFs finales NexoRAW
 pip install -e .[c2pa]
+
+# Diagnostico de instalacion
+nexoraw check-c2pa
+
+# Exportacion: si no hay claves configuradas, NexoRAW crea identidad local.
 nexoraw batch-develop ./raws \
   --recipe recipe_calibrated.yml \
   --profile camera_profile.icc \
-  --out ./tiffs \
-  --proof-key ~/.nexoraw/proof/nexoraw-proof-private.pem \
-  --proof-public-key ~/.nexoraw/proof/nexoraw-proof-public.pem \
-  --c2pa-sign \
-  --c2pa-cert chain.pem \
-  --c2pa-key signing.key
+  --out ./tiffs
 
-# Alternativa para GUI y automatizaciones:
-# set NEXORAW_PROOF_KEY=G:\ruta\nexoraw-proof-private.pem
-# set NEXORAW_PROOF_PUBLIC_KEY=G:\ruta\nexoraw-proof-public.pem
+# Opcional: credenciales externas si el laboratorio ya las tiene.
 # set NEXORAW_C2PA_CERT=G:\ruta\chain.pem
 # set NEXORAW_C2PA_KEY=G:\ruta\signing.key
 
-NexoRAW Proof es la firma autonoma del proyecto. C2PA se incrusta si hay
-certificado disponible, pero ya no es un requisito centralizado para que el
-TIFF tenga trazabilidad criptografica. Si C2PA se solicita y falla, la
-exportacion se aborta; si no se solicita, el TIFF se firma con NexoRAW Proof.
-El sidecar `.nexoraw.proof.json` vincula TIFF y RAW mediante SHA-256 e incluye
-receta, perfil ICC, ajustes de nitidez, correccion basica/curvas, gestion de
-color, clave publica del firmante y contexto de exportacion.
+NexoRAW Proof se genera automaticamente como firma autonoma del proyecto. C2PA
+tambien se intenta incrustar automaticamente si `c2pa-python` esta disponible:
+primero usa credenciales externas configuradas y, si no existen, crea una
+identidad local autoemitida en `~/.nexoraw/c2pa`. Los lectores C2PA pueden
+mostrar `signingCredential.untrusted` con esa identidad local; es una advertencia
+de confianza CAI, no una ausencia del vinculo RAW-TIFF. El sidecar
+`.nexoraw.proof.json` vincula TIFF y RAW mediante SHA-256 e incluye receta,
+perfil ICC, ajustes de nitidez, correccion basica/curvas, gestion de color,
+clave publica del firmante y contexto de exportacion.
 
 nexoraw verify-proof ./tiffs/captura.tiff.nexoraw.proof.json --tiff ./tiffs/captura.tiff --raw ./raws/captura.NEF
 nexoraw verify-c2pa ./tiffs/captura.tiff --raw ./raws/captura.NEF --manifest ./tiffs/batch_manifest.json

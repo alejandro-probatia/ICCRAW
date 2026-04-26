@@ -687,6 +687,8 @@ def _c2pa_status_label(c2pa: dict[str, Any]) -> str | None:
         return None
     status = c2pa.get("status")
     if status == "ok":
+        if _c2pa_only_untrusted_signing_credential(c2pa.get("validation_status")):
+            return "Manifiesto C2PA legible con identidad local"
         return "Manifiesto C2PA legible"
     labels = {
         "absent_or_invalid": "Ausente o no valido",
@@ -777,10 +779,20 @@ def _c2pa_validation_summary(c2pa: dict[str, Any]) -> str | None:
     status = c2pa.get("validation_status")
     if not status:
         return "Sin errores declarados"
+    if _c2pa_only_untrusted_signing_credential(status):
+        return "Firma tecnica legible; firmante local no incluido en lista de confianza CAI"
     if isinstance(status, list):
         codes = [str(item.get("code") if isinstance(item, dict) else item) for item in status]
         return "; ".join(codes)
     return _format_value(status)
+
+
+def _c2pa_only_untrusted_signing_credential(status: Any) -> bool:
+    if not status:
+        return False
+    items = status if isinstance(status, list) else [status]
+    codes = [str(item.get("code") if isinstance(item, dict) else item) for item in items]
+    return bool(codes) and all(code == "signingCredential.untrusted" for code in codes)
 
 
 def _json_text(payload: Any) -> str:

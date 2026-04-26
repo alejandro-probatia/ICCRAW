@@ -45,14 +45,19 @@ class NexoRawProofResult:
     output_tiff_sha256: str
     raw_sha256: str
     signer_public_key_sha256: str
+    c2pa_embedded: bool = False
 
 
 def proof_config_from_environment() -> NexoRawProofConfig:
     key = _env_first("NEXORAW_PROOF_KEY", "ICCRAW_PROOF_KEY")
     if not key:
-        raise NexoRawProofError(
-            "NexoRAW Proof es obligatorio para exportar TIFF final. Configura NEXORAW_PROOF_KEY "
-            "o genera una identidad local con 'nexoraw proof-keygen'."
+        identity = ensure_local_proof_identity()
+        return NexoRawProofConfig(
+            private_key_path=Path(identity["private_key"]),
+            public_key_path=Path(identity["public_key"]),
+            signer_name=_env_first("NEXORAW_PROOF_SIGNER_NAME", "ICCRAW_PROOF_SIGNER_NAME")
+            or "NexoRAW local signer",
+            signer_id=_env_first("NEXORAW_PROOF_SIGNER_ID", "ICCRAW_PROOF_SIGNER_ID"),
         )
     public = _env_first("NEXORAW_PROOF_PUBLIC_KEY", "ICCRAW_PROOF_PUBLIC_KEY")
     return NexoRawProofConfig(
@@ -66,6 +71,32 @@ def proof_config_from_environment() -> NexoRawProofConfig:
 
 def default_proof_sidecar_path(output_tiff: Path) -> Path:
     return Path(output_tiff).with_suffix(Path(output_tiff).suffix + ".nexoraw.proof.json")
+
+
+def ensure_local_proof_identity(
+    *,
+    base_dir: Path | None = None,
+    signer_name: str = "NexoRAW local signer",
+) -> dict[str, str]:
+    del signer_name
+    base = Path(base_dir) if base_dir is not None else _default_proof_identity_dir()
+    private_key = base / "nexoraw-proof-private.pem"
+    public_key = base / "nexoraw-proof-public.pem"
+    if private_key.exists() and public_key.exists():
+        public = serialization.load_pem_public_key(public_key.read_bytes())
+        if not isinstance(public, Ed25519PublicKey):
+            raise NexoRawProofError("La identidad local Proof no usa clave publica Ed25519")
+        public_der = public.public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        return {
+            "private_key": str(private_key),
+            "public_key": str(public_key),
+            "public_key_sha256": hashlib.sha256(public_der).hexdigest(),
+            "algorithm": PROOF_ALGORITHM,
+        }
+    return generate_ed25519_identity(private_key_path=private_key, public_key_path=public_key)
 
 
 def generate_ed25519_identity(
@@ -180,6 +211,7 @@ def sign_nexoraw_proof(
         output_tiff_sha256=payload["subject"]["output_tiff"]["sha256"],
         raw_sha256=payload["subject"]["source_raw"]["sha256"],
         signer_public_key_sha256=public_fingerprint,
+        c2pa_embedded=bool(c2pa_embedded),
     )
 
 
@@ -345,6 +377,13 @@ def _env_first(*names: str) -> str | None:
         if value:
             return value
     return None
+
+
+def _default_proof_identity_dir() -> Path:
+    base = _env_first("NEXORAW_HOME", "ICCRAW_HOME")
+    if base:
+        return Path(base).expanduser() / "proof"
+    return Path.home().expanduser() / ".nexoraw" / "proof"
 
 
 def _canonical_json(payload: Any) -> bytes:

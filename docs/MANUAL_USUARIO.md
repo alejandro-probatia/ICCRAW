@@ -72,8 +72,9 @@ pip install -e .[gui]
 pip install -e .[c2pa]
 ```
 
-El extra `c2pa` solo es necesario si se quieren incrustar manifiestos C2PA en
-TIFF. NexoRAW Proof funciona como mecanismo propio de firma autonoma.
+El instalador Windows ya incluye C2PA. En instalacion desde codigo, el extra
+`c2pa` permite incrustar y leer manifiestos C2PA en TIFF. Si no hay certificado
+externo, NexoRAW crea una identidad local autoemitida.
 
 ### 2.3 AMaZE y licencia GPL3
 
@@ -389,21 +390,21 @@ NexoRAW Proof:
 
 C2PA / CAI:
 
-- certificado C2PA opcional,
-- clave privada C2PA opcional,
+- certificado C2PA externo opcional,
+- clave privada C2PA externa opcional,
 - frase clave no persistente,
 - algoritmo,
 - servidor TSA,
 - firmante C2PA.
 
-NexoRAW Proof es obligatorio para la trazabilidad autonoma del TIFF final. C2PA
-se incrusta solo si hay credenciales compatibles o variables de entorno.
+NexoRAW Proof se genera automaticamente para la trazabilidad autonoma del TIFF
+final. C2PA se intenta incrustar automaticamente con credenciales externas si
+estan configuradas; si no, se usa una identidad local de laboratorio creada por
+NexoRAW.
 
 Variables de entorno utiles:
 
 ```bat
-set NEXORAW_PROOF_KEY=G:\ruta\nexoraw-proof-private.pem
-set NEXORAW_PROOF_PUBLIC_KEY=G:\ruta\nexoraw-proof-public.pem
 set NEXORAW_C2PA_CERT=G:\ruta\chain.pem
 set NEXORAW_C2PA_KEY=G:\ruta\signing.key
 ```
@@ -541,10 +542,11 @@ NexoRAW Proof crea un sidecar firmado con:
 - fecha UTC,
 - contexto de sesion.
 
-C2PA/CAI, si esta configurado, se incrusta en el TIFF como capa interoperable.
-Si C2PA falla estando solicitado/configurado, la exportacion se aborta para no
-ocultar un error de firma. Si no esta configurado, el TIFF sigue teniendo
-NexoRAW Proof.
+C2PA/CAI se incrusta en el TIFF como capa interoperable cuando el SDK esta
+disponible. Si el usuario configura credenciales externas y fallan, la
+exportacion se aborta para no ocultar un error de firma. Si se usa la identidad
+local autoemitida y no se puede completar C2PA, el TIFF sigue teniendo NexoRAW
+Proof y el motivo queda registrado en el proof.
 
 Reglas forenses:
 
@@ -622,11 +624,17 @@ Si no esta disponible, usar DCB u otro algoritmo soportado.
 - verificar RAW global antes de generar perfil,
 - revisar clipping y DeltaE.
 
+### C2PA muestra `signingCredential.untrusted`
+
+Es esperable con la identidad local de NexoRAW. Significa que el certificado no
+pertenece a una lista central CAI, no que el vinculo RAW-TIFF sea invalido. Para
+validez probatoria se conserva NexoRAW Proof, el hash RAW, el hash TIFF, la
+receta, el perfil ICC y `batch_manifest.json`.
+
 ### Los metadatos C2PA aparecen ausentes
 
-Es normal si no se han configurado certificado y clave C2PA. La trazabilidad
-autonoma debe revisarse en NexoRAW Proof. Para C2PA, instalar extra y configurar
-credenciales en `Configuracion global`.
+Comprobar `nexoraw check-c2pa`. Si el SDK no esta instalado o la firma local no
+pudo completarse, la trazabilidad autonoma sigue estando en NexoRAW Proof.
 
 ### Falta matplotlib
 

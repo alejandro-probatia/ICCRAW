@@ -268,7 +268,7 @@ if (-not (Test-Path $Python)) {
   $Python = Join-Path $Root ".venv\Scripts\python.exe"
 }
 
-Invoke-Native "Instalar dependencias de empaquetado" $Python @("-m", "pip", "install", "-e", ".[dev,gui,installer]")
+Invoke-Native "Instalar dependencias de empaquetado" $Python @("-m", "pip", "install", "-e", ".[dev,gui,installer,c2pa]")
 Install-AmazeBackend
 Test-AmazeBackend
 
@@ -320,6 +320,7 @@ Copy-RawpyDemosaicLegal -AppBuildDir $AppBuildDir
 Invoke-Native "Smoke CLI empaquetada" (Join-Path $AppBuildDir "nexoraw.exe") @("--version")
 Invoke-Native "Smoke ayuda CLI empaquetada" (Join-Path $AppBuildDir "nexoraw.exe") @("--help")
 Invoke-Native "Smoke herramientas empaquetadas" (Join-Path $AppBuildDir "nexoraw.exe") @("check-tools", "--strict")
+Invoke-Native "Smoke C2PA empaquetado" (Join-Path $AppBuildDir "nexoraw.exe") @("check-c2pa")
 Invoke-Native "Smoke CLI heredada" (Join-Path $AppBuildDir "iccraw.exe") @("--version")
 if ($RequireAmaze) {
   Invoke-Native "Smoke AMaZE empaquetado" (Join-Path $AppBuildDir "nexoraw.exe") @("check-amaze")

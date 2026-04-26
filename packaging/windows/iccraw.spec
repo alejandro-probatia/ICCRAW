@@ -20,12 +20,15 @@ for dist_name in ("rawpy-demosaic", "rawpy"):
         pass
 hiddenimports = collect_submodules("iccraw")
 hiddenimports += collect_submodules("nexoraw")
+hiddenimports += collect_submodules("c2pa")
 rawpy_binaries = collect_dynamic_libs("rawpy")
+c2pa_binaries = collect_dynamic_libs("c2pa")
+datas += collect_data_files("c2pa")
 
 a_cli = Analysis(
     [str(root / "packaging" / "windows" / "launcher_cli.py")],
     pathex=[str(root)],
-    binaries=rawpy_binaries,
+    binaries=rawpy_binaries + c2pa_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -78,7 +81,7 @@ cli_legacy = EXE(
 a_gui = Analysis(
     [str(root / "packaging" / "windows" / "launcher_gui.py")],
     pathex=[str(root)],
-    binaries=rawpy_binaries,
+    binaries=rawpy_binaries + c2pa_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

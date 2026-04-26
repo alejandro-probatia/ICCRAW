@@ -99,7 +99,7 @@ def batch_develop(
                 linear_audit_tiff=str(out_linear),
                 proof_path=proof_result.proof_path,
                 proof_sha256=proof_result.proof_sha256,
-                c2pa_embedded=bool(c2pa_config),
+                c2pa_embedded=proof_result.c2pa_embedded,
             )
         )
 
@@ -211,8 +211,18 @@ def write_signed_profiled_tiff(
                     "status": "signed",
                     "output_sha256_after_signing": c2pa_result.output_sha256_after_signing,
                 }
-            except C2PASigningError:
-                raise
+                if c2pa_config.local_identity:
+                    c2pa_status["identity"] = "local_self_issued"
+            except C2PASigningError as exc:
+                if c2pa_config.fail_on_error:
+                    raise
+                c2pa_status = {
+                    "embedded": False,
+                    "status": "local_c2pa_failed",
+                    "identity": "local_self_issued" if c2pa_config.local_identity else "configured",
+                    "error": str(exc),
+                    "fallback": "nexoraw_proof",
+                }
         shutil.move(str(staged_tiff), str(out_tiff))
         try:
             proof_result = sign_nexoraw_proof(
@@ -223,7 +233,7 @@ def write_signed_profiled_tiff(
                 color_management_mode=mode,
                 render_settings=settings,
                 config=proof_sign_config,
-                c2pa_embedded=bool(c2pa_config),
+                c2pa_embedded=bool(c2pa_status.get("embedded")),
                 c2pa_status=c2pa_status,
             )
         except Exception:

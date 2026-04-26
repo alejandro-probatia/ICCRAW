@@ -14,11 +14,14 @@ sin editar el `PATH` del sistema:
 
 - ArgyllCMS: `colprof`, `xicclu`/`icclu` y `cctiff`.
 - ExifTool: `exiftool`.
+- `c2pa-python` y su libreria nativa `c2pa_c.dll` para leer e incrustar
+  manifiestos C2PA cuando se exportan TIFFs finales.
 
 El diagnostico se comprueba con:
 
 ```powershell
 nexoraw check-tools --strict
+nexoraw check-c2pa
 ```
 
 ## Preparacion del entorno de desarrollo
@@ -27,7 +30,7 @@ Desde la raiz del repositorio:
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python -m pip install -e ".[dev,gui,installer]"
+.\.venv\Scripts\python -m pip install -e ".[dev,gui,installer,c2pa]"
 ```
 
 Instalar Inno Setup 6 para generar el instalador:
@@ -127,6 +130,7 @@ En una maquina Windows limpia:
 4. Confirmar:
    - `nexoraw --version`,
    - `nexoraw check-tools --strict`,
+   - `nexoraw check-c2pa`,
    - `nexoraw-ui` arranca,
    - una prueba de `detect-chart`/`sample-chart` con `testdata` funciona,
    - una conversion `output_space=srgb` solo se aprueba si `cctiff` existe.
@@ -135,12 +139,17 @@ En una maquina Windows limpia:
 
 - La especificacion PyInstaller esta en `packaging/windows/iccraw.spec`.
 - La plantilla Inno Setup esta en `packaging/windows/iccraw.iss`.
-- El script `build_installer.ps1` instala los extras `dev`, `gui` e
-  `installer` antes de empaquetar.
+- El script `build_installer.ps1` instala los extras `dev`, `gui`,
+  `installer` y `c2pa` antes de empaquetar.
 - El instalador copia ArgyllCMS (`bin` y `ref`, incluyendo `sRGB.icm`) y ExifTool en
   `{app}\tools\...` y la aplicacion los resuelve desde ahi antes
   de consultar el `PATH` del sistema.
 - Para publicar un instalador con AMaZE, usar `-RequireAmaze`; la build debe
   informar `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`.
+- Si el usuario no configura un certificado C2PA externo, NexoRAW crea una
+  identidad C2PA local y autoemitida bajo `%USERPROFILE%\.nexoraw\c2pa`.
+  Los lectores C2PA pueden marcarla como `signingCredential.untrusted`; eso es
+  esperado y significa que la firma no pertenece a una lista CAI central, no que
+  falte el vinculo RAW-TIFF de NexoRAW.
 - Los binarios generados quedan en `dist\windows\`; los temporales en
   `build\windows\`.

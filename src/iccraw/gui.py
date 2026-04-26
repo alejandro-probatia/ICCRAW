@@ -42,7 +42,7 @@ from .display_color import (
 )
 from .metadata_viewer import inspect_file_metadata, metadata_display_sections, metadata_sections_text
 from .profile.export import write_signed_profiled_tiff
-from .provenance.c2pa import C2PASignConfig, DEFAULT_TIMESTAMP_URL, c2pa_config_from_environment
+from .provenance.c2pa import C2PASignConfig, DEFAULT_TIMESTAMP_URL, auto_c2pa_config
 from .provenance.nexoraw_proof import (
     NexoRawProofConfig,
     generate_ed25519_identity,
@@ -2118,8 +2118,8 @@ if QtWidgets is not None:
             c2pa_grid.addWidget(self.batch_c2pa_signer_name, 5, 1, 1, 2)
 
             c2pa_note = QtWidgets.QLabel(
-                "C2PA es una capa interoperable opcional. Si certificado y clave quedan vacios, NexoRAW intenta "
-                "variables de entorno y, si tampoco existen, mantiene la firma autonoma NexoRAW Proof."
+                "C2PA se usa automaticamente con una identidad local de laboratorio cuando no hay certificado externo. "
+                "Los certificados CAI oficiales solo son necesarios si se quiere aparecer como firmante reconocido por su lista de confianza."
             )
             c2pa_note.setWordWrap(True)
             c2pa_note.setStyleSheet("font-size: 12px; color: #6b7280; padding-top: 4px;")
@@ -2347,21 +2347,22 @@ if QtWidgets is not None:
             if control_config is not None:
                 self._save_signature_settings()
                 return control_config
-            try:
-                return c2pa_config_from_environment(
-                    technical_manifest_path=self._technical_manifest_path_for_c2pa(),
-                    session_id=self._session_id_for_c2pa(),
-                )
-            except Exception:
-                return None
+            return auto_c2pa_config(
+                technical_manifest_path=self._technical_manifest_path_for_c2pa(),
+                session_id=self._session_id_for_c2pa(),
+                signer_name=self.batch_c2pa_signer_name.text().strip()
+                or self.batch_proof_signer_name.text().strip()
+                or APP_NAME,
+                timestamp_url=self.batch_c2pa_timestamp_url.text().strip() or DEFAULT_TIMESTAMP_URL,
+            )
 
         def _show_signature_config_error(self, exc: Exception) -> None:
             QtWidgets.QMessageBox.warning(
                 self,
                 "Firma forense requerida",
                 f"{exc}\n\n"
-                "Genera o configura una identidad NexoRAW Proof en Configuracion > Configuracion global. "
-                "C2PA es opcional; NexoRAW Proof es la firma autonoma obligatoria.",
+                "NexoRAW crea por defecto una identidad local Proof y una identidad C2PA local. "
+                "Revisa Configuracion > Configuracion global si quieres usar credenciales propias.",
             )
 
         def _show_c2pa_config_error(self, exc: Exception) -> None:

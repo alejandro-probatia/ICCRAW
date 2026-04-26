@@ -17,6 +17,8 @@ from iccraw.provenance.c2pa import (
     build_raw_link_assertion,
     build_render_settings,
     c2pa_config_from_environment,
+    ensure_local_c2pa_identity,
+    local_c2pa_config,
     sign_tiff_with_c2pa,
     verify_c2pa_raw_link,
 )
@@ -189,7 +191,7 @@ def test_sign_tiff_with_c2pa_replaces_output_and_hashes_after_signing(tmp_path: 
     assert tiff.read_bytes().endswith(b"FAKE-C2PA")
     assert result.output_sha256_after_signing == sha256_file(tiff)
     assert client.calls[0]["source_ingredient_path"] is None
-    raw_link = client.calls[0]["manifest"]["assertions"][1]["data"]
+    raw_link = json.loads(client.calls[0]["manifest"]["assertions"][1]["data"])
     assert raw_link["nexoraw"]["render_settings_sha256"] == "render-hash"
     assert raw_link["render_settings"]["render_adjustments"]["contrast"] == 0.2
     assert "output_sha256" not in str(client.calls[0]["manifest"])
@@ -245,6 +247,67 @@ def test_verify_c2pa_raw_link_checks_raw_and_external_manifest(tmp_path: Path):
     assert result["raw_matches_c2pa_assertion"] is True
     assert result["render_settings_hash"]["ok"] is True
     assert result["external_manifest"]["ok"] is True
+
+
+def test_verify_c2pa_accepts_local_untrusted_signer_as_technical_warning(tmp_path: Path):
+    raw = tmp_path / "capture.NEF"
+    tiff = tmp_path / "rendered.tiff"
+    raw.write_bytes(b"raw bytes")
+    tiff.write_bytes(b"signed tiff bytes")
+    assertion = build_raw_link_assertion(
+        source_raw=raw,
+        recipe=Recipe(),
+        profile_path=None,
+        color_management_mode="no_profile",
+        raw_metadata=_metadata(raw),
+    )
+    manifest_store = {
+        "active_manifest": "nexoraw:1",
+        "manifests": {
+            "nexoraw:1": {
+                "assertions": [{"label": RAW_LINK_ASSERTION_LABEL, "data": assertion}],
+            }
+        },
+        "validation_status": [{"code": "signingCredential.untrusted"}],
+    }
+    external_manifest = tmp_path / "batch_manifest.json"
+    external_manifest.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "source_sha256": sha256_file(raw),
+                        "output_tiff": str(tiff),
+                        "output_sha256": sha256_file(tiff),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = verify_c2pa_raw_link(
+        signed_tiff=tiff,
+        source_raw=raw,
+        external_manifest_path=external_manifest,
+        client=FakeC2PAClient(manifest_store),
+    )
+
+    assert result["status"] == "ok"
+    assert result["c2pa_signature_valid"] is True
+    assert result["c2pa_trust_status"]["untrusted_signing_credential_only"] is True
+
+
+def test_local_c2pa_config_generates_self_issued_identity(tmp_path: Path):
+    identity = ensure_local_c2pa_identity(base_dir=tmp_path / "c2pa", signer_name="Lab")
+    config = local_c2pa_config(base_dir=tmp_path / "c2pa", signer_name="Lab")
+
+    assert Path(identity["private_key"]).exists()
+    assert Path(identity["cert_chain"]).exists()
+    assert Path(identity["root_cert"]).exists()
+    assert config.local_identity is True
+    assert config.fail_on_error is False
+    assert config.cert_path == Path(identity["cert_chain"])
 
 
 def test_batch_develop_hashes_signed_tiff_when_c2pa_enabled(tmp_path: Path):

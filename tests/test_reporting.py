@@ -1,4 +1,5 @@
 import subprocess
+import types
 
 from iccraw import reporting
 
@@ -70,3 +71,34 @@ def test_check_amaze_backend_reports_gpl3_support(monkeypatch):
     assert result["status"] == "ok"
     assert result["amaze_supported"] is True
     assert result["rawpy_distribution"] == "rawpy-demosaic==0.26.0"
+
+
+def test_check_c2pa_support_reports_native_runtime(tmp_path, monkeypatch):
+    package = tmp_path / "c2pa"
+    libs = package / "libs"
+    libs.mkdir(parents=True)
+    (libs / "c2pa_c.dll").write_bytes(b"dll")
+    module = types.SimpleNamespace(
+        __file__=str(package / "__init__.py"),
+        Builder=object,
+        C2paSignerInfo=object,
+        C2paSigningAlg=object,
+        Reader=object,
+        Signer=object,
+    )
+
+    real_import = __import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "c2pa":
+            return module
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    monkeypatch.setattr(reporting, "_safe_distribution_version", lambda name: "0.32.3" if name == "c2pa-python" else "not-available")
+
+    result = reporting.check_c2pa_support()
+
+    assert result["status"] == "ok"
+    assert result["available"] is True
+    assert result["c2pa_python_distribution"] == "0.32.3"

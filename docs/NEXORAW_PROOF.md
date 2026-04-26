@@ -35,16 +35,25 @@ Un tercero puede verificar que:
 C2PA sigue siendo compatible, pero no es obligatorio para que un TIFF de NexoRAW
 tenga trazabilidad criptografica. La politica queda asi:
 
-- NexoRAW Proof: capa autonoma obligatoria para TIFF final.
-- C2PA: capa interoperable opcional si el usuario dispone de certificado.
+- NexoRAW Proof: capa autonoma obligatoria y generada automaticamente para TIFF final.
+- C2PA: capa interoperable; usa certificado externo si existe o identidad local
+  autoemitida si no existe.
 - `batch_manifest.json`: manifiesto externo de lote, se mantiene.
 - Auditoria lineal, hashes y perfiles ICC: se mantienen.
 
-Si C2PA esta configurado, NexoRAW lo incrusta primero. Despues calcula el hash
+Si C2PA puede incrustarse, NexoRAW lo escribe primero. Despues calcula el hash
 del TIFF ya firmado con C2PA y crea el sidecar NexoRAW Proof. Asi se evita
-firmar bytes que luego cambien.
+firmar bytes que luego cambien. Si el lector C2PA informa
+`signingCredential.untrusted` con la identidad local, se interpreta como
+advertencia de confianza externa, no como perdida del vinculo RAW-TIFF.
 
-## Generar una identidad local
+## Identidad local
+
+En uso normal no hace falta ejecutar ningun comando: si no hay variables de
+entorno ni rutas configuradas, NexoRAW crea automaticamente la identidad Proof en
+`~/.nexoraw/proof`.
+
+Para generar o reemplazar manualmente una identidad:
 
 ```bash
 nexoraw proof-keygen \
@@ -70,10 +79,7 @@ sin control de acceso. La clave publica si puede distribuirse.
 nexoraw batch-develop ./raws \
   --recipe recipe_calibrated.yml \
   --profile camera_profile.icc \
-  --out ./tiffs \
-  --proof-key ~/.nexoraw/proof/nexoraw-proof-private.pem \
-  --proof-public-key ~/.nexoraw/proof/nexoraw-proof-public.pem \
-  --proof-signer-name "Laboratorio / Perito"
+  --out ./tiffs
 ```
 
 Tambien puede configurarse por entorno:

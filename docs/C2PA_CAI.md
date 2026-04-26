@@ -1,13 +1,15 @@
 # C2PA/CAI en NexoRAW
 
-NexoRAW incorpora C2PA como una capa interoperable opcional sobre los TIFF
-finales. No sustituye los mecanismos existentes ni la capa autonoma
+NexoRAW incorpora C2PA como una capa interoperable sobre los TIFF finales,
+sin exigir que el usuario pertenezca a una autoridad central CAI. No sustituye
+los mecanismos existentes ni la capa autonoma
 `NexoRAW Proof`: `batch_manifest.json`, hashes SHA-256, auditoria lineal,
 perfiles ICC, reportes QA y sidecars siguen siendo parte del flujo principal.
 
 La firma obligatoria del flujo NexoRAW es `NexoRAW Proof`, documentada en
-[NexoRAW Proof](NEXORAW_PROOF.md). C2PA se incrusta cuando el usuario dispone de
-certificado y clave compatibles.
+[NexoRAW Proof](NEXORAW_PROOF.md). C2PA se incrusta con certificado externo si
+existe; si no, NexoRAW crea una identidad local autoemitida y la usa como firma
+C2PA de laboratorio.
 
 ## Principios de implementacion
 
@@ -26,9 +28,10 @@ certificado y clave compatibles.
    conservarse si el SDK lo permite.
 7. Los errores de firma, validacion o dependencia ausente no se silencian.
 8. La clave privada no se registra en logs ni se almacena en manifiestos.
-9. NexoRAW no depende de C2PA para la prueba autonoma. Si falta C2PA, el TIFF
-   se exporta con sidecar NexoRAW Proof. Si C2PA esta configurado y falla, la
-   exportacion se aborta para no ocultar un error de firma solicitado.
+9. NexoRAW no depende de una lista central de confianza C2PA para la prueba
+   autonoma. Si falta el SDK C2PA, el TIFF se exporta con sidecar NexoRAW Proof.
+   Si C2PA fue configurado explicitamente por el usuario y falla, la exportacion
+   se aborta para no ocultar un error de firma solicitado.
 
 ## Instalacion C2PA
 
@@ -37,6 +40,37 @@ pip install -e .[c2pa]
 ```
 
 La dependencia de firma es `c2pa-python>=0.32`.
+
+En el instalador Windows oficial esta dependencia ya va empaquetada. En ese
+caso no hay que instalar `pip`, Python ni ninguna DLL manualmente.
+
+## Identidad C2PA local
+
+Para no depender de certificados emitidos por una autoridad CAI, NexoRAW genera
+automaticamente una identidad local en:
+
+```text
+~/.nexoraw/c2pa/
+```
+
+En Windows equivale normalmente a:
+
+```text
+%USERPROFILE%\.nexoraw\c2pa\
+```
+
+La identidad contiene:
+
+- una clave privada RSA local;
+- una cadena PEM autoemitida compatible con el SDK C2PA;
+- un certificado raiz local para documentar la identidad usada.
+
+Los lectores C2PA externos pueden mostrar `signingCredential.untrusted`. En el
+modelo de NexoRAW esto es una advertencia de confianza externa: la firma no esta
+en una lista CAI central. No significa que el manifiesto RAW-TIFF falte ni que el
+hash RAW declarado sea invalido. Para uso probatorio, la confianza se basa en la
+custodia o publicacion de la clave/certificado local del laboratorio, junto con
+`NexoRAW Proof` y `batch_manifest.json`.
 
 ## Firmar TIFFs finales con C2PA
 
@@ -55,8 +89,10 @@ nexoraw batch-develop ./raws \
   --session-id sesion-2026-04-25
 ```
 
-`--c2pa-cert` debe apuntar a la cadena publica PEM. `--c2pa-key` apunta a la
-clave privada PEM. Si no se indica otra TSA, NexoRAW usa
+Si no se pasan `--c2pa-cert` y `--c2pa-key`, NexoRAW intenta usar primero
+variables de entorno y despues la identidad local autoemitida. Si se pasan,
+`--c2pa-cert` debe apuntar a la cadena publica PEM y `--c2pa-key` a la clave
+privada PEM. Si no se indica otra TSA, NexoRAW usa
 `http://timestamp.digicert.com`, que es el valor usado en la documentacion de
 referencia de `c2pa-python`. En entornos de produccion o laboratorio se
 recomienda migrar la firma a KMS/HSM y definir una TSA propia o institucional,

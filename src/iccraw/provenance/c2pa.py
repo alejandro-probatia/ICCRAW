@@ -99,6 +99,8 @@ class C2PASignConfig:
     session_id: str | None = None
     key_passphrase: str | None = field(default=None, repr=False)
     client: C2PAClient | None = field(default=None, repr=False)
+    local_identity: bool = False
+    fail_on_error: bool = True
 
 
 @dataclass
@@ -139,12 +141,189 @@ def c2pa_config_from_environment(
     )
 
 
+def auto_c2pa_config(
+    *,
+    technical_manifest_path: Path | None = None,
+    session_id: str | None = None,
+    signer_name: str = "NexoRAW local signer",
+    timestamp_url: str | None = DEFAULT_TIMESTAMP_URL,
+) -> C2PASignConfig | None:
+    try:
+        return c2pa_config_from_environment(
+            technical_manifest_path=technical_manifest_path,
+            session_id=session_id,
+        )
+    except C2PASigningError:
+        pass
+
+    try:
+        _import_c2pa()
+    except C2PANotAvailableError:
+        return None
+
+    return local_c2pa_config(
+        technical_manifest_path=technical_manifest_path,
+        session_id=session_id,
+        signer_name=signer_name,
+        timestamp_url=timestamp_url,
+    )
+
+
+def local_c2pa_config(
+    *,
+    technical_manifest_path: Path | None = None,
+    session_id: str | None = None,
+    signer_name: str = "NexoRAW local signer",
+    timestamp_url: str | None = DEFAULT_TIMESTAMP_URL,
+    base_dir: Path | None = None,
+) -> C2PASignConfig:
+    identity = ensure_local_c2pa_identity(signer_name=signer_name, base_dir=base_dir)
+    return C2PASignConfig(
+        cert_path=Path(identity["cert_chain"]),
+        key_path=Path(identity["private_key"]),
+        alg="ps256",
+        timestamp_url=timestamp_url,
+        signer_name=signer_name,
+        technical_manifest_path=technical_manifest_path,
+        session_id=session_id,
+        local_identity=True,
+        fail_on_error=False,
+    )
+
+
+def ensure_local_c2pa_identity(
+    *,
+    signer_name: str = "NexoRAW local signer",
+    overwrite: bool = False,
+    base_dir: Path | None = None,
+) -> dict[str, str]:
+    base = Path(base_dir) if base_dir is not None else _default_c2pa_identity_dir()
+    private_key = base / "nexoraw-c2pa-private-key.pem"
+    cert_chain = base / "nexoraw-c2pa-cert-chain.pem"
+    root_cert = base / "nexoraw-c2pa-local-root.pem"
+    if not overwrite and private_key.exists() and cert_chain.exists() and root_cert.exists():
+        return {
+            "private_key": str(private_key),
+            "cert_chain": str(cert_chain),
+            "root_cert": str(root_cert),
+            "identity_kind": "local_self_issued_c2pa",
+        }
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    root_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    root_name = x509.Name(
+        [
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "NexoRAW local trust"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "NexoRAW local C2PA root"),
+        ]
+    )
+    leaf_name = x509.Name(
+        [
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "NexoRAW local signer"),
+            x509.NameAttribute(NameOID.COMMON_NAME, signer_name[:64] or "NexoRAW local signer"),
+        ]
+    )
+    root = (
+        x509.CertificateBuilder()
+        .subject_name(root_name)
+        .issuer_name(root_name)
+        .public_key(root_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=3650))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=True,
+                crl_sign=True,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(root_key.public_key()), critical=False)
+        .sign(root_key, hashes.SHA256())
+    )
+    leaf = (
+        x509.CertificateBuilder()
+        .subject_name(leaf_name)
+        .issuer_name(root_name)
+        .public_key(leaf_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=365))
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=False,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.EMAIL_PROTECTION]), critical=False)
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(leaf_key.public_key()), critical=False)
+        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(root_key.public_key()), critical=False)
+        .sign(root_key, hashes.SHA256())
+    )
+
+    base.mkdir(parents=True, exist_ok=True)
+    private_key.write_bytes(
+        leaf_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    cert_chain.write_bytes(leaf.public_bytes(serialization.Encoding.PEM) + root.public_bytes(serialization.Encoding.PEM))
+    root_cert.write_bytes(root.public_bytes(serialization.Encoding.PEM))
+    _restrict_private_key_permissions(private_key)
+    return {
+        "private_key": str(private_key),
+        "cert_chain": str(cert_chain),
+        "root_cert": str(root_cert),
+        "identity_kind": "local_self_issued_c2pa",
+    }
+
+
 def _env_first(*names: str) -> str | None:
     for name in names:
         value = os.environ.get(name, "").strip()
         if value:
             return value
     return None
+
+
+def _default_c2pa_identity_dir() -> Path:
+    base = _env_first("NEXORAW_HOME", "ICCRAW_HOME")
+    if base:
+        return Path(base).expanduser() / "c2pa"
+    return Path.home().expanduser() / ".nexoraw" / "c2pa"
+
+
+def _restrict_private_key_permissions(path: Path) -> None:
+    try:
+        path.chmod(0o600)
+    except Exception:
+        pass
 
 
 def recipe_sha256(recipe: Recipe) -> str:
@@ -322,7 +501,7 @@ def build_c2pa_manifest(
                 "label": RAW_LINK_ASSERTION_LABEL,
                 "created": True,
                 "kind": "Json",
-                "data": raw_link_assertion,
+                "data": json.dumps(_normalize_json(raw_link_assertion), sort_keys=True, separators=(",", ":")),
             },
         ],
     }
@@ -427,7 +606,8 @@ def verify_c2pa_raw_link(
     active_manifest = _active_manifest(manifest_store)
     if not validation_status and isinstance(active_manifest, dict):
         validation_status = active_manifest.get("validation_status") or []
-    c2pa_valid = not bool(validation_status)
+    validation_eval = _evaluate_c2pa_validation_status(validation_status)
+    c2pa_valid = bool(validation_eval["technical_signature_ok"])
 
     status = "ok" if raw_matches and external["ok"] and c2pa_valid and render_settings_check["ok"] else "failed"
     return {
@@ -435,6 +615,7 @@ def verify_c2pa_raw_link(
         "c2pa_manifest_present": True,
         "c2pa_validation_status": validation_status,
         "c2pa_signature_valid": c2pa_valid,
+        "c2pa_trust_status": validation_eval,
         "raw_sha256_declared": declared_raw_sha,
         "raw_sha256_actual": actual_raw_sha,
         "raw_matches_c2pa_assertion": raw_matches,
@@ -453,11 +634,20 @@ def extract_raw_link_assertion(manifest_store: dict[str, Any]) -> dict[str, Any]
         if not isinstance(assertion, dict):
             continue
         data = assertion.get("data")
-        if assertion.get("label") == RAW_LINK_ASSERTION_LABEL or (
-            isinstance(data, dict) and data.get("schema") == RAW_LINK_ASSERTION_LABEL
+        label = str(assertion.get("label") or "")
+        parsed_data: Any = data
+        if isinstance(data, str):
+            try:
+                parsed_data = json.loads(data)
+            except json.JSONDecodeError:
+                parsed_data = data
+        if label in {RAW_LINK_ASSERTION_LABEL, "org.probatia.iccraw.raw-link"} or (
+            isinstance(parsed_data, dict) and parsed_data.get("schema") == RAW_LINK_ASSERTION_LABEL
         ):
             if isinstance(data, dict):
                 return data
+            if isinstance(parsed_data, dict):
+                return parsed_data
             raise C2PAVerificationError(f"Asercion {RAW_LINK_ASSERTION_LABEL} sin datos JSON")
     raise C2PAVerificationError(f"No se encontro asercion {RAW_LINK_ASSERTION_LABEL}")
 
@@ -697,4 +887,24 @@ def _verify_external_manifest(
         "declared_output_sha256": declared_output_sha,
         "actual_output_sha256": actual_output_sha,
         "source_sha256": selected.get("source_sha256"),
+    }
+
+
+def _evaluate_c2pa_validation_status(status: Any) -> dict[str, Any]:
+    if not status:
+        return {
+            "technical_signature_ok": True,
+            "trust_model": "c2pa_trusted_or_no_warnings",
+            "untrusted_signing_credential_only": False,
+            "fatal_codes": [],
+        }
+    items = status if isinstance(status, list) else [status]
+    codes = [str(item.get("code") if isinstance(item, dict) else item) for item in items]
+    fatal = [code for code in codes if code != "signingCredential.untrusted"]
+    local_only = bool(codes) and not fatal
+    return {
+        "technical_signature_ok": local_only,
+        "trust_model": "local_self_issued_or_untrusted_c2pa_signer" if local_only else "c2pa_validation_failed",
+        "untrusted_signing_credential_only": local_only,
+        "fatal_codes": fatal,
     }
