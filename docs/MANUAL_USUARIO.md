@@ -44,6 +44,12 @@ sudo apt-get update
 sudo apt-get install -y argyll exiftool
 ```
 
+macOS:
+
+```bash
+brew install argyll-cms exiftool
+```
+
 Windows:
 
 1. Instalar ArgyllCMS y anadir sus ejecutables al `PATH`.

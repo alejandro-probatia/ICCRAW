@@ -40,13 +40,9 @@ if (-not [string]::IsNullOrWhiteSpace($Wheel)) {
     throw "No existe la wheel indicada: $Wheel"
   }
   $Wheel = (Resolve-Path $Wheel).Path
-  Invoke-Native "Eliminar backend RAW base" $Python @("-m", "pip", "uninstall", "-y", "rawpy", "rawpy-demosaic")
-  Invoke-Native "Instalar backend AMaZE GPL3" $Python @("-m", "pip", "install", "--force-reinstall", $Wheel)
+  Invoke-Native "Instalar backend AMaZE GPL3" $Python @("scripts\install_amaze_backend.py", "--wheel", $Wheel)
 } elseif ($TryPyPI) {
-  Invoke-Native "Eliminar backend RAW base" $Python @("-m", "pip", "uninstall", "-y", "rawpy", "rawpy-demosaic")
-  Invoke-Native "Instalar rawpy-demosaic desde PyPI" $Python @("-m", "pip", "install", "--force-reinstall", "rawpy-demosaic")
+  Invoke-Native "Instalar rawpy-demosaic desde PyPI" $Python @("scripts\install_amaze_backend.py", "--pypi")
 } else {
   throw "Indica -Wheel con una wheel rawpy_demosaic compatible o usa -TryPyPI."
 }
-
-Invoke-Native "Verificar soporte AMaZE" $Python @("scripts\check_amaze_support.py")

@@ -25,8 +25,14 @@ incluye los packs GPL2/GPL3 de LibRaw y exporta el mismo módulo Python
 Instalación cuando exista wheel compatible con la plataforma:
 
 ```bash
-pip uninstall -y rawpy
-pip install rawpy-demosaic
+python scripts/install_amaze_backend.py --pypi
+python scripts/check_amaze_support.py
+```
+
+Con una wheel propia:
+
+```bash
+python scripts/install_amaze_backend.py --wheel /ruta/rawpy_demosaic-*.whl
 python scripts/check_amaze_support.py
 ```
 
@@ -79,6 +85,51 @@ Para empaquetar Windows con AMaZE:
 
 ```powershell
 .\packaging\windows\build_installer.ps1 -RawpyDemosaicWheel $wheel -RequireAmaze
+```
+
+Si existe wheel compatible en PyPI, el instalador puede resolverla durante la
+build:
+
+```powershell
+.\packaging\windows\build_installer.ps1 -Amaze -RequireAmaze
+```
+
+## Debian/Ubuntu
+
+El paquete `.deb` instala el backend AMaZE durante la construccion cuando se
+activa el modo de build correspondiente. Desde la raiz del repositorio:
+
+```bash
+NEXORAW_BUILD_AMAZE=1 NEXORAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
+```
+
+Con una wheel local:
+
+```bash
+NEXORAW_REQUIRE_AMAZE=1 \
+NEXORAW_RAWPY_DEMOSAIC_WHEEL=/ruta/rawpy_demosaic-*.whl \
+bash packaging/debian/build_deb.sh
+```
+
+La build registra `check-amaze.json` y `build-metadata.json` en
+`/usr/share/doc/nexoraw/third_party/rawpy-demosaic/`.
+
+## macOS
+
+La ruta soportada en macOS es la instalacion desde codigo. El instalador
+multiplataforma de backend AMaZE es el mismo script Python:
+
+```bash
+python scripts/install_amaze_backend.py --pypi
+nexoraw check-amaze
+```
+
+Si no hay wheel compatible para la version de Python/arquitectura usada, crear
+o descargar una wheel propia y usar:
+
+```bash
+python scripts/install_amaze_backend.py --wheel /ruta/rawpy_demosaic-*.whl
+nexoraw check-amaze
 ```
 
 `rawpy-demosaic` exporta el modulo Python `rawpy`, pero su distribucion Python

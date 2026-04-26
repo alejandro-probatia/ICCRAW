@@ -238,3 +238,20 @@ def test_write_profiled_tiff_converts_to_srgb_with_cmm(tmp_path: Path):
     assert arr.shape == image.shape
     with tifffile.TiffFile(out) as tif:
         assert 34675 in tif.pages[0].tags
+
+
+def test_argyll_reference_profile_searches_debian_share_path(tmp_path: Path, monkeypatch):
+    bin_dir = tmp_path / "usr" / "bin"
+    ref_dir = tmp_path / "usr" / "share" / "color" / "argyll" / "ref"
+    bin_dir.mkdir(parents=True)
+    ref_dir.mkdir(parents=True)
+    tool = bin_dir / "cctiff"
+    profile = ref_dir / "sRGB.icm"
+    tool.write_text("", encoding="utf-8")
+    profile.write_bytes(b"profile")
+
+    import iccraw.profile.export as export_module
+
+    monkeypatch.setattr(export_module, "external_tool_path", lambda command: str(tool) if command == "cctiff" else None)
+
+    assert export_module._argyll_reference_profile("sRGB.icm") == profile

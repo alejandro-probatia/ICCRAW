@@ -34,6 +34,17 @@ def bundled_tool_dirs() -> list[Path]:
         ]
     )
 
+    if sys.platform == "darwin":
+        dirs.extend(
+            [
+                Path("/opt/homebrew/bin"),
+                Path("/opt/homebrew/opt/argyll-cms/bin"),
+                Path("/usr/local/bin"),
+                Path("/usr/local/opt/argyll-cms/bin"),
+                Path("/opt/local/bin"),
+            ]
+        )
+
     seen: set[Path] = set()
     out: list[Path] = []
     for folder in dirs:

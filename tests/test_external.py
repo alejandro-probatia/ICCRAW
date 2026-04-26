@@ -48,3 +48,16 @@ def test_run_external_leaves_non_windows_kwargs_unchanged(monkeypatch):
     external.run_external(["tool"], text=True)
 
     assert captured["kwargs"] == {"text": True}
+
+
+def test_bundled_tool_dirs_includes_macos_package_manager_paths(monkeypatch, tmp_path):
+    monkeypatch.setattr(external.sys, "platform", "darwin", raising=False)
+    monkeypatch.setattr(external.sys, "executable", str(tmp_path / "venv" / "bin" / "python"), raising=False)
+    monkeypatch.delenv("NEXORAW_TOOL_DIR", raising=False)
+    monkeypatch.delenv("ICCRAW_TOOL_DIR", raising=False)
+
+    paths = {str(path) for path in external.bundled_tool_dirs()}
+
+    assert "/opt/homebrew/bin" in paths
+    assert "/usr/local/bin" in paths
+    assert "/opt/local/bin" in paths

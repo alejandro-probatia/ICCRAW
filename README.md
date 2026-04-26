@@ -169,6 +169,8 @@ Opcional pero recomendado para perfilado con ArgyllCMS y conversion ICC real:
 ```bash
 # Debian/Ubuntu
 sudo apt-get install argyll exiftool
+# macOS/Homebrew
+brew install argyll-cms exiftool
 bash scripts/check_tools.sh
 nexoraw check-tools --out tools_report.json
 ```
@@ -179,7 +181,7 @@ La beta `0.1` puede construirse como paquete `.deb` instalable:
 
 ```bash
 bash packaging/debian/build_deb.sh
-sudo apt install ./dist/nexoraw_0.1.0~beta4_amd64.deb
+sudo apt install ./dist/nexoraw_0.1.0~beta5_amd64.deb
 ```
 
 El paquete instala la aplicacion en `/opt/nexoraw`, crea los lanzadores
@@ -419,6 +421,9 @@ Con el backend actual LibRaw/rawpy, `demosaic_algorithm` acepta valores como
 incluye, `amaze`. `dcb` es el valor por defecto instalable; AMaZE requiere
 `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`, normalmente mediante
 `rawpy-demosaic` o una build propia de LibRaw con el demosaic pack GPL3.
+Las builds que deban incluir AMaZE deben instalar ese backend durante la
+construccion, con `scripts/install_amaze_backend.py`, y fallar si
+`nexoraw check-amaze` no confirma `DEMOSAIC_PACK_GPL3=True`.
 
 ## Reproducibilidad y límites
 
@@ -451,6 +456,7 @@ incluye, `amaze`. `dcb` es el valor por defecto instalable; AMaZE requiere
 - [C2PA/CAI](docs/C2PA_CAI.md)
 - [Integración LibRaw + ArgyllCMS](docs/INTEGRACION_LIBRAW_ARGYLL.md)
 - [Paquete Debian beta](docs/DEBIAN_PACKAGE.md)
+- [Instalacion en macOS](docs/MACOS_INSTALL.md)
 - [Instalador Windows beta](docs/WINDOWS_INSTALLER.md)
 - [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
 - [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)

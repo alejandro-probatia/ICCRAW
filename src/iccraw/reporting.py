@@ -155,7 +155,11 @@ def check_c2pa_support() -> dict[str, Any]:
     missing_api = [name for name in required_api if not hasattr(c2pa, name)]
     module_path = Path(getattr(c2pa, "__file__", "") or "")
     package_dir = module_path.parent if module_path else Path()
-    native_libraries = sorted(str(path) for path in (package_dir / "libs").glob("c2pa_c.*"))
+    native_libraries = sorted(
+        str(path)
+        for pattern in ("c2pa_c.*", "libc2pa_c.*")
+        for path in (package_dir / "libs").glob(pattern)
+    )
     ok = not missing_api and any(path.lower().endswith((".dll", ".so", ".dylib")) for path in native_libraries)
     return {
         "status": "ok" if ok else "incomplete",

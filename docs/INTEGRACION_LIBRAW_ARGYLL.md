@@ -22,6 +22,12 @@ pip install -e .[gui]
 sudo apt-get install -y argyll exiftool
 ```
 
+En macOS con Homebrew:
+
+```bash
+brew install argyll-cms exiftool
+```
+
 `rawpy`/LibRaw se instala como dependencia Python del proyecto. Para AMaZE se
 requiere una build GPL3 con `DEMOSAIC_PACK_GPL3=True`; ver
 `docs/AMAZE_GPL3.md`.

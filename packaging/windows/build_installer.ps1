@@ -10,6 +10,7 @@ param(
   [string]$ExifToolRoot = "",
   [string]$RawpyDemosaicWheel = "",
   [string]$RawpyDemosaicSource = "",
+  [switch]$Amaze,
   [switch]$RequireAmaze
 )
 
@@ -151,21 +152,25 @@ function Copy-ExternalTools {
 }
 
 function Install-AmazeBackend {
-  if ([string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
+  if ([string]::IsNullOrWhiteSpace($RawpyDemosaicWheel) -and -not $Amaze) {
     return
   }
 
-  if (-not (Test-Path $RawpyDemosaicWheel)) {
-    throw "No existe la wheel rawpy-demosaic indicada: $RawpyDemosaicWheel"
+  $args = @("scripts\install_amaze_backend.py")
+  if (-not [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
+    if (-not (Test-Path $RawpyDemosaicWheel)) {
+      throw "No existe la wheel rawpy-demosaic indicada: $RawpyDemosaicWheel"
+    }
+    $wheelPath = (Resolve-Path $RawpyDemosaicWheel).Path
+    $args += @("--wheel", $wheelPath)
+  } else {
+    $args += @("--pypi")
   }
-
-  $wheelPath = (Resolve-Path $RawpyDemosaicWheel).Path
-  Invoke-Native "Desinstalar backend RAW base" $Python @("-m", "pip", "uninstall", "-y", "rawpy", "rawpy-demosaic")
-  Invoke-Native "Instalar backend AMaZE GPL3" $Python @("-m", "pip", "install", "--force-reinstall", $wheelPath)
+  Invoke-Native "Instalar backend AMaZE GPL3" $Python $args
 }
 
 function Test-AmazeBackend {
-  if (-not $RequireAmaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
+  if (-not $RequireAmaze -and -not $Amaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
     return
   }
 
@@ -175,7 +180,7 @@ function Test-AmazeBackend {
 function Copy-RawpyDemosaicLegal {
   param([string]$AppBuildDir)
 
-  if (-not $RequireAmaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
+  if (-not $RequireAmaze -and -not $Amaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
     return
   }
 

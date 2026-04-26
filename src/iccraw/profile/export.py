@@ -4,6 +4,7 @@ from dataclasses import asdict
 from pathlib import Path
 import hashlib
 import json
+import os
 import subprocess
 import shutil
 import tempfile
@@ -278,14 +279,52 @@ def _write_converted_srgb_tiff_with_argyll(out_tiff: Path, image_linear_rgb: np.
 
 
 def _argyll_reference_profile(name: str) -> Path:
+    for folder in _argyll_reference_dirs():
+        candidate = folder / name
+        if candidate.exists():
+            return candidate
+    raise RuntimeError(f"No se encontro el perfil de referencia de ArgyllCMS: {name}")
+
+
+def _argyll_reference_dirs() -> list[Path]:
+    dirs: list[Path] = []
+    env_dir = os.environ.get("NEXORAW_ARGYLL_REF_DIR", "").strip() or os.environ.get("ICCRAW_ARGYLL_REF_DIR", "").strip()
+    if env_dir:
+        dirs.append(Path(env_dir).expanduser())
+
     for command in ("cctiff", "xicclu", "colprof"):
         tool = external_tool_path(command)
         if not tool:
             continue
-        candidate = Path(tool).resolve().parent.parent / "ref" / name
-        if candidate.exists():
-            return candidate
-    raise RuntimeError(f"No se encontro el perfil de referencia de ArgyllCMS: {name}")
+        bin_dir = Path(tool).resolve().parent
+        root_dir = bin_dir.parent
+        dirs.extend(
+            [
+                root_dir / "ref",
+                root_dir / "share" / "color" / "argyll" / "ref",
+                bin_dir / "ref",
+            ]
+        )
+
+    dirs.extend(
+        [
+            Path("/usr/share/color/argyll/ref"),
+            Path("/usr/local/share/color/argyll/ref"),
+            Path("/opt/homebrew/share/color/argyll/ref"),
+        ]
+    )
+
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for folder in dirs:
+        try:
+            resolved = folder.resolve()
+        except Exception:
+            resolved = folder
+        if resolved not in seen:
+            seen.add(resolved)
+            out.append(resolved)
+    return out
 
 
 def apply_profile_matrix(

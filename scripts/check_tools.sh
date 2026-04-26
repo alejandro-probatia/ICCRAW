@@ -59,8 +59,20 @@ check_cmd "exiftool" "exiftool -ver" || missing=1
 
 if [[ "$missing" -ne 0 ]]; then
   echo
-  echo "Faltan dependencias del sistema. Instala (Debian/Ubuntu):"
-  echo "  sudo apt-get install argyll exiftool"
+  echo "Faltan dependencias del sistema."
+  case "$(uname -s)" in
+    Darwin)
+      echo "Instala en macOS, por ejemplo con Homebrew:"
+      echo "  brew install argyll-cms exiftool"
+      ;;
+    Linux)
+      echo "Instala en Debian/Ubuntu:"
+      echo "  sudo apt-get install argyll exiftool"
+      ;;
+    *)
+      echo "Instala ArgyllCMS y ExifTool y comprueba que estan en PATH."
+      ;;
+  esac
   echo "Y dependencias Python del proyecto:"
   echo "  pip install -e ."
   exit 2

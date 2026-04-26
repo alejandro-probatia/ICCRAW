@@ -1,0 +1,2 @@
+dist/*.deb filter=lfs diff=lfs merge=lfs -text
+dist/windows/installer/*.exe filter=lfs diff=lfs merge=lfs -text

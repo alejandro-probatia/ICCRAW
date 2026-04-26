@@ -76,7 +76,7 @@ Genera la aplicacion y despues el instalador:
 Artefacto esperado:
 
 ```text
-dist\windows\installer\NexoRAW-0.1.0b4-Setup.exe
+dist\windows\installer\NexoRAW-0.1.0b5-Setup.exe
 ```
 
 Para una preparacion de release, ejecutar con herramientas externas estrictas:
@@ -90,14 +90,20 @@ Para una preparacion de release, ejecutar con herramientas externas estrictas:
 AMaZE requiere un backend `rawpy` enlazado a LibRaw con
 `DEMOSAIC_PACK_GPL3=True`. Los wheels estandar de `rawpy` no lo incluyen.
 
-Si PyPI no ofrece una wheel compatible de `rawpy-demosaic` para el Python de
-empaquetado, usar el workflow manual:
+Si PyPI ofrece una wheel compatible de `rawpy-demosaic` para el Python de
+empaquetado, la build la instala automaticamente:
+
+```powershell
+.\packaging\windows\build_installer.ps1 -Amaze -RequireAmaze
+```
+
+Si PyPI no ofrece una wheel compatible, usar el workflow manual:
 
 ```text
 Build rawpy-demosaic Windows wheel
 ```
 
-El artefacto descargado se instala en el entorno local con:
+El artefacto descargado puede instalarse en el entorno local con:
 
 ```powershell
 $wheel = (Get-ChildItem -Recurse .\tmp\wheels -Filter "rawpy_demosaic-*.whl" | Select-Object -First 1).FullName
