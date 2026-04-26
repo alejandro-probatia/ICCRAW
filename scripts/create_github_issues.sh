@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE_FILE="$ROOT_DIR/docs/_migration/github_issues_to_create.md"
 MODE="dry-run"
+PYTHON_BIN=""
 
 usage() {
   cat <<'USAGE'
@@ -32,8 +33,21 @@ if [[ ! -f "$SOURCE_FILE" ]]; then
   exit 1
 fi
 
+resolve_python() {
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  elif command -v py >/dev/null 2>&1; then
+    PYTHON_BIN="py -3"
+  else
+    echo "No se encontro interprete Python (python3/python/py)." >&2
+    exit 1
+  fi
+}
+
 parse_issues() {
-  python3 - "$SOURCE_FILE" <<'PY'
+  eval "$PYTHON_BIN" - "$SOURCE_FILE" <<'PY'
 import base64
 import pathlib
 import re
@@ -115,6 +129,8 @@ if [[ "$MODE" == "apply" ]]; then
   fi
 fi
 
+resolve_python
+
 count=0
 created=0
 skipped=0
@@ -135,7 +151,7 @@ while IFS=$'\t' read -r issue_id title labels_csv good_first body_b64; do
     label_flags+=("--label" "$label")
   done
 
-  body="$(python3 - <<'PY' "$body_b64"
+  body="$(eval "$PYTHON_BIN" - <<'PY' "$body_b64"
 import base64
 import sys
 print(base64.b64decode(sys.argv[1]).decode("utf-8"))
