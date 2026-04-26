@@ -109,6 +109,9 @@ THUMBNAIL_DISK_CACHE_MAX_ENTRIES = 4096
 THUMBNAIL_DISK_CACHE_MAX_BYTES = 512 * 1024 * 1024
 THUMBNAIL_BATCH_SIZE = 48
 THUMBNAIL_PREFETCH_MARGIN_PAGES = 2
+PREVIEW_REFRESH_DEBOUNCE_MS = 120
+PREVIEW_REFRESH_THROTTLE_MS = 45
+PREVIEW_INTERACTIVE_MAX_SIDE = 1600
 IMAGE_PANEL_BACKGROUND = "#2b2b2b"
 IMAGE_PANEL_BORDER = "#5a5a5a"
 IMAGE_PANEL_TEXT = "#e6e6e6"
@@ -150,6 +153,7 @@ DEMOSAIC_OPTIONS = [
     ("Lineal", "linear"),
     ("AMaZE (GPL3)", "amaze"),
 ]
+PREVIEW_BALANCED_DEMOSAIC_ORDER = ("dcb", "ahd", "dht", "aahd", "ppg", "vng", "linear")
 
 ILLUMINANT_OPTIONS = [
     ("A / tungsteno (2856 K)", 2856, 0),
@@ -395,6 +399,7 @@ if QtWidgets is not None:
 
     class ToneCurveEditor(QtWidgets.QWidget):
         pointsChanged = QtCore.Signal(object)
+        interactionFinished = QtCore.Signal()
 
         def __init__(self) -> None:
             super().__init__()
@@ -516,6 +521,7 @@ if QtWidgets is not None:
                 self._points.pop(int(nearest))
                 self.update()
                 self.pointsChanged.emit(self.points())
+                self.interactionFinished.emit()
                 return
             if event.button() != QtCore.Qt.LeftButton:
                 return super().mousePressEvent(event)
@@ -545,10 +551,16 @@ if QtWidgets is not None:
             self.pointsChanged.emit(self.points())
 
         def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+            had_drag = self._drag_index is not None
             self._drag_index = None
             self._points = normalize_tone_curve_points(self._points)
             self.update()
+            if had_drag:
+                self.interactionFinished.emit()
             return super().mouseReleaseEvent(event)
+
+        def is_dragging(self) -> bool:
+            return self._drag_index is not None
 
         def _plot_rect(self) -> QtCore.QRectF:
             available_w = max(20.0, float(self.width() - 24))
@@ -1872,6 +1884,7 @@ if QtWidgets is not None:
 
             self.tone_curve_editor = ToneCurveEditor()
             self.tone_curve_editor.pointsChanged.connect(self._on_tone_curve_points_changed)
+            self.tone_curve_editor.interactionFinished.connect(self._on_render_control_change)
             grid.addWidget(self.tone_curve_editor, 16, 0, 1, 3)
             grid.addWidget(self._button("Restablecer curva", self._reset_tone_curve), 17, 0, 1, 3)
             self._set_tone_curve_controls_enabled(False)
@@ -2261,19 +2274,21 @@ if QtWidgets is not None:
 
             note = QtWidgets.QLabel(
                 "Opciones globales de navegacion y visualizacion. La preview rapida no debe usarse como referencia "
-                "colorimetrica; para revisar color usa preview de alta calidad y gestion ICC del monitor."
+                "colorimetrica. La vista de maxima calidad se carga automaticamente al activar comparar original/resultado."
             )
             note.setWordWrap(True)
             note.setStyleSheet("font-size: 12px; color: #6b7280; padding-bottom: 6px;")
             grid.addWidget(note, 0, 0, 1, 3)
 
-            self.check_fast_raw_preview = QtWidgets.QCheckBox("Preview RAW rapida (navegacion; no colorimetrica)")
-            self.check_fast_raw_preview.setChecked(self._settings_bool("preview/fast_raw_preview", True))
-            self.check_fast_raw_preview.setToolTip(
-                "Usa miniatura embebida o revelado RAW half-size. Es util para navegar, "
-                "pero la revision colorimetrica debe hacerse con esta opcion desactivada."
+            self.check_fast_raw_preview = QtWidgets.QCheckBox(
+                "Modo preview RAW automatico (rapida fuera de comparar, maxima calidad en comparar)"
             )
-            self.check_fast_raw_preview.toggled.connect(lambda _value: self._save_preview_monitor_settings())
+            self.check_fast_raw_preview.setChecked(True)
+            self.check_fast_raw_preview.setEnabled(False)
+            self.check_fast_raw_preview.setToolTip(
+                "Comportamiento fijo en la GUI: vista rapida para navegacion y maxima calidad "
+                "cuando activas comparar original/resultado o marcado manual."
+            )
             grid.addWidget(self.check_fast_raw_preview, 1, 0, 1, 3)
 
             grid.addWidget(QtWidgets.QLabel("Lado maximo preview (px)"), 2, 0)
@@ -2339,7 +2354,7 @@ if QtWidgets is not None:
         def _save_preview_monitor_settings(self) -> None:
             if not hasattr(self, "check_fast_raw_preview"):
                 return
-            self._settings.setValue("preview/fast_raw_preview", bool(self.check_fast_raw_preview.isChecked()))
+            self._settings.setValue("preview/fast_raw_preview", True)
             self._settings.setValue("preview/max_side", int(self.spin_preview_max_side.value()))
             self._settings.setValue("preview/png_path", self.path_preview_png.text().strip())
             self._settings.sync()
@@ -2550,6 +2565,7 @@ if QtWidgets is not None:
             slider.setValue(value)
             slider.valueChanged.connect(lambda v: label.setText(formatter(v)))
             slider.valueChanged.connect(on_change)
+            slider.sliderReleased.connect(self._on_slider_release)
             return slider, label
 
         def _render_adjustment_state(self) -> dict[str, Any]:
@@ -4090,7 +4106,7 @@ if QtWidgets is not None:
                 "preview_apply_profile": bool(self.chk_apply_profile.isChecked()) and active_profile_valid,
                 "batch_embed_profile": True,
                 "batch_apply_adjustments": bool(self.batch_apply_adjustments.isChecked()),
-                "fast_raw_preview": bool(self.check_fast_raw_preview.isChecked()),
+                "fast_raw_preview": True,
                 "preview_max_side": int(self.spin_preview_max_side.value()),
                 "adjustments": self._detail_adjustment_state(),
                 "render_adjustments": self._render_adjustment_state(),
@@ -4151,7 +4167,7 @@ if QtWidgets is not None:
                 "preview_apply_profile": False,
                 "batch_embed_profile": True,
                 "batch_apply_adjustments": True,
-                "fast_raw_preview": bool(self.check_fast_raw_preview.isChecked()),
+                "fast_raw_preview": True,
                 "preview_max_side": int(self.spin_preview_max_side.value()),
                 "adjustments": self._default_detail_adjustment_state(),
                 "render_adjustments": self._default_render_adjustment_state(),
@@ -4271,7 +4287,7 @@ if QtWidgets is not None:
             self.chk_apply_profile.setChecked(preview_apply_profile and bool(self.path_profile_active.text().strip()))
             self.batch_embed_profile.setChecked(True)
             self.batch_apply_adjustments.setChecked(bool(state.get("batch_apply_adjustments", self.batch_apply_adjustments.isChecked())))
-            self.check_fast_raw_preview.setChecked(bool(state.get("fast_raw_preview", self.check_fast_raw_preview.isChecked())))
+            self.check_fast_raw_preview.setChecked(True)
 
             try:
                 self.spin_preview_max_side.setValue(int(state.get("preview_max_side", self.spin_preview_max_side.value())))
@@ -5582,7 +5598,12 @@ if QtWidgets is not None:
                 self._action_compare.blockSignals(True)
                 self._action_compare.setChecked(enabled)
                 self._action_compare.blockSignals(False)
-            if enabled:
+            selected = self._selected_file
+            if selected is not None and selected.suffix.lower() in RAW_EXTENSIONS:
+                self._last_loaded_preview_key = None
+                self._on_load_selected(show_message=False)
+                return
+            if self._original_linear is not None:
                 self._schedule_preview_refresh()
 
         def _menu_toggle_compare(self, checked: bool) -> None:
@@ -5784,6 +5805,16 @@ if QtWidgets is not None:
             if notify:
                 self._log_preview(f"Aviso: {reason} Se usa DCB en la GUI hasta instalar soporte GPL.")
             return "dcb"
+
+        def _balanced_preview_demosaic(self) -> str:
+            for candidate in PREVIEW_BALANCED_DEMOSAIC_ORDER:
+                if unavailable_demosaic_reason(candidate) is None:
+                    return candidate
+            return self._supported_gui_demosaic("dcb", notify=False)
+
+        def _preview_requires_max_quality(self) -> bool:
+            compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
+            return compare_enabled or bool(self._manual_chart_marking_after_reload)
 
         def _split_black_mode(self, value: str) -> tuple[str, int]:
             txt = (value or "metadata").strip().lower()
@@ -6327,7 +6358,11 @@ if QtWidgets is not None:
                 self._selected_file = selected
                 self.selected_file_label.setText(str(selected))
             recipe = self._build_effective_recipe()
-            fast_raw = bool(self.check_fast_raw_preview.isChecked())
+            max_quality_preview = self._preview_requires_max_quality()
+            is_raw = selected.suffix.lower() in RAW_EXTENSIONS
+            fast_raw = bool(is_raw and not max_quality_preview)
+            if is_raw and fast_raw:
+                recipe.demosaic_algorithm = self._balanced_preview_demosaic()
             max_preview_side = int(self.spin_preview_max_side.value())
             cache_key = self._preview_cache_key(
                 selected=selected,
@@ -6385,6 +6420,48 @@ if QtWidgets is not None:
             if self._original_linear is not None:
                 self._schedule_preview_refresh()
 
+        def _on_slider_release(self) -> None:
+            if self._original_linear is not None:
+                self._schedule_preview_refresh()
+
+        def _is_preview_interaction_active(self) -> bool:
+            slider_names = (
+                "slider_sharpen",
+                "slider_radius",
+                "slider_noise_luma",
+                "slider_noise_color",
+                "slider_ca_red",
+                "slider_ca_blue",
+                "slider_brightness",
+                "slider_black_point",
+                "slider_white_point",
+                "slider_contrast",
+                "slider_midtone",
+                "slider_tone_curve_black",
+                "slider_tone_curve_white",
+            )
+            for name in slider_names:
+                slider = getattr(self, name, None)
+                if slider is not None and bool(slider.isSliderDown()):
+                    return True
+            editor = getattr(self, "tone_curve_editor", None)
+            return bool(editor is not None and editor.is_dragging())
+
+        def _interactive_preview_source(self, image: np.ndarray) -> np.ndarray:
+            rgb = np.asarray(image, dtype=np.float32)
+            h, w = int(rgb.shape[0]), int(rgb.shape[1])
+            max_side = max(h, w)
+            if max_side <= PREVIEW_INTERACTIVE_MAX_SIDE:
+                return rgb
+            scale = float(PREVIEW_INTERACTIVE_MAX_SIDE) / float(max_side)
+            nw = max(1, int(round(w * scale)))
+            nh = max(1, int(round(h * scale)))
+            return np.clip(
+                cv2.resize(rgb, (nw, nh), interpolation=cv2.INTER_AREA),
+                0.0,
+                1.0,
+            ).astype(np.float32)
+
         def _reset_adjustments(self) -> None:
             self.slider_sharpen.setValue(0)
             self.slider_radius.setValue(10)
@@ -6400,34 +6477,53 @@ if QtWidgets is not None:
                 return
             self._preview_refresh_timer.stop()
             try:
+                interactive = self._is_preview_interaction_active()
                 nl = self.slider_noise_luma.value() / 100.0
                 nc = self.slider_noise_color.value() / 100.0
                 sharpen = self.slider_sharpen.value() / 100.0
                 radius = self.slider_radius.value() / 10.0
                 ca_red, ca_blue = self._ca_scale_factors()
                 histogram_key = self._last_loaded_preview_key or str(id(self._original_linear))
-                if self._tone_curve_histogram_key != histogram_key:
+                if not interactive and self._tone_curve_histogram_key != histogram_key:
                     self.tone_curve_editor.set_histogram_from_image(self._original_linear)
                     self._tone_curve_histogram_key = histogram_key
 
-                detail_adjusted = self._detail_adjusted_preview(
-                    self._original_linear,
-                    denoise_luma=nl,
-                    denoise_color=nc,
-                    sharpen_amount=sharpen,
-                    sharpen_radius=radius,
-                    lateral_ca_red_scale=ca_red,
-                    lateral_ca_blue_scale=ca_blue,
-                )
+                source_linear = self._interactive_preview_source(self._original_linear) if interactive else self._original_linear
+                if interactive:
+                    detail_adjusted = apply_adjustments(
+                        source_linear,
+                        denoise_luminance=nl,
+                        denoise_color=nc,
+                        sharpen_amount=sharpen,
+                        sharpen_radius=radius,
+                        lateral_ca_red_scale=ca_red,
+                        lateral_ca_blue_scale=ca_blue,
+                    )
+                else:
+                    detail_adjusted = self._detail_adjusted_preview(
+                        self._original_linear,
+                        denoise_luma=nl,
+                        denoise_color=nc,
+                        sharpen_amount=sharpen,
+                        sharpen_radius=radius,
+                        lateral_ca_red_scale=ca_red,
+                        lateral_ca_blue_scale=ca_blue,
+                    )
                 adjusted = apply_render_adjustments(detail_adjusted, **self._render_adjustment_kwargs())
-                self._adjusted_linear = adjusted
+                if not interactive:
+                    self._adjusted_linear = adjusted
 
                 compare_enabled = bool(self.chk_compare.isChecked())
                 if compare_enabled:
                     self._set_preview_panel_image(self.image_original_compare, self._original_srgb_preview())
 
                 result_srgb = linear_to_srgb_display(adjusted)
-                if self.chk_apply_profile.isChecked() and self.path_profile_active.text().strip():
+                should_apply_profile = (
+                    (not interactive)
+                    and self.chk_apply_profile.isChecked()
+                    and self.path_profile_active.text().strip() != ""
+                )
+                if should_apply_profile:
                     p = Path(self.path_profile_active.text().strip())
                     if not self._profile_can_be_active(p):
                         status = self._profile_status_for_path(p) or "no disponible"
@@ -6458,14 +6554,19 @@ if QtWidgets is not None:
                 self._set_preview_panel_image(self.image_result_single, self._preview_srgb)
                 if compare_enabled:
                     self._set_preview_panel_image(self.image_result_compare, self._preview_srgb)
-                self.preview_analysis.setPlainText(preview_analysis_text(self._original_linear, adjusted))
+                if not interactive:
+                    self.preview_analysis.setPlainText(preview_analysis_text(self._original_linear, adjusted))
             except Exception as exc:
                 QtWidgets.QMessageBox.warning(self, "Aviso", str(exc))
 
         def _schedule_preview_refresh(self) -> None:
             if self._original_linear is None:
                 return
-            self._preview_refresh_timer.start(120)
+            if self._is_preview_interaction_active():
+                if not self._preview_refresh_timer.isActive():
+                    self._preview_refresh_timer.start(PREVIEW_REFRESH_THROTTLE_MS)
+                return
+            self._preview_refresh_timer.start(PREVIEW_REFRESH_DEBOUNCE_MS)
 
         def _looks_broken_profile_preview(self, image_srgb: np.ndarray) -> bool:
             x = np.clip(np.asarray(image_srgb, dtype=np.float32), 0.0, 1.0)
@@ -7045,10 +7146,9 @@ if QtWidgets is not None:
             if (
                 self._selected_file is not None
                 and self._selected_file.suffix.lower() in RAW_EXTENSIONS
-                and self.check_fast_raw_preview.isChecked()
+                and not self._preview_requires_max_quality()
             ):
                 self._manual_chart_marking_after_reload = True
-                self.check_fast_raw_preview.setChecked(False)
                 self._last_loaded_preview_key = None
                 self._set_status("Recargando preview de alta calidad antes del marcado manual")
                 self._on_load_selected(show_message=False)

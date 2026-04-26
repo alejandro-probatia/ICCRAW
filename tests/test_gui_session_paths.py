@@ -492,6 +492,67 @@ def test_session_preview_cache_survives_memory_clear(tmp_path: Path, qapp):
         window.close()
 
 
+def test_raw_preview_uses_balanced_fast_mode_outside_compare(tmp_path: Path, monkeypatch, qapp):
+    raw_path = tmp_path / "sample.NEF"
+    raw_path.write_bytes(b"raw")
+    captured: dict[str, object] = {}
+
+    def fake_load_image_for_preview(_path, *, recipe, fast_raw, max_preview_side):
+        captured["demosaic"] = recipe.demosaic_algorithm
+        captured["fast_raw"] = bool(fast_raw)
+        captured["max_preview_side"] = int(max_preview_side)
+        return gui_module.np.zeros((24, 32, 3), dtype=gui_module.np.float32), "ok"
+
+    monkeypatch.setattr(gui_module, "load_image_for_preview", fake_load_image_for_preview)
+
+    window = ICCRawMainWindow()
+    try:
+        window._start_background_task = lambda _label, task, on_success: on_success(task())
+        window._selected_file = raw_path
+        window._set_combo_data(window.combo_demosaic, "linear")
+        window.chk_compare.setChecked(False)
+
+        window._on_load_selected(show_message=False)
+
+        assert captured["fast_raw"] is True
+        assert captured["demosaic"] == "dcb"
+        assert captured["max_preview_side"] == int(window.spin_preview_max_side.value())
+    finally:
+        window.close()
+
+
+def test_compare_toggle_switches_raw_preview_between_fast_and_max_quality(tmp_path: Path, monkeypatch, qapp):
+    raw_path = tmp_path / "sample.NEF"
+    raw_path.write_bytes(b"raw")
+    calls: list[bool] = []
+
+    def fake_load_image_for_preview(_path, *, recipe, fast_raw, max_preview_side):
+        _ = recipe, max_preview_side
+        calls.append(bool(fast_raw))
+        return gui_module.np.full((24, 32, 3), 0.5, dtype=gui_module.np.float32), "ok"
+
+    monkeypatch.setattr(gui_module, "load_image_for_preview", fake_load_image_for_preview)
+
+    window = ICCRawMainWindow()
+    try:
+        window._start_background_task = lambda _label, task, on_success: on_success(task())
+        window._selected_file = raw_path
+        window.chk_compare.setChecked(False)
+        window._on_load_selected(show_message=False)
+        assert calls[-1] is True
+
+        window.chk_compare.setChecked(True)
+        qapp.processEvents()
+        assert calls[-1] is False
+        assert "|0|" in (window._last_loaded_preview_key or "")
+
+        window.chk_compare.setChecked(False)
+        qapp.processEvents()
+        assert "|1|" in (window._last_loaded_preview_key or "")
+    finally:
+        window.close()
+
+
 def test_thumbnail_batch_limits_background_work(tmp_path: Path, qapp):
     window = ICCRawMainWindow()
     try:
