@@ -1,0 +1,47 @@
+﻿name: Solicitud de funcionalidad
+description: Propone una mejora para NexoRAW
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: dropdown
+    id: use_case
+    attributes:
+      label: Caso de uso principal
+      options:
+        - cientifico
+        - forense
+        - patrimonio
+        - docencia
+        - otro
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema actual
+      description: Describe el problema real que impide o limita el flujo.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Propuesta
+      description: Describe la mejora concreta y su alcance.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+      description: Incluye soluciones descartadas y por que.
+    validations:
+      required: true
+  - type: textarea
+    id: reproducibility
+    attributes:
+      label: Impacto en reproducibilidad o trazabilidad
+      description: Declaracion explicita de impacto.
+      placeholder: "Ej: mejora/rompe/no afecta la reproducibilidad por..."
+    validations:
+      required: true

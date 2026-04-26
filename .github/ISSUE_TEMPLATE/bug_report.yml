@@ -1,0 +1,89 @@
+﻿name: Reporte de bug
+description: Reporta un fallo reproducible en NexoRAW
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por reportar. Evita adjuntar imagenes sensibles o material con
+        datos personales sin anonimizar.
+  - type: dropdown
+    id: version
+    attributes:
+      label: Version de NexoRAW
+      description: Selecciona la version afectada
+      options:
+        - v0.2.0
+        - v0.1.0-beta.5
+        - Otra (indicar en descripcion)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Sistema operativo
+      placeholder: "Ej: Ubuntu 24.04, Windows 11, macOS 14"
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Version de Python
+      placeholder: "Ej: 3.11.9"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Comando ejecutado
+      description: Copia el comando exacto que falla
+      placeholder: "nexoraw auto-profile-batch ..."
+    validations:
+      required: true
+  - type: textarea
+    id: tools
+    attributes:
+      label: Salida de `nexoraw check-tools --strict`
+      render: shell
+      placeholder: "Pega aqui la salida completa"
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Archivos involucrados
+      description: |
+        Indica rutas y tipo de archivo. Si hay imagenes sensibles, describe el
+        caso sin adjuntar contenido confidencial.
+      placeholder: "01_ORG/captura_001.NEF, 00_configuraciones/recipe.yml"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Pasos para reproducir
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamiento esperado
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Comportamiento observado
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Adjuntos de trazabilidad (opcional)
+      description: Adjunta `.profile.json`, `qa_session_report.json` o logs si aplica.

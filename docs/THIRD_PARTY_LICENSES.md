@@ -91,3 +91,12 @@ Antes de publicar release/binarios/contenedor:
 4. verificar licencias de binarios de sistema empaquetados (si se empaquetan),
 5. si se distribuye AMaZE, incluir avisos GPL3 de `rawpy-demosaic`, LibRaw y
    demosaic packs, junto con el codigo fuente correspondiente o URL publica.
+
+## 10) Contributor Covenant 2.1 (codigo de conducta)
+
+- Uso en NexoRAW: textos `CODE_OF_CONDUCT.md` y `CODE_OF_CONDUCT.es.md`.
+- Fuente: `https://www.contributor-covenant.org/version/2/1/code_of_conduct/`.
+- Licencia declarada por el proyecto Contributor Covenant: CC-BY-4.0.
+- Politica en NexoRAW:
+  - se conserva la atribucion al texto original,
+  - solo se sustituye el metodo de contacto por el del mantenedor del proyecto.
