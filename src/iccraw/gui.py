@@ -111,7 +111,7 @@ THUMBNAIL_BATCH_SIZE = 48
 THUMBNAIL_PREFETCH_MARGIN_PAGES = 2
 PREVIEW_REFRESH_DEBOUNCE_MS = 120
 PREVIEW_REFRESH_THROTTLE_MS = 45
-PREVIEW_INTERACTIVE_MAX_SIDE = 1600
+PREVIEW_INTERACTIVE_MAX_SIDE = 1200
 IMAGE_PANEL_BACKGROUND = "#2b2b2b"
 IMAGE_PANEL_BORDER = "#5a5a5a"
 IMAGE_PANEL_TEXT = "#e6e6e6"
@@ -6447,6 +6447,21 @@ if QtWidgets is not None:
             editor = getattr(self, "tone_curve_editor", None)
             return bool(editor is not None and editor.is_dragging())
 
+        def _is_detail_interaction_active(self) -> bool:
+            detail_slider_names = (
+                "slider_sharpen",
+                "slider_radius",
+                "slider_noise_luma",
+                "slider_noise_color",
+                "slider_ca_red",
+                "slider_ca_blue",
+            )
+            for name in detail_slider_names:
+                slider = getattr(self, name, None)
+                if slider is not None and bool(slider.isSliderDown()):
+                    return True
+            return False
+
         def _interactive_preview_source(self, image: np.ndarray) -> np.ndarray:
             rgb = np.asarray(image, dtype=np.float32)
             h, w = int(rgb.shape[0]), int(rgb.shape[1])
@@ -6478,6 +6493,7 @@ if QtWidgets is not None:
             self._preview_refresh_timer.stop()
             try:
                 interactive = self._is_preview_interaction_active()
+                detail_interactive = interactive and self._is_detail_interaction_active()
                 nl = self.slider_noise_luma.value() / 100.0
                 nc = self.slider_noise_color.value() / 100.0
                 sharpen = self.slider_sharpen.value() / 100.0
@@ -6489,7 +6505,7 @@ if QtWidgets is not None:
                     self._tone_curve_histogram_key = histogram_key
 
                 source_linear = self._interactive_preview_source(self._original_linear) if interactive else self._original_linear
-                if interactive:
+                if detail_interactive:
                     detail_adjusted = apply_adjustments(
                         source_linear,
                         denoise_luminance=nl,
@@ -6499,6 +6515,19 @@ if QtWidgets is not None:
                         lateral_ca_red_scale=ca_red,
                         lateral_ca_blue_scale=ca_blue,
                     )
+                elif interactive:
+                    # During tonal/tone-curve interaction reuse cached detail pass and
+                    # only render a lighter downscaled frame to keep UI responsive.
+                    detail_adjusted = self._detail_adjusted_preview(
+                        self._original_linear,
+                        denoise_luma=nl,
+                        denoise_color=nc,
+                        sharpen_amount=sharpen,
+                        sharpen_radius=radius,
+                        lateral_ca_red_scale=ca_red,
+                        lateral_ca_blue_scale=ca_blue,
+                    )
+                    detail_adjusted = self._interactive_preview_source(detail_adjusted)
                 else:
                     detail_adjusted = self._detail_adjusted_preview(
                         self._original_linear,
