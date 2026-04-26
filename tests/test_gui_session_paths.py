@@ -214,27 +214,52 @@ def test_image_thumbnail_payload_uses_real_preview(tmp_path: Path, qapp):
     assert rgb.shape[2] == 3
 
 
-def test_raw_thumbnail_payload_falls_back_to_half_size_raw(tmp_path: Path, monkeypatch, qapp):
+def test_raw_thumbnail_payload_skips_expensive_raw_fallback(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "capture.NEF"
-    raw_path.write_bytes(b"not a real raw but enough for the fallback test")
+    raw_path.write_bytes(b"not a real raw but enough for the thumbnail test")
 
     monkeypatch.setattr(gui_module, "extract_embedded_preview", lambda _path: None)
-    monkeypatch.setattr(
-        ICCRawMainWindow,
-        "_rawpy_thumbnail_u8",
-        staticmethod(lambda _path: gui_module.np.full((96, 48, 3), (24, 96, 180), dtype=gui_module.np.uint8)),
-    )
 
     payloads = ICCRawMainWindow._build_thumbnail_payloads([raw_path], 64)
 
-    assert len(payloads) == 1
-    payload_path, key, rgb = payloads[0]
-    assert payload_path == str(raw_path)
-    assert str(raw_path) in key
-    assert rgb.dtype.name == "uint8"
-    assert max(rgb.shape[:2]) <= gui_module.MAX_THUMBNAIL_SIZE
-    assert rgb.shape[2] == 3
-    assert int(rgb[..., 2].max()) > int(rgb[..., 0].max())
+    assert payloads == []
+
+
+def test_thumbnail_disk_cache_restores_icon(tmp_path: Path, qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._thumbnail_disk_cache_dir = lambda: tmp_path / "thumb-cache"
+        key = "example|123|thumb-v2"
+        rgb = gui_module.np.full((24, 16, 3), (20, 120, 220), dtype=gui_module.np.uint8)
+
+        window._write_thumbnail_to_disk_cache(key, rgb)
+        window._image_thumb_cache.clear()
+
+        icon = window._cached_thumbnail_icon(key)
+
+        assert icon is not None
+        assert not icon.pixmap(16, 16).isNull()
+        assert key in window._image_thumb_cache
+    finally:
+        window.close()
+
+
+def test_thumbnail_batch_limits_background_work(tmp_path: Path, qapp):
+    window = ICCRawMainWindow()
+    try:
+        paths = []
+        for index in range(gui_module.THUMBNAIL_BATCH_SIZE + 5):
+            path = tmp_path / f"image_{index:02d}.png"
+            path.write_bytes(b"placeholder")
+            paths.append(path)
+
+        batch = window._next_thumbnail_batch(paths, 64)
+
+        assert len(batch) == gui_module.THUMBNAIL_BATCH_SIZE
+        assert batch == paths[: gui_module.THUMBNAIL_BATCH_SIZE]
+        assert window._thumbnail_scan_index == gui_module.THUMBNAIL_BATCH_SIZE
+    finally:
+        window.close()
 
 
 def test_selected_color_reference_images_are_marked_in_thumbnail_list(tmp_path: Path, qapp):

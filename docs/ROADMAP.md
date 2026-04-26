@@ -73,6 +73,8 @@ Objetivo: hacer que el comportamiento sea sostenible por la comunidad.
 - paquete Debian beta reproducible para instalacion local,
 - contenedor o entorno reproducible,
 - benchmarks de determinismo y rendimiento,
+- benchmarks de navegacion RAW, cache persistente de miniaturas y cache
+  opcional de previews completas,
 - auditoria de licencias para releases AGPL.
 
 ## Fase 6 - Ampliacion controlada (P3)

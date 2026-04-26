@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import hashlib
 from importlib import resources
 import json
 import os
@@ -67,7 +68,6 @@ from .raw.preview import (
     preview_analysis_text,
     tone_curve_lut,
 )
-from .raw.compat import open_rawpy, rawpy
 from .reporting import check_external_tools
 from .session import create_session, ensure_session_structure, load_session, save_session, session_file_path
 from .workflow import auto_generate_profile_from_charts
@@ -100,6 +100,8 @@ MAX_THUMBNAIL_SIZE = 220
 PREVIEW_CACHE_MAX_ENTRIES = 8
 PREVIEW_CACHE_MAX_BYTES = 384 * 1024 * 1024
 THUMBNAIL_CACHE_MAX_ENTRIES = 512
+THUMBNAIL_BATCH_SIZE = 48
+THUMBNAIL_PREFETCH_MARGIN_PAGES = 2
 IMAGE_PANEL_BACKGROUND = "#2b2b2b"
 IMAGE_PANEL_BORDER = "#5a5a5a"
 IMAGE_PANEL_TEXT = "#e6e6e6"
@@ -793,6 +795,9 @@ if QtWidgets is not None:
             self._thumbnail_generation = 0
             self._metadata_generation = 0
             self._pending_thumbnail_paths: list[Path] = []
+            self._thumbnail_scan_index = 0
+            self._thumbnail_task_active = False
+            self._queued_metadata_include_c2pa = True
             self._preview_cache: dict[str, np.ndarray] = {}
             self._preview_cache_order: list[str] = []
             self._display_color_error_key: str | None = None
@@ -1547,6 +1552,7 @@ if QtWidgets is not None:
             self.file_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
             self.file_list.itemSelectionChanged.connect(self._on_file_selection_changed)
             self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
+            self.file_list.verticalScrollBar().valueChanged.connect(self._on_thumbnail_scroll_changed)
             self._apply_thumbnail_size(thumbnail_size)
             layout.addWidget(self.file_list, 1)
 
@@ -2154,7 +2160,7 @@ if QtWidgets is not None:
             grid.addWidget(note, 0, 0, 1, 3)
 
             self.check_fast_raw_preview = QtWidgets.QCheckBox("Preview RAW rapida (navegacion; no colorimetrica)")
-            self.check_fast_raw_preview.setChecked(self._settings_bool("preview/fast_raw_preview", False))
+            self.check_fast_raw_preview.setChecked(self._settings_bool("preview/fast_raw_preview", True))
             self.check_fast_raw_preview.setToolTip(
                 "Usa miniatura embebida o revelado RAW half-size. Es util para navegar, "
                 "pero la revision colorimetrica debe hacerse con esta opcion desactivada."
@@ -3770,33 +3776,40 @@ if QtWidgets is not None:
         def _queue_thumbnail_generation(self, paths: list[Path], *, delay_ms: int = 220) -> None:
             self._thumbnail_generation += 1
             self._pending_thumbnail_paths = list(paths)
+            self._thumbnail_scan_index = 0
             if not self._pending_thumbnail_paths:
                 self._thumbnail_timer.stop()
                 return
             self._thumbnail_timer.start(max(0, int(delay_ms)))
 
         def _start_pending_thumbnail_generation(self) -> None:
+            if self._thumbnail_task_active:
+                return
             paths = [p for p in self._pending_thumbnail_paths if p.exists() and p.is_file()]
             if not paths:
                 return
 
             size = int(self.file_list.iconSize().width() or DEFAULT_THUMBNAIL_SIZE)
             generation = self._thumbnail_generation
-            missing = [p for p in paths if self._thumbnail_cache_key(p, size) not in self._image_thumb_cache]
+            self._apply_cached_thumbnails(paths, size)
+            missing = self._next_thumbnail_batch(paths, size)
             if not missing:
-                self._apply_cached_thumbnails(paths, size)
                 return
 
             def task():
                 return generation, size, self._build_thumbnail_payloads(missing, size)
 
             thread = TaskThread(task)
+            self._thumbnail_task_active = True
             self._threads.append(thread)
 
             def cleanup() -> None:
+                self._thumbnail_task_active = False
                 if thread in self._threads:
                     self._threads.remove(thread)
                 thread.deleteLater()
+                if self._pending_thumbnail_paths and generation != self._thumbnail_generation:
+                    self._thumbnail_timer.start(0)
 
             def ok(payload) -> None:
                 try:
@@ -3806,9 +3819,12 @@ if QtWidgets is not None:
                     for raw_path, key, rgb_u8 in thumbnails:
                         icon = self._icon_from_thumbnail_array(rgb_u8)
                         self._image_thumb_cache[key] = icon
+                        self._write_thumbnail_to_disk_cache(key, rgb_u8)
                         self._set_item_icon_for_path(Path(raw_path), icon)
                     self._prune_thumbnail_cache()
                     self._apply_cached_thumbnails(self._file_list_paths(), int(payload_size))
+                    if self._should_prefetch_more_thumbnails():
+                        self._thumbnail_timer.start(80)
                 finally:
                     cleanup()
 
@@ -3820,11 +3836,86 @@ if QtWidgets is not None:
             thread.failed.connect(fail)
             thread.start()
 
+        def _next_thumbnail_batch(self, paths: list[Path], size: int) -> list[Path]:
+            batch: list[Path] = []
+            while self._thumbnail_scan_index < len(paths) and len(batch) < THUMBNAIL_BATCH_SIZE:
+                path = paths[self._thumbnail_scan_index]
+                self._thumbnail_scan_index += 1
+                if self._cached_thumbnail_icon(self._thumbnail_cache_key(path, size)) is None:
+                    batch.append(path)
+            return batch
+
+        def _on_thumbnail_scroll_changed(self, _value: int) -> None:
+            if self._thumbnail_task_active or not self._pending_thumbnail_paths:
+                return
+            if self._thumbnail_scan_index >= len(self._pending_thumbnail_paths):
+                return
+            if self._should_prefetch_more_thumbnails():
+                self._thumbnail_timer.start(80)
+
+        def _should_prefetch_more_thumbnails(self) -> bool:
+            if not hasattr(self, "file_list"):
+                return False
+            if self._thumbnail_scan_index >= len(self._pending_thumbnail_paths):
+                return False
+            scrollbar = self.file_list.verticalScrollBar()
+            maximum = int(scrollbar.maximum())
+            if maximum <= 0:
+                return False
+            margin = max(1, int(scrollbar.pageStep()) * THUMBNAIL_PREFETCH_MARGIN_PAGES)
+            return int(scrollbar.value()) >= maximum - margin
+
         def _apply_cached_thumbnails(self, paths: list[Path], size: int) -> None:
             for p in paths:
-                icon = self._image_thumb_cache.get(self._thumbnail_cache_key(p, size))
+                icon = self._cached_thumbnail_icon(self._thumbnail_cache_key(p, size))
                 if icon is not None:
                     self._set_item_icon_for_path(p, icon)
+
+        def _cached_thumbnail_icon(self, key: str) -> QtGui.QIcon | None:
+            icon = self._image_thumb_cache.get(key)
+            if icon is not None:
+                return icon
+            icon = self._read_thumbnail_from_disk_cache(key)
+            if icon is None:
+                return None
+            self._image_thumb_cache[key] = icon
+            self._prune_thumbnail_cache()
+            return icon
+
+        def _thumbnail_disk_cache_dir(self) -> Path:
+            if sys.platform == "win32":
+                base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+            elif sys.platform == "darwin":
+                base = Path.home() / "Library" / "Caches"
+            else:
+                base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+            return base / APP_NAME / "thumbnails"
+
+        def _thumbnail_disk_cache_path(self, key: str) -> Path:
+            digest = hashlib.sha256(key.encode("utf-8", errors="surrogatepass")).hexdigest()
+            return self._thumbnail_disk_cache_dir() / digest[:2] / f"{digest}.png"
+
+        def _read_thumbnail_from_disk_cache(self, key: str) -> QtGui.QIcon | None:
+            cache_path = self._thumbnail_disk_cache_path(key)
+            if not cache_path.is_file():
+                return None
+            pixmap = QtGui.QPixmap(str(cache_path))
+            if pixmap.isNull():
+                return None
+            return QtGui.QIcon(pixmap)
+
+        def _write_thumbnail_to_disk_cache(self, key: str, rgb_u8: np.ndarray) -> None:
+            try:
+                cache_path = self._thumbnail_disk_cache_path(key)
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                image = np.asarray(rgb_u8, dtype=np.uint8)
+                if image.ndim == 2:
+                    image = np.repeat(image[..., None], 3, axis=2)
+                if image.shape[-1] > 3:
+                    image = image[..., :3]
+                Image.fromarray(np.ascontiguousarray(image)).save(cache_path, format="PNG")
+            except Exception:
+                return
 
         def _prune_thumbnail_cache(self) -> None:
             overflow = len(self._image_thumb_cache) - THUMBNAIL_CACHE_MAX_ENTRIES
@@ -3921,9 +4012,6 @@ if QtWidgets is not None:
                 image = extract_embedded_preview(path)
                 if image is not None:
                     return NexoRawMainWindow._thumbnail_u8(linear_to_srgb_display(image), size)
-                raw_thumb = NexoRawMainWindow._rawpy_thumbnail_u8(path)
-                if raw_thumb is not None:
-                    return NexoRawMainWindow._thumbnail_u8(raw_thumb, size)
                 return None
 
             try:
@@ -3941,40 +4029,6 @@ if QtWidgets is not None:
             except Exception:
                 image = read_image(path)
                 return NexoRawMainWindow._thumbnail_u8(linear_to_srgb_display(image), size)
-
-        @staticmethod
-        def _rawpy_thumbnail_u8(path: Path) -> np.ndarray | None:
-            try:
-                if rawpy is None:
-                    return None
-                with open_rawpy(path, unpack=True) as raw:
-                    return raw.postprocess(
-                        half_size=True,
-                        use_camera_wb=True,
-                        use_auto_wb=False,
-                        output_color=rawpy.ColorSpace.sRGB,
-                        output_bps=8,
-                        no_auto_bright=False,
-                        bright=1.0,
-                        demosaic_algorithm=rawpy.DemosaicAlgorithm.LINEAR,
-                    )
-            except Exception:
-                try:
-                    if rawpy is None:
-                        return None
-                    with open_rawpy(path, unpack=True) as raw:
-                        return raw.postprocess(
-                            half_size=True,
-                            use_camera_wb=False,
-                            use_auto_wb=True,
-                            output_color=rawpy.ColorSpace.sRGB,
-                            output_bps=8,
-                            no_auto_bright=False,
-                            bright=1.0,
-                            demosaic_algorithm=rawpy.DemosaicAlgorithm.LINEAR,
-                        )
-                except Exception:
-                    return None
 
         @staticmethod
         def _thumbnail_u8(image_rgb: np.ndarray, size: int) -> np.ndarray:
@@ -4040,7 +4094,7 @@ if QtWidgets is not None:
                 self._clear_manual_chart_points_for_file_change()
             self._selected_file = selected
             self.selected_file_label.setText(str(self._selected_file))
-            self._queue_metadata_load(self._selected_file)
+            self._queue_metadata_load(self._selected_file, include_c2pa=False)
             if self._selected_file.suffix.lower() in BROWSABLE_EXTENSIONS:
                 self._set_status(f"Seleccionado: {self._selected_file.name}. Cargando preview...")
                 self._selection_load_timer.start(250)
@@ -4049,8 +4103,9 @@ if QtWidgets is not None:
             self._selection_load_timer.stop()
             self._on_load_selected()
 
-        def _queue_metadata_load(self, path: Path, *, delay_ms: int = 180) -> None:
+        def _queue_metadata_load(self, path: Path, *, delay_ms: int = 180, include_c2pa: bool = True) -> None:
             self._metadata_generation += 1
+            self._queued_metadata_include_c2pa = bool(include_c2pa)
             if hasattr(self, "metadata_file_label"):
                 self.metadata_file_label.setText(f"Metadatos: {path.name}")
             if hasattr(self, "metadata_summary"):
@@ -4058,9 +4113,9 @@ if QtWidgets is not None:
             self._metadata_timer.start(max(0, int(delay_ms)))
 
         def _load_metadata_from_timer(self) -> None:
-            self._refresh_metadata_view()
+            self._refresh_metadata_view(include_c2pa=self._queued_metadata_include_c2pa)
 
-        def _refresh_metadata_view(self) -> None:
+        def _refresh_metadata_view(self, _checked: bool = False, *, include_c2pa: bool = True) -> None:
             if self._selected_file is None:
                 self._clear_metadata_view()
                 return
@@ -4073,7 +4128,7 @@ if QtWidgets is not None:
                 self._metadata_tree_message(self.metadata_summary, "Leyendo metadatos...")
 
             def task():
-                return generation, selected, inspect_file_metadata(selected)
+                return generation, selected, inspect_file_metadata(selected, include_c2pa=include_c2pa)
 
             thread = TaskThread(task)
             self._threads.append(thread)

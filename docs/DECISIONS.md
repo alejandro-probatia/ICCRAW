@@ -115,3 +115,40 @@ Motivacion:
 3. la trazabilidad forense requiere registrar el backend exacto y sus flags,
 4. la GUI debe evitar bloqueos interactivos cuando una receta antigua pide AMaZE
    en un entorno sin soporte GPL3.
+
+## DEC-0008: Rendimiento de navegacion RAW y cache de previews
+
+- Estado: aceptada
+- Fecha: 2026-04-26
+
+Decision:
+
+- tratar miniaturas, preview de navegacion y revelado colorimetrico como tres
+  niveles distintos de coste y fidelidad,
+- generar miniaturas RAW desde el JPEG embebido siempre que exista,
+- no ejecutar demosaic RAW masivo para poblar el navegador de miniaturas,
+- guardar miniaturas en una cache persistente de usuario por plataforma,
+- limitar el trabajo inicial a lotes pequenos y precargar mas miniaturas solo
+  cuando el usuario se acerque al final de la vista,
+- usar preview RAW rapida por defecto para navegacion interactiva,
+- reservar el revelado completo para la carga explicita o para flujos donde la
+  fidelidad colorimetrica sea necesaria.
+
+Motivacion:
+
+1. RawTherapee crea las miniaturas iniciales a partir del JPEG embebido y las
+   reutiliza desde cache en aperturas posteriores de una carpeta.
+2. darktable separa cache primaria en memoria y backend secundario en disco, y
+   permite extraer JPEG embebidos para acelerar el primer contacto con una
+   coleccion.
+3. En carpetas con muchos RAW, el coste de LibRaw/rawpy no debe bloquear la
+   seleccion ni el desplazamiento del usuario.
+4. La precision colorimetrica debe conservarse en el modo de revision/revelado,
+   pero la navegacion necesita una representacion rapida y honesta sobre sus
+   limites.
+
+Referencias:
+
+- RawTherapee File Browser: https://rawpedia.rawtherapee.com/File_Browser
+- darktable thumbnails: https://docs.darktable.org/usermanual/4.6/en/lighttable/digital-asset-management/thumbnails/
+- darktable lighttable preferences: https://docs.darktable.org/usermanual/4.8/en/preferences-settings/lighttable/
