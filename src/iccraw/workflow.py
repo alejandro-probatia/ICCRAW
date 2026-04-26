@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -25,6 +25,8 @@ from .core.utils import RAW_EXTENSIONS, write_tiff16
 from .profile.builder import build_profile, validate_profile
 from .profile.development import build_development_profile
 from .profile.export import batch_develop
+from .provenance.c2pa import C2PASignConfig
+from .provenance.nexoraw_proof import NexoRawProofConfig
 from .raw.pipeline import develop_image_array
 
 
@@ -64,12 +66,16 @@ def auto_generate_profile_from_charts(
     qa_max_delta_e2000_max: float = 10.0,
     profile_validity_days: int | None = None,
 ) -> dict[str, Any]:
-    _enforce_profile_recipe_guard(recipe, phase="receta de perfilado inicial")
+    requested_recipe = recipe
+    profile_recipe, recipe_normalizations = sanitize_recipe_for_profiling(requested_recipe)
+    render_recipe = requested_recipe
+    _enforce_profile_recipe_guard(profile_recipe, phase="receta de perfilado inicial")
     work_dir.mkdir(parents=True, exist_ok=True)
     chart_dev_dir = work_dir / "chart_developed"
     detect_dir = work_dir / "detections"
     sample_dir = work_dir / "samples"
     overlay_dir = work_dir / "overlays"
+    profile_recipe_file = work_dir / "recipe_profile_scientific.yml"
 
     for d in (chart_dev_dir, detect_dir, sample_dir, overlay_dir):
         d.mkdir(parents=True, exist_ok=True)
@@ -87,7 +93,7 @@ def auto_generate_profile_from_charts(
 
     initial_pass = _collect_chart_samples(
         chart_files=training_files,
-        recipe=recipe,
+        recipe=profile_recipe,
         reference=reference,
         chart_type=chart_type,
         min_confidence=min_confidence,
@@ -109,25 +115,31 @@ def auto_generate_profile_from_charts(
             "Revisa exposición, encuadre de carta y min_confidence."
         )
 
-    aggregated_initial = _aggregate_samples(accepted_samples, strategy=recipe.sampling_strategy)
+    aggregated_initial = _aggregate_samples(accepted_samples, strategy=profile_recipe.sampling_strategy)
     write_json(work_dir / "samples_aggregated_development_source.json", aggregated_initial)
 
-    profile_recipe = recipe
     development_profile_path: str | None = None
     calibrated_recipe_path: str | None = None
     development_payload: dict[str, Any] | None = None
 
     if calibrate_development:
-        development = build_development_profile(samples=aggregated_initial, base_recipe=recipe)
+        development = build_development_profile(samples=aggregated_initial, base_recipe=profile_recipe)
         development_profile_file = development_profile_out or (work_dir / "development_profile.json")
         calibrated_recipe_file = calibrated_recipe_out or (work_dir / "recipe_calibrated.yml")
-        write_json(development_profile_file, development)
-        save_recipe(development.calibrated_recipe, calibrated_recipe_file)
+        profile_recipe = development.calibrated_recipe
+        render_recipe = apply_profile_calibration_to_render_recipe(render_recipe, profile_recipe)
+        _enforce_profile_recipe_guard(profile_recipe, phase="receta calibrada de perfilado")
+        save_recipe(profile_recipe, profile_recipe_file)
+        save_recipe(render_recipe, calibrated_recipe_file)
+        development_payload = to_json_dict(development)
+        development_payload["profile_calibrated_recipe"] = development_payload.get("calibrated_recipe", asdict(profile_recipe))
+        development_payload["render_calibrated_recipe"] = asdict(render_recipe)
+        development_payload["calibrated_recipe"] = asdict(render_recipe)
+        development_payload["profile_recipe_path"] = str(profile_recipe_file)
+        development_payload["render_recipe_path"] = str(calibrated_recipe_file)
+        write_json(development_profile_file, development_payload)
         development_profile_path = str(development_profile_file)
         calibrated_recipe_path = str(calibrated_recipe_file)
-        development_payload = to_json_dict(development)
-        profile_recipe = development.calibrated_recipe
-        _enforce_profile_recipe_guard(profile_recipe, phase="receta calibrada de perfilado")
 
         calibrated_pass = _collect_chart_samples(
             chart_files=training_files,
@@ -154,6 +166,7 @@ def auto_generate_profile_from_charts(
     aggregated_samples = _aggregate_samples(accepted_samples, strategy=profile_recipe.sampling_strategy)
     aggregated_samples_path = work_dir / "samples_aggregated.json"
     write_json(aggregated_samples_path, aggregated_samples)
+    save_recipe(profile_recipe, profile_recipe_file)
 
     profile_result = build_profile(
         samples=aggregated_samples,
@@ -241,6 +254,12 @@ def auto_generate_profile_from_charts(
     )
     profile_result.metadata["session_profile_status"] = profile_status
     profile_result.metadata["profile_status"] = profile_status["status"]
+    profile_result.metadata["recipe_profiling_normalizations"] = recipe_normalizations
+    profile_result.metadata["requested_recipe"] = asdict(requested_recipe)
+    profile_result.metadata["profile_recipe"] = asdict(profile_recipe)
+    profile_result.metadata["profile_recipe_path"] = str(profile_recipe_file)
+    profile_result.metadata["render_recipe"] = asdict(render_recipe)
+    profile_result.metadata["render_recipe_path"] = calibrated_recipe_path
     write_json(Path(profile_result.output_profile_json), profile_result.metadata)
     write_json(profile_report_out, profile_result)
 
@@ -258,8 +277,12 @@ def auto_generate_profile_from_charts(
         "profile": to_json_dict(profile_result),
         "profile_status": profile_status,
         "profile_report_path": str(profile_report_out),
+        "profile_recipe_path": str(profile_recipe_file),
+        "render_recipe": asdict(render_recipe),
+        "render_recipe_path": calibrated_recipe_path,
         "validation": validation_payload,
         "qa_report_path": qa_report_path,
+        "recipe_profiling_normalizations": recipe_normalizations,
     }
 
 
@@ -287,6 +310,8 @@ def auto_profile_batch(
     qa_mean_delta_e2000_max: float = 5.0,
     qa_max_delta_e2000_max: float = 10.0,
     profile_validity_days: int | None = None,
+    c2pa_config: C2PASignConfig | None = None,
+    proof_config: NexoRawProofConfig | None = None,
 ) -> dict[str, Any]:
     profile_payload = auto_generate_profile_from_charts(
         chart_captures_dir=chart_captures_dir,
@@ -327,6 +352,8 @@ def auto_profile_batch(
         recipe=batch_recipe,
         profile_path=profile_out,
         out_dir=batch_out_dir,
+        c2pa_config=c2pa_config,
+        proof_config=proof_config,
     )
     manifest_path = batch_out_dir / "batch_manifest.json"
     write_json(manifest_path, manifest)
@@ -337,6 +364,10 @@ def auto_profile_batch(
         "chart_captures_skipped": profile_payload["chart_captures_skipped"],
         "development_profile_path": profile_payload.get("development_profile_path"),
         "calibrated_recipe_path": profile_payload.get("calibrated_recipe_path"),
+        "profile_recipe_path": profile_payload.get("profile_recipe_path"),
+        "recipe_profiling_normalizations": profile_payload.get("recipe_profiling_normalizations"),
+        "render_recipe": profile_payload.get("render_recipe"),
+        "render_recipe_path": profile_payload.get("render_recipe_path"),
         "development_profile": profile_payload.get("development_profile"),
         "aggregated_samples": profile_payload["aggregated_samples"],
         "profile": profile_payload["profile"],
@@ -349,6 +380,55 @@ def auto_profile_batch(
         "batch_manifest": to_json_dict(manifest),
         "batch_manifest_path": str(manifest_path),
     }
+
+
+def sanitize_recipe_for_profiling(recipe: Recipe) -> tuple[Recipe, list[dict[str, str]]]:
+    """Force the scientific-mode constraints required for chart measurement.
+
+    Returns the normalized recipe plus a list of changes describing every field
+    that had to be rewritten so the caller (CLI or GUI) can surface them.
+    """
+    changes: list[dict[str, str]] = []
+    updates: dict[str, Any] = {}
+
+    if recipe.denoise.lower() != "off":
+        changes.append({"field": "denoise", "from": str(recipe.denoise), "to": "off"})
+        updates["denoise"] = "off"
+    if recipe.sharpen.lower() != "off":
+        changes.append({"field": "sharpen", "from": str(recipe.sharpen), "to": "off"})
+        updates["sharpen"] = "off"
+    if recipe.tone_curve.lower() != "linear":
+        changes.append({"field": "tone_curve", "from": str(recipe.tone_curve), "to": "linear"})
+        updates["tone_curve"] = "linear"
+    if not recipe.output_linear:
+        changes.append({"field": "output_linear", "from": str(recipe.output_linear), "to": "True"})
+        updates["output_linear"] = True
+    output_space = str(recipe.output_space or "").strip().lower()
+    if output_space not in {"scene_linear_camera_rgb", "camera_rgb", "camera"}:
+        changes.append({"field": "output_space", "from": str(recipe.output_space), "to": "scene_linear_camera_rgb"})
+        updates["output_space"] = "scene_linear_camera_rgb"
+    if not recipe.profiling_mode:
+        changes.append({"field": "profiling_mode", "from": str(recipe.profiling_mode), "to": "True"})
+        updates["profiling_mode"] = True
+
+    if not updates:
+        return recipe, changes
+    return replace(recipe, **updates), changes
+
+
+def apply_profile_calibration_to_render_recipe(render_recipe: Recipe, profile_recipe: Recipe) -> Recipe:
+    """Transfer measured session calibration to the user-facing render recipe.
+
+    Only calibration terms derived from the chart are copied. Creative or final
+    rendering choices such as tone curve, output space, denoise and sharpen stay
+    exactly as requested by the user.
+    """
+    return replace(
+        render_recipe,
+        white_balance_mode="fixed",
+        wb_multipliers=[float(v) for v in profile_recipe.wb_multipliers],
+        exposure_compensation=float(profile_recipe.exposure_compensation),
+    )
 
 
 def _enforce_profile_recipe_guard(recipe: Recipe, *, phase: str) -> None:

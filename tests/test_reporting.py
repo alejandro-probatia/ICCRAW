@@ -15,7 +15,7 @@ def test_check_external_tools_reports_available_required_tools(monkeypatch):
         return subprocess.CompletedProcess(command, 0, stdout=f"{command[0]} 1.2.3\n")
 
     monkeypatch.setattr(reporting, "external_tool_path", fake_tool_path)
-    monkeypatch.setattr(reporting.subprocess, "run", fake_run)
+    monkeypatch.setattr(reporting, "run_external", fake_run)
 
     result = reporting.check_external_tools()
 
@@ -38,7 +38,7 @@ def test_check_external_tools_uses_icclu_fallback(monkeypatch):
         return subprocess.CompletedProcess(command, 0, stdout=f"{command[0]} fallback\n")
 
     monkeypatch.setattr(reporting, "external_tool_path", fake_tool_path)
-    monkeypatch.setattr(reporting.subprocess, "run", fake_run)
+    monkeypatch.setattr(reporting, "run_external", fake_run)
 
     result = reporting.check_external_tools()
     xicclu = next(tool for tool in result["tools"] if tool["name"] == "argyll-xicclu")

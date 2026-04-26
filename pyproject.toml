@@ -29,6 +29,7 @@ dependencies = [
   "colour-science>=0.4.7",
   "scipy>=1.13",
   "rawpy>=0.26",
+  "cryptography>=41.0",
 ]
 
 [project.optional-dependencies]

@@ -150,8 +150,9 @@ nexoraw auto-profile-batch \
 
 ## Integracion C2PA/CAI
 
-NexoRAW incluye soporte opcional C2PA para firmar TIFFs finales y declarar una
-asercion RAW -> TIFF basada en SHA-256 del RAW original. Esta capa no sustituye
+NexoRAW exige NexoRAW Proof para firmar TIFFs finales y declarar un vinculo
+RAW -> TIFF basado en SHA-256 del RAW original. C2PA/CAI queda como capa
+interoperable opcional si hay certificado compatible. Ninguna capa sustituye
 los sidecars ni `batch_manifest.json`.
 
 Ver:

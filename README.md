@@ -14,6 +14,8 @@ Su objetivo es transformar una captura RAW en un flujo reproducible y
 auditable, donde cada decisión técnica queda declarada, registrada y puede
 repetirse con las mismas condiciones.
 
+![Interfaz de revelado y calibracion de NexoRAW](docs/assets/screenshots/nexoraw-calibrar-aplicar.png)
+
 El objetivo del proyecto es ofrecer una herramienta que respete de forma
 estricta los requisitos legales y de licencia de las librerías, herramientas y
 proyectos en los que se basa. La trazabilidad del código, las dependencias y los
@@ -220,18 +222,52 @@ nexoraw export-cgats samples.json --out samples.ti3
 
 nexoraw build-profile samples.json --recipe recipe_calibrated.yml --out camera_profile.icc --report report.json
 
-nexoraw batch-develop ./raws --recipe recipe_calibrated.yml --profile camera_profile.icc --out ./tiffs
+nexoraw batch-develop ./raws \
+  --recipe recipe_calibrated.yml \
+  --profile camera_profile.icc \
+  --out ./tiffs \
+  --proof-key ~/.nexoraw/proof/nexoraw-proof-private.pem \
+  --proof-public-key ~/.nexoraw/proof/nexoraw-proof-public.pem
 
-# Opcional: firmar TIFFs finales con C2PA/CAI
+Las salidas TIFF no se sobrescriben. Si `output.tiff` o
+`./tiffs/captura.tiff` ya existen, NexoRAW conserva el archivo anterior y
+escribe la nueva version como `output_v002.tiff`, `captura_v002.tiff`,
+`captura_v003.tiff`, etc. En `batch-develop`, el TIFF de auditoria lineal en
+`_linear_audit/` usa el mismo numero de version que el TIFF final.
+
+# Firma autonoma NexoRAW Proof y C2PA opcional
+pip install -e .
+nexoraw proof-keygen \
+  --private-key ~/.nexoraw/proof/nexoraw-proof-private.pem \
+  --public-key ~/.nexoraw/proof/nexoraw-proof-public.pem
+
+# C2PA/CAI opcional en TIFFs finales NexoRAW
 pip install -e .[c2pa]
 nexoraw batch-develop ./raws \
   --recipe recipe_calibrated.yml \
   --profile camera_profile.icc \
   --out ./tiffs \
+  --proof-key ~/.nexoraw/proof/nexoraw-proof-private.pem \
+  --proof-public-key ~/.nexoraw/proof/nexoraw-proof-public.pem \
   --c2pa-sign \
   --c2pa-cert chain.pem \
   --c2pa-key signing.key
 
+# Alternativa para GUI y automatizaciones:
+# set NEXORAW_PROOF_KEY=G:\ruta\nexoraw-proof-private.pem
+# set NEXORAW_PROOF_PUBLIC_KEY=G:\ruta\nexoraw-proof-public.pem
+# set NEXORAW_C2PA_CERT=G:\ruta\chain.pem
+# set NEXORAW_C2PA_KEY=G:\ruta\signing.key
+
+NexoRAW Proof es la firma autonoma del proyecto. C2PA se incrusta si hay
+certificado disponible, pero ya no es un requisito centralizado para que el
+TIFF tenga trazabilidad criptografica. Si C2PA se solicita y falla, la
+exportacion se aborta; si no se solicita, el TIFF se firma con NexoRAW Proof.
+El sidecar `.nexoraw.proof.json` vincula TIFF y RAW mediante SHA-256 e incluye
+receta, perfil ICC, ajustes de nitidez, correccion basica/curvas, gestion de
+color, clave publica del firmante y contexto de exportacion.
+
+nexoraw verify-proof ./tiffs/captura.tiff.nexoraw.proof.json --tiff ./tiffs/captura.tiff --raw ./raws/captura.NEF
 nexoraw verify-c2pa ./tiffs/captura.tiff --raw ./raws/captura.NEF --manifest ./tiffs/batch_manifest.json
 
 nexoraw validate-profile samples.json --profile camera_profile.icc --out validation.json
@@ -315,15 +351,20 @@ La interfaz principal se organiza en 3 pestañas:
   - explorador visual completo del sistema (unidades + árbol + miniaturas),
   - selección directa desde miniaturas: al elegir un RAW/TIFF compatible se
     carga automáticamente en el visor,
-  - preview rápido RAW/DNG (miniatura embebida / half-size) y resolución configurable,
+  - preview RAW/DNG de alta fidelidad por defecto, con modo rapido opcional
+    para navegacion (miniatura embebida / half-size),
+  - gestion ICC de monitor opcional para convertir el preview sRGB al perfil
+    de pantalla configurado antes de pintar en Qt,
   - visor con zoom, arrastre de reencuadre, rotación y comparación original/resultado,
   - panel lateral por secciones verticales: calibración con criterios RAW,
-    corrección básica, detalle, perfil activo y aplicación de sesión,
+    corrección básica, nitidez, perfil activo y aplicación de sesión,
+  - `Configuracion -> Configuracion global`: identidad NexoRAW Proof, C2PA
+    opcional, modo de preview y gestion ICC del monitor,
   - `Calibrar sesión`: selección de una o varias capturas de carta, ajuste de
     criterios RAW globales y generación conjunta de perfil de revelado + ICC,
   - `Corrección básica`: iluminante final, temperatura, matiz, brillo, niveles,
     contraste y curva de medios,
-  - `Detalle`: ruido de luminancia, ruido cromático, nitidez y corrección de
+  - `Nitidez`: ruido de luminancia, ruido cromático, nitidez y corrección de
     aberración cromática lateral,
   - `Aplicar sesión`: exportación de RAW seleccionados o carpetas con la receta calibrada y el ICC de sesión.
 - `3. Cola de Revelado`:
@@ -350,6 +391,19 @@ Además, conserva tamaño/estado de ventana y splitters entre sesiones.
 Las salidas de sesión se normalizan dentro del directorio raíz: perfiles en
 `profiles/`, recetas/reportes en `config/`, artefactos de trabajo en `work/` y
 TIFF/preview en `exports/`.
+
+Notas de preview y rendimiento:
+
+- El visor mantiene internamente el preview en RGB lineal `float32` y genera
+  una imagen sRGB para pantalla/PNG. La conversion al perfil ICC del monitor,
+  si esta activada, se aplica solo al pintar en pantalla y no modifica
+  artefactos, hashes ni manifests.
+- El modo rapido RAW sirve para navegacion; para revision colorimetrica debe
+  usarse el preview de alta fidelidad, que comparte el pipeline de revelado
+  con la exportacion.
+- Las previsualizaciones base se cachean con clave de archivo, receta y modo de
+  preview, con limite de memoria. Las miniaturas se generan a tamano maximo y
+  se reescalan desde cache al mover el control de tamano.
 
 ## Receta reproducible
 
@@ -400,6 +454,8 @@ incluye, `amaze`. `dcb` es el valor por defecto instalable; AMaZE requiere
 - [Revision operativa y plan de profesionalizacion](docs/OPERATIVE_REVIEW_PLAN.md)
 - [Changelog](CHANGELOG.md)
 - [Manual de Usuario](docs/MANUAL_USUARIO.md)
+- [NexoRAW Proof](docs/NEXORAW_PROOF.md)
+- [C2PA/CAI](docs/C2PA_CAI.md)
 - [Integración LibRaw + ArgyllCMS](docs/INTEGRACION_LIBRAW_ARGYLL.md)
 - [Paquete Debian beta](docs/DEBIAN_PACKAGE.md)
 - [Instalador Windows beta](docs/WINDOWS_INSTALLER.md)

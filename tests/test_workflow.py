@@ -8,11 +8,38 @@ import tifffile
 
 from iccraw.chart.detection import detect_chart_from_corners
 from iccraw.chart.sampling import ReferenceCatalog
-from iccraw.core.models import ErrorSummary, PatchError, Recipe, ValidationResult, read_json
+from iccraw.core.models import BatchManifest, ErrorSummary, PatchError, Recipe, ValidationResult, read_json
 from iccraw.core.recipe import load_recipe
+from iccraw.provenance.c2pa import C2PASignConfig
+from iccraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity
 from iccraw.workflow import auto_generate_profile_from_charts, auto_profile_batch
 import iccraw.workflow as workflow
 import iccraw.profile.builder as profiling
+
+
+class FakeC2PAClient:
+    def sign_file(self, source_path, dest_path, manifest, **_kwargs):
+        dest_path.write_bytes(source_path.read_bytes() + b"\nFAKE-C2PA")
+        return {"active_manifest": "nexoraw:test", "manifests": {"nexoraw:test": manifest}, "validation_status": []}
+
+    def read_manifest_store(self, asset_path):
+        return {"validation_status": []}
+
+
+def _fake_c2pa_config(tmp_path: Path) -> C2PASignConfig:
+    cert = tmp_path / "cert.pem"
+    key = tmp_path / "key.pem"
+    cert.write_bytes(b"cert")
+    key.write_bytes(b"key")
+    return C2PASignConfig(cert_path=cert, key_path=key, client=FakeC2PAClient())
+
+
+def _proof_config(tmp_path: Path) -> NexoRawProofConfig:
+    private_key = tmp_path / "proof-private.pem"
+    public_key = tmp_path / "proof-public.pem"
+    if not private_key.exists():
+        generate_ed25519_identity(private_key_path=private_key, public_key_path=public_key)
+    return NexoRawProofConfig(private_key_path=private_key, public_key_path=public_key)
 
 
 def test_auto_profile_batch_end_to_end(tmp_path: Path, monkeypatch):
@@ -66,6 +93,8 @@ def test_auto_profile_batch_end_to_end(tmp_path: Path, monkeypatch):
         chart_type="colorchecker24",
         min_confidence=0.0,
         allow_fallback_detection=True,
+        c2pa_config=_fake_c2pa_config(tmp_path),
+        proof_config=_proof_config(tmp_path),
     )
 
     assert profile_out.exists()
@@ -430,19 +459,192 @@ def test_profile_status_resolves_draft_rejected_and_expired():
     assert expired["status"] == "expired"
 
 
-def test_auto_generate_profile_rejects_non_scientific_recipe(tmp_path: Path):
-    reference = ReferenceCatalog({"chart_name": "unit", "chart_version": "1", "illuminant": "D50", "patches": []})
-    recipe = Recipe(tone_curve="srgb", output_linear=False, output_space="srgb")
+def test_sanitize_recipe_for_profiling_normalizes_non_scientific_fields():
+    from iccraw.workflow import sanitize_recipe_for_profiling
 
-    with pytest.raises(RuntimeError, match="no apta para perfilado cientifico"):
-        auto_generate_profile_from_charts(
-            chart_captures_dir=tmp_path / "charts",
-            recipe=recipe,
-            reference=reference,
-            profile_out=tmp_path / "bad.icc",
-            profile_report_out=tmp_path / "bad_report.json",
-            work_dir=tmp_path / "work_bad_recipe",
+    recipe = Recipe(
+        tone_curve="srgb",
+        output_linear=False,
+        output_space="srgb",
+        denoise="mild",
+        sharpen="medium",
+    )
+
+    sanitized, changes = sanitize_recipe_for_profiling(recipe)
+
+    assert sanitized.denoise == "off"
+    assert sanitized.sharpen == "off"
+    assert sanitized.tone_curve == "linear"
+    assert sanitized.output_linear is True
+    assert sanitized.output_space == "scene_linear_camera_rgb"
+    fields_changed = {c["field"] for c in changes}
+    assert {"denoise", "sharpen", "tone_curve", "output_linear", "output_space"} <= fields_changed
+    # Original recipe must remain untouched (immutable contract).
+    assert recipe.denoise == "mild"
+    assert recipe.sharpen == "medium"
+
+
+def test_sanitize_recipe_for_profiling_is_noop_for_scientific_recipe():
+    from iccraw.workflow import sanitize_recipe_for_profiling
+
+    recipe = Recipe()
+    sanitized, changes = sanitize_recipe_for_profiling(recipe)
+
+    assert sanitized is recipe
+    assert changes == []
+
+
+def test_auto_generate_profile_persists_profile_and_render_recipes(tmp_path: Path, monkeypatch):
+    def fake_build_profile_with_argyll(
+        out_icc: Path,
+        measured_rgb: np.ndarray,
+        reference_lab: np.ndarray,
+        patch_ids: list[str],
+        description: str,
+        extra_args: list[str] | None,
+    ) -> None:
+        out_icc.write_bytes(
+            profiling.build_matrix_shaper_icc(
+                description=description,
+                matrix_camera_to_xyz=np.eye(3),
+                gamma=1.0,
+            )
         )
+
+    monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+    monkeypatch.setattr(profiling, "_lookup_lab_with_icc", _fake_lookup_lab)
+
+    charts_dir = tmp_path / "charts"
+    work_dir = tmp_path / "work_render_recipe"
+    charts_dir.mkdir()
+    tifffile.imwrite(str(charts_dir / "chart_01.tiff"), _synthetic_colorchecker_image(), photometric="rgb", metadata=None)
+
+    repo_root = Path(__file__).resolve().parents[1]
+    reference = ReferenceCatalog.from_path(repo_root / "testdata/references/colorchecker24_reference.json")
+    recipe = Recipe(
+        tone_curve="srgb",
+        output_linear=False,
+        output_space="srgb",
+        denoise="mild",
+        sharpen="medium",
+    )
+    profile_report = tmp_path / "render_recipe_report.json"
+
+    result = auto_generate_profile_from_charts(
+        chart_captures_dir=charts_dir,
+        recipe=recipe,
+        reference=reference,
+        profile_out=tmp_path / "render_recipe.icc",
+        profile_report_out=profile_report,
+        work_dir=work_dir,
+        chart_type="colorchecker24",
+        min_confidence=0.0,
+        allow_fallback_detection=True,
+    )
+
+    profile_recipe = load_recipe(Path(str(result["profile_recipe_path"])))
+    render_recipe = load_recipe(Path(str(result["render_recipe_path"])))
+    assert profile_recipe.tone_curve == "linear"
+    assert profile_recipe.output_linear is True
+    assert profile_recipe.output_space == "scene_linear_camera_rgb"
+    assert profile_recipe.denoise == "off"
+    assert profile_recipe.sharpen == "off"
+    assert render_recipe.tone_curve == "srgb"
+    assert render_recipe.output_linear is False
+    assert render_recipe.output_space == "srgb"
+    assert render_recipe.denoise == "mild"
+    assert render_recipe.sharpen == "medium"
+
+    report_metadata = read_json(profile_report)["metadata"]
+    assert report_metadata["requested_recipe"]["denoise"] == "mild"
+    assert report_metadata["profile_recipe"]["denoise"] == "off"
+    assert report_metadata["render_recipe"]["denoise"] == "mild"
+    development_payload = result["development_profile"]
+    assert development_payload["calibrated_recipe"]["denoise"] == "mild"
+    assert development_payload["profile_calibrated_recipe"]["denoise"] == "off"
+    assert development_payload["render_calibrated_recipe"]["denoise"] == "mild"
+    assert {c["field"] for c in report_metadata["recipe_profiling_normalizations"]} >= {
+        "denoise",
+        "sharpen",
+        "tone_curve",
+        "output_linear",
+        "output_space",
+    }
+
+
+def test_auto_profile_batch_uses_render_recipe_after_profile_calibration(tmp_path: Path, monkeypatch):
+    def fake_build_profile_with_argyll(
+        out_icc: Path,
+        measured_rgb: np.ndarray,
+        reference_lab: np.ndarray,
+        patch_ids: list[str],
+        description: str,
+        extra_args: list[str] | None,
+    ) -> None:
+        out_icc.write_bytes(
+            profiling.build_matrix_shaper_icc(
+                description=description,
+                matrix_camera_to_xyz=np.eye(3),
+                gamma=1.0,
+            )
+        )
+
+    captured: dict[str, Recipe] = {}
+
+    def fake_batch_develop(raws_dir, recipe, profile_path, out_dir, **_kwargs):
+        captured["recipe"] = recipe
+        return BatchManifest(
+            recipe_sha256="unit",
+            profile_path=str(profile_path),
+            color_management_mode="unit",
+            output_color_space=recipe.output_space,
+            software_version="unit",
+            entries=[],
+        )
+
+    monkeypatch.setattr(profiling, "_build_profile_with_argyll", fake_build_profile_with_argyll)
+    monkeypatch.setattr(profiling, "_lookup_lab_with_icc", _fake_lookup_lab)
+    monkeypatch.setattr(workflow, "batch_develop", fake_batch_develop)
+
+    charts_dir = tmp_path / "charts"
+    targets_dir = tmp_path / "targets"
+    work_dir = tmp_path / "work_batch_render"
+    out_dir = tmp_path / "out_batch_render"
+    charts_dir.mkdir()
+    targets_dir.mkdir()
+    tifffile.imwrite(str(charts_dir / "chart_01.tiff"), _synthetic_colorchecker_image(), photometric="rgb", metadata=None)
+
+    repo_root = Path(__file__).resolve().parents[1]
+    reference = ReferenceCatalog.from_path(repo_root / "testdata/references/colorchecker24_reference.json")
+    recipe = Recipe(
+        tone_curve="srgb",
+        output_linear=False,
+        output_space="srgb",
+        denoise="mild",
+        sharpen="medium",
+    )
+
+    auto_profile_batch(
+        chart_captures_dir=charts_dir,
+        target_captures_dir=targets_dir,
+        recipe=recipe,
+        reference=reference,
+        profile_out=tmp_path / "batch_render.icc",
+        profile_report_out=tmp_path / "batch_render_report.json",
+        batch_out_dir=out_dir,
+        work_dir=work_dir,
+        chart_type="colorchecker24",
+        min_confidence=0.0,
+        allow_fallback_detection=True,
+        c2pa_config=_fake_c2pa_config(tmp_path),
+        proof_config=_proof_config(tmp_path),
+    )
+
+    assert captured["recipe"].tone_curve == "srgb"
+    assert captured["recipe"].output_linear is False
+    assert captured["recipe"].output_space == "srgb"
+    assert captured["recipe"].denoise == "mild"
+    assert captured["recipe"].sharpen == "medium"
 
 
 def test_auto_generate_profile_rejects_non_raw_or_tiff_chart_files(tmp_path: Path):

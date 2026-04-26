@@ -14,6 +14,8 @@ from PySide6 import QtGui, QtWidgets  # noqa: E402
 import iccraw.gui as gui_module  # noqa: E402
 from iccraw.core.models import Recipe  # noqa: E402
 from iccraw.gui import ICCRawMainWindow  # noqa: E402
+from iccraw.provenance.c2pa import C2PASignConfig  # noqa: E402
+from iccraw.provenance.nexoraw_proof import NexoRawProofConfig, NexoRawProofResult  # noqa: E402
 from iccraw.raw import pipeline  # noqa: E402
 from iccraw.session import load_session  # noqa: E402
 
@@ -73,6 +75,54 @@ def test_activate_session_migrates_legacy_temp_outputs(tmp_path: Path, monkeypat
         assert saved_state["profile_output_path"] == str(defaults["profile_out"])
         assert saved_state["recipe_path"] == str(defaults["recipe"])
         assert saved_state["batch_output_dir"] == str(defaults["tiff_dir"])
+    finally:
+        window.close()
+
+
+def test_activate_session_sanitizes_profile_reference_outputs_and_rejected_profile(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session_root"
+    window = ICCRawMainWindow()
+    monkeypatch.setattr(window, "_is_legacy_temp_output_path", lambda _value: False)
+    paths = window._session_paths_from_root(root)
+    for path in paths.values():
+        path.mkdir(parents=True, exist_ok=True)
+    export_tiff_dir = paths["exports"] / "tiff"
+    export_tiff_dir.mkdir(parents=True, exist_ok=True)
+    raw_file = paths["raw"] / "chart_01.NEF"
+    derived_tiff = export_tiff_dir / "chart_01.tiff"
+    raw_file.write_bytes(b"raw bytes")
+    derived_tiff.write_bytes(b"derived tiff bytes")
+
+    profile = paths["profiles"] / "case_a.icc"
+    profile.write_bytes(b"icc bytes")
+    profile.with_suffix(".profile.json").write_text('{"profile_status": "rejected"}', encoding="utf-8")
+
+    payload = {
+        "version": 1,
+        "metadata": {"name": "case_a"},
+        "directories": {key: str(path) for key, path in paths.items()},
+        "state": {
+            "profile_charts_dir": str(export_tiff_dir),
+            "profile_chart_files": [str(derived_tiff), str(raw_file)],
+            "profile_active_path": str(profile),
+            "preview_apply_profile": True,
+        },
+        "queue": [],
+    }
+
+    try:
+        window._activate_session(root, payload)
+
+        assert window.profile_charts_dir.text() == str(paths["raw"])
+        assert window._selected_chart_files == [raw_file]
+        assert window.path_profile_active.text() == ""
+        assert not window.chk_apply_profile.isChecked()
+
+        saved_state = load_session(root)["state"]
+        assert saved_state["profile_charts_dir"] == str(paths["raw"])
+        assert saved_state["profile_chart_files"] == [str(raw_file)]
+        assert saved_state["profile_active_path"] == ""
+        assert saved_state["preview_apply_profile"] is False
     finally:
         window.close()
 
@@ -293,6 +343,38 @@ def test_raw_global_options_live_in_calibration_flow(qapp):
         window.close()
 
 
+def test_global_configuration_dialog_owns_non_image_settings(qapp):
+    window = ICCRawMainWindow()
+    try:
+        panel_labels = [window.config_tabs.itemText(i) for i in range(window.config_tabs.count())]
+        assert "Nitidez" in panel_labels
+        assert "Detalle" not in panel_labels
+
+        global_tabs = [
+            window.global_settings_tabs.tabText(i)
+            for i in range(window.global_settings_tabs.count())
+        ]
+        assert "Firma / C2PA" in global_tabs
+        assert "Preview / monitor" in global_tabs
+
+        def is_descendant(widget: QtWidgets.QWidget, ancestor: QtWidgets.QWidget) -> bool:
+            parent = widget.parentWidget()
+            while parent is not None:
+                if parent is ancestor:
+                    return True
+                parent = parent.parentWidget()
+            return False
+
+        assert is_descendant(window.batch_c2pa_cert_path, window.global_settings_dialog)
+        assert is_descendant(window.check_fast_raw_preview, window.global_settings_dialog)
+        assert is_descendant(window.path_display_profile, window.global_settings_dialog)
+        assert not is_descendant(window.batch_c2pa_cert_path, window.config_tabs)
+        assert not is_descendant(window.check_fast_raw_preview, window.config_tabs)
+        assert not is_descendant(window.path_display_profile, window.config_tabs)
+    finally:
+        window.close()
+
+
 def test_right_column_uses_independent_collapsible_sections(qapp):
     window = ICCRawMainWindow()
     try:
@@ -361,6 +443,71 @@ def test_neutral_eyedropper_updates_temperature_and_tint(qapp):
         window.close()
 
 
+def test_manual_chart_marks_clear_when_selected_image_changes(tmp_path: Path, qapp):
+    first = tmp_path / "chart_01.tiff"
+    second = tmp_path / "chart_02.tiff"
+    Image.new("RGB", (32, 32), (180, 180, 180)).save(first)
+    Image.new("RGB", (32, 32), (90, 90, 90)).save(second)
+
+    window = ICCRawMainWindow()
+    try:
+        window._set_current_directory(tmp_path)
+        first_item = window.file_list.item(0)
+        second_item = window.file_list.item(1)
+        assert first_item is not None
+        assert second_item is not None
+
+        window.file_list.setCurrentItem(first_item)
+        qapp.processEvents()
+        window._original_linear = gui_module.np.ones((32, 32, 3), dtype=gui_module.np.float32)
+        window._begin_manual_chart_marking()
+        window._on_manual_chart_click(4, 4)
+        window._on_manual_chart_click(24, 4)
+
+        assert len(window._manual_chart_points) == 2
+        assert len(window.image_result_single._overlay_points) == 2
+
+        window.file_list.setCurrentItem(second_item)
+        qapp.processEvents()
+
+        assert window._manual_chart_points == []
+        assert window._manual_chart_points_source is None
+        assert window.image_result_single._overlay_points == []
+        assert window.manual_chart_points_label.text() == "Puntos: 0/4"
+    finally:
+        window.close()
+
+
+def test_preview_reuses_detail_adjustment_cache_for_tonal_changes(qapp, monkeypatch):
+    calls = {"detail": 0}
+
+    def fake_apply_adjustments(image, **_kwargs):
+        calls["detail"] += 1
+        return image.copy()
+
+    monkeypatch.setattr(gui_module, "apply_adjustments", fake_apply_adjustments)
+
+    window = ICCRawMainWindow()
+    try:
+        window._original_linear = gui_module.np.full((48, 64, 3), 0.25, dtype=gui_module.np.float32)
+        window._last_loaded_preview_key = "unit-preview"
+
+        window._refresh_preview()
+        assert calls["detail"] == 1
+
+        window.slider_brightness.setValue(12)
+        window._preview_refresh_timer.stop()
+        window._refresh_preview()
+        assert calls["detail"] == 1
+
+        window.slider_sharpen.setValue(30)
+        window._preview_refresh_timer.stop()
+        window._refresh_preview()
+        assert calls["detail"] == 2
+    finally:
+        window.close()
+
+
 def test_gui_downgrades_amaze_when_gpl3_pack_is_missing(qapp, monkeypatch):
     monkeypatch.setattr(pipeline.rawpy, "flags", {"DEMOSAIC_PACK_GPL3": False})
     window = ICCRawMainWindow()
@@ -368,5 +515,100 @@ def test_gui_downgrades_amaze_when_gpl3_pack_is_missing(qapp, monkeypatch):
         window._apply_recipe_to_controls(Recipe(demosaic_algorithm="amaze"))
         recipe = window._build_effective_recipe()
         assert recipe.demosaic_algorithm == "dcb"
+    finally:
+        window.close()
+
+
+def test_gui_c2pa_config_reads_controls_without_persisting_passphrase(tmp_path: Path, qapp):
+    cert_path = tmp_path / "nexoraw-cert.pem"
+    key_path = tmp_path / "nexoraw-key.pem"
+    manifest_path = tmp_path / "profile_report.json"
+    cert_path.write_text("certificate", encoding="utf-8")
+    key_path.write_text("private key", encoding="utf-8")
+    manifest_path.write_text("{}", encoding="utf-8")
+
+    window = ICCRawMainWindow()
+    try:
+        window.profile_report_out.setText(str(manifest_path))
+        window.session_name_edit.setText("unit-session")
+        window.batch_c2pa_cert_path.setText(str(cert_path))
+        window.batch_c2pa_key_path.setText(str(key_path))
+        window.batch_c2pa_key_passphrase.setText("test-passphrase")
+        window.batch_c2pa_timestamp_url.setText("http://tsa.example.test")
+        window.batch_c2pa_signer_name.setText("NexoRAW Test")
+        window._set_combo_text(window.batch_c2pa_alg, "ps384")
+
+        config = window._c2pa_config_from_controls()
+        assert config is not None
+        assert config.cert_path == cert_path
+        assert config.key_path == key_path
+        assert config.key_passphrase == "test-passphrase"
+        assert config.alg == "ps384"
+        assert config.timestamp_url == "http://tsa.example.test"
+        assert config.signer_name == "NexoRAW Test"
+        assert config.technical_manifest_path == manifest_path
+        assert config.session_id == "unit-session"
+
+        window._save_c2pa_settings()
+        assert window._settings.value("c2pa/cert_path") == str(cert_path)
+        assert window._settings.value("c2pa/key_path") == str(key_path)
+        assert window._settings.value("c2pa/key_passphrase") is None
+    finally:
+        window.close()
+
+
+def test_process_batch_files_passes_gui_c2pa_config_to_signer(tmp_path: Path, monkeypatch, qapp):
+    image_path = tmp_path / "frame.png"
+    out_dir = tmp_path / "out"
+    cert_path = tmp_path / "cert.pem"
+    key_path = tmp_path / "key.pem"
+    Image.new("RGB", (16, 16), (80, 120, 160)).save(image_path)
+    cert_path.write_text("certificate", encoding="utf-8")
+    key_path.write_text("private key", encoding="utf-8")
+    c2pa_config = C2PASignConfig(cert_path=cert_path, key_path=key_path)
+    proof_config = NexoRawProofConfig(private_key_path=key_path, public_key_path=None)
+    captured: dict[str, object] = {}
+
+    def fake_write_signed_profiled_tiff(out_tiff, image_linear_rgb, **kwargs):
+        captured["c2pa_config"] = kwargs["c2pa_config"]
+        captured["source_raw"] = kwargs["source_raw"]
+        captured["render_adjustments"] = kwargs["render_adjustments"]
+        Path(out_tiff).parent.mkdir(parents=True, exist_ok=True)
+        Path(out_tiff).write_bytes(b"signed tiff")
+        return "embedded_profile", NexoRawProofResult(
+            proof_path=str(Path(out_tiff).with_suffix(".proof.json")),
+            proof_sha256="proof-sha",
+            output_tiff_sha256="tiff-sha",
+            raw_sha256="raw-sha",
+            signer_public_key_sha256="pub-sha",
+        )
+
+    monkeypatch.setattr(gui_module, "write_signed_profiled_tiff", fake_write_signed_profiled_tiff)
+
+    window = ICCRawMainWindow()
+    try:
+        payload = window._process_batch_files(
+            files=[image_path],
+            out_dir=out_dir,
+            recipe=Recipe(),
+            apply_adjust=False,
+            use_profile=False,
+            profile_path=None,
+            denoise_luma=0.0,
+            denoise_color=0.0,
+            sharpen_amount=0.0,
+            sharpen_radius=0.0,
+            lateral_ca_red_scale=1.0,
+            lateral_ca_blue_scale=1.0,
+            render_adjustments={},
+            c2pa_config=c2pa_config,
+            proof_config=proof_config,
+        )
+
+        assert payload["errors"] == []
+        assert len(payload["outputs"]) == 1
+        assert captured["c2pa_config"] is c2pa_config
+        assert captured["source_raw"] == image_path
+        assert captured["render_adjustments"] == {"applied": False}
     finally:
         window.close()

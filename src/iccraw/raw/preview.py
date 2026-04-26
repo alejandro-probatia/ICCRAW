@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import colour
 
-from ..core.external import external_tool_path
+from ..core.external import external_tool_path, run_external
 from ..core.models import Recipe
 from ..core.recipe import load_recipe
 from ..core.utils import RAW_EXTENSIONS, read_image
@@ -157,7 +157,7 @@ def apply_adjustments(
     lateral_ca_red_scale: float = 1.0,
     lateral_ca_blue_scale: float = 1.0,
 ) -> np.ndarray:
-    out = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
+    img = image_linear_rgb.astype(np.float32, copy=False)
 
     # Backward compatibility: old API used a single denoise value.
     if denoise_strength is not None and denoise_luminance == 0.0 and denoise_color == 0.0:
@@ -166,6 +166,12 @@ def apply_adjustments(
 
     dl = float(np.clip(denoise_luminance, 0.0, 1.0))
     dc = float(np.clip(denoise_color, 0.0, 1.0))
+    s = float(max(0.0, sharpen_amount))
+    ca_changed = abs(float(lateral_ca_red_scale) - 1.0) > 1e-5 or abs(float(lateral_ca_blue_scale) - 1.0) > 1e-5
+    if dl <= 0.0 and dc <= 0.0 and s <= 0.0 and not ca_changed:
+        return np.clip(img, 0.0, 1.0).astype(np.float32, copy=False)
+
+    out = np.clip(img, 0.0, 1.0)
     if dl > 0.0 or dc > 0.0:
         ycc = cv2.cvtColor(out, cv2.COLOR_RGB2YCrCb)
 
@@ -183,14 +189,13 @@ def apply_adjustments(
 
         out = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2RGB)
 
-    if abs(float(lateral_ca_red_scale) - 1.0) > 1e-5 or abs(float(lateral_ca_blue_scale) - 1.0) > 1e-5:
+    if ca_changed:
         out = apply_lateral_chromatic_aberration(
             out,
             red_scale=float(lateral_ca_red_scale),
             blue_scale=float(lateral_ca_blue_scale),
         )
 
-    s = float(max(0.0, sharpen_amount))
     if s > 0.0:
         radius = max(0.1, float(sharpen_radius))
         smooth = cv2.GaussianBlur(out, (0, 0), sigmaX=radius, sigmaY=radius, borderType=cv2.BORDER_REFLECT)
@@ -233,34 +238,54 @@ def apply_render_adjustments(
     tone_curve_black_point: float = 0.0,
     tone_curve_white_point: float = 1.0,
 ) -> np.ndarray:
-    out = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
-
-    out = _apply_temperature_tint(
-        out,
-        temperature_kelvin=float(temperature_kelvin),
-        neutral_kelvin=float(neutral_kelvin),
-        tint=float(tint),
-    )
-
-    if abs(float(brightness_ev)) > 1e-6:
-        out = out * (2.0 ** float(brightness_ev))
-
+    img = image_linear_rgb.astype(np.float32, copy=False)
+    temp = float(temperature_kelvin)
+    neutral = float(neutral_kelvin)
+    tint_value = float(tint)
+    brightness = float(brightness_ev)
     bp = float(np.clip(black_point, 0.0, 0.95))
     wp = float(np.clip(white_point, bp + 1e-4, 1.0))
+    c = float(np.clip(contrast, -0.95, 2.0))
+    m = float(np.clip(midtone, 0.25, 4.0))
+    tone_enabled = bool(tone_curve_points)
+    temperature_identity = abs(temp - neutral) <= 1e-6 and abs(tint_value) <= 1e-6
+
+    if (
+        temperature_identity
+        and abs(brightness) <= 1e-6
+        and bp <= 1e-6
+        and abs(wp - 1.0) <= 1e-6
+        and abs(c) <= 1e-6
+        and abs(m - 1.0) <= 1e-6
+        and not tone_enabled
+    ):
+        return np.clip(img, 0.0, 1.0).astype(np.float32, copy=False)
+
+    out = np.clip(img, 0.0, 1.0)
+
+    if not temperature_identity:
+        out = _apply_temperature_tint(
+            out,
+            temperature_kelvin=temp,
+            neutral_kelvin=neutral,
+            tint=tint_value,
+        )
+
+    if abs(brightness) > 1e-6:
+        out = out * (2.0 ** brightness)
+
     if bp > 0.0 or wp < 1.0:
         out = (out - bp) / max(1e-4, wp - bp)
 
-    c = float(np.clip(contrast, -0.95, 2.0))
     if abs(c) > 1e-6:
         factor = 1.0 + c
         out = (out - 0.5) * factor + 0.5
 
-    m = float(np.clip(midtone, 0.25, 4.0))
     if abs(m - 1.0) > 1e-6:
         gamma = 1.0 / m
         out = np.power(np.clip(out, 0.0, 1.0), gamma)
 
-    if tone_curve_points:
+    if tone_enabled:
         out = apply_tone_curve(
             out,
             tone_curve_points,
@@ -601,7 +626,7 @@ def _build_profile_preview_lut_with_argyll(profile_path: Path, *, grid_size: int
         "-pl",
         str(profile_path),
     ]
-    proc = subprocess.run(cmd, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = run_external(cmd, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if proc.returncode != 0:
         stderr_tail = (proc.stderr or proc.stdout)[-800:]
         raise RuntimeError(f"Fallo previsualizando ICC con {Path(xicclu).name}: {stderr_tail}")
@@ -675,9 +700,14 @@ def srgb_to_linear_display(image_srgb: np.ndarray) -> np.ndarray:
     return np.clip(linear, 0.0, 1.0)
 
 
-def preview_analysis_text(original_linear: np.ndarray, adjusted_linear: np.ndarray) -> str:
-    o = np.clip(original_linear.astype(np.float32), 0.0, 1.0)
-    a = np.clip(adjusted_linear.astype(np.float32), 0.0, 1.0)
+def preview_analysis_text(
+    original_linear: np.ndarray,
+    adjusted_linear: np.ndarray,
+    *,
+    max_pixels: int = 250_000,
+) -> str:
+    o = _analysis_sample(np.clip(original_linear.astype(np.float32), 0.0, 1.0), max_pixels=max_pixels)
+    a = _analysis_sample(np.clip(adjusted_linear.astype(np.float32), 0.0, 1.0), max_pixels=max_pixels)
 
     lines: list[str] = []
     lines.append("Resumen de análisis (lineal 0..1)")
@@ -690,6 +720,17 @@ def preview_analysis_text(original_linear: np.ndarray, adjusted_linear: np.ndarr
     lines.append(f"Diferencia media absoluta global: {float(np.mean(diff)):.6f}")
     lines.append(f"Diferencia máxima absoluta global: {float(np.max(diff)):.6f}")
     return "\n".join(lines)
+
+
+def _analysis_sample(image: np.ndarray, *, max_pixels: int) -> np.ndarray:
+    if max_pixels <= 0 or image.ndim < 2:
+        return image
+    h, w = int(image.shape[0]), int(image.shape[1])
+    pixels = h * w
+    if pixels <= int(max_pixels):
+        return image
+    step = max(1, int(np.ceil(np.sqrt(pixels / float(max_pixels)))))
+    return image[::step, ::step]
 
 
 def _channel_stats(label: str, image: np.ndarray) -> list[str]:

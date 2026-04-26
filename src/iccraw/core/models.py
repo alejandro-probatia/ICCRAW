@@ -214,6 +214,9 @@ class BatchManifestEntry:
     color_management_mode: str
     output_color_space: str
     linear_audit_tiff: str | None = None
+    proof_path: str | None = None
+    proof_sha256: str | None = None
+    c2pa_embedded: bool = False
 
 
 @dataclass

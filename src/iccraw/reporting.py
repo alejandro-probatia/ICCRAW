@@ -8,7 +8,7 @@ import platform
 import subprocess
 from typing import Any
 
-from .core.external import external_tool_path
+from .core.external import check_output_external, external_tool_path, run_external
 from .raw.pipeline import rawpy_feature_flags
 
 
@@ -71,7 +71,7 @@ EXTERNAL_TOOL_SPECS: list[dict[str, Any]] = [
 
 def _git_commit() -> str:
     try:
-        output = subprocess.check_output(
+        output = check_output_external(
             ["git", "rev-parse", "--short", "HEAD"],
             text=True,
             stderr=subprocess.DEVNULL,
@@ -175,7 +175,7 @@ def _check_external_tool(spec: dict[str, Any]) -> ExternalToolCheck:
 
 def _tool_version(command: list[str]) -> tuple[str, str]:
     try:
-        proc = subprocess.run(
+        proc = run_external(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

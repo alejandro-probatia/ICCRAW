@@ -70,6 +70,15 @@ def test_apply_render_adjustments_changes_tone_and_white_balance():
     assert not np.allclose(out, img)
 
 
+def test_apply_render_adjustments_identity_when_disabled():
+    img = np.random.default_rng(9).uniform(0.0, 1.0, size=(18, 20, 3)).astype(np.float32)
+
+    out = apply_render_adjustments(img)
+
+    assert out.shape == img.shape
+    assert np.allclose(out, img, atol=1e-7)
+
+
 def test_estimate_temperature_tint_from_neutral_sample_reduces_cast():
     sample = np.array([0.18, 0.24, 0.34], dtype=np.float32)
 
@@ -165,6 +174,17 @@ def test_preview_analysis_text_includes_global_stats():
     assert "Resumen de análisis" in text
     assert "Diferencia media absoluta global" in text
     assert "Diferencia máxima absoluta global" in text
+
+
+def test_preview_analysis_text_samples_large_images_without_changing_format():
+    original = np.linspace(0.0, 1.0, 3 * 120 * 160, dtype=np.float32).reshape((120, 160, 3))
+    adjusted = np.clip(original + 0.02, 0.0, 1.0)
+
+    text = preview_analysis_text(original, adjusted, max_pixels=2048)
+
+    assert "Original:" in text
+    assert "Ajustada:" in text
+    assert "Diferencia media absoluta global" in text
 
 
 def test_apply_profile_preview_uses_cached_argyll_lut(tmp_path: Path, monkeypatch):

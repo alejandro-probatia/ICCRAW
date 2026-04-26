@@ -1,169 +1,152 @@
-# Manual de Usuario NexoRAW
+# Manual de Usuario de NexoRAW
 
-## 1. ¿Qué hace NexoRAW?
+NexoRAW es una aplicacion abierta, gratuita y auditable para revelado RAW/TIFF
+orientado a fotografia tecnico-cientifica, documental y forense. Su objetivo es
+mantener un flujo reproducible desde el RAW original hasta el TIFF final,
+conservando trazabilidad, hashes, manifiestos, perfilado ICC y evidencias de
+procedimiento. Es una iniciativa de Probatia Forensics SL ofrecida como proyecto
+gratuito y de codigo abierto para la comunidad cientifica y forense.
 
-NexoRAW implementa un flujo reproducible para:
+![Gestion de sesion en NexoRAW](assets/screenshots/nexoraw-sesion.png)
 
-1. revelar RAW con control técnico,
-2. detectar automáticamente carta ColorChecker,
-3. muestrear parches,
-4. crear un perfil de revelado científico y un perfil ICC de cámara con ArgyllCMS,
-5. aplicar ese paquete de sesión a RAW/TIFF seleccionados,
-6. generar trazabilidad (JSON, hashes y manifiestos).
+## 1. Principios de trabajo
 
-## Estado actual (importante)
+NexoRAW esta pensado para flujos donde la imagen no es solo una fotografia, sino
+un registro tecnico que puede requerir auditoria posterior.
 
-La version actual esta en desarrollo. Existe funcionalidad base para ejecutar flujo tecnico y GUI, pero **todavia no puede considerarse una herramienta plenamente funcional ni validada para uso cientifico/forense en produccion**.
+Principios operativos:
 
-## 2. Requisitos
+1. El RAW original no se modifica nunca.
+2. El identificador probatorio principal es el SHA-256 de los bytes exactos del
+   RAW, no su nombre ni su ruta.
+3. Toda salida TIFF debe poder vincularse al RAW, receta, perfil ICC, ajustes y
+   contexto de generacion.
+4. La previsualizacion debe servir para trabajar con agilidad, pero el render
+   final debe conservar el flujo auditado.
+5. Los perfiles de revelado e ICC son validos para condiciones comparables:
+   camara, optica, iluminante, receta RAW y metodologia de captura.
+6. C2PA/CAI es una capa interoperable opcional. La firma autonoma obligatoria
+   del proyecto es NexoRAW Proof.
+
+## 2. Instalacion
 
 ### 2.1 Dependencias del sistema
+
+NexoRAW usa herramientas externas para tareas cientificas y de metadatos:
+
+- ArgyllCMS: generacion y aplicacion de perfiles ICC.
+- exiftool: lectura amplia de metadatos EXIF, GPS y fabricante.
+
+Linux:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y argyll exiftool
 ```
 
-Comprobación:
+Windows:
+
+1. Instalar ArgyllCMS y anadir sus ejecutables al `PATH`.
+2. Instalar `exiftool` y comprobar que esta disponible desde terminal.
+
+Comprobacion:
 
 ```bash
-bash scripts/check_tools.sh
+nexoraw check-tools --strict
 ```
 
 ### 2.2 Entorno Python
 
+Instalacion base:
+
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
+python -m venv .venv
+.venv\Scripts\activate
 pip install -e .
-# Opcional para GUI Qt:
+```
+
+Extras utiles:
+
+```bash
 pip install -e .[gui]
+pip install -e .[c2pa]
 ```
 
-### 2.3 Licencia y uso legal
+El extra `c2pa` solo es necesario si se quieren incrustar manifiestos C2PA en
+TIFF. NexoRAW Proof funciona como mecanismo propio de firma autonoma.
 
-- NexoRAW se distribuye bajo `AGPL-3.0-or-later`.
-- Proyecto mantenido por la comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
-- Antes de redistribuir o desplegar como servicio, revisar:
-  - `docs/LEGAL_COMPLIANCE.md`
+### 2.3 AMaZE y licencia GPL3
 
-### 2.4 Registro de cambios
+El motor RAW base es LibRaw/rawpy. El demosaicing AMaZE solo aparece como
+disponible cuando la build de rawpy/LibRaw incluye el demosaic pack GPL3.
 
-- El historial oficial del proyecto se mantiene en `CHANGELOG.md`.
-- Cada cambio funcional, legal o de reproducibilidad debe quedar documentado allí.
-
-## 3. Flujo recomendado (CLI)
-
-## 3.1 Obtener metadatos RAW
+Comprobacion:
 
 ```bash
-nexoraw raw-info captura.raw
+python scripts/check_amaze_support.py
 ```
 
-Salida: JSON con cámara, lente, ISO, exposición, hash, etc.
+Si AMaZE no esta disponible, NexoRAW degrada a un algoritmo soportado para evitar
+errores de revelado.
 
-## 3.2 Revelado controlado
+## 3. Conceptos clave
 
-```bash
-nexoraw develop captura.raw \
-  --recipe testdata/recipes/scientific_recipe.yml \
-  --out /tmp/captura_revelada.tiff \
-  --audit-linear /tmp/captura_linear.tiff
-```
+### 3.1 Sesion
 
-## 3.3 Detectar carta y muestrear
+Una sesion agrupa una captura o lote bajo una estructura persistente:
 
-```bash
-nexoraw detect-chart /tmp/captura_revelada.tiff \
-  --out /tmp/detection.json \
-  --preview /tmp/overlay.png \
-  --chart-type colorchecker24
+- `charts/`: capturas de carta colorimetrica.
+- `raw/`: RAW originales de sesion.
+- `profiles/`: perfiles ICC y sidecars de perfil.
+- `exports/`: TIFF finales y previews exportadas.
+- `config/`: recetas, informes, manifiestos y estado de sesion.
+- `work/`: intermedios auditables y artefactos de perfilado.
 
-# Fallback manual/asistido si el overlay automatico no encaja:
-nexoraw detect-chart /tmp/captura_revelada.tiff \
-  --out /tmp/detection.json \
-  --preview /tmp/overlay.png \
-  --chart-type colorchecker24 \
-  --manual-corners 2193,1717 3045,1686 3070,2256 2211,2288
+La sesion se guarda en `config/session.json`.
 
-nexoraw sample-chart /tmp/captura_revelada.tiff \
-  --detection /tmp/detection.json \
-  --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
-  --recipe testdata/recipes/scientific_recipe.yml \
-  --out /tmp/samples.json
+### 3.2 Receta RAW
 
-nexoraw export-cgats /tmp/samples.json \
-  --out /tmp/samples.ti3
-```
+La receta define criterios reproducibles de revelado:
 
-## 3.4 Calibrar sesión: perfil de revelado + ICC
+- motor RAW,
+- algoritmo de demosaicing,
+- balance de blancos,
+- nivel negro,
+- compensacion de exposicion,
+- curva tonal,
+- espacio de trabajo,
+- espacio de salida,
+- salida lineal/no lineal,
+- denoise y sharpen de receta.
 
-```bash
-nexoraw build-develop-profile /tmp/samples.json \
-  --recipe testdata/recipes/scientific_recipe.yml \
-  --out /tmp/development_profile.json \
-  --calibrated-recipe /tmp/recipe_calibrated.yml
+Durante la generacion de perfil, NexoRAW fuerza parametros cientificos cuando
+corresponde: salida lineal, curva lineal, espacio de escena y desactivacion de
+filtros que puedan alterar la medicion de carta.
 
-nexoraw build-profile /tmp/samples.json \
-  --recipe /tmp/recipe_calibrated.yml \
-  --out /tmp/camera_profile.icc \
-  --report /tmp/profile_report.json
+### 3.3 Perfil de revelado e ICC
 
-nexoraw validate-profile /tmp/samples.json \
-  --profile /tmp/camera_profile.icc \
-  --out /tmp/validation.json
-```
+El flujo de perfilado tiene dos capas:
 
-## 3.5 Aplicar perfil de sesión a lote
+- Perfil de revelado NexoRAW: ajusta neutralidad, densidad y parametros
+  reproducibles desde la carta.
+- Perfil ICC: describe la transformacion colorimetrica resultante con ArgyllCMS.
 
-```bash
-nexoraw batch-develop ./raws \
-  --recipe /tmp/recipe_calibrated.yml \
-  --profile /tmp/camera_profile.icc \
-  --out /tmp/tiffs
-```
+Ambos deben usarse juntos con la misma receta y condiciones de captura.
 
-## 3.6 Flujo automático de extremo a extremo
+### 3.4 TIFF final y trazabilidad
 
-```bash
-nexoraw auto-profile-batch \
-  --charts ./charts_raw \
-  --targets ./raws_objetivo \
-  --recipe testdata/recipes/scientific_recipe.yml \
-  --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
-  --development-profile-out /tmp/development_profile.json \
-  --calibrated-recipe-out /tmp/recipe_calibrated.yml \
-  --profile-out /tmp/camera_profile.icc \
-  --profile-report /tmp/profile_report.json \
-  --validation-report /tmp/qa_session_report.json \
-  --validation-holdout-count 1 \
-  --profile-validity-days 30 \
-  --out /tmp/tiffs \
-  --workdir /tmp/work_auto
-```
+Cada TIFF final puede generar:
 
-Con `--validation-holdout-count 1`, la última captura de carta se reserva para
-validación independiente y no se usa para construir el perfil.
-El resultado incluye `profile_status.status`: `draft` sin validación
-independiente, `validated` si supera QA, `rejected` si falla los umbrales
-DeltaE y `expired` cuando se supera la vigencia declarada.
+- TIFF 16-bit final.
+- TIFF lineal de auditoria en `_linear_audit/`.
+- `batch_manifest.json`.
+- sidecar `.nexoraw.proof.json`.
+- informacion C2PA embebida si esta configurada.
 
-Para comparar sesiones ya generadas:
+Si un TIFF de salida ya existe, NexoRAW no lo sobrescribe. Crea versiones:
+`captura.tiff`, `captura_v002.tiff`, `captura_v003.tiff`, etc.
 
-```bash
-nexoraw compare-qa-reports \
-  /ruta/sesion_a/qa_session_report.json \
-  /ruta/sesion_b/qa_session_report.json \
-  --out /tmp/qa_comparison.json
-```
-
-Para comprobar que el entorno externo está listo antes de calibrar:
-
-```bash
-nexoraw check-tools --strict --out config/nexoraw_tools.json
-```
-
-## 4. Flujo con interfaz grafica Qt
+## 4. Interfaz grafica
 
 Arranque:
 
@@ -174,191 +157,488 @@ nexoraw-ui
 o:
 
 ```bash
-bash scripts/run_ui.sh
+python -m iccraw.gui
 ```
 
-Instalacion beta con paquete Debian:
+La interfaz se divide en tres pestañas principales.
+
+### 4.1 Pestaña Sesion
+
+La pestaña `Sesion` sirve para crear, abrir y guardar el contexto de trabajo.
+
+Funciones:
+
+- definir directorio raiz de sesion,
+- nombrar la sesion,
+- registrar condiciones de iluminacion,
+- registrar notas de toma,
+- crear estructura persistente de carpetas,
+- guardar estado y cola de trabajo.
+
+![Pestaña de sesion](assets/screenshots/nexoraw-sesion.png)
+
+Uso recomendado:
+
+1. Crear una carpeta de sesion.
+2. Pulsar `Crear sesion`.
+3. Copiar RAW originales en `raw/` o seleccionar una carpeta existente.
+4. Guardar notas de iluminacion y toma.
+5. Trabajar siempre dentro de esa raiz para mantener rutas y manifiestos
+   coherentes.
+
+### 4.2 Pestaña Calibrar / Aplicar
+
+Esta es la pantalla principal de trabajo.
+
+![Calibrar y aplicar](assets/screenshots/nexoraw-calibrar-aplicar.png)
+
+Zonas:
+
+- Columna izquierda:
+  - `Explorador`: unidades, arbol de carpetas y seleccion de archivos.
+  - `Visor`: controles de zoom, rotacion y comparacion.
+  - `Analisis`: niveles y resumen tecnico del preview.
+  - `Metadatos`: visor EXIF/GPS/C2PA/NexoRAW Proof.
+  - `Log`: eventos del pipeline y avisos.
+- Centro:
+  - visor principal sobre fondo gris oscuro neutro,
+  - tira inferior de miniaturas,
+  - selector de tamano de miniaturas.
+- Columna derecha:
+  - `Calibrar sesion`,
+  - `Correccion basica`,
+  - `Nitidez`,
+  - `Perfil activo`,
+  - `Aplicar sesion`.
+
+#### Explorador y miniaturas
+
+El explorador permite navegar por unidades y carpetas. Las miniaturas muestran
+RAW/TIFF/imagenes compatibles y se cachean para evitar recalculos al cambiar de
+tamano. Una linea verde sobre la miniatura indica que esa imagen se ha marcado
+como referencia colorimetrica.
+
+Botones principales:
+
+- `Usar seleccion como referencias colorimetricas`: marca la seleccion actual
+  como capturas de carta para generar perfil.
+- `Anadir seleccion a cola`: anade los archivos seleccionados a la cola de
+  revelado.
+
+#### Visor principal
+
+Funciones del visor:
+
+- zoom y encaje,
+- desplazamiento por arrastre,
+- rotacion,
+- comparacion original/resultado,
+- aplicacion opcional de perfil ICC al resultado,
+- marcado manual de carta,
+- cuentagotas neutro.
+
+`Comparar original/resultado` divide el visor para revisar el antes y despues
+del pipeline de render. El original es la imagen base cargada; el resultado es
+la imagen tras perfil, correcciones basicas y nitidez segun los controles
+activos.
+
+#### Calibrar sesion
+
+Este panel agrupa las decisiones previas a crear el perfil:
+
+- carpeta o seleccion de referencias colorimetricas,
+- referencia JSON de carta,
+- perfil ICC de salida,
+- tipo de carta,
+- confianza minima de deteccion,
+- fallback de deteccion,
+- formato ICC,
+- tipo/calidad de perfil ArgyllCMS,
+- criterios RAW globales para la medicion de perfil.
+
+Flujo:
+
+1. Seleccionar una o varias capturas de carta.
+2. Pulsar `Usar seleccion como referencias colorimetricas`.
+3. Revisar que el indicador muestra las referencias seleccionadas.
+4. Ajustar RAW global si procede.
+5. Ejecutar `Generar perfil de sesion`.
+6. Revisar reporte JSON, DeltaE y estado del perfil.
+
+#### Correccion basica
+
+Panel para ajustes globales de render final:
+
+- iluminante final,
+- temperatura,
+- matiz,
+- cuentagotas neutro,
+- brillo en EV,
+- nivel negro,
+- nivel blanco,
+- contraste,
+- curva de medios,
+- curva tonal avanzada,
+- punto negro/blanco de curva.
+
+El cuentagotas neutro permite hacer clic sobre una zona neutral de la imagen
+para estimar una correccion de temperatura/matiz. Debe usarse sobre zonas sin
+dominantes propias, no sobre parches coloreados.
+
+La curva tonal avanzada se suaviza para evitar saltos tonales bruscos. Es
+adecuada para ajuste tecnico de contraste, no para edicion creativa destructiva.
+
+#### Nitidez
+
+Panel para ajustes de detalle del render final:
+
+- nitidez,
+- radio de nitidez,
+- reduccion de ruido de luminancia,
+- reduccion de ruido cromatico,
+- correccion de aberracion cromatica lateral rojo/cian,
+- correccion de aberracion cromatica lateral azul/amarillo,
+- modos de denoise/sharpen heredados por receta.
+
+Estos ajustes se aplican al preview y al lote final cuando `Aplicar ajustes
+basicos y de nitidez` esta activado.
+
+#### Perfil activo
+
+Permite cargar el perfil ICC de sesion que se usara en preview/exportacion.
+
+Funciones:
+
+- `Cargar perfil activo`,
+- `Usar perfil generado`,
+- ver ruta del perfil activo.
+
+Si el perfil no tiene sidecar valido o provoca clipping extremo en preview,
+NexoRAW puede desactivar su aplicacion visual y registrar un aviso.
+
+#### Aplicar sesion
+
+Panel para exportar TIFF finales:
+
+- carpeta RAW a revelar,
+- carpeta de salida TIFF,
+- aplicar perfil ICC de sesion,
+- aplicar correcciones basicas y nitidez,
+- aplicar a seleccion,
+- aplicar a carpeta.
+
+La firma NexoRAW Proof y C2PA no estan aqui porque no son ajustes de imagen. Se
+configuran en el menu global.
+
+### 4.3 Visor de metadatos
+
+La pestaña vertical `Metadatos` permite inspeccionar el archivo seleccionado.
+
+![Visor de metadatos](assets/screenshots/nexoraw-metadatos.png)
+
+Pestañas:
+
+- `Resumen`: campos relevantes interpretados.
+- `EXIF`: camara, lente, exposicion, fabricante y otros metadatos.
+- `GPS`: coordenadas si existen.
+- `C2PA`: manifiesto C2PA y validacion si existe.
+- `Todo`: JSON completo.
+
+El visor combina:
+
+- `exiftool` para EXIF/GPS,
+- sidecar NexoRAW Proof,
+- lectura C2PA si el extra esta instalado,
+- estado de validacion disponible.
+
+### 4.4 Cola de Revelado
+
+La cola permite diferir revelados y procesar lotes.
+
+![Cola de revelado](assets/screenshots/nexoraw-cola-revelado.png)
+
+Funciones:
+
+- anadir archivos seleccionados,
+- anadir RAW de sesion,
+- quitar seleccionados,
+- limpiar cola,
+- revelar cola,
+- revisar estado por archivo,
+- consultar monitoreo de tareas y log.
+
+## 5. Configuracion global
+
+Las opciones globales estan en:
+
+`Configuracion -> Configuracion global...`
+
+![Configuracion global](assets/screenshots/nexoraw-configuracion-global.png)
+
+### 5.1 Firma / C2PA
+
+Contiene dos bloques.
+
+NexoRAW Proof:
+
+- clave privada Ed25519,
+- clave publica,
+- frase clave no persistente,
+- nombre de firmante,
+- generacion de identidad local Proof.
+
+C2PA / CAI:
+
+- certificado C2PA opcional,
+- clave privada C2PA opcional,
+- frase clave no persistente,
+- algoritmo,
+- servidor TSA,
+- firmante C2PA.
+
+NexoRAW Proof es obligatorio para la trazabilidad autonoma del TIFF final. C2PA
+se incrusta solo si hay credenciales compatibles o variables de entorno.
+
+Variables de entorno utiles:
+
+```bat
+set NEXORAW_PROOF_KEY=G:\ruta\nexoraw-proof-private.pem
+set NEXORAW_PROOF_PUBLIC_KEY=G:\ruta\nexoraw-proof-public.pem
+set NEXORAW_C2PA_CERT=G:\ruta\chain.pem
+set NEXORAW_C2PA_KEY=G:\ruta\signing.key
+```
+
+### 5.2 Preview / monitor
+
+Opciones:
+
+- preview RAW rapida,
+- lado maximo de preview,
+- gestion ICC del monitor,
+- perfil ICC/ICM del monitor,
+- ruta de guardado de preview PNG.
+
+Para revision colorimetrica, usar preview de alta calidad y activar perfil ICC
+del monitor si se dispone de un perfil fiable. La gestion de monitor solo afecta
+a pantalla y miniaturas; no cambia TIFFs, hashes ni manifiestos.
+
+## 6. Flujo recomendado con GUI
+
+1. Crear o abrir sesion.
+2. Copiar RAW originales a `raw/`.
+3. Seleccionar capturas de carta.
+4. Marcar `Usar seleccion como referencias colorimetricas`.
+5. Revisar RAW global y referencia de carta.
+6. Generar perfil de sesion.
+7. Revisar overlay, DeltaE, reporte y estado del perfil.
+8. Usar el perfil generado como perfil activo.
+9. Ajustar correccion basica y nitidez si procede.
+10. Configurar NexoRAW Proof en `Configuracion global`.
+11. Exportar seleccion, carpeta o cola.
+12. Revisar `batch_manifest.json`, sidecars y metadatos.
+
+## 7. Flujo recomendado con CLI
+
+### 7.1 Informacion RAW
 
 ```bash
-sudo apt install ./dist/nexoraw_0.1.0~beta4_amd64.deb
-nexoraw check-tools --strict
-nexoraw-ui
+nexoraw raw-info captura.NEF
 ```
 
-Para rescatar una carta no detectada automaticamente desde la GUI:
-
-1. Cargar la captura de carta en el visor.
-2. En `1. Calibrar sesión`, usar `Marcar en visor` y hacer clic en cuatro esquinas.
-3. Guardar la deteccion manual y revisar el PNG de overlay generado.
-
-Estructura de la interfaz:
-
-Pestañas principales:
-
-1. `Sesión`
-   - crear o abrir sesión,
-   - guardar metadatos de iluminación y toma,
-   - crear estructura persistente en el directorio raíz:
-     - `charts/`, `raw/`, `profiles/`, `exports/`, `config/`, `work/`,
-   - persistir configuración y cola en `config/session.json`.
-2. `Calibrar / Aplicar`
-   - navegación completa de unidades y directorios,
-   - selección visual por miniaturas,
-   - carga automática en visor al seleccionar una miniatura RAW/TIFF compatible,
-   - visor lateral de metadatos EXIF/GPS y C2PA para el archivo seleccionado,
-   - preview RAW rápida,
-   - comparación original/resultado,
-   - zoom, rotación y reencuadre por arrastre en el visor,
-   - paneles verticales de procesado: calibración con criterios RAW,
-     corrección básica, detalle, perfil activo y aplicación de sesión,
-   - `Calibrar sesión`: usar la selección de miniaturas o una carpeta de cartas,
-     ajustar criterios RAW globales y generar perfil de revelado + ICC,
-   - `Corrección básica`: iluminante final, temperatura, matiz, brillo, niveles,
-     contraste y curva de medios,
-   - `Detalle`: eliminación de ruido de luminancia/color, nitidez y corrección
-     de aberración cromática lateral,
-   - `Aplicar sesión`: revelar selección o carpeta con receta calibrada + ICC.
-3. `Cola de Revelado`
-   - cola de archivos para revelar,
-   - estado por archivo (pendiente/completado/error),
-   - monitoreo de tareas,
-   - log de eventos del pipeline.
-
-Flujo recomendado en GUI:
-
-1. Ir a `Sesión` y crear/abrir sesión con su directorio raíz.
-2. Registrar iluminación y toma para esa sesión.
-3. En `Calibrar / Aplicar`, seleccionar una o varias capturas RAW/DNG con carta y ejecutar `Generar perfil de sesión`.
-4. Ajustar `Corrección básica` y `Detalle` si el criterio de salida lo requiere.
-5. En `Aplicar sesión`, revelar RAW individuales, una selección de miniaturas o una carpeta.
-6. En `Cola de Revelado`, añadir archivos y ejecutar cola cuando se necesite procesado diferido.
-7. Revisar estado, artefactos JSON y monitoreo para trazabilidad e incidencias.
-
-Visor de metadatos:
-
-- En `Calibrar / Aplicar`, la columna izquierda incluye la pestaña vertical
-  `Metadatos`.
-- Al seleccionar un archivo, NexoRAW lee EXIF/GPS con `exiftool` si esta
-  disponible.
-- En TIFFs firmados, la pestaña `C2PA` muestra el manifiesto C2PA, estado de
-  validación, firma y aserciones embebidas.
-- Desde CLI se puede exportar la misma lectura:
+### 7.2 Revelado individual
 
 ```bash
-nexoraw metadata ./tiffs/captura.tiff --out metadata.json
+nexoraw develop captura.NEF \
+  --recipe testdata/recipes/scientific_recipe.yml \
+  --out exports/captura.tiff \
+  --audit-linear exports/_linear_audit/captura_linear.tiff
 ```
 
-Notas de uso de preview:
-
-- El checkbox `Aplicar perfil ICC en resultado` se inicia desactivado para evitar dominantes si el perfil activo no corresponde al flujo actual.
-- La exposición, densidad, balance de blancos y base colorimétrica se derivan de la carta; no se editan como ajustes creativos.
-- Si el perfil activo no tiene sidecar `.profile.json` válido o genera clipping extremo en preview, la aplicación muestra la vista sin perfil y registra aviso.
-- La barra superior muestra progreso indeterminado durante carga, generación de
-  perfil y revelado por lote.
-- LibRaw/rawpy es el unico motor RAW; DCB es el valor por defecto instalable.
-  AMaZE requiere `rawpy-demosaic` o una build de `rawpy`/LibRaw con demosaic
-  pack GPL3 y `DEMOSAIC_PACK_GPL3=True`.
-- `Vista -> Pantalla completa` (`F11`) y `Vista -> Restablecer distribución` permiten adaptar la interfaz a cualquier tamaño de pantalla.
-- Al abrir una sesión, las salidas operativas se fuerzan al árbol de sesión:
-  `profiles/` para ICC, `config/` para reportes/recetas, `work/` para
-  intermedios y `exports/` para TIFF/preview. Los temporales internos siguen
-  usándose solo como scratch transitorio.
-- `Ayuda -> Diagnóstico herramientas...` muestra versiones/rutas de ArgyllCMS
-  y `exiftool`; `rawpy`/LibRaw queda registrado en el contexto de
-  ejecución.
-
-## 5. Artefactos que genera el sistema
-
-Durante el proceso, NexoRAW produce:
-
-- TIFF 16-bit,
-- perfil ICC,
-- sidecar de perfil (`.profile.json`),
-- detección de carta (`detection.json`),
-- muestras (`samples.json`),
-- reporte y validación DeltaE,
-- manifiesto de lote (`batch_manifest.json`).
-
-## 6. Buenas prácticas de captura
-
-- iluminación uniforme y estable,
-- carta limpia y en foco,
-- exposición sin clipping,
-- bloquear configuración de cámara entre carta y lote,
-- usar exactamente la misma `recipe` del perfilado para el batch.
-
-## 7. Advertencias científicas
-
-- El perfil ICC de cámara no es universal.
-- Es válido para condiciones comparables:
-  - cámara,
-  - óptica,
-  - iluminante,
-  - recipe de revelado.
-- Cambios en WB, demosaicing o tone-curve pueden degradar la validez.
-
-## 8. Problemas frecuentes
-
-- Error LibRaw/rawpy:
-  - comprobar que la ruta es RAW real y no fichero de ejemplo truncado,
-  - reinstalar dependencias Python con `pip install -e .`,
-  - si se usa AMaZE, ejecutar `python scripts/check_amaze_support.py` y revisar
-    `docs/AMAZE_GPL3.md`.
-- Error `colprof`:
-  - revisar que Argyll esté instalado y que la referencia de carta sea correcta.
-- Detección con baja confianza:
-  - mejorar encuadre de carta, iluminación y foco.
-- Detección por fallback:
-  - el flujo automático la rechaza por defecto para evitar perfiles inválidos,
-  - usar `--allow-fallback-detection` solo en pruebas controladas o con revisión
-    manual del overlay.
-- Referencia de carta inválida:
-  - comprobar que declara `reference_source`, `illuminant: D50`, `observer: 2`
-    y valores `reference_lab` para todos los parches.
-
-## 9. C2PA/CAI
-
-NexoRAW puede firmar TIFFs finales con C2PA como capa criptografica opcional.
-Esta capa no sustituye `batch_manifest.json`, hashes SHA-256, auditoria lineal,
-perfiles ICC ni reportes QA.
-
-Instalacion opcional:
+### 7.3 Deteccion y muestreo de carta
 
 ```bash
-pip install -e .[c2pa]
+nexoraw detect-chart exports/carta.tiff \
+  --out work/detection.json \
+  --preview work/overlay.png \
+  --chart-type colorchecker24
+
+nexoraw sample-chart exports/carta.tiff \
+  --detection work/detection.json \
+  --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
+  --recipe testdata/recipes/scientific_recipe.yml \
+  --out work/samples.json
 ```
 
-Firma de lote:
+### 7.4 Perfil de revelado e ICC
 
 ```bash
-nexoraw batch-develop ./raws \
-  --recipe recipe_calibrated.yml \
-  --profile camera_profile.icc \
-  --out ./tiffs \
-  --c2pa-sign \
-  --c2pa-cert chain.pem \
-  --c2pa-key signing.key \
-  --c2pa-alg ps256 \
-  --session-id sesion-2026-04-25
+nexoraw build-develop-profile work/samples.json \
+  --recipe testdata/recipes/scientific_recipe.yml \
+  --out config/development_profile.json \
+  --calibrated-recipe config/recipe_calibrated.yml
+
+nexoraw build-profile work/samples.json \
+  --recipe config/recipe_calibrated.yml \
+  --out profiles/camera_profile.icc \
+  --report config/profile_report.json
 ```
 
-Verificacion:
+### 7.5 Lote TIFF
 
 ```bash
-nexoraw verify-c2pa ./tiffs/captura.tiff \
-  --raw ./raws/captura.NEF \
-  --manifest ./tiffs/batch_manifest.json
+nexoraw batch-develop raw \
+  --recipe config/recipe_calibrated.yml \
+  --profile profiles/camera_profile.icc \
+  --out exports/tiff \
+  --proof-key ~/.nexoraw/proof/nexoraw-proof-private.pem \
+  --proof-public-key ~/.nexoraw/proof/nexoraw-proof-public.pem
 ```
 
-Principios operativos:
+### 7.6 Verificacion
 
-1. el RAW original no se modifica;
-2. el identificador probatorio es el SHA-256 de los bytes exactos del RAW;
-3. la ruta del RAW solo se registra como localizador auxiliar;
-4. el SHA-256 del TIFF firmado se guarda fuera del C2PA embebido para evitar circularidad;
-5. los RAW propietarios no se reescriben ni reciben C2PA embebido.
+```bash
+nexoraw verify-proof exports/tiff/captura.tiff.nexoraw.proof.json \
+  --tiff exports/tiff/captura.tiff \
+  --raw raw/captura.NEF
 
-Ver detalles tecnicos en:
+nexoraw metadata exports/tiff/captura.tiff --out config/metadata.json
+```
 
-- `docs/C2PA_CAI.md`
-- `docs/INTEGRACION_LIBRAW_ARGYLL.md`
+## 8. Metodologia de perfilado
+
+La metodologia se basa en capturar una carta bajo condiciones controladas,
+revelarla en modo cientifico, detectar sus parches, comparar medidas contra una
+referencia D50 y construir el perfil de sesion.
+
+Recomendaciones:
+
+- usar iluminacion estable y uniforme,
+- evitar clipping en parches blancos y negros,
+- mantener camara, lente, ISO, iluminante y exposicion comparables,
+- enfocar la carta,
+- evitar reflejos especulares,
+- no mezclar capturas de carta y objetivos con ajustes de camara distintos,
+- reservar una captura de validacion si se quiere QA independiente.
+
+Estados de perfil:
+
+- `draft`: generado sin validacion independiente suficiente.
+- `validated`: supera criterios QA configurados.
+- `rejected`: no supera umbrales de error.
+- `expired`: supera vigencia temporal declarada.
+
+## 9. Trazabilidad, NexoRAW Proof y C2PA
+
+NexoRAW Proof crea un sidecar firmado con:
+
+- SHA-256 del RAW,
+- SHA-256 del TIFF final,
+- hash de receta,
+- hash de perfil ICC,
+- hash de ajustes de render,
+- metadatos relevantes,
+- clave publica del firmante,
+- fecha UTC,
+- contexto de sesion.
+
+C2PA/CAI, si esta configurado, se incrusta en el TIFF como capa interoperable.
+Si C2PA falla estando solicitado/configurado, la exportacion se aborta para no
+ocultar un error de firma. Si no esta configurado, el TIFF sigue teniendo
+NexoRAW Proof.
+
+Reglas forenses:
+
+1. No incrustar C2PA en RAW propietarios originales.
+2. No registrar claves privadas ni fragmentos de claves.
+3. No incluir el hash del TIFF firmado dentro del propio manifiesto C2PA
+   embebido.
+4. Calcular el hash del TIFF final tras la firma C2PA.
+5. Mantener `batch_manifest.json` y auditoria lineal.
+
+## 10. Artefactos generados
+
+Artefactos habituales:
+
+- `*.tiff`: TIFF final.
+- `_linear_audit/*.tiff`: TIFF lineal de auditoria.
+- `*.nexoraw.proof.json`: firma autonoma NexoRAW Proof.
+- `batch_manifest.json`: manifiesto de lote.
+- `profile_report.json`: reporte de perfil.
+- `qa_session_report.json`: QA de sesion.
+- `recipe_calibrated.yml`: receta calibrada.
+- `*.profile.json`: sidecar del perfil ICC.
+- overlays PNG de deteccion de carta.
+- JSON de detecciones y muestras.
+
+## 11. Rendimiento y cache
+
+NexoRAW separa:
+
+- preview rapida para navegacion,
+- preview de alta calidad para revision,
+- render final auditado.
+
+Optimizaciones incluidas:
+
+- caches de preview por archivo, receta y modo,
+- miniaturas cacheadas y reescaladas sin repetir revelado,
+- reutilizacion de ajustes de detalle cuando solo cambia tono/curva,
+- salida versionada para evitar sobrescrituras,
+- tareas largas en segundo plano con progreso global.
+
+Buenas practicas:
+
+- usar preview rapida solo para navegar,
+- desactivarla al marcar cartas o revisar color,
+- trabajar con carpetas de sesion razonables,
+- limpiar colas antiguas,
+- evitar recalcular perfil si solo se ajusta render final.
+
+## 12. Problemas frecuentes
+
+### AMaZE no funciona
+
+AMaZE requiere soporte GPL3 en rawpy/LibRaw. Ejecutar:
+
+```bash
+python scripts/check_amaze_support.py
+```
+
+Si no esta disponible, usar DCB u otro algoritmo soportado.
+
+### La deteccion de carta falla
+
+- mejorar encuadre,
+- evitar reflejos,
+- usar carta completa,
+- comprobar tipo de carta,
+- usar `Marcar en visor` para guardar deteccion manual.
+
+### El perfil produce imagen oscura o dominante
+
+- comprobar que la referencia de carta corresponde a la carta real,
+- revisar salida lineal/no lineal,
+- comprobar que no se perfila desde TIFF incorrecto,
+- verificar RAW global antes de generar perfil,
+- revisar clipping y DeltaE.
+
+### Los metadatos C2PA aparecen ausentes
+
+Es normal si no se han configurado certificado y clave C2PA. La trazabilidad
+autonoma debe revisarse en NexoRAW Proof. Para C2PA, instalar extra y configurar
+credenciales en `Configuracion global`.
+
+### Falta matplotlib
+
+NexoRAW no requiere `matplotlib` para el flujo actual. El aviso puede venir de
+`colour-science`, que detecta funciones de graficado no disponibles. No afecta
+al pipeline RAW, ICC, TIFF ni C2PA.
+
+## 13. Documentacion relacionada
+
+- [README](../README.md)
+- [NexoRAW Proof](NEXORAW_PROOF.md)
+- [C2PA/CAI](C2PA_CAI.md)
+- [Integracion LibRaw + ArgyllCMS](INTEGRACION_LIBRAW_ARGYLL.md)
+- [Licencias de terceros](THIRD_PARTY_LICENSES.md)
+- [Changelog](../CHANGELOG.md)

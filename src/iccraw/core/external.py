@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
+from collections.abc import Sequence
+from typing import Any
 
 
 def bundled_tool_dirs() -> list[Path]:
@@ -57,6 +60,41 @@ def external_tool_search_path() -> str:
     parts = [str(folder) for folder in bundled_tool_dirs() if folder.exists()]
     current = os.environ.get("PATH", "")
     return os.pathsep.join([*parts, current]) if parts else current
+
+
+def hidden_subprocess_kwargs() -> dict[str, Any]:
+    """Return kwargs that keep external tools from flashing a console on Windows."""
+    if os.name != "nt":
+        return {}
+
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+    return {
+        "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        "startupinfo": startupinfo,
+    }
+
+
+def run_external(command: Sequence[str] | str, **kwargs: Any) -> subprocess.CompletedProcess:
+    return subprocess.run(command, **_merge_hidden_subprocess_kwargs(kwargs))
+
+
+def check_output_external(command: Sequence[str] | str, **kwargs: Any) -> str | bytes:
+    return subprocess.check_output(command, **_merge_hidden_subprocess_kwargs(kwargs))
+
+
+def _merge_hidden_subprocess_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(kwargs)
+    if os.name != "nt":
+        return merged
+
+    hidden = hidden_subprocess_kwargs()
+    hidden_flags = int(hidden.get("creationflags", 0) or 0)
+    current_flags = int(merged.get("creationflags", 0) or 0)
+    merged["creationflags"] = current_flags | hidden_flags
+    merged.setdefault("startupinfo", hidden.get("startupinfo"))
+    return merged
 
 
 def _candidate_names(name: str) -> list[str]:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import hashlib
+import itertools
 from typing import Iterable
 
 import numpy as np
@@ -25,6 +26,27 @@ def sha256_file(path: Path) -> str:
 
 def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def versioned_output_path(path: Path, *, separator: str = "_v", width: int = 3) -> Path:
+    """Return a non-existing sibling path by appending a version suffix.
+
+    The first render keeps the requested name. If it already exists, subsequent
+    renders use ``stem_v002.ext``, ``stem_v003.ext`` and so on, preserving
+    previous TIFFs and their audit value.
+    """
+    candidate = Path(path)
+    if not candidate.exists():
+        return candidate
+
+    parent = candidate.parent
+    stem = candidate.stem
+    suffix = candidate.suffix
+    for index in itertools.count(2):
+        versioned = parent / f"{stem}{separator}{index:0{int(width)}d}{suffix}"
+        if not versioned.exists():
+            return versioned
+    raise RuntimeError("No se pudo generar una ruta versionada de salida")
 
 
 def list_raw_files(folder: Path) -> list[Path]:

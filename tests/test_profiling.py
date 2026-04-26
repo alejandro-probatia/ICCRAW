@@ -62,13 +62,13 @@ def test_build_profile_generates_icc_and_sidecar(tmp_path: Path, monkeypatch):
 
 
 def test_argyll_builder_accepts_icm_output(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(profiling.shutil, "which", lambda name: "colprof" if name == "colprof" else None)
+    monkeypatch.setattr(profiling, "external_tool_path", lambda name: "colprof" if name == "colprof" else None)
 
     def fake_run(args, cwd, stdout, stderr, text):
         Path(cwd, "camera_profile.icm").write_bytes(b"icm-profile")
         return SimpleNamespace(returncode=0, stdout="Profile done")
 
-    monkeypatch.setattr(profiling.subprocess, "run", fake_run)
+    monkeypatch.setattr(profiling, "run_external", fake_run)
 
     out_icc = tmp_path / "camera.icc"
     profiling._build_profile_with_argyll(

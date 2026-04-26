@@ -22,7 +22,7 @@ except Exception:
 from iccraw.core.recipe import load_recipe
 from iccraw.core.utils import sha256_file
 from iccraw.raw.pipeline import develop_controlled, develop_image_array
-from iccraw.raw.preview import load_image_for_preview
+from iccraw.raw.preview import apply_adjustments, apply_render_adjustments, linear_to_srgb_display, load_image_for_preview
 
 
 def _time_call(fn, repeat: int) -> tuple[object, list[float]]:
@@ -95,6 +95,43 @@ def main(argv: list[str] | None = None) -> int:
         **_summary(hq_timings),
         "shape": list(hq_image.shape),
         "message": hq_message,
+    }
+
+    detail_image, detail_timings = _time_call(
+        lambda: apply_adjustments(
+            hq_image,
+            denoise_luminance=0.25,
+            denoise_color=0.25,
+            sharpen_amount=0.45,
+            sharpen_radius=1.0,
+        ),
+        args.repeat,
+    )
+    benchmarks["preview_detail_adjustments"] = {
+        **_summary(detail_timings),
+        "shape": list(detail_image.shape),
+    }
+
+    tonal_image, tonal_timings = _time_call(
+        lambda: apply_render_adjustments(
+            detail_image,
+            brightness_ev=0.15,
+            black_point=0.01,
+            white_point=0.98,
+            contrast=0.12,
+            midtone=1.05,
+        ),
+        args.repeat,
+    )
+    benchmarks["preview_tonal_adjustments"] = {
+        **_summary(tonal_timings),
+        "shape": list(tonal_image.shape),
+    }
+
+    display_image, display_timings = _time_call(lambda: linear_to_srgb_display(tonal_image), args.repeat)
+    benchmarks["preview_display_srgb"] = {
+        **_summary(display_timings),
+        "shape": list(display_image.shape),
     }
 
     array_image, array_timings = _time_call(lambda: develop_image_array(args.input, recipe), args.repeat)

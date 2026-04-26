@@ -53,8 +53,8 @@ def test_read_exif_gps_metadata_groups_exif_and_gps(tmp_path: Path, monkeypatch)
 
     monkeypatch.setattr(metadata_viewer, "external_tool_path", lambda name: "exiftool")
     monkeypatch.setattr(
-        metadata_viewer.subprocess,
-        "run",
+        metadata_viewer,
+        "run_external",
         lambda *args, **kwargs: FakeCompletedProcess(json.dumps(exif_payload)),
     )
 
@@ -98,3 +98,22 @@ def test_inspect_file_metadata_includes_c2pa_summary(tmp_path: Path, monkeypatch
     assert result["c2pa"]["active_manifest_id"] == "urn:nexoraw:test"
     assert "c2pa.actions.v2" in result["c2pa"]["assertion_labels"]
     assert "signed.tiff" in sections["summary"]
+
+
+def test_c2pa_absence_is_not_reported_as_valid():
+    display = metadata_display_sections(
+        {
+            "file": {"basename": "unsigned.tiff"},
+            "exif_gps": {"groups": {}, "all": {}, "gps": {}},
+            "c2pa": {"status": "absent_or_invalid", "reason": "no manifest", "manifest_store": None},
+        }
+    )
+
+    c2pa_items = {
+        item["label"]: item["value"]
+        for group in display["c2pa"]
+        for item in group["items"]
+    }
+    assert c2pa_items["Estado"] == "Ausente o no valido"
+    assert c2pa_items["Validacion"] == "no manifest"
+    assert c2pa_items["Vinculo RAW-TIFF C2PA"] == "No disponible"

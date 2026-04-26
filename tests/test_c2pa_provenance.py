@@ -2,19 +2,25 @@ from pathlib import Path
 import json
 
 import numpy as np
+import pytest
 import tifffile
 
 from iccraw.core.models import RawMetadata, Recipe
 from iccraw.core.utils import sha256_file
-from iccraw.profile.export import batch_develop
+from iccraw.profile.export import batch_develop, write_signed_profiled_tiff
 from iccraw.provenance.c2pa import (
     RAW_LINK_ASSERTION_LABEL,
+    RENDER_SETTINGS_SCHEMA,
+    C2PASigningError,
     C2PASignConfig,
     build_c2pa_manifest,
     build_raw_link_assertion,
+    build_render_settings,
+    c2pa_config_from_environment,
     sign_tiff_with_c2pa,
     verify_c2pa_raw_link,
 )
+from iccraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity
 
 
 class FakeC2PAClient:
@@ -59,6 +65,14 @@ class FakeC2PAClient:
         return self.manifest_store
 
 
+class FailingC2PAClient:
+    def sign_file(self, *args, **kwargs) -> dict:
+        raise RuntimeError("sign failed")
+
+    def read_manifest_store(self, asset_path: Path) -> dict:
+        return {}
+
+
 def _metadata(path: Path) -> RawMetadata:
     return RawMetadata(
         source_file=str(path),
@@ -79,19 +93,36 @@ def _metadata(path: Path) -> RawMetadata:
     )
 
 
+def _proof_config(tmp_path: Path) -> NexoRawProofConfig:
+    private_key = tmp_path / "proof-private.pem"
+    public_key = tmp_path / "proof-public.pem"
+    generate_ed25519_identity(private_key_path=private_key, public_key_path=public_key)
+    return NexoRawProofConfig(private_key_path=private_key, public_key_path=public_key)
+
+
 def test_raw_link_assertion_uses_raw_sha_as_probative_identifier(tmp_path: Path):
     raw = tmp_path / "capture.NEF"
     profile = tmp_path / "camera.icc"
     raw.write_bytes(b"exact raw bytes")
     profile.write_bytes(b"profile bytes")
 
+    recipe = Recipe(demosaic_algorithm="amaze", output_space="camera_rgb")
+    settings = build_render_settings(
+        recipe=recipe,
+        profile_path=profile,
+        color_management_mode="camera_rgb_with_input_icc",
+        detail_adjustments={"denoise_luminance": 0.2, "sharpen_amount": 0.3},
+        render_adjustments={"brightness_ev": 0.5, "tone_curve_preset": "custom"},
+        context={"entrypoint": "unit-test"},
+    )
     assertion = build_raw_link_assertion(
         source_raw=raw,
-        recipe=Recipe(demosaic_algorithm="amaze", output_space="camera_rgb"),
+        recipe=recipe,
         profile_path=profile,
         color_management_mode="camera_rgb_with_input_icc",
         session_id="session-1",
         raw_metadata=_metadata(raw),
+        render_settings=settings,
     )
 
     assert assertion["schema"] == RAW_LINK_ASSERTION_LABEL
@@ -99,6 +130,12 @@ def test_raw_link_assertion_uses_raw_sha_as_probative_identifier(tmp_path: Path)
     assert assertion["raw_identity"]["path_auxiliary_role"] == "non_probative_locator"
     assert assertion["nexoraw"]["icc_profile_sha256"] == sha256_file(profile)
     assert assertion["nexoraw"]["demosaicing_algorithm"] == "amaze"
+    assert assertion["nexoraw"]["render_settings_sha256"] == settings["settings_sha256"]
+    assert assertion["render_settings"]["schema"] == RENDER_SETTINGS_SCHEMA
+    assert assertion["render_settings"]["recipe_parameters"]["demosaic_algorithm"] == "amaze"
+    assert assertion["render_settings"]["detail_adjustments"]["denoise_luminance"] == 0.2
+    assert assertion["render_settings"]["render_adjustments"]["brightness_ev"] == 0.5
+    assert assertion["render_settings"]["context"]["entrypoint"] == "unit-test"
     assert "output_sha256" not in str(assertion)
 
 
@@ -146,11 +183,15 @@ def test_sign_tiff_with_c2pa_replaces_output_and_hashes_after_signing(tmp_path: 
         profile_path=profile,
         color_management_mode="camera_rgb_with_input_icc",
         config=C2PASignConfig(cert_path=cert, key_path=key, client=client),
+        render_settings={"settings_sha256": "render-hash", "render_adjustments": {"contrast": 0.2}},
     )
 
     assert tiff.read_bytes().endswith(b"FAKE-C2PA")
     assert result.output_sha256_after_signing == sha256_file(tiff)
     assert client.calls[0]["source_ingredient_path"] is None
+    raw_link = client.calls[0]["manifest"]["assertions"][1]["data"]
+    assert raw_link["nexoraw"]["render_settings_sha256"] == "render-hash"
+    assert raw_link["render_settings"]["render_adjustments"]["contrast"] == 0.2
     assert "output_sha256" not in str(client.calls[0]["manifest"])
 
 
@@ -202,6 +243,7 @@ def test_verify_c2pa_raw_link_checks_raw_and_external_manifest(tmp_path: Path):
 
     assert result["status"] == "ok"
     assert result["raw_matches_c2pa_assertion"] is True
+    assert result["render_settings_hash"]["ok"] is True
     assert result["external_manifest"]["ok"] is True
 
 
@@ -224,8 +266,47 @@ def test_batch_develop_hashes_signed_tiff_when_c2pa_enabled(tmp_path: Path):
         profile_path=profile,
         out_dir=out_dir,
         c2pa_config=C2PASignConfig(cert_path=cert, key_path=key, client=FakeC2PAClient()),
+        proof_config=_proof_config(tmp_path),
     )
 
     signed = out_dir / "capture_01.tiff"
     assert signed.read_bytes().endswith(b"FAKE-C2PA")
     assert manifest.entries[0].output_sha256 == sha256_file(signed)
+    assert Path(manifest.entries[0].proof_path or "").exists()
+
+
+def test_c2pa_environment_config_still_reports_missing_credentials(tmp_path: Path, monkeypatch):
+    for name in (
+        "NEXORAW_C2PA_CERT",
+        "NEXORAW_C2PA_KEY",
+        "ICCRAW_C2PA_CERT",
+        "ICCRAW_C2PA_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(C2PASigningError, match="credenciales C2PA"):
+        c2pa_config_from_environment()
+
+
+def test_signed_tiff_write_does_not_leave_unsigned_final_on_c2pa_failure(tmp_path: Path):
+    raw = tmp_path / "capture.NEF"
+    out = tmp_path / "rendered.tiff"
+    cert = tmp_path / "cert.pem"
+    key = tmp_path / "key.pem"
+    raw.write_bytes(b"raw bytes")
+    cert.write_bytes(b"cert")
+    key.write_bytes(b"key")
+    image = np.full((4, 5, 3), 0.25, dtype=np.float32)
+
+    with pytest.raises(Exception, match="sign failed"):
+        write_signed_profiled_tiff(
+            out,
+            image,
+            source_raw=raw,
+            recipe=Recipe(output_space="camera_rgb", output_linear=True),
+            profile_path=None,
+            c2pa_config=C2PASignConfig(cert_path=cert, key_path=key, client=FailingC2PAClient()),
+            proof_config=_proof_config(tmp_path),
+        )
+
+    assert not out.exists()

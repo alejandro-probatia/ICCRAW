@@ -46,12 +46,13 @@ Fecha de revision: 2026-04-25.
   - dependencia opcional (`pip install -e .[gui]`),
   - mantener avisos de licencia al redistribuir builds con GUI.
 
-## 5) c2pa-python (C2PA/CAI opcional)
+## 5) c2pa-python (C2PA/CAI para TIFF final firmado)
 
 - Uso en NexoRAW: firma y lectura de manifiestos C2PA embebidos en TIFF final.
 - Licencia declarada por `contentauth/c2pa-python`: Apache-2.0 o MIT.
 - Politica en NexoRAW:
-  - dependencia opcional (`pip install -e .[c2pa]`),
+  - dependencia instalada mediante extra (`pip install -e .[c2pa]`),
+  - obligatoria para generar TIFFs finales NexoRAW,
   - no sustituye `batch_manifest.json`, hashes SHA-256 ni auditoria lineal,
   - la clave privada se pasa por ruta de archivo y no se registra en logs,
   - revisar certificados, TSA y politica de confianza antes de uso probatorio.
@@ -64,10 +65,12 @@ Fecha de revision: 2026-04-25.
 - `scipy`: BSD-3-Clause.
 - `PyYAML`: MIT.
 - `colour-science`: BSD-3-Clause.
-- `Pillow`: HPND-like (PIL Software License).
+- `Pillow`: HPND-like (PIL Software License). NexoRAW usa `ImageCms` solo
+  para conversion ICC de monitor en el visor; el pipeline cientifico/export
+  sigue usando ArgyllCMS para perfilado, validacion y conversiones ICC finales.
 - `rawpy`: MIT; wheels estandar sin demosaic packs GPL.
 - `rawpy-demosaic`: GPL-3.0-or-later; habilita demosaic packs GPL2/GPL3.
-- `c2pa-python`: Apache-2.0 o MIT; opcional para C2PA/CAI.
+- `c2pa-python`: Apache-2.0 o MIT; requerido para firmar TIFFs finales.
 
 ## 8) Herramientas de empaquetado Windows
 

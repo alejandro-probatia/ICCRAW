@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-from .core.external import external_tool_path
+from .core.external import external_tool_path, run_external
 from .provenance.c2pa import (
     C2PAClient,
     C2PAError,
@@ -14,6 +14,7 @@ from .provenance.c2pa import (
     C2PAPythonClient,
     extract_raw_link_assertion,
 )
+from .provenance.nexoraw_proof import PROOF_SCHEMA, NexoRawProofError, verify_nexoraw_proof
 
 
 GPS_TAG_HINTS = {
@@ -48,12 +49,36 @@ def inspect_file_metadata(
     payload = {
         "file": _file_payload(path),
         "exif_gps": read_exif_gps_metadata(path),
+        "nexoraw_proof": read_nexoraw_proof_metadata(path),
     }
     if include_c2pa:
         payload["c2pa"] = read_c2pa_metadata(path, client=c2pa_client)
     else:
         payload["c2pa"] = {"status": "skipped"}
     return payload
+
+
+def read_nexoraw_proof_metadata(path: Path) -> dict[str, Any]:
+    path = Path(path)
+    proof_path = path if path.suffix.lower() == ".json" else path.with_suffix(path.suffix + ".nexoraw.proof.json")
+    if not proof_path.exists():
+        return {"status": "absent", "proof_path": str(proof_path)}
+    try:
+        raw_payload = json.loads(proof_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"status": "error", "proof_path": str(proof_path), "reason": f"JSON no valido: {exc}"}
+    if raw_payload.get("schema") != PROOF_SCHEMA:
+        return {"status": "not_nexoraw_proof", "proof_path": str(proof_path)}
+    try:
+        result = verify_nexoraw_proof(
+            proof_path,
+            output_tiff=path if path != proof_path and path.exists() else None,
+        )
+    except NexoRawProofError as exc:
+        return {"status": "invalid", "proof_path": str(proof_path), "reason": str(exc), "proof": raw_payload}
+    except Exception as exc:
+        return {"status": "error", "proof_path": str(proof_path), "reason": str(exc), "proof": raw_payload}
+    return result
 
 
 def read_exif_gps_metadata(path: Path) -> dict[str, Any]:
@@ -70,7 +95,7 @@ def read_exif_gps_metadata(path: Path) -> dict[str, Any]:
 
     cmd = [exiftool, "-json", "-G", "-a", "-n", str(path)]
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=30)
+        proc = run_external(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=30)
     except subprocess.TimeoutExpired:
         return {
             "status": "error",
@@ -153,11 +178,12 @@ def read_c2pa_metadata(path: Path, *, client: C2PAClient | None = None) -> dict[
 def metadata_sections_text(payload: dict[str, Any]) -> dict[str, str]:
     exif_gps = payload.get("exif_gps", {})
     c2pa = payload.get("c2pa", {})
+    proof = payload.get("nexoraw_proof", {})
     return {
         "summary": _json_text(_summary_payload(payload)),
         "exif": _json_text(exif_gps.get("exif", {})),
         "gps": _json_text(exif_gps.get("gps", {})),
-        "c2pa": _json_text(c2pa),
+        "c2pa": _json_text({"nexoraw_proof": proof, "c2pa": c2pa}),
         "all": _json_text(payload),
     }
 
@@ -165,13 +191,14 @@ def metadata_sections_text(payload: dict[str, Any]) -> dict[str, str]:
 def metadata_display_sections(payload: dict[str, Any]) -> dict[str, Any]:
     exif_gps = payload.get("exif_gps", {})
     c2pa = payload.get("c2pa", {})
+    proof = payload.get("nexoraw_proof", {})
     raw = exif_gps.get("all", {}) if isinstance(exif_gps, dict) else {}
     gps = exif_gps.get("gps", {}) if isinstance(exif_gps, dict) else {}
     return {
         "summary": _interpreted_summary(payload, raw, gps, c2pa),
         "exif": _grouped_tree(exif_gps.get("groups", {}) if isinstance(exif_gps, dict) else {}),
         "gps": _gps_display(gps),
-        "c2pa": _c2pa_display(c2pa),
+        "c2pa": _proof_display(proof) + _c2pa_display(c2pa),
     }
 
 
@@ -247,6 +274,7 @@ def _active_manifest(store: dict[str, Any]) -> dict[str, Any]:
 def _summary_payload(payload: dict[str, Any]) -> dict[str, Any]:
     exif_gps = payload.get("exif_gps", {})
     c2pa = payload.get("c2pa", {})
+    proof = payload.get("nexoraw_proof", {})
     gps = exif_gps.get("gps", {})
     return {
         "file": payload.get("file", {}),
@@ -258,6 +286,8 @@ def _summary_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "c2pa_active_manifest_id": c2pa.get("active_manifest_id"),
         "c2pa_validation_status": c2pa.get("validation_status"),
         "c2pa_assertion_labels": c2pa.get("assertion_labels"),
+        "nexoraw_proof_status": proof.get("status") if isinstance(proof, dict) else None,
+        "nexoraw_proof_path": proof.get("proof_path") if isinstance(proof, dict) else None,
     }
 
 
@@ -268,6 +298,7 @@ def _interpreted_summary(
     c2pa: dict[str, Any],
 ) -> list[dict[str, Any]]:
     file_payload = payload.get("file", {}) if isinstance(payload.get("file"), dict) else {}
+    proof = payload.get("nexoraw_proof", {}) if isinstance(payload.get("nexoraw_proof"), dict) else {}
     return [
         {
             "title": "Archivo",
@@ -335,12 +366,16 @@ def _interpreted_summary(
             ),
         },
         {
-            "title": "C2PA",
+            "title": "Prueba forense",
             "items": _items(
-                ("Estado", c2pa.get("status") if isinstance(c2pa, dict) else None),
+                ("NexoRAW Proof", _proof_status_label(proof)),
+                ("Proof sidecar", proof.get("proof_path")),
+                ("Estado", _c2pa_status_label(c2pa)),
+                ("Motivo", c2pa.get("reason") if isinstance(c2pa, dict) else None),
                 ("Manifiesto activo", c2pa.get("active_manifest_id") if isinstance(c2pa, dict) else None),
                 ("Firma", _c2pa_signature_summary(c2pa)),
                 ("Validación", _c2pa_validation_summary(c2pa)),
+                ("Vinculo RAW", _c2pa_raw_link_summary(c2pa)),
             ),
         },
     ]
@@ -368,9 +403,65 @@ def _gps_display(gps: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _proof_display(proof: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(proof, dict):
+        return [{"title": "NexoRAW Proof", "items": [{"label": "Estado", "value": "No disponible"}]}]
+    proof_payload = proof.get("proof") if isinstance(proof.get("proof"), dict) else {}
+    subject = proof_payload.get("subject", {}) if isinstance(proof_payload, dict) else {}
+    source_raw = subject.get("source_raw", {}) if isinstance(subject, dict) else {}
+    output_tiff = subject.get("output_tiff", {}) if isinstance(subject, dict) else {}
+    process = proof_payload.get("process", {}) if isinstance(proof_payload, dict) else {}
+    signer = proof_payload.get("signer", {}) if isinstance(proof_payload, dict) else {}
+    return [
+        {
+            "title": "NexoRAW Proof",
+            "items": _items(
+                ("Estado", _proof_status_label(proof)),
+                ("Sidecar", proof.get("proof_path")),
+                ("Firma", "valida" if proof.get("signature_valid") is True else proof.get("signature_error")),
+                ("Clave publica SHA-256", proof.get("public_key_sha256_actual")),
+                ("Firmante", signer.get("name") if isinstance(signer, dict) else None),
+            ),
+        },
+        {
+            "title": "Vinculo RAW-TIFF Proof",
+            "items": _items(
+                ("RAW SHA-256", source_raw.get("sha256") if isinstance(source_raw, dict) else None),
+                ("RAW", source_raw.get("basename") if isinstance(source_raw, dict) else None),
+                ("TIFF SHA-256", output_tiff.get("sha256") if isinstance(output_tiff, dict) else None),
+                ("TIFF", output_tiff.get("basename") if isinstance(output_tiff, dict) else None),
+                ("Hash receta", process.get("recipe_sha256") if isinstance(process, dict) else None),
+                ("Hash ajustes", process.get("render_settings_sha256") if isinstance(process, dict) else None),
+                ("Demosaicing", process.get("demosaicing_algorithm") if isinstance(process, dict) else None),
+                ("Modo color", process.get("color_management_mode") if isinstance(process, dict) else None),
+            ),
+        },
+    ]
+
+
 def _c2pa_display(c2pa: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(c2pa, dict):
         return [{"title": "C2PA", "items": [{"label": "Estado", "value": "No disponible"}]}]
+    if c2pa.get("status") != "ok":
+        return [
+            {
+                "title": "Estado C2PA",
+                "items": _items(
+                    ("Estado", _c2pa_status_label(c2pa)),
+                    ("Codigo interno", c2pa.get("status")),
+                    ("Motivo", c2pa.get("reason")),
+                    ("Validacion", _c2pa_validation_summary(c2pa)),
+                ),
+            },
+            {
+                "title": "Interpretacion forense",
+                "items": _items(
+                    ("Resultado", _c2pa_non_ok_result(c2pa)),
+                    ("Vinculo RAW-TIFF C2PA", "No disponible"),
+                    ("Siguiente paso", _c2pa_next_step(c2pa)),
+                ),
+            },
+        ]
     manifest_store = c2pa.get("manifest_store")
     raw_link = None
     if isinstance(manifest_store, dict):
@@ -380,6 +471,8 @@ def _c2pa_display(c2pa: dict[str, Any]) -> list[dict[str, Any]]:
             raw_link = None
     raw_identity = raw_link.get("raw_identity", {}) if isinstance(raw_link, dict) else {}
     nexoraw = raw_link.get("nexoraw", {}) if isinstance(raw_link, dict) else {}
+    render_settings = raw_link.get("render_settings", {}) if isinstance(raw_link, dict) else {}
+    recipe_parameters = render_settings.get("recipe_parameters", {}) if isinstance(render_settings, dict) else {}
     return [
         {
             "title": "Estado C2PA",
@@ -407,6 +500,7 @@ def _c2pa_display(c2pa: dict[str, Any]) -> list[dict[str, Any]]:
                 ("MIME RAW", raw_identity.get("mime_type")),
                 ("Hash receta", nexoraw.get("recipe_sha256")),
                 ("Hash ICC", nexoraw.get("icc_profile_sha256")),
+                ("Hash ajustes render", nexoraw.get("render_settings_sha256")),
                 ("Backend RAW", nexoraw.get("raw_backend")),
                 ("Demosaicing", nexoraw.get("demosaicing_algorithm")),
                 ("Espacio salida", nexoraw.get("output_space")),
@@ -415,7 +509,26 @@ def _c2pa_display(c2pa: dict[str, Any]) -> list[dict[str, Any]]:
             ),
         },
         {
-            "title": "Validación",
+            "title": "Ajustes TIFF NexoRAW",
+            "items": _items(
+                ("Hash ajustes", render_settings.get("settings_sha256") if isinstance(render_settings, dict) else None),
+                ("RAW developer", recipe_parameters.get("raw_developer") if isinstance(recipe_parameters, dict) else None),
+                ("Demosaicing", recipe_parameters.get("demosaic_algorithm") if isinstance(recipe_parameters, dict) else None),
+                ("WB modo", recipe_parameters.get("white_balance_mode") if isinstance(recipe_parameters, dict) else None),
+                ("WB multiplicadores", recipe_parameters.get("wb_multipliers") if isinstance(recipe_parameters, dict) else None),
+                ("Exposicion receta EV", recipe_parameters.get("exposure_compensation") if isinstance(recipe_parameters, dict) else None),
+                ("Curva receta", recipe_parameters.get("tone_curve") if isinstance(recipe_parameters, dict) else None),
+                ("Espacio trabajo", recipe_parameters.get("working_space") if isinstance(recipe_parameters, dict) else None),
+                ("Espacio salida", recipe_parameters.get("output_space") if isinstance(recipe_parameters, dict) else None),
+                ("Salida lineal", recipe_parameters.get("output_linear") if isinstance(recipe_parameters, dict) else None),
+                ("Correccion basica/curvas", render_settings.get("render_adjustments") if isinstance(render_settings, dict) else None),
+                ("Nitidez", render_settings.get("detail_adjustments") if isinstance(render_settings, dict) else None),
+                ("Gestion color", render_settings.get("color_management") if isinstance(render_settings, dict) else None),
+                ("Contexto", render_settings.get("context") if isinstance(render_settings, dict) else None),
+            ),
+        },
+        {
+            "title": "Validacion",
             "items": _validation_items(c2pa.get("validation_status")),
         },
     ]
@@ -569,6 +682,76 @@ def _map_hint(gps: dict[str, Any]) -> str | None:
     return f"https://maps.google.com/?q={lat},{lon}"
 
 
+def _c2pa_status_label(c2pa: dict[str, Any]) -> str | None:
+    if not isinstance(c2pa, dict):
+        return None
+    status = c2pa.get("status")
+    if status == "ok":
+        return "Manifiesto C2PA legible"
+    labels = {
+        "absent_or_invalid": "Ausente o no valido",
+        "unavailable": "Soporte C2PA no instalado",
+        "error": "Error de lectura C2PA",
+        "skipped": "Lectura C2PA omitida",
+    }
+    return labels.get(status, _format_value(status) if status else None)
+
+
+def _proof_status_label(proof: dict[str, Any]) -> str | None:
+    if not isinstance(proof, dict):
+        return None
+    status = proof.get("status")
+    if status == "ok":
+        return "NexoRAW Proof valido"
+    labels = {
+        "absent": "Sin sidecar NexoRAW Proof",
+        "invalid": "NexoRAW Proof no valido",
+        "error": "Error de lectura/verificacion Proof",
+        "not_nexoraw_proof": "JSON no es NexoRAW Proof",
+        "failed": "NexoRAW Proof fallido",
+    }
+    return labels.get(status, _format_value(status) if status else None)
+
+
+def _c2pa_non_ok_result(c2pa: dict[str, Any]) -> str:
+    status = c2pa.get("status")
+    if status == "unavailable":
+        return "No se puede evaluar C2PA porque falta el extra c2pa."
+    if status == "absent_or_invalid":
+        return "Este archivo no contiene un manifiesto C2PA legible o el lector lo considera invalido."
+    if status == "skipped":
+        return "La lectura C2PA fue omitida para esta consulta."
+    return "No se ha podido obtener una credencial C2PA verificable."
+
+
+def _c2pa_next_step(c2pa: dict[str, Any]) -> str:
+    status = c2pa.get("status")
+    if status == "unavailable":
+        return "Instalar el extra opcional c2pa y volver a leer el archivo."
+    if status == "absent_or_invalid":
+        return "Los TIFF finales de NexoRAW deben exportarse con C2PA; vuelve a renderizar con firma configurada."
+    if status == "skipped":
+        return "Activar la lectura C2PA para inspeccionar credenciales embebidas."
+    return "Revisar el motivo mostrado y conservar el manifiesto externo de NexoRAW."
+
+
+def _c2pa_raw_link_summary(c2pa: dict[str, Any]) -> str | None:
+    if not isinstance(c2pa, dict) or c2pa.get("status") != "ok":
+        return None
+    store = c2pa.get("manifest_store")
+    if not isinstance(store, dict):
+        return "No evaluable"
+    try:
+        raw_link = extract_raw_link_assertion(store)
+    except Exception:
+        return "No encontrado"
+    raw_identity = raw_link.get("raw_identity") if isinstance(raw_link, dict) else None
+    if isinstance(raw_identity, dict) and raw_identity.get("sha256"):
+        basename = raw_identity.get("basename") or "RAW"
+        return f"{basename} / SHA-256 {str(raw_identity.get('sha256'))[:16]}..."
+    return "Asercion presente"
+
+
 def _c2pa_signature_summary(c2pa: dict[str, Any]) -> str | None:
     if not isinstance(c2pa, dict):
         return None
@@ -589,6 +772,8 @@ def _c2pa_signature_summary(c2pa: dict[str, Any]) -> str | None:
 def _c2pa_validation_summary(c2pa: dict[str, Any]) -> str | None:
     if not isinstance(c2pa, dict):
         return None
+    if c2pa.get("status") != "ok":
+        return c2pa.get("reason") or "No hay manifiesto C2PA validable"
     status = c2pa.get("validation_status")
     if not status:
         return "Sin errores declarados"

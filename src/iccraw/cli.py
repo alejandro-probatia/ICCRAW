@@ -26,12 +26,19 @@ from .chart.sampling import (
     sampleset_from_json,
 )
 from .core.models import to_json_dict, write_json
+from .core.utils import versioned_output_path
 from .core.recipe import load_recipe, save_recipe
 from .metadata_viewer import inspect_file_metadata
 from .profile.development import build_development_profile
 from .profile.builder import build_profile, validate_profile, write_samples_cgats
 from .profile.export import batch_develop
-from .provenance.c2pa import DEFAULT_TIMESTAMP_URL, C2PASignConfig, verify_c2pa_raw_link
+from .provenance.c2pa import DEFAULT_TIMESTAMP_URL, C2PASignConfig, c2pa_config_from_environment, verify_c2pa_raw_link
+from .provenance.nexoraw_proof import (
+    NexoRawProofConfig,
+    generate_ed25519_identity,
+    proof_config_from_environment,
+    verify_nexoraw_proof,
+)
 from .qa_compare import compare_qa_reports
 from .raw.metadata import raw_info
 from .raw.pipeline import develop_controlled
@@ -121,7 +128,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     s.add_argument("--recipe", required=True)
     s.add_argument("--profile", required=True)
     s.add_argument("--out", required=True)
-    s.add_argument("--c2pa-sign", action="store_true", help="Firma cada TIFF final con C2PA")
+    s.add_argument("--c2pa-sign", action="store_true", help="Firma C2PA opcional si hay certificado disponible")
     s.add_argument("--c2pa-cert", default=None, help="Cadena de certificado PEM para C2PA")
     s.add_argument("--c2pa-key", default=None, help="Clave privada PEM para C2PA")
     s.add_argument("--c2pa-alg", default="ps256", help="Algoritmo de firma C2PA: ps256, ps384, es256...")
@@ -132,7 +139,24 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         default=None,
         help="Manifiesto tecnico existente cuyo SHA-256 se incluira en la asercion C2PA",
     )
-    s.add_argument("--session-id", default=None, help="Identificador de sesion opcional para trazabilidad C2PA")
+    s.add_argument("--proof-key", default=None, help="Clave privada Ed25519 para NexoRAW Proof")
+    s.add_argument("--proof-public-key", default=None, help="Clave publica Ed25519 para NexoRAW Proof")
+    s.add_argument("--proof-key-passphrase", default=None, help="Frase de clave privada NexoRAW Proof")
+    s.add_argument("--proof-signer-name", default=None, help="Nombre del firmante NexoRAW Proof")
+    s.add_argument("--proof-signer-id", default=None, help="Identificador estable del firmante NexoRAW Proof")
+    s.add_argument("--session-id", default=None, help="Identificador de sesion opcional para trazabilidad")
+
+    s = sub.add_parser("proof-keygen")
+    s.add_argument("--private-key", required=True, help="Ruta de la clave privada Ed25519 PEM")
+    s.add_argument("--public-key", default=None, help="Ruta de la clave publica Ed25519 PEM")
+    s.add_argument("--passphrase", default=None, help="Cifra la clave privada con esta frase")
+    s.add_argument("--overwrite", action="store_true", help="Sobrescribe claves existentes")
+
+    s = sub.add_parser("verify-proof")
+    s.add_argument("proof", help="Sidecar .nexoraw.proof.json")
+    s.add_argument("--tiff", default=None, help="TIFF final asociado")
+    s.add_argument("--raw", default=None, help="RAW fuente para comprobar SHA-256")
+    s.add_argument("--public-key", default=None, help="Clave publica esperada del firmante")
 
     s = sub.add_parser("validate-profile")
     s.add_argument("samples")
@@ -213,14 +237,20 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "develop":
             recipe = load_recipe(Path(args.recipe))
+            requested_out_path = Path(args.out)
+            requested_audit_path = Path(args.audit_linear) if args.audit_linear else None
+            out_path = versioned_output_path(requested_out_path)
+            audit_path = versioned_output_path(requested_audit_path) if requested_audit_path else None
             result = develop_controlled(
                 Path(args.input),
                 recipe,
-                Path(args.out),
-                Path(args.audit_linear) if args.audit_linear else None,
+                out_path,
+                audit_path,
             )
             payload = {
                 "run_context": gather_run_context(APP_VERSION),
+                "requested_output_tiff": str(requested_out_path),
+                "requested_audit_tiff": str(requested_audit_path) if requested_audit_path else None,
                 "develop": to_json_dict(result),
             }
             print(json.dumps(payload, indent=2))
@@ -289,31 +319,71 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "batch-develop":
             recipe = load_recipe(Path(args.recipe))
             c2pa_config = None
-            if args.c2pa_sign:
-                if not args.c2pa_cert or not args.c2pa_key:
-                    raise RuntimeError("--c2pa-sign requiere --c2pa-cert y --c2pa-key")
-                c2pa_config = C2PASignConfig(
-                    cert_path=Path(args.c2pa_cert),
-                    key_path=Path(args.c2pa_key),
-                    alg=args.c2pa_alg,
-                    timestamp_url=args.c2pa_timestamp_url,
-                    signer_name=args.c2pa_signer_name,
-                    technical_manifest_path=Path(args.c2pa_technical_manifest)
-                    if args.c2pa_technical_manifest
-                    else None,
-                    session_id=args.session_id,
+            if args.c2pa_sign or args.c2pa_cert or args.c2pa_key:
+                if args.c2pa_cert and args.c2pa_key:
+                    c2pa_config = C2PASignConfig(
+                        cert_path=Path(args.c2pa_cert),
+                        key_path=Path(args.c2pa_key),
+                        alg=args.c2pa_alg,
+                        timestamp_url=args.c2pa_timestamp_url,
+                        signer_name=args.c2pa_signer_name,
+                        technical_manifest_path=Path(args.c2pa_technical_manifest)
+                        if args.c2pa_technical_manifest
+                        else None,
+                        session_id=args.session_id,
+                    )
+                elif args.c2pa_sign:
+                    c2pa_config = c2pa_config_from_environment(
+                        technical_manifest_path=Path(args.c2pa_technical_manifest)
+                        if args.c2pa_technical_manifest
+                        else None,
+                        session_id=args.session_id,
+                    )
+                else:
+                    raise RuntimeError("Configura --c2pa-cert y --c2pa-key, o usa --c2pa-sign con variables de entorno")
+
+            if args.proof_key:
+                proof_config = NexoRawProofConfig(
+                    private_key_path=Path(args.proof_key),
+                    public_key_path=Path(args.proof_public_key) if args.proof_public_key else None,
+                    key_passphrase=args.proof_key_passphrase,
+                    signer_name=args.proof_signer_name or "NexoRAW local signer",
+                    signer_id=args.proof_signer_id or args.session_id,
                 )
+            else:
+                proof_config = proof_config_from_environment()
             manifest = batch_develop(
                 raws_dir=Path(args.input),
                 recipe=recipe,
                 profile_path=Path(args.profile),
                 out_dir=Path(args.out),
                 c2pa_config=c2pa_config,
+                proof_config=proof_config,
             )
             manifest_path = Path(args.out) / "batch_manifest.json"
             write_json(manifest_path, manifest)
             print(json.dumps(to_json_dict(manifest), indent=2))
             return 0
+
+        if args.command == "proof-keygen":
+            result = generate_ed25519_identity(
+                private_key_path=Path(args.private_key),
+                public_key_path=Path(args.public_key) if args.public_key else None,
+                passphrase=args.passphrase,
+                overwrite=bool(args.overwrite),
+            )
+            print(json.dumps(result, indent=2))
+            return 0
+
+        if args.command == "verify-proof":
+            result = verify_nexoraw_proof(
+                Path(args.proof),
+                output_tiff=Path(args.tiff) if args.tiff else None,
+                source_raw=Path(args.raw) if args.raw else None,
+                public_key_path=Path(args.public_key) if args.public_key else None,
+            )
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0 if result.get("status") == "ok" else 2
 
         if args.command == "validate-profile":
             samples = sampleset_from_json(Path(args.samples))

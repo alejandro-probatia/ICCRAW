@@ -12,7 +12,7 @@ import numpy as np
 import colour
 
 from ..core.color import delta_e76, delta_e2000, summarize
-from ..core.external import external_tool_path
+from ..core.external import external_tool_path, run_external
 from ..core.models import ErrorSummary, PatchError, ProfileBuildResult, Recipe, SampleSet, ValidationResult
 from ..core.models import read_json, write_json
 from ..version import __version__
@@ -198,7 +198,7 @@ def _lookup_lab_with_icc(profile_path: Path, measured_rgb: np.ndarray) -> np.nda
         "-pl",
         str(profile_path),
     ]
-    proc = subprocess.run(cmd, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    proc = run_external(cmd, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if proc.returncode != 0:
         stderr_tail = (proc.stderr or proc.stdout)[-500:]
         raise RuntimeError(f"Fallo validando ICC con {Path(xicclu).name}: {stderr_tail}")
@@ -303,7 +303,7 @@ def _build_profile_with_argyll(
 
         args.append(base.stem)
 
-        proc = subprocess.run(args, cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        proc = run_external(args, cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         if proc.returncode != 0:
             raise RuntimeError(f"colprof retorno {proc.returncode}: {proc.stdout[-500:]}")
 

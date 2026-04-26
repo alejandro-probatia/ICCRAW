@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import mimetypes
+import os
 from pathlib import Path
 import shutil
 import tempfile
@@ -17,6 +18,7 @@ from ..version import __version__
 
 
 RAW_LINK_ASSERTION_LABEL = "org.probatia.iccraw.raw-link.v1"
+RENDER_SETTINGS_SCHEMA = "org.probatia.nexoraw.render-settings.v1"
 NEXORAW_RENDER_ACTION = "org.probatia.iccraw.rendered"
 TIFF_MIME = "image/tiff"
 DEFAULT_TIMESTAMP_URL = "http://timestamp.digicert.com"
@@ -78,6 +80,7 @@ class C2PAClient(Protocol):
         alg: str,
         timestamp_url: str | None = None,
         source_ingredient_path: Path | None = None,
+        key_passphrase: str | None = None,
     ) -> dict[str, Any]:
         ...
 
@@ -94,6 +97,7 @@ class C2PASignConfig:
     signer_name: str = "NexoRAW"
     technical_manifest_path: Path | None = None
     session_id: str | None = None
+    key_passphrase: str | None = field(default=None, repr=False)
     client: C2PAClient | None = field(default=None, repr=False)
 
 
@@ -106,9 +110,95 @@ class C2PASignResult:
     raw_link_assertion: dict[str, Any]
 
 
+def c2pa_config_from_environment(
+    *,
+    technical_manifest_path: Path | None = None,
+    session_id: str | None = None,
+) -> C2PASignConfig:
+    cert = _env_first("NEXORAW_C2PA_CERT", "ICCRAW_C2PA_CERT")
+    key = _env_first("NEXORAW_C2PA_KEY", "ICCRAW_C2PA_KEY")
+    if not cert or not key:
+        raise C2PASigningError(
+            "No hay credenciales C2PA configuradas. Configura NEXORAW_C2PA_CERT "
+            "y NEXORAW_C2PA_KEY, o pasa --c2pa-cert y --c2pa-key en la CLI, "
+            "solo si quieres incrustar la capa C2PA opcional."
+        )
+
+    env_manifest = _env_first("NEXORAW_C2PA_TECHNICAL_MANIFEST", "ICCRAW_C2PA_TECHNICAL_MANIFEST")
+    env_session = _env_first("NEXORAW_SESSION_ID", "ICCRAW_SESSION_ID")
+    return C2PASignConfig(
+        cert_path=Path(cert).expanduser(),
+        key_path=Path(key).expanduser(),
+        alg=_env_first("NEXORAW_C2PA_ALG", "ICCRAW_C2PA_ALG") or "ps256",
+        timestamp_url=_env_first("NEXORAW_C2PA_TIMESTAMP_URL", "ICCRAW_C2PA_TIMESTAMP_URL") or DEFAULT_TIMESTAMP_URL,
+        signer_name=_env_first("NEXORAW_C2PA_SIGNER_NAME", "ICCRAW_C2PA_SIGNER_NAME") or "NexoRAW",
+        technical_manifest_path=technical_manifest_path
+        or (Path(env_manifest).expanduser() if env_manifest else None),
+        session_id=session_id or env_session,
+        key_passphrase=_env_first("NEXORAW_C2PA_KEY_PASSPHRASE", "ICCRAW_C2PA_KEY_PASSPHRASE"),
+    )
+
+
+def _env_first(*names: str) -> str | None:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return None
+
+
 def recipe_sha256(recipe: Recipe) -> str:
     payload = json.dumps(asdict(recipe), sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _json_sha256(payload: Any) -> str:
+    data = json.dumps(_normalize_json(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
+
+
+def _normalize_json(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _normalize_json(val) for key, val in sorted(value.items(), key=lambda item: str(item[0]))}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_json(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    try:
+        return value.item()
+    except Exception:
+        return str(value)
+
+
+def build_render_settings(
+    *,
+    recipe: Recipe,
+    profile_path: Path | None,
+    color_management_mode: str,
+    detail_adjustments: dict[str, Any] | None = None,
+    render_adjustments: dict[str, Any] | None = None,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": RENDER_SETTINGS_SCHEMA,
+        "schema_version": 1,
+        "recipe_parameters": _normalize_json(asdict(recipe)),
+        "detail_adjustments": _normalize_json(detail_adjustments or {}),
+        "render_adjustments": _normalize_json(render_adjustments or {}),
+        "color_management": {
+            "mode": color_management_mode,
+            "icc_profile_path_auxiliary": str(profile_path) if profile_path is not None else None,
+            "icc_profile_sha256": sha256_file(profile_path) if profile_path is not None and profile_path.exists() else None,
+            "output_space": recipe.output_space,
+            "working_space": recipe.working_space,
+            "output_linear": recipe.output_linear,
+        },
+        "context": _normalize_json(context or {}),
+    }
+    payload["settings_sha256"] = _json_sha256(payload)
+    return payload
 
 
 def estimate_mime_type(path: Path) -> str:
@@ -129,6 +219,7 @@ def build_raw_link_assertion(
     session_id: str | None = None,
     generated_at_utc: datetime | None = None,
     raw_metadata: RawMetadata | None = None,
+    render_settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     source_raw = Path(source_raw)
     generated = generated_at_utc or datetime.now(timezone.utc)
@@ -138,6 +229,11 @@ def build_raw_link_assertion(
         sha256_file(technical_manifest_path)
         if technical_manifest_path is not None and technical_manifest_path.exists()
         else None
+    )
+    settings = render_settings or build_render_settings(
+        recipe=recipe,
+        profile_path=profile_path,
+        color_management_mode=color_management_mode,
     )
 
     return {
@@ -162,11 +258,13 @@ def build_raw_link_assertion(
             "demosaicing_algorithm": recipe.demosaic_algorithm,
             "output_space": recipe.output_space,
             "color_management_mode": color_management_mode,
+            "render_settings_sha256": settings.get("settings_sha256") if isinstance(settings, dict) else None,
             "technical_manifest_sha256": technical_manifest_sha,
             "technical_manifest_path_auxiliary": str(technical_manifest_path) if technical_manifest_sha else None,
             "session_id": session_id,
             "generated_at_utc": generated_iso,
         },
+        "render_settings": settings,
         "forensic_notes": {
             "raw_sha256_is_probative_identifier": True,
             "raw_path_is_probative_identifier": False,
@@ -214,6 +312,7 @@ def build_c2pa_manifest(
                                 "demosaicing_algorithm": raw_link_assertion["nexoraw"]["demosaicing_algorithm"],
                                 "output_space": raw_link_assertion["nexoraw"]["output_space"],
                                 "color_management_mode": raw_link_assertion["nexoraw"]["color_management_mode"],
+                                "render_settings_sha256": raw_link_assertion["nexoraw"].get("render_settings_sha256"),
                             },
                         },
                     ]
@@ -237,6 +336,7 @@ def sign_tiff_with_c2pa(
     profile_path: Path | None,
     color_management_mode: str,
     config: C2PASignConfig,
+    render_settings: dict[str, Any] | None = None,
 ) -> C2PASignResult:
     output_tiff = Path(output_tiff)
     source_raw = Path(source_raw)
@@ -256,6 +356,7 @@ def sign_tiff_with_c2pa(
         color_management_mode=color_management_mode,
         technical_manifest_path=config.technical_manifest_path,
         session_id=config.session_id,
+        render_settings=render_settings,
     )
     manifest = build_c2pa_manifest(
         output_tiff=output_tiff,
@@ -268,16 +369,16 @@ def sign_tiff_with_c2pa(
     with tempfile.TemporaryDirectory(prefix="nexoraw_c2pa_") as tmp:
         signed_tmp = Path(tmp) / output_tiff.name
         ingredient_path = _c2pa_source_ingredient_path(source_raw)
-        signed_store = client.sign_file(
-            output_tiff,
-            signed_tmp,
-            manifest,
-            cert_path=config.cert_path,
-            key_path=config.key_path,
-            alg=config.alg,
-            timestamp_url=config.timestamp_url,
-            source_ingredient_path=ingredient_path,
-        )
+        sign_kwargs: dict[str, Any] = {
+            "cert_path": config.cert_path,
+            "key_path": config.key_path,
+            "alg": config.alg,
+            "timestamp_url": config.timestamp_url,
+            "source_ingredient_path": ingredient_path,
+        }
+        if config.key_passphrase:
+            sign_kwargs["key_passphrase"] = config.key_passphrase
+        signed_store = client.sign_file(output_tiff, signed_tmp, manifest, **sign_kwargs)
         if not signed_tmp.exists():
             raise C2PASigningError("La firma C2PA no genero TIFF firmado")
         shutil.move(str(signed_tmp), str(output_tiff))
@@ -315,6 +416,7 @@ def verify_c2pa_raw_link(
     declared_raw_sha = _nested_get(raw_link, ("raw_identity", "sha256"))
     actual_raw_sha = sha256_file(source_raw)
     raw_matches = declared_raw_sha == actual_raw_sha
+    render_settings_check = _verify_render_settings_hash(raw_link)
 
     external = _verify_external_manifest(
         signed_tiff=signed_tiff,
@@ -327,7 +429,7 @@ def verify_c2pa_raw_link(
         validation_status = active_manifest.get("validation_status") or []
     c2pa_valid = not bool(validation_status)
 
-    status = "ok" if raw_matches and external["ok"] and c2pa_valid else "failed"
+    status = "ok" if raw_matches and external["ok"] and c2pa_valid and render_settings_check["ok"] else "failed"
     return {
         "status": status,
         "c2pa_manifest_present": True,
@@ -336,6 +438,7 @@ def verify_c2pa_raw_link(
         "raw_sha256_declared": declared_raw_sha,
         "raw_sha256_actual": actual_raw_sha,
         "raw_matches_c2pa_assertion": raw_matches,
+        "render_settings_hash": render_settings_check,
         "external_manifest": external,
         "raw_link_assertion": raw_link,
     }
@@ -374,6 +477,7 @@ class C2PAPythonClient:
         alg: str,
         timestamp_url: str | None = None,
         source_ingredient_path: Path | None = None,
+        key_passphrase: str | None = None,
     ) -> dict[str, Any]:
         c2pa = _import_c2pa()
         manifest_json = json.dumps(manifest, ensure_ascii=False, separators=(",", ":"))
@@ -381,7 +485,7 @@ class C2PAPythonClient:
         try:
             with open(cert_path, "rb") as cert_file:
                 cert_data = cert_file.read()
-            key_data = _read_private_key_for_c2pa(key_path)
+            key_data = _read_private_key_for_c2pa(key_path, key_passphrase=key_passphrase)
             if not timestamp_url:
                 raise C2PASigningError("c2pa-python requiere una URL TSA RFC 3161 para firmar")
             signer_info = c2pa.C2paSignerInfo(
@@ -439,7 +543,7 @@ def _import_c2pa():
         import c2pa  # type: ignore[import-not-found]
     except Exception as exc:  # pragma: no cover - exercised without optional extra.
         raise C2PANotAvailableError(
-            "Soporte C2PA no instalado. Instala la dependencia opcional con: pip install -e .[c2pa]"
+            "Soporte C2PA no instalado. Instala el extra requerido para exportar TIFF final: pip install -e .[c2pa]"
         ) from exc
     return c2pa
 
@@ -452,14 +556,24 @@ def _signing_alg(c2pa, alg: str):
         raise C2PASigningError(f"Algoritmo C2PA no soportado: {alg}") from exc
 
 
-def _read_private_key_for_c2pa(key_path: Path) -> bytes:
+def _read_private_key_for_c2pa(key_path: Path, *, key_passphrase: str | None = None) -> bytes:
     key_data = key_path.read_bytes()
+    if b"-----BEGIN ENCRYPTED PRIVATE KEY-----" in key_data and key_passphrase:
+        from cryptography.hazmat.primitives import serialization
+
+        key = serialization.load_pem_private_key(key_data, password=key_passphrase.encode("utf-8"))
+        return key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
     if b"-----BEGIN PRIVATE KEY-----" in key_data or b"-----BEGIN ENCRYPTED PRIVATE KEY-----" in key_data:
         return key_data
     try:
         from cryptography.hazmat.primitives import serialization
 
-        key = serialization.load_pem_private_key(key_data, password=None)
+        password = key_passphrase.encode("utf-8") if key_passphrase else None
+        key = serialization.load_pem_private_key(key_data, password=password)
         return key.private_bytes(
             serialization.Encoding.PEM,
             serialization.PrivateFormat.PKCS8,
@@ -520,6 +634,23 @@ def _nested_get(payload: dict[str, Any], keys: tuple[str, ...]) -> Any:
             return None
         current = current.get(key)
     return current
+
+
+def _verify_render_settings_hash(raw_link: dict[str, Any]) -> dict[str, Any]:
+    render_settings = raw_link.get("render_settings") if isinstance(raw_link, dict) else None
+    if not isinstance(render_settings, dict):
+        return {"ok": False, "reason": "render_settings_missing"}
+    declared = render_settings.get("settings_sha256") or _nested_get(raw_link, ("nexoraw", "render_settings_sha256"))
+    if not declared:
+        return {"ok": False, "reason": "render_settings_sha256_missing"}
+    payload = dict(render_settings)
+    payload.pop("settings_sha256", None)
+    actual = _json_sha256(payload)
+    return {
+        "ok": declared == actual,
+        "declared_sha256": declared,
+        "actual_sha256": actual,
+    }
 
 
 def _verify_external_manifest(
