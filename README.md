@@ -39,96 +39,96 @@ Comparativa completa: [docs/COMPARISON.md](docs/COMPARISON.md)
 ## Objetivo del proyecto
 
 El objetivo principal es construir una herramienta comunitaria que permita
-trabajar con imÃ¡genes RAW bajo criterios de reproducibilidad, control
-colorimÃ©trico y trazabilidad. NexoRAW no busca ser un editor generalista ni una
-alternativa creativa a Lightroom, Darktable o RawTherapee. Su foco es mÃ¡s
+trabajar con imágenes RAW bajo criterios de reproducibilidad, control
+colorimétrico y trazabilidad. NexoRAW no busca ser un editor generalista ni una
+alternativa creativa a Lightroom, Darktable o RawTherapee. Su foco es más
 estrecho:
 
-- revelar RAW con parÃ¡metros explÃ­citos y compatibles con auditorÃ­a,
+- revelar RAW con parámetros explícitos y compatibles con auditoría,
 - generar perfiles avanzados de ajuste a partir de capturas de carta bajo un
   iluminante concreto,
-- generar una receta de revelado cientÃ­fica antes de construir el ICC,
-- producir perfiles ICC especÃ­ficos para cÃ¡mara, Ã³ptica, iluminante y receta,
-- aplicar ese paquete de sesiÃ³n a imÃ¡genes objetivo sin mezclar decisiones
-  estÃ©ticas con decisiones de mediciÃ³n,
+- generar una receta de revelado científica antes de construir el ICC,
+- producir perfiles ICC específicos para cámara, óptica, iluminante y receta,
+- aplicar ese paquete de sesión a imágenes objetivo sin mezclar decisiones
+  estéticas con decisiones de medición,
 - documentar comandos, versiones, rutas, estados de QA y artefactos generados,
 - mantener un uso verificable y compatible con las licencias de sus
   dependencias directas e indirectas.
 
-El caso de uso natural es un entorno donde importa poder justificar cÃ³mo se
-obtuvo una imagen: fotografÃ­a cientÃ­fica, conservaciÃ³n y patrimonio,
-laboratorio, documentaciÃ³n tÃ©cnica, inspecciÃ³n, reproducciÃ³n de obra, anÃ¡lisis
+El caso de uso natural es un entorno donde importa poder justificar cómo se
+obtuvo una imagen: fotografía científica, conservación y patrimonio,
+laboratorio, documentación técnica, inspección, reproducción de obra, análisis
 forense o proyectos comunitarios que necesiten una cadena de procesado abierta.
 
-## MetodologÃ­a aplicada
+## Metodología aplicada
 
-La metodologÃ­a de NexoRAW parte de una idea simple: un perfil ICC de cÃ¡mara no
-debe esconder problemas bÃ¡sicos de captura o revelado. Antes de perfilar, el
-sistema intenta fijar una base tÃ©cnica coherente: balance de blancos,
-exposiciÃ³n/densidad y salida lineal. El perfil ICC queda reservado para describir
-la respuesta colorimÃ©trica restante de la cÃ¡mara en esa sesiÃ³n.
+La metodología de NexoRAW parte de una idea simple: un perfil ICC de cámara no
+debe esconder problemas básicos de captura o revelado. Antes de perfilar, el
+sistema intenta fijar una base técnica coherente: balance de blancos,
+exposición/densidad y salida lineal. El perfil ICC queda reservado para describir
+la respuesta colorimétrica restante de la cámara en esa sesión.
 
-El flujo metodolÃ³gico es:
+El flujo metodológico es:
 
-1. **Contrato RAW explÃ­cito**: la receta declara motor RAW, demosaicing, balance
-   de blancos, niveles, curva tonal y espacio de trabajo. Si un parÃ¡metro no se
+1. **Contrato RAW explícito**: la receta declara motor RAW, demosaicing, balance
+   de blancos, niveles, curva tonal y espacio de trabajo. Si un parámetro no se
    puede ejecutar con el backend activo, el proceso debe fallar en vez de
    sustituirlo silenciosamente.
-2. **Captura de carta**: una o varias imÃ¡genes de carta de color documentan las
-   condiciones reales de iluminaciÃ³n, cÃ¡mara, Ã³ptica y exposiciÃ³n de la sesiÃ³n.
-3. **DetecciÃ³n y muestreo**: la carta se detecta geomÃ©tricamente y cada parche se
-   mide con estrategias robustas, evitando saturaciÃ³n y reduciendo el impacto de
+2. **Captura de carta**: una o varias imágenes de carta de color documentan las
+   condiciones reales de iluminación, cámara, óptica y exposición de la sesión.
+3. **Detección y muestreo**: la carta se detecta geométricamente y cada parche se
+   mide con estrategias robustas, evitando saturación y reduciendo el impacto de
    ruido, bordes o muestras contaminadas.
-4. **Perfil de revelado cientÃ­fico**: la fila neutra de la carta se usa para
-   derivar correcciones de balance, densidad y exposiciÃ³n. Esta fase genera una
+4. **Perfil de revelado científico**: la fila neutra de la carta se usa para
+   derivar correcciones de balance, densidad y exposición. Esta fase genera una
    receta calibrada que sigue siendo reproducible y legible.
-5. **Segunda mediciÃ³n calibrada**: la carta se mide de nuevo con la receta ya
-   calibrada, reutilizando la geometrÃ­a cuando corresponde para no depender de
+5. **Segunda medición calibrada**: la carta se mide de nuevo con la receta ya
+   calibrada, reutilizando la geometría cuando corresponde para no depender de
    cambios de renderizado.
-6. **Perfil ICC de sesiÃ³n**: ArgyllCMS genera el perfil ICC a partir de muestras
-   medidas y referencias normalizadas. El perfil describe la sesiÃ³n; no es
+6. **Perfil ICC de sesión**: ArgyllCMS genera el perfil ICC a partir de muestras
+   medidas y referencias normalizadas. El perfil describe la sesión; no es
    universal.
-7. **ValidaciÃ³n colorimÃ©trica**: cuando hay muestras independientes, el ICC real
+7. **Validación colorimétrica**: cuando hay muestras independientes, el ICC real
    se valida con CMM/ArgyllCMS y se informa DeltaE 76/2000, outliers y estado
    operacional (`draft`, `validated`, `rejected`, `expired`).
-8. **AplicaciÃ³n controlada**: las imÃ¡genes objetivo se revelan con la receta
-   calibrada y el modo de gestiÃ³n de color declarado: asignar perfil de entrada
-   de cÃ¡mara o convertir a un espacio de salida mediante CMM.
-9. **Trazabilidad**: cada ejecuciÃ³n produce artefactos revisables: JSON,
+8. **Aplicación controlada**: las imágenes objetivo se revelan con la receta
+   calibrada y el modo de gestión de color declarado: asignar perfil de entrada
+   de cámara o convertir a un espacio de salida mediante CMM.
+9. **Trazabilidad**: cada ejecución produce artefactos revisables: JSON,
    manifiestos, reportes QA, rutas, versiones de herramientas externas y estado
    de perfil.
 
-Principios de diseÃ±o:
+Principios de diseño:
 
-- **Reproducibilidad antes que apariencia**: el modo cientÃ­fico evita curvas
+- **Reproducibilidad antes que apariencia**: el modo científico evita curvas
   creativas, automatismos opacos y ajustes manuales no documentados.
-- **SeparaciÃ³n de responsabilidades**: la receta corrige revelado base; el ICC
+- **Separación de responsabilidades**: la receta corrige revelado base; el ICC
   describe color; el CMM convierte entre perfiles; la GUI solo orquesta esos
-  mÃ³dulos.
+  módulos.
 - **Fallo temprano**: una receta incompatible, una carta no fiable o una
   herramienta externa ausente deben producir un error claro.
-- **AuditorÃ­a continua**: los resultados no se consideran solo imÃ¡genes finales,
-  sino tambiÃ©n evidencia tÃ©cnica que debe poder revisarse.
-- **Validez contextual**: un perfil solo es vÃ¡lido para condiciones comparables
-  de cÃ¡mara, Ã³ptica, iluminante, receta y versiÃ³n del software.
+- **Auditoría continua**: los resultados no se consideran solo imágenes finales,
+  sino también evidencia técnica que debe poder revisarse.
+- **Validez contextual**: un perfil solo es válido para condiciones comparables
+  de cámara, óptica, iluminante, receta y versión del software.
 
-## Alcance y lÃ­mites
+## Alcance y límites
 
-NexoRAW trabaja por sesiones. Una sesiÃ³n agrupa capturas de carta, RAW objetivo,
+NexoRAW trabaja por sesiones. Una sesión agrupa capturas de carta, RAW objetivo,
 mochilas, recetas, perfiles, exportaciones, reportes y artefactos de trabajo. Esto evita
-tratar el perfil ICC como una propiedad permanente de la cÃ¡mara: el perfil se
-entiende como una descripciÃ³n operativa de una configuraciÃ³n concreta.
+tratar el perfil ICC como una propiedad permanente de la cámara: el perfil se
+entiende como una descripción operativa de una configuración concreta.
 
 NexoRAW no pretende:
 
-- mejorar fotografÃ­as con criterios estÃ©ticos,
-- reemplazar un laboratorio de validaciÃ³n colorimÃ©trica,
-- garantizar validez forense por sÃ­ solo,
+- mejorar fotografías con criterios estéticos,
+- reemplazar un laboratorio de validación colorimétrica,
+- garantizar validez forense por sí solo,
 - generar un perfil universal para cualquier luz o escena,
-- ocultar dependencias crÃ­ticas como LibRaw/rawpy, ArgyllCMS o ExifTool.
+- ocultar dependencias críticas como LibRaw/rawpy, ArgyllCMS o ExifTool.
 
 La meta de la release 0.2 es ofrecer una base instalable y verificable para
-pruebas controladas, discusiÃ³n tÃ©cnica y ampliaciÃ³n comunitaria.
+pruebas controladas, discusión técnica y ampliación comunitaria.
 
 Mantenimiento comunitario:
 
@@ -146,24 +146,24 @@ Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas control
 
 ## Stack actual
 
-- Lenguaje: **Python** (Ãºnica toolchain del proyecto).
+- Lenguaje: **Python** (única toolchain del proyecto).
 - Revelado RAW: **LibRaw** mediante `rawpy`, con DCB por defecto y soporte
   AMaZE cuando el entorno use `rawpy-demosaic`/LibRaw con GPL3.
 - Metadatos RAW enriquecidos: `rawpy` (LibRaw) + `exiftool`.
-- DetecciÃ³n geomÃ©trica: `OpenCV`.
-- ColorimetrÃ­a y DeltaE: `colour-science`.
+- Detección geométrica: `OpenCV`.
+- Colorimetría y DeltaE: `colour-science`.
 - Export TIFF 16-bit: `tifffile`.
 - Motor de perfil ICC: **ArgyllCMS (`colprof`)**.
 - CMM ICC de salida y preview de perfil: **ArgyllCMS (`cctiff`/`xicclu`)**.
 - GUI (opcional): **Qt for Python (`PySide6`)**.
 
-## InstalaciÃ³n
+## Instalación
 
 Para usuarios finales, NexoRAW se distribuye mediante instaladores. El usuario
 no debe instalar Python ni dependencias manualmente: el instalador deja la GUI,
 CLI, icono, herramientas externas y backend RAW listos para uso.
 
-Para desarrollo desde cÃ³digo:
+Para desarrollo desde código:
 
 ```bash
 python3 -m venv .venv
@@ -199,10 +199,10 @@ El paquete instala la aplicacion en `/opt/nexoraw`, crea los lanzadores
 
 ## CLI
 
-El entry point nuevo es `nexoraw` (tambiÃ©n invocable como `python -m nexoraw`).
+El entry point nuevo es `nexoraw` (también invocable como `python -m nexoraw`).
 Los instaladores publicados solo exponen los lanzadores `nexoraw` y
 `nexoraw-ui`; las rutas internas `iccraw` se conservan como compatibilidad de
-cÃ³digo durante la transiciÃ³n del nombre del proyecto:
+código durante la transición del nombre del proyecto:
 
 ```bash
 nexoraw raw-info input.raw
@@ -281,10 +281,10 @@ nexoraw verify-c2pa ./tiffs/captura.tiff --raw ./raws/captura.NEF --manifest ./t
 
 nexoraw validate-profile samples.json --profile camera_profile.icc --out validation.json
 
-# Flujo completo automÃ¡tico de sesiÃ³n:
+# Flujo completo automático de sesión:
 # 1) develop de capturas de carta
-# 2) detecciÃ³n automÃ¡tica de carta
-# 3) muestreo y agregaciÃ³n multi-captura
+# 2) detección automática de carta
+# 3) muestreo y agregación multi-captura
 # 4) perfil de revelado: neutralidad + densidad/exposicion desde carta
 # 5) segunda medicion con receta calibrada
 # 6) build-profile ICC
@@ -312,7 +312,7 @@ nexoraw compare-qa-reports session_a/qa_session_report.json session_b/qa_session
 nexoraw check-tools --strict --out tools_report.json
 ```
 
-## VerificaciÃ³n
+## Verificación
 
 ```bash
 bash scripts/run_checks.sh
@@ -332,9 +332,9 @@ Medicion basica de rendimiento de preview/render:
 python scripts/benchmark_pipeline.py input.tiff --recipe recipe.yml --repeat 3 --out benchmark.json
 ```
 
-## Interfaz GrÃ¡fica Qt
+## Interfaz Gráfica Qt
 
-La aplicaciÃ³n incluye una GUI basada en **Qt/PySide6** optimizada para flujo de revelado tÃ©cnico:
+La aplicación incluye una GUI basada en **Qt/PySide6** optimizada para flujo de revelado técnico:
 
 ```bash
 nexoraw-ui
@@ -346,68 +346,68 @@ O directamente:
 bash scripts/run_ui.sh
 ```
 
-DiseÃ±o de trabajo:
+Diseño de trabajo:
 
-La interfaz principal se organiza en 3 pestaÃ±as:
+La interfaz principal se organiza en 3 pestañas:
 
-- `1. SesiÃ³n`:
-  - crear o abrir sesiÃ³n de trabajo,
-  - guardar metadatos de iluminaciÃ³n y toma,
-  - definir un directorio raÃ­z y crear automÃ¡ticamente estructura persistente:
+- `1. Sesión`:
+  - crear o abrir sesión de trabajo,
+  - guardar metadatos de iluminación y toma,
+  - definir un directorio raíz y crear automáticamente estructura persistente:
     - `00_configuraciones/`, `01_ORG/`, `02_DRV/`,
   - persistir estado, perfiles, cache y cola en
     `00_configuraciones/session.json`.
 - `2. Ajustar / Aplicar`:
-  - explorador visual completo del sistema (unidades + Ã¡rbol + miniaturas),
-  - selecciÃ³n de raÃ­z de proyecto con apertura automÃ¡tica de `01_ORG/` para
+  - explorador visual completo del sistema (unidades + árbol + miniaturas),
+  - selección de raíz de proyecto con apertura automática de `01_ORG/` para
     navegar originales,
-  - selecciÃ³n directa desde miniaturas: al elegir un RAW/TIFF compatible se
-    carga automÃ¡ticamente en el visor,
-  - tira horizontal de miniaturas con tamaÃ±o ajustable, JPEG embebido y fallback
-    RAW rÃ¡pido cacheado,
+  - selección directa desde miniaturas: al elegir un RAW/TIFF compatible se
+    carga automáticamente en el visor,
+  - tira horizontal de miniaturas con tamaño ajustable, JPEG embebido y fallback
+    RAW rápido cacheado,
   - preview RAW/DNG de alta fidelidad por defecto, con modo rapido opcional
     para navegacion (miniatura embebida / half-size),
   - gestion ICC de monitor opcional para convertir el preview sRGB al perfil
     de pantalla configurado antes de pintar en Qt,
-  - visor con zoom, arrastre de reencuadre, rotaciÃ³n y comparaciÃ³n original/resultado,
+  - visor con zoom, arrastre de reencuadre, rotación y comparación original/resultado,
   - panel lateral por secciones verticales: `Brillo y contraste`, `Color`,
-    `Nitidez`, `GestiÃ³n de color y calibraciÃ³n` y `RAW Global`,
+    `Nitidez`, `Gestión de color y calibración` y `RAW Global`,
   - `Configuracion -> Configuracion global`: identidad NexoRAW Proof, C2PA
     opcional, modo de preview y gestion ICC del monitor,
-  - `Generar perfil avanzado con carta`: selecciÃ³n de capturas de carta,
-    ajuste de criterios RAW globales y generaciÃ³n conjunta de perfil de ajuste
+  - `Generar perfil avanzado con carta`: selección de capturas de carta,
+    ajuste de criterios RAW globales y generación conjunta de perfil de ajuste
     avanzado + ICC de entrada,
   - `Guardar perfil basico en imagen`: escritura de mochila para perfiles
     manuales sin carta,
-  - `Copiar perfil de ajuste` / `Pegar perfil de ajuste`: reutilizaciÃ³n de
+  - `Copiar perfil de ajuste` / `Pegar perfil de ajuste`: reutilización de
     ajustes entre miniaturas,
-  - `CorrecciÃ³n bÃ¡sica`: iluminante final, temperatura, matiz, brillo, niveles,
+  - `Corrección básica`: iluminante final, temperatura, matiz, brillo, niveles,
     contraste y curva de medios,
-  - `Nitidez`: ruido de luminancia, ruido cromÃ¡tico, nitidez y correcciÃ³n de
-    aberraciÃ³n cromÃ¡tica lateral,
-  - `Aplicar sesiÃ³n`: exportaciÃ³n de RAW seleccionados o carpetas con la receta calibrada y el ICC de sesiÃ³n.
+  - `Nitidez`: ruido de luminancia, ruido cromático, nitidez y corrección de
+    aberración cromática lateral,
+  - `Aplicar sesión`: exportación de RAW seleccionados o carpetas con la receta calibrada y el ICC de sesión.
 - `3. Cola de Revelado`:
-  - cola de imÃ¡genes para revelar (aÃ±adir/quitar/limpiar),
-  - ejecuciÃ³n de cola con estado por archivo (pendiente/ok/error),
-  - monitoreo de tareas y log tÃ©cnico centralizado del pipeline.
+  - cola de imágenes para revelar (añadir/quitar/limpiar),
+  - ejecución de cola con estado por archivo (pendiente/ok/error),
+  - monitoreo de tareas y log técnico centralizado del pipeline.
 
-La cabecera muestra una barra de progreso global para cargas, generaciÃ³n de
+La cabecera muestra una barra de progreso global para cargas, generación de
 perfil y revelado por lote, de modo que las tareas largas siempre dejan un
 estado visible.
 
-MenÃº superior:
+Menú superior:
 
 - `Archivo`, `Configuracion`, `Perfil ICC`, `Vista`, `Ayuda`.
-- Acceso rÃ¡pido a carga/guardado de receta, perfil activo y acciones de revelado.
-- `Vista` incluye pantalla completa (`F11`) y restablecer distribuciÃ³n de paneles.
+- Acceso rápido a carga/guardado de receta, perfil activo y acciones de revelado.
+- `Vista` incluye pantalla completa (`F11`) y restablecer distribución de paneles.
 
 Compatibilidad prevista de GUI:
 
-- Linux, macOS y Windows (Qt/PySide6, selector de raÃ­ces/unidades por plataforma).
+- Linux, macOS y Windows (Qt/PySide6, selector de raíces/unidades por plataforma).
 
-La GUI usa los mismos mÃ³dulos de la CLI y escribe los mismos artefactos JSON/TIFF/ICC, manteniendo trazabilidad.
-AdemÃ¡s, conserva tamaÃ±o/estado de ventana y splitters entre sesiones.
-Las salidas de sesiÃ³n se normalizan dentro del directorio raÃ­z: perfiles en
+La GUI usa los mismos módulos de la CLI y escribe los mismos artefactos JSON/TIFF/ICC, manteniendo trazabilidad.
+Además, conserva tamaño/estado de ventana y splitters entre sesiones.
+Las salidas de sesión se normalizan dentro del directorio raíz: perfiles en
 `00_configuraciones/`, originales en `01_ORG/` y TIFF/preview/manifiestos en
 `02_DRV/`.
 
@@ -423,7 +423,7 @@ Notas de preview y rendimiento:
 - Las previsualizaciones base se cachean con clave de archivo, receta y modo de
   preview, con limite de memoria. Las miniaturas se generan a tamano maximo y
   se reescalan desde cache al mover el control de tamano.
-- Cuando el archivo pertenece a una sesiÃ³n, la cache persistente se guarda bajo
+- Cuando el archivo pertenece a una sesión, la cache persistente se guarda bajo
   `00_configuraciones/work/cache/` con rutas relativas para que una carpeta de
   proyecto pueda moverse o compartirse con otro usuario.
 
@@ -441,7 +441,7 @@ Campos clave:
 - `output_linear`
 - `tone_curve`
 - `profiling_mode`
-- `profile_engine` (`argyll`, Ãºnico motor soportado)
+- `profile_engine` (`argyll`, único motor soportado)
 
 Con el backend actual LibRaw/rawpy, `demosaic_algorithm` acepta valores como
 `dcb`, `dht`, `ahd`, `vng`, `ppg`, `linear` y, si la build de LibRaw/rawpy lo
@@ -452,26 +452,26 @@ Las builds que deban incluir AMaZE deben instalar ese backend durante la
 construccion, con `scripts/install_amaze_backend.py`, y fallar si
 `nexoraw check-amaze` no confirma `DEMOSAIC_PACK_GPL3=True`.
 
-## Reproducibilidad y lÃ­mites
+## Reproducibilidad y límites
 
 - El perfil ICC **no es universal**.
-- VÃ¡lido para condiciones comparables de cÃ¡mara + Ã³ptica + iluminante + recipe.
-- Cambios de demosaicing/WB/tone mapping pueden invalidar la validez colorimÃ©trica.
+- Válido para condiciones comparables de cámara + óptica + iluminante + recipe.
+- Cambios de demosaicing/WB/tone mapping pueden invalidar la validez colorimétrica.
 
 ## Licencia
 
 - Licencia del proyecto: `AGPL-3.0-or-later`.
-- Objetivo del proyecto: cientÃ­fico, forense y comunitario sin finalidad comercial.
-- Nota legal importante: la AGPL es una licencia libre y **no** restringe el uso comercial por terceros; el objetivo no comercial se expresa como gobernanza del proyecto, no como clÃ¡usula restrictiva.
+- Objetivo del proyecto: científico, forense y comunitario sin finalidad comercial.
+- Nota legal importante: la AGPL es una licencia libre y **no** restringe el uso comercial por terceros; el objetivo no comercial se expresa como gobernanza del proyecto, no como cláusula restrictiva.
 - Compromiso del proyecto: NexoRAW debe seguir siendo gratuito, abierto,
   auditable y respetuoso con las obligaciones legales de sus dependencias,
-  incluidas librerÃ­as, herramientas externas y proyectos de terceros.
-- Para despliegues y redistribuciÃ³n, seguir:
+  incluidas librerías, herramientas externas y proyectos de terceros.
+- Para despliegues y redistribución, seguir:
   - [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
   - [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)
   - [Soporte AMaZE GPL3](docs/AMAZE_GPL3.md)
 
-## DocumentaciÃ³n
+## Documentación
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
@@ -481,7 +481,7 @@ construccion, con `scripts/install_amaze_backend.py`, y fallar si
 - [Manual de Usuario](docs/MANUAL_USUARIO.md)
 - [NexoRAW Proof](docs/NEXORAW_PROOF.md)
 - [C2PA/CAI](docs/C2PA_CAI.md)
-- [IntegraciÃ³n LibRaw + ArgyllCMS](docs/INTEGRACION_LIBRAW_ARGYLL.md)
+- [Integración LibRaw + ArgyllCMS](docs/INTEGRACION_LIBRAW_ARGYLL.md)
 - [Paquete Debian](docs/DEBIAN_PACKAGE.md)
 - [Instalacion en macOS](docs/MACOS_INSTALL.md)
 - [Instalador Windows](docs/WINDOWS_INSTALLER.md)
