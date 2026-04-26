@@ -1,6 +1,7 @@
 param(
   [string]$Python = "",
   [string]$Wheel = "",
+  [string]$Source = "",
   [switch]$TryPyPI
 )
 
@@ -43,6 +44,8 @@ if (-not [string]::IsNullOrWhiteSpace($Wheel)) {
   Invoke-Native "Instalar backend AMaZE GPL3" $Python @("scripts\install_amaze_backend.py", "--wheel", $Wheel)
 } elseif ($TryPyPI) {
   Invoke-Native "Instalar rawpy-demosaic desde PyPI" $Python @("scripts\install_amaze_backend.py", "--pypi")
+} elseif (-not [string]::IsNullOrWhiteSpace($Source)) {
+  Invoke-Native "Instalar backend AMaZE GPL3 desde fuente" $Python @("scripts\install_amaze_backend.py", "--source", $Source)
 } else {
-  throw "Indica -Wheel con una wheel rawpy_demosaic compatible o usa -TryPyPI."
+  throw "Indica -Wheel, -Source con una fuente trazada o usa -TryPyPI si existe wheel compatible en el indice."
 }

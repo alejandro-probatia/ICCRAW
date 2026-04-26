@@ -15,9 +15,12 @@ PY
 )}}"
 DEB_VERSION="${NEXORAW_DEB_VERSION:-${ICCRAW_DEB_VERSION:-$(printf '%s' "$APP_VERSION" | sed -E 's/([0-9.]+)b([0-9]+)/\1~beta\2/')}}"
 ARCH="${NEXORAW_DEB_ARCH:-${ICCRAW_DEB_ARCH:-$(dpkg --print-architecture)}}"
-BUILD_AMAZE="${NEXORAW_BUILD_AMAZE:-${ICCRAW_BUILD_AMAZE:-0}}"
-REQUIRE_AMAZE="${NEXORAW_REQUIRE_AMAZE:-${ICCRAW_REQUIRE_AMAZE:-0}}"
+BUILD_AMAZE="${NEXORAW_BUILD_AMAZE:-${ICCRAW_BUILD_AMAZE:-1}}"
+REQUIRE_AMAZE="${NEXORAW_REQUIRE_AMAZE:-${ICCRAW_REQUIRE_AMAZE:-$BUILD_AMAZE}}"
 RAWPY_DEMOSAIC_WHEEL="${NEXORAW_RAWPY_DEMOSAIC_WHEEL:-${ICCRAW_RAWPY_DEMOSAIC_WHEEL:-}}"
+RAWPY_DEMOSAIC_REPO="${NEXORAW_RAWPY_DEMOSAIC_REPO:-${ICCRAW_RAWPY_DEMOSAIC_REPO:-https://github.com/exfab/rawpy-demosaic.git}}"
+RAWPY_DEMOSAIC_REF="${NEXORAW_RAWPY_DEMOSAIC_REF:-${ICCRAW_RAWPY_DEMOSAIC_REF:-8b17075}}"
+RAWPY_DEMOSAIC_SOURCE="${NEXORAW_RAWPY_DEMOSAIC_SOURCE:-${ICCRAW_RAWPY_DEMOSAIC_SOURCE:-git+https://github.com/exfab/rawpy-demosaic.git@8b17075}}"
 RAWPY_DEMOSAIC_PACKAGE="${NEXORAW_RAWPY_DEMOSAIC_PACKAGE:-${ICCRAW_RAWPY_DEMOSAIC_PACKAGE:-rawpy-demosaic}}"
 PKG_NAME="nexoraw"
 BUILD_ROOT="$ROOT/build/deb/${PKG_NAME}_${DEB_VERSION}_${ARCH}"
@@ -34,12 +37,27 @@ is_true() {
 }
 
 install_amaze_backend() {
+  local wheel="$RAWPY_DEMOSAIC_WHEEL"
+  if [[ -z "$wheel" && "$RAWPY_DEMOSAIC_SOURCE" == "git+https://github.com/exfab/rawpy-demosaic.git@8b17075" ]]; then
+    "$ROOT/scripts/build_rawpy_demosaic_wheel.py" \
+      --python "$VENV_DIR/bin/python" \
+      --repo "$RAWPY_DEMOSAIC_REPO" \
+      --ref "$RAWPY_DEMOSAIC_REF" \
+      --work-dir "$BUILD_ROOT/rawpy-demosaic-build" \
+      --output-dir "$BUILD_ROOT/rawpy-demosaic-wheel" \
+      --force
+    wheel="$(find "$BUILD_ROOT/rawpy-demosaic-wheel" -maxdepth 1 -type f -name 'rawpy_demosaic-*.whl' | sort | tail -n 1)"
+  fi
   local args=("$ROOT/scripts/install_amaze_backend.py")
-  if [[ -n "$RAWPY_DEMOSAIC_WHEEL" ]]; then
-    args+=("--wheel" "$RAWPY_DEMOSAIC_WHEEL")
+  if [[ -n "$wheel" ]]; then
+    RAWPY_DEMOSAIC_WHEEL="$wheel"
+    args+=("--wheel" "$wheel")
+  elif [[ -n "$RAWPY_DEMOSAIC_SOURCE" ]]; then
+    args+=("--source" "$RAWPY_DEMOSAIC_SOURCE")
   else
     args+=("--pypi" "--package" "$RAWPY_DEMOSAIC_PACKAGE")
   fi
+  "$VENV_DIR/bin/python" -m pip install --upgrade "setuptools<70" wheel "Cython<3"
   "$VENV_DIR/bin/python" "${args[@]}"
 }
 
@@ -54,7 +72,7 @@ write_amaze_build_metadata() {
     wheel_name="$(basename "$RAWPY_DEMOSAIC_WHEEL")"
     wheel_sha256="$(sha256sum "$RAWPY_DEMOSAIC_WHEEL" | awk '{print $1}')"
   fi
-  "$VENV_DIR/bin/python" - "$dest/build-metadata.json" "$RAWPY_DEMOSAIC_PACKAGE" "$wheel_name" "$wheel_sha256" <<'PY'
+  "$VENV_DIR/bin/python" - "$dest/build-metadata.json" "$RAWPY_DEMOSAIC_PACKAGE" "$RAWPY_DEMOSAIC_SOURCE" "$wheel_name" "$wheel_sha256" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -63,8 +81,9 @@ metadata_path = Path(sys.argv[1])
 payload = {
     "backend": "rawpy-demosaic",
     "package": sys.argv[2],
-    "wheel": sys.argv[3] or None,
-    "wheel_sha256": sys.argv[4] or None,
+    "source": sys.argv[3] or None,
+    "wheel": sys.argv[4] or None,
+    "wheel_sha256": sys.argv[5] or None,
     "source_url": "https://github.com/exfab/rawpy-demosaic",
     "runtime_check": json.loads((metadata_path.parent / "check-amaze.json").read_text(encoding="utf-8")),
 }
@@ -78,8 +97,8 @@ mkdir -p \
   "$BUILD_ROOT/opt/nexoraw" \
   "$BUILD_ROOT/usr/bin" \
   "$BUILD_ROOT/usr/share/applications" \
-  "$BUILD_ROOT/usr/share/icons/hicolor/256x256/apps" \
   "$BUILD_ROOT/usr/share/icons/hicolor/scalable/apps" \
+  "$BUILD_ROOT/usr/share/pixmaps" \
   "$BUILD_ROOT/usr/share/doc/nexoraw" \
   "$DIST_DIR"
 
@@ -99,6 +118,8 @@ print(site.getsitepackages()[0])
 PY
 )"
 "$VENV_DIR/bin/python" -m compileall -q "$SITE_PACKAGES/iccraw"
+"$VENV_DIR/bin/python" -m compileall -q "$SITE_PACKAGES/nexoraw"
+rm -f "$VENV_DIR/bin/iccraw" "$VENV_DIR/bin/iccraw-ui"
 
 for entry in "$VENV_DIR/bin/"*; do
   [ -f "$entry" ] || continue
@@ -137,10 +158,29 @@ Icon=nexoraw
 Terminal=false
 Categories=Graphics;Photography;
 Keywords=RAW;ICC;color;photography;forensics;
+StartupWMClass=nexoraw
 DESKTOP
 
 install -m 0644 "$ROOT/src/iccraw/resources/icons/nexoraw-icon.svg" "$BUILD_ROOT/usr/share/icons/hicolor/scalable/apps/nexoraw.svg"
-install -m 0644 "$ROOT/src/iccraw/resources/icons/nexoraw-icon.png" "$BUILD_ROOT/usr/share/icons/hicolor/256x256/apps/nexoraw.png"
+"$VENV_DIR/bin/python" - "$ROOT/src/iccraw/resources/icons/nexoraw-icon.png" "$BUILD_ROOT" <<'PY'
+from pathlib import Path
+import sys
+
+from PIL import Image
+
+src = Path(sys.argv[1])
+build_root = Path(sys.argv[2])
+with Image.open(src) as image:
+    image = image.convert("RGBA")
+    for size in (16, 32, 48, 64, 128, 256, 512):
+        dest = build_root / "usr" / "share" / "icons" / "hicolor" / f"{size}x{size}" / "apps" / "nexoraw.png"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        resized = image if image.size == (size, size) else image.resize((size, size), Image.Resampling.LANCZOS)
+        resized.save(dest)
+    pixmap = build_root / "usr" / "share" / "pixmaps" / "nexoraw.png"
+    pixmap.parent.mkdir(parents=True, exist_ok=True)
+    image.save(pixmap)
+PY
 install -m 0644 "$ROOT/README.md" "$BUILD_ROOT/usr/share/doc/nexoraw/README.md"
 install -m 0644 "$ROOT/CHANGELOG.md" "$BUILD_ROOT/usr/share/doc/nexoraw/CHANGELOG.md"
 install -m 0644 "$ROOT/LICENSE" "$BUILD_ROOT/usr/share/doc/nexoraw/LICENSE"
@@ -148,6 +188,7 @@ install -m 0644 "$ROOT/docs/THIRD_PARTY_LICENSES.md" "$BUILD_ROOT/usr/share/doc/
 install -m 0644 "$ROOT/docs/LEGAL_COMPLIANCE.md" "$BUILD_ROOT/usr/share/doc/nexoraw/LEGAL_COMPLIANCE.md"
 install -m 0644 "$ROOT/docs/AMAZE_GPL3.md" "$BUILD_ROOT/usr/share/doc/nexoraw/AMAZE_GPL3.md"
 install -m 0644 "$ROOT/docs/DEBIAN_PACKAGE.md" "$BUILD_ROOT/usr/share/doc/nexoraw/DEBIAN_PACKAGE.md"
+install -m 0644 "$ROOT/docs/RELEASE_INSTALLERS.md" "$BUILD_ROOT/usr/share/doc/nexoraw/RELEASE_INSTALLERS.md"
 install -m 0644 "$ROOT/docs/C2PA_CAI.md" "$BUILD_ROOT/usr/share/doc/nexoraw/C2PA_CAI.md"
 install -m 0644 "$ROOT/docs/NEXORAW_PROOF.md" "$BUILD_ROOT/usr/share/doc/nexoraw/NEXORAW_PROOF.md"
 install -m 0755 "$ROOT/scripts/check_amaze_support.py" "$BUILD_ROOT/usr/share/doc/nexoraw/check_amaze_support.py"
@@ -161,10 +202,10 @@ Priority: optional
 Architecture: $ARCH
 Maintainer: Comunidad AEICF <release@nexoraw.local>
 Installed-Size: $INSTALLED_SIZE
-Depends: python3 (>= 3.11), argyll, exiftool, libgl1, libegl1, libxkbcommon0, libxcb-cursor0, libxcb-xinerama0, desktop-file-utils, hicolor-icon-theme
+Depends: python3 (>= 3.11), argyll, exiftool, libgl1, libegl1, libxkbcommon0, libxcb-cursor0, libxcb-xinerama0, libgomp1, liblcms2-2, libjpeg-turbo8, libstdc++6, desktop-file-utils, hicolor-icon-theme
 Replaces: iccraw
 Conflicts: iccraw
-Homepage: https://github.com/alejandro-probatia/ICCRAW
+Homepage: https://github.com/alejandro-probatia/NexoRAW
 Description: NexoRAW beta $APP_VERSION reproducible RAW and ICC session profiling
  NexoRAW is a technical/scientific RAW workflow for controlled development,
  color chart sampling, session development profiles and ICC camera profiles.

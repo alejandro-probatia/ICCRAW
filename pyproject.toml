@@ -49,8 +49,6 @@ c2pa = [
 [project.scripts]
 nexoraw = "nexoraw.cli:main"
 nexoraw-ui = "nexoraw.gui:main"
-iccraw = "iccraw.cli:main"
-iccraw-ui = "iccraw.gui:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

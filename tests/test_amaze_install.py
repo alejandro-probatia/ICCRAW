@@ -41,6 +41,19 @@ def test_install_amaze_backend_dry_run_uses_wheel(tmp_path: Path, capsys):
     assert payload["commands"][1][-1].endswith("rawpy_demosaic-0.0-py3-none-any.whl")
 
 
+def test_install_amaze_backend_dry_run_uses_source(capsys):
+    module = _load_install_module()
+    source = "git+https://github.com/exfab/rawpy-demosaic.git@8b17075"
+
+    status = module.main(["--python", sys.executable, "--source", source, "--dry-run"])
+
+    assert status == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "dry_run"
+    assert payload["source"] == source
+    assert payload["commands"][1][-1] == source
+
+
 def test_install_amaze_backend_requires_source(capsys):
     module = _load_install_module()
 

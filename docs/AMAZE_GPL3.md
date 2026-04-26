@@ -22,11 +22,24 @@ El camino preferente es usar `rawpy-demosaic`, un fork GPL3 de `rawpy` que
 incluye los packs GPL2/GPL3 de LibRaw y exporta el mismo módulo Python
 `rawpy`.
 
-Instalación cuando exista wheel compatible con la plataforma:
+Instalación cuando exista wheel compatible publicada en el indice configurado
+de `pip`:
 
 ```bash
 python scripts/install_amaze_backend.py --pypi
 python scripts/check_amaze_support.py
+```
+
+Construccion de una wheel Linux desde fuente Git fijada:
+
+```bash
+python scripts/build_rawpy_demosaic_wheel.py \
+  --python .venv/bin/python \
+  --work-dir tmp/rawpy-demosaic-build \
+  --output-dir tmp/wheels \
+  --force
+.venv/bin/python scripts/install_amaze_backend.py --wheel tmp/wheels/rawpy_demosaic-*.whl
+.venv/bin/python scripts/check_amaze_support.py
 ```
 
 Con una wheel propia:
@@ -96,12 +109,22 @@ build:
 
 ## Debian/Ubuntu
 
-El paquete `.deb` instala el backend AMaZE durante la construccion cuando se
-activa el modo de build correspondiente. Desde la raiz del repositorio:
+El paquete `.deb` instala y verifica el backend AMaZE durante la construccion
+por defecto. Desde la raiz del repositorio:
 
 ```bash
 NEXORAW_BUILD_AMAZE=1 NEXORAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
 ```
+
+La fuente Git por defecto usada para construir la wheel embebida es:
+
+```text
+git+https://github.com/exfab/rawpy-demosaic.git@8b17075
+```
+
+Se puede sustituir por otra fuente trazada con `NEXORAW_RAWPY_DEMOSAIC_SOURCE`
+si esa fuente es instalable directamente por `pip`, o por una wheel ya
+construida con `NEXORAW_RAWPY_DEMOSAIC_WHEEL`.
 
 Con una wheel local:
 
@@ -112,7 +135,8 @@ bash packaging/debian/build_deb.sh
 ```
 
 La build registra `check-amaze.json` y `build-metadata.json` en
-`/usr/share/doc/nexoraw/third_party/rawpy-demosaic/`.
+`/usr/share/doc/nexoraw/third_party/rawpy-demosaic/`. La validacion previa a
+release falla si `check-amaze.json` no contiene `amaze_supported: true`.
 
 ## macOS
 
@@ -125,7 +149,7 @@ nexoraw check-amaze
 ```
 
 Si no hay wheel compatible para la version de Python/arquitectura usada, crear
-o descargar una wheel propia y usar:
+o descargar una wheel propia:
 
 ```bash
 python scripts/install_amaze_backend.py --wheel /ruta/rawpy_demosaic-*.whl

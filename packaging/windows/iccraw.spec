@@ -59,25 +59,6 @@ cli = EXE(
     icon=str(icon_path),
 )
 
-cli_legacy = EXE(
-    pyz_cli,
-    a_cli.scripts,
-    [],
-    exclude_binaries=True,
-    name="iccraw",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=str(icon_path),
-)
-
 a_gui = Analysis(
     [str(root / "packaging" / "windows" / "launcher_gui.py")],
     pathex=[str(root)],
@@ -112,30 +93,9 @@ gui = EXE(
     icon=str(icon_path),
 )
 
-gui_legacy = EXE(
-    pyz_gui,
-    a_gui.scripts,
-    [],
-    exclude_binaries=True,
-    name="iccraw-ui",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=str(icon_path),
-)
-
 coll = COLLECT(
     cli,
-    cli_legacy,
     gui,
-    gui_legacy,
     a_cli.binaries,
     a_cli.zipfiles,
     a_cli.datas,

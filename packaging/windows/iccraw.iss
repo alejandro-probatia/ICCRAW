@@ -19,9 +19,9 @@ AppId={{F88E3E29-B992-4B88-8BB9-5066D6A77764}
 AppName=NexoRAW
 AppVersion={#AppVersion}
 AppPublisher=Comunidad AEICF
-AppPublisherURL=https://github.com/alejandro-probatia/ICCRAW
-AppSupportURL=https://github.com/alejandro-probatia/ICCRAW
-AppUpdatesURL=https://github.com/alejandro-probatia/ICCRAW
+AppPublisherURL=https://github.com/alejandro-probatia/NexoRAW
+AppSupportURL=https://github.com/alejandro-probatia/NexoRAW
+AppUpdatesURL=https://github.com/alejandro-probatia/NexoRAW
 DefaultDirName={autopf}\NexoRAW
 DefaultGroupName=NexoRAW
 DisableProgramGroupPage=yes
@@ -57,11 +57,11 @@ Source: "{#RootDir}\docs\WINDOWS_INSTALLER.md"; DestDir: "{app}\docs"; Flags: ig
 Source: "{#RootDir}\scripts\check_amaze_support.py"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\NexoRAW"; Filename: "{app}\nexoraw-ui.exe"; WorkingDir: "{app}"
+Name: "{group}\NexoRAW"; Filename: "{app}\nexoraw-ui.exe"; WorkingDir: "{app}"; IconFilename: "{app}\nexoraw-ui.exe"
 Name: "{group}\NexoRAW CLI"; Filename: "{cmd}"; Parameters: "/K ""{app}\nexoraw.exe"" --help"; WorkingDir: "{app}"; IconFilename: "{app}\nexoraw-ui.exe"
 Name: "{group}\Diagnostico herramientas"; Filename: "{cmd}"; Parameters: "/K ""{app}\nexoraw.exe"" check-tools"; WorkingDir: "{app}"; IconFilename: "{app}\nexoraw-ui.exe"
 Name: "{group}\Desinstalar NexoRAW"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\NexoRAW"; Filename: "{app}\nexoraw-ui.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autodesktop}\NexoRAW"; Filename: "{app}\nexoraw-ui.exe"; WorkingDir: "{app}"; IconFilename: "{app}\nexoraw-ui.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\nexoraw.exe"; Parameters: "--version"; Flags: runhidden

@@ -17,6 +17,8 @@ El paquete instala:
 - lanzador GUI `/usr/bin/nexoraw-ui`,
 - entrada de escritorio en `/usr/share/applications/nexoraw.desktop`,
 - iconos hicolor SVG/PNG para integracion con el menu del sistema,
+- fallback `/usr/share/pixmaps/nexoraw.png` para menus que no resuelvan el
+  tema hicolor,
 - documentacion basica en `/usr/share/doc/nexoraw/`.
 
 Dependencias de sistema declaradas:
@@ -25,11 +27,14 @@ Dependencias de sistema declaradas:
 - `argyll`,
 - `exiftool`,
 - librerias minimas de Qt/OpenGL/XCB para la GUI,
+- runtime nativo de LibRaw AMaZE embebido (`libgomp1`, `liblcms2-2`,
+  `libjpeg-turbo8`, `libstdc++6`),
 - `desktop-file-utils` y `hicolor-icon-theme` para registrar lanzador e icono.
 
 El paquete `nexoraw` declara `Replaces/Conflicts: iccraw` para retirar
 correctamente instalaciones beta antiguas publicadas con el nombre `iccraw`.
-El instalador Linux no crea lanzadores con el nombre antiguo.
+El instalador Linux no crea lanzadores ni scripts internos con el nombre
+antiguo.
 
 ## Construccion
 
@@ -39,10 +44,22 @@ Desde la raiz del repositorio:
 bash packaging/debian/build_deb.sh
 ```
 
-Build con AMaZE desde PyPI:
+La build Debian instala y exige AMaZE por defecto usando una fuente Git fijada
+de `rawpy-demosaic`. Si esa comprobacion falla, el paquete no debe publicarse.
+
+Build explicita con AMaZE desde la fuente Git fijada por defecto:
 
 ```bash
 NEXORAW_BUILD_AMAZE=1 NEXORAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
+```
+
+Build con AMaZE desde otra fuente instalable por `pip` y trazada:
+
+```bash
+NEXORAW_BUILD_AMAZE=1 \
+NEXORAW_REQUIRE_AMAZE=1 \
+NEXORAW_RAWPY_DEMOSAIC_SOURCE="git+https://github.com/exfab/rawpy-demosaic.git@8b17075" \
+bash packaging/debian/build_deb.sh
 ```
 
 Build con AMaZE desde una wheel trazada:
@@ -73,17 +90,31 @@ nexoraw-ui
 
 ## Verificacion recomendada
 
-Antes de publicar o entregar una beta:
+Antes de publicar o entregar una beta, esta verificacion es obligatoria:
 
 ```bash
 .venv/bin/python -m pytest
 bash scripts/check_tools.sh
 bash packaging/debian/build_deb.sh
-dpkg-deb --info dist/nexoraw_0.1.0~beta5_amd64.deb
+packaging/debian/validate_deb.sh dist/nexoraw_0.1.0~beta5_amd64.deb
+sudo apt install ./dist/nexoraw_0.1.0~beta5_amd64.deb
+scripts/validate_linux_install.sh
 ```
 
-Para una prueba de instalacion aislada, usar una maquina Debian/Ubuntu limpia y
-ejecutar `nexoraw check-tools --strict` tras instalar el `.deb`.
+Para una prueba de instalacion aislada, usar una maquina Debian/Ubuntu limpia.
+No subir el `.deb` a GitHub Releases ni al repositorio si falla cualquiera de
+estos puntos:
+
+- `Package: nexoraw`, `Replaces: iccraw` y `Conflicts: iccraw`,
+- ausencia de `/usr/bin/iccraw`, `/usr/bin/iccraw-ui` y scripts internos
+  `/opt/nexoraw/venv/bin/iccraw*`,
+- entrada de escritorio `Name=NexoRAW`, `Exec=nexoraw-ui`, `Icon=nexoraw` y
+  categoria `Graphics;Photography;`,
+- iconos `nexoraw.png` reales en hicolor `16/32/48/64/128/256/512`, icono SVG
+  y fallback `/usr/share/pixmaps/nexoraw.png`,
+- `nexoraw check-tools --strict`,
+- `nexoraw check-c2pa`,
+- `nexoraw check-amaze`.
 
 Para validar soporte AMaZE en la beta instalada:
 

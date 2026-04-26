@@ -152,7 +152,7 @@ function Copy-ExternalTools {
 }
 
 function Install-AmazeBackend {
-  if ([string]::IsNullOrWhiteSpace($RawpyDemosaicWheel) -and -not $Amaze) {
+  if ([string]::IsNullOrWhiteSpace($RawpyDemosaicWheel) -and [string]::IsNullOrWhiteSpace($RawpyDemosaicSource) -and -not $Amaze) {
     return
   }
 
@@ -163,6 +163,8 @@ function Install-AmazeBackend {
     }
     $wheelPath = (Resolve-Path $RawpyDemosaicWheel).Path
     $args += @("--wheel", $wheelPath)
+  } elseif (-not [string]::IsNullOrWhiteSpace($RawpyDemosaicSource)) {
+    $args += @("--source", $RawpyDemosaicSource)
   } else {
     $args += @("--pypi")
   }
@@ -170,7 +172,7 @@ function Install-AmazeBackend {
 }
 
 function Test-AmazeBackend {
-  if (-not $RequireAmaze -and -not $Amaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
+  if (-not $RequireAmaze -and -not $Amaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel) -and [string]::IsNullOrWhiteSpace($RawpyDemosaicSource)) {
     return
   }
 
@@ -180,7 +182,7 @@ function Test-AmazeBackend {
 function Copy-RawpyDemosaicLegal {
   param([string]$AppBuildDir)
 
-  if (-not $RequireAmaze -and -not $Amaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel)) {
+  if (-not $RequireAmaze -and -not $Amaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel) -and [string]::IsNullOrWhiteSpace($RawpyDemosaicSource)) {
     return
   }
 
@@ -326,7 +328,6 @@ Invoke-Native "Smoke CLI empaquetada" (Join-Path $AppBuildDir "nexoraw.exe") @("
 Invoke-Native "Smoke ayuda CLI empaquetada" (Join-Path $AppBuildDir "nexoraw.exe") @("--help")
 Invoke-Native "Smoke herramientas empaquetadas" (Join-Path $AppBuildDir "nexoraw.exe") @("check-tools", "--strict")
 Invoke-Native "Smoke C2PA empaquetado" (Join-Path $AppBuildDir "nexoraw.exe") @("check-c2pa")
-Invoke-Native "Smoke CLI heredada" (Join-Path $AppBuildDir "iccraw.exe") @("--version")
 if ($RequireAmaze) {
   Invoke-Native "Smoke AMaZE empaquetado" (Join-Path $AppBuildDir "nexoraw.exe") @("check-amaze")
 }
