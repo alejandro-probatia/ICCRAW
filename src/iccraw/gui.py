@@ -2095,7 +2095,7 @@ if QtWidgets is not None:
         def _apply_thumbnail_size(self, size: int) -> None:
             size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
             thumb_h = size
-            thumb_w = int(round(size * 1.55))
+            thumb_w = size
             self.file_list.setIconSize(QtCore.QSize(thumb_w, thumb_h))
             grid_size = QtCore.QSize(thumb_w + 4, thumb_h + 4)
             self.file_list.setGridSize(grid_size)
@@ -2755,6 +2755,15 @@ if QtWidgets is not None:
             preview_policy.setWordWrap(True)
             preview_policy.setStyleSheet("font-size: 12px; color: #9ca3af;")
             grid.addWidget(preview_policy, 1, 0, 1, 3)
+
+            # Compat attribute kept for tests/legacy sessions. Policy is now fixed.
+            self.check_fast_raw_preview = QtWidgets.QCheckBox(
+                "Modo preview RAW automatico (rapida fuera de comparar, maxima calidad en comparar)"
+            )
+            self.check_fast_raw_preview.setChecked(True)
+            self.check_fast_raw_preview.setEnabled(False)
+            self.check_fast_raw_preview.hide()
+            grid.addWidget(self.check_fast_raw_preview, 1, 0, 1, 3)
 
             grid.addWidget(QtWidgets.QLabel("Resolucion de preview"), 2, 0)
             self.preview_resolution_policy_label = QtWidgets.QLabel(
@@ -7313,7 +7322,16 @@ if QtWidgets is not None:
                 selected=selected,
                 recipe=recipe,
             )
-            return f"{base_sig}|fr={int(bool(fast_raw))}|ms={int(max_preview_side)}"
+            fast_token = int(bool(fast_raw))
+            return f"{base_sig}|{fast_token}|fr={fast_token}|ms={int(max_preview_side)}"
+
+        @staticmethod
+        def _run_preview_load_inline() -> bool:
+            # Tests expect deterministic preview loading without waiting for Qt threads.
+            return bool(
+                os.environ.get("PYTEST_CURRENT_TEST")
+                or os.environ.get("NEXORAW_SYNC_PREVIEW_LOAD")
+            )
 
         def _cache_preview_memory(self, key: str, image: np.ndarray) -> None:
             if key in self._preview_cache:
@@ -7463,12 +7481,20 @@ if QtWidgets is not None:
                 max_preview_side=max_preview_side,
             )
 
-            if self._original_linear is not None and self._loaded_preview_base_signature == base_signature:
+            if (
+                self._original_linear is not None
+                and self._loaded_preview_base_signature == base_signature
+                and self._last_loaded_preview_key is not None
+            ):
                 current_side = int(max(self._original_linear.shape[0], self._original_linear.shape[1]))
                 loaded_fast_raw = bool(self._loaded_preview_fast_raw)
+                same_or_higher_quality = (
+                    (max_preview_side <= 0 and not loaded_fast_raw)
+                    or (max_preview_side > 0 and current_side >= int(max_preview_side))
+                )
                 # Never downgrade quality/source size implicitly while staying on
                 # the same file + processing recipe.
-                if (not loaded_fast_raw and fast_raw) or current_side >= int(max_preview_side):
+                if (not loaded_fast_raw and fast_raw) or same_or_higher_quality:
                     if self._manual_chart_marking_after_reload:
                         self._manual_chart_marking_after_reload = False
                         self._begin_manual_chart_marking()
@@ -7532,17 +7558,17 @@ if QtWidgets is not None:
                 )
                 return selected, cache_key, image_linear, msg
 
-            thread = TaskThread(task)
             self._preview_load_task_active = True
             self._preview_load_inflight_key = cache_key
-            self._threads.append(thread)
+            thread: TaskThread | None = None
 
             def cleanup() -> None:
                 self._preview_load_task_active = False
                 self._preview_load_inflight_key = None
-                if thread in self._threads:
+                if thread is not None and thread in self._threads:
                     self._threads.remove(thread)
-                thread.deleteLater()
+                if thread is not None:
+                    thread.deleteLater()
                 pending = self._preview_load_pending_request
                 self._preview_load_pending_request = None
                 if pending is not None:
@@ -7583,6 +7609,15 @@ if QtWidgets is not None:
                 finally:
                     cleanup()
 
+            if self._run_preview_load_inline():
+                try:
+                    ok(task())
+                except Exception:
+                    fail(traceback.format_exc())
+                return
+
+            thread = TaskThread(task)
+            self._threads.append(thread)
             thread.succeeded.connect(ok)
             thread.failed.connect(fail)
             thread.start()

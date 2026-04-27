@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
 import shutil
 import subprocess
 import sys
@@ -9,8 +10,8 @@ from collections.abc import Sequence
 from typing import Any
 
 
-def bundled_tool_dirs() -> list[Path]:
-    dirs: list[Path] = []
+def bundled_tool_dirs() -> list[Path | PurePosixPath]:
+    dirs: list[Path | PurePosixPath] = []
 
     env_dir = os.environ.get("NEXORAW_TOOL_DIR", "").strip() or os.environ.get("ICCRAW_TOOL_DIR", "").strip()
     if env_dir:
@@ -37,38 +38,36 @@ def bundled_tool_dirs() -> list[Path]:
     if sys.platform == "darwin":
         dirs.extend(
             [
-                Path("/opt/homebrew/bin"),
-                Path("/opt/homebrew/opt/argyll-cms/bin"),
-                Path("/usr/local/bin"),
-                Path("/usr/local/opt/argyll-cms/bin"),
-                Path("/opt/local/bin"),
+                PurePosixPath("/opt/homebrew/bin"),
+                PurePosixPath("/opt/homebrew/opt/argyll-cms/bin"),
+                PurePosixPath("/usr/local/bin"),
+                PurePosixPath("/usr/local/opt/argyll-cms/bin"),
+                PurePosixPath("/opt/local/bin"),
             ]
         )
 
-    seen: set[Path] = set()
-    out: list[Path] = []
+    seen: set[str] = set()
+    out: list[Path | PurePosixPath] = []
     for folder in dirs:
-        try:
-            resolved = folder.resolve()
-        except Exception:
-            resolved = folder
-        if resolved not in seen:
-            seen.add(resolved)
-            out.append(resolved)
+        key = folder.as_posix() if isinstance(folder, PurePosixPath) else str(folder.resolve(strict=False))
+        if key not in seen:
+            seen.add(key)
+            out.append(folder)
     return out
 
 
 def external_tool_path(name: str) -> str | None:
     for folder in bundled_tool_dirs():
+        folder_path = Path(str(folder))
         for candidate in _candidate_names(name):
-            path = folder / candidate
+            path = folder_path / candidate
             if path.exists() and path.is_file():
                 return str(path)
     return shutil.which(name)
 
 
 def external_tool_search_path() -> str:
-    parts = [str(folder) for folder in bundled_tool_dirs() if folder.exists()]
+    parts = [str(folder) for folder in bundled_tool_dirs() if Path(str(folder)).exists()]
     current = os.environ.get("PATH", "")
     return os.pathsep.join([*parts, current]) if parts else current
 
