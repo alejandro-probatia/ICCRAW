@@ -6,7 +6,7 @@
 
 Pipeline RAW reproducible y auditable para fotografia cientifica, forense y patrimonial, con perfilado ICC por sesion y trazabilidad abierta AGPL.
 
-![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Version](https://img.shields.io/badge/version-v0.2.2-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Version](https://img.shields.io/badge/version-v0.2.3-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![Captura de la GUI de NexoRAW en el flujo de calibrar y aplicar](docs/assets/screenshots/nexoraw-calibrar-aplicar.png)
 
@@ -246,6 +246,11 @@ nexoraw batch-develop ./raws \
   --workers 0 \
   --cache-dir ./00_configuraciones/cache
 ```
+
+Para una sesion sin carta colorimetrica, la receta puede usar `output_space:
+srgb`, `adobe_rgb` o `prophoto_rgb` y `output_linear: false`. En ese caso
+`--profile` es opcional: NexoRAW revela el RAW en ese espacio RGB estandar con
+LibRaw, copia un ICC real del sistema o de ArgyllCMS y lo incrusta en el TIFF.
 
 Las salidas TIFF no se sobrescriben. Si `output.tiff` o
 `./tiffs/captura.tiff` ya existen, NexoRAW conserva el archivo anterior y

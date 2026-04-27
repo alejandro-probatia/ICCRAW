@@ -50,6 +50,9 @@ class RawMetadata:
     capture_datetime: str | None
     dimensions: list[int] | None
     intermediate_working_space: str
+    black_level_per_channel: list[int] | None = None
+    embedded_profile_description: str | None = None
+    embedded_profile_source: str | None = None
 
 
 @dataclass

@@ -189,19 +189,19 @@ Pasos:
    `RAW Global` necesarios.
 3. Abre `Gestión de color y calibración`.
 4. Escribe un nombre para el perfil.
-5. En `ICC sin carta`, elige el perfil generico de salida:
-   - `sRGB generico`,
-   - `Adobe RGB (1998) generico`,
-   - `ProPhoto RGB generico`.
+5. En `Espacio estandar sin carta`, elige el espacio real de salida:
+   - `sRGB estandar`,
+   - `Adobe RGB (1998) estandar`,
+   - `ProPhoto RGB estandar`.
 6. Pulsa `Guardar perfil básico`.
 7. Pulsa `Guardar perfil basico en imagen` para escribir la mochila junto al RAW.
 
 Resultado:
 
 - perfil manual en `00_configuraciones/development_profiles/`,
-- ICC generico creado por NexoRAW en `00_configuraciones/profiles/generic/`,
+- ICC estandar copiado desde el sistema o ArgyllCMS en `00_configuraciones/profiles/standard/`,
 - mochila `RAW.nexoraw.json` con `generic_output_icc`,
-- TIFF final en `02_DRV/` con ese ICC generico incrustado.
+- TIFF final en `02_DRV/` revelado en ese espacio e ICC estandar incrustado.
 
 Usa este flujo cuando no hay carta. Si mas adelante se incorpora una carta
 valida para esa misma condicion de captura, conviene generar un perfil avanzado
@@ -371,8 +371,9 @@ que el perfil no este rechazado por QA.
 
 ### No hay carta de color
 
-Usa el flujo sin carta: perfil manual + ICC generico de salida. Es funcional y
-trazable, pero no sustituye la precision de una referencia colorimetrica real.
+Usa el flujo sin carta: perfil manual + espacio RGB estandar real de salida. Es
+funcional y trazable, pero no sustituye la precision de una referencia
+colorimetrica real.
 
 ### La imagen ya tenia un TIFF exportado
 

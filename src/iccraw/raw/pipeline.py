@@ -41,6 +41,23 @@ DEMOSAIC_CACHE_MAX_GB_ENV = "NEXORAW_DEMOSAIC_CACHE_MAX_GB"
 LEGACY_DEMOSAIC_CACHE_MAX_GB_ENV = "ICCRAW_DEMOSAIC_CACHE_MAX_GB"
 DEFAULT_DEMOSAIC_CACHE_MAX_GB = 5.0
 
+STANDARD_OUTPUT_ALIASES = {
+    "srgb": "srgb",
+    "s_rgb": "srgb",
+    "s-rgb": "srgb",
+    "adobe_rgb": "adobe_rgb",
+    "adobergb": "adobe_rgb",
+    "adobe-rgb": "adobe_rgb",
+    "adobe_rgb_1998": "adobe_rgb",
+    "adobe-rgb-1998": "adobe_rgb",
+    "adobe rgb (1998)": "adobe_rgb",
+    "prophoto": "prophoto_rgb",
+    "prophoto_rgb": "prophoto_rgb",
+    "prophoto-rgb": "prophoto_rgb",
+    "romm_rgb": "prophoto_rgb",
+    "romm-rgb": "prophoto_rgb",
+}
+
 
 def develop_controlled(
     input_path: Path,
@@ -53,7 +70,11 @@ def develop_controlled(
     metadata = raw_info(input_path) if input_path.suffix.lower() in RAW_SUFFIXES else _fake_metadata(input_path)
     guard = scientific_guard(recipe)
 
-    image = develop_scene_linear_array(input_path, recipe, cache_dir=cache_dir)
+    image = (
+        develop_standard_linear_array(input_path, recipe, cache_dir=cache_dir)
+        if is_standard_output_space(recipe.output_space)
+        else develop_scene_linear_array(input_path, recipe, cache_dir=cache_dir)
+    )
 
     audit_path_str: str | None = None
     if audit_linear_tiff is not None:
@@ -91,14 +112,43 @@ def develop_scene_linear_array(
     if developer not in {"", "libraw", "rawpy"}:
         raise RuntimeError(f"raw_developer no soportado: {recipe.raw_developer}. Usa 'libraw'.")
     if bool(getattr(recipe, "use_cache", False)) and not half_size and cache_dir is not None:
-        cached = _read_demosaic_cache(input_path, recipe, cache_dir)
+        cached = _read_demosaic_cache(input_path, recipe, cache_dir, output_color_space="camera_raw")
         if cached is not None:
             return cached
-        image = develop_with_libraw(input_path, recipe, half_size=half_size)
-        _write_demosaic_cache(input_path, recipe, cache_dir, image)
+        image = develop_with_libraw(input_path, recipe, half_size=half_size, output_color_space="camera_raw")
+        _write_demosaic_cache(input_path, recipe, cache_dir, image, output_color_space="camera_raw")
         _prune_demosaic_cache(cache_dir)
         return image
-    return develop_with_libraw(input_path, recipe, half_size=half_size)
+    return develop_with_libraw(input_path, recipe, half_size=half_size, output_color_space="camera_raw")
+
+
+def develop_standard_linear_array(
+    input_path: Path,
+    recipe: Recipe,
+    *,
+    half_size: bool = False,
+    cache_dir: Path | None = None,
+) -> np.ndarray:
+    output_space = canonical_standard_output_space(recipe.output_space)
+    if output_space is None:
+        raise RuntimeError(
+            f"output_space no es un espacio RGB estandar soportado: {recipe.output_space!r}"
+        )
+    if input_path.suffix.lower() not in RAW_SUFFIXES:
+        return read_image(input_path)
+
+    developer = recipe.raw_developer.strip().lower()
+    if developer not in {"", "libraw", "rawpy"}:
+        raise RuntimeError(f"raw_developer no soportado: {recipe.raw_developer}. Usa 'libraw'.")
+    if bool(getattr(recipe, "use_cache", False)) and not half_size and cache_dir is not None:
+        cached = _read_demosaic_cache(input_path, recipe, cache_dir, output_color_space=output_space)
+        if cached is not None:
+            return cached
+        image = develop_with_libraw(input_path, recipe, half_size=half_size, output_color_space=output_space)
+        _write_demosaic_cache(input_path, recipe, cache_dir, image, output_color_space=output_space)
+        _prune_demosaic_cache(cache_dir)
+        return image
+    return develop_with_libraw(input_path, recipe, half_size=half_size, output_color_space=output_space)
 
 
 def render_recipe_output_array(image_linear_rgb: np.ndarray, recipe: Recipe) -> np.ndarray:
@@ -128,11 +178,28 @@ def develop_image_array(
     return render_recipe_output_array(image, recipe)
 
 
-def develop_with_libraw(input_path: Path, recipe: Recipe, *, half_size: bool = False) -> np.ndarray:
+def develop_standard_output_array(
+    input_path: Path,
+    recipe: Recipe,
+    *,
+    half_size: bool = False,
+    cache_dir: Path | None = None,
+) -> np.ndarray:
+    image = develop_standard_linear_array(input_path, recipe, half_size=half_size, cache_dir=cache_dir)
+    return render_recipe_output_array(image, recipe)
+
+
+def develop_with_libraw(
+    input_path: Path,
+    recipe: Recipe,
+    *,
+    half_size: bool = False,
+    output_color_space: str = "camera_raw",
+) -> np.ndarray:
     if rawpy is None:
         raise RuntimeError("No se puede revelar RAW: dependencia 'rawpy'/'LibRaw' no disponible.")
 
-    kwargs = _build_libraw_postprocess_kwargs(recipe, half_size=half_size)
+    kwargs = _build_libraw_postprocess_kwargs(recipe, half_size=half_size, output_color_space=output_color_space)
     try:
         with open_rawpy(input_path, unpack=True) as raw:
             image = raw.postprocess(**kwargs)
@@ -141,7 +208,12 @@ def develop_with_libraw(input_path: Path, recipe: Recipe, *, half_size: bool = F
     return _postprocess_output_to_float(image)
 
 
-def _build_libraw_postprocess_kwargs(recipe: Recipe, *, half_size: bool = False) -> dict:
+def _build_libraw_postprocess_kwargs(
+    recipe: Recipe,
+    *,
+    half_size: bool = False,
+    output_color_space: str = "camera_raw",
+) -> dict:
     if rawpy is None:
         raise RuntimeError("No se puede configurar LibRaw: dependencia 'rawpy' no disponible.")
 
@@ -155,7 +227,7 @@ def _build_libraw_postprocess_kwargs(recipe: Recipe, *, half_size: bool = False)
         "use_camera_wb": use_camera_wb,
         "use_auto_wb": False,
         "user_wb": user_wb,
-        "output_color": rawpy.ColorSpace.raw,
+        "output_color": _libraw_output_color_value(output_color_space),
         "output_bps": 16,
         "user_flip": 0,
         "no_auto_bright": True,
@@ -171,6 +243,31 @@ def _build_libraw_postprocess_kwargs(recipe: Recipe, *, half_size: bool = False)
         kwargs["user_sat"] = _parse_int_mode_value(black_mode, "white")
 
     return kwargs
+
+
+def canonical_standard_output_space(output_space: str | None) -> str | None:
+    key = str(output_space or "").strip().lower()
+    return STANDARD_OUTPUT_ALIASES.get(key)
+
+
+def is_standard_output_space(output_space: str | None) -> bool:
+    return canonical_standard_output_space(output_space) is not None
+
+
+def _libraw_output_color_value(output_color_space: str):
+    if rawpy is None:
+        raise RuntimeError("No se puede configurar LibRaw: dependencia 'rawpy' no disponible.")
+    key = str(output_color_space or "camera_raw").strip().lower()
+    if key in {"camera_raw", "raw", "camera", "camera_rgb", "scene_linear_camera_rgb"}:
+        return rawpy.ColorSpace.raw
+    key = canonical_standard_output_space(key)
+    if key == "srgb":
+        return rawpy.ColorSpace.sRGB
+    if key == "adobe_rgb":
+        return rawpy.ColorSpace.Adobe
+    if key == "prophoto_rgb":
+        return rawpy.ColorSpace.ProPhoto
+    raise RuntimeError(f"output_color_space no soportado por LibRaw/rawpy: {output_color_space!r}")
 
 
 def libraw_demosaic_value(demosaic_algorithm: str):
@@ -272,7 +369,7 @@ def _postprocess_output_to_float(image: np.ndarray) -> np.ndarray:
     return np.clip(out.astype(np.float32), 0.0, 1.0)
 
 
-def _demosaic_cache_key(raw_path: Path, recipe: Recipe) -> str:
+def _demosaic_cache_key(raw_path: Path, recipe: Recipe, *, output_color_space: str = "camera_raw") -> str:
     path = Path(raw_path)
     st = path.stat()
     h = hashlib.sha256()
@@ -290,6 +387,7 @@ def _demosaic_cache_key(raw_path: Path, recipe: Recipe) -> str:
         "white_balance_mode": str(recipe.white_balance_mode),
         "wb_multipliers": [float(v) for v in (recipe.wb_multipliers or [])],
         "black_level_mode": str(recipe.black_level_mode),
+        "output_color_space": str(output_color_space),
         "rawpy": str(getattr(rawpy, "__version__", "")) if rawpy is not None else "missing",
         "libraw": str(getattr(rawpy, "libraw_version", "")) if rawpy is not None else "missing",
         "flags": rawpy_feature_flags(),
@@ -298,13 +396,25 @@ def _demosaic_cache_key(raw_path: Path, recipe: Recipe) -> str:
     return h.hexdigest()
 
 
-def _demosaic_cache_path(raw_path: Path, recipe: Recipe, cache_root: Path) -> Path:
-    key = _demosaic_cache_key(raw_path, recipe)
+def _demosaic_cache_path(
+    raw_path: Path,
+    recipe: Recipe,
+    cache_root: Path,
+    *,
+    output_color_space: str = "camera_raw",
+) -> Path:
+    key = _demosaic_cache_key(raw_path, recipe, output_color_space=output_color_space)
     return Path(cache_root) / "demosaic" / key[:2] / f"{key}.npy"
 
 
-def _read_demosaic_cache(raw_path: Path, recipe: Recipe, cache_root: Path) -> np.ndarray | None:
-    path = _demosaic_cache_path(raw_path, recipe, cache_root)
+def _read_demosaic_cache(
+    raw_path: Path,
+    recipe: Recipe,
+    cache_root: Path,
+    *,
+    output_color_space: str = "camera_raw",
+) -> np.ndarray | None:
+    path = _demosaic_cache_path(raw_path, recipe, cache_root, output_color_space=output_color_space)
     try:
         if not path.is_file():
             return None
@@ -322,8 +432,15 @@ def _read_demosaic_cache(raw_path: Path, recipe: Recipe, cache_root: Path) -> np
         return None
 
 
-def _write_demosaic_cache(raw_path: Path, recipe: Recipe, cache_root: Path, image: np.ndarray) -> None:
-    path = _demosaic_cache_path(raw_path, recipe, cache_root)
+def _write_demosaic_cache(
+    raw_path: Path,
+    recipe: Recipe,
+    cache_root: Path,
+    image: np.ndarray,
+    *,
+    output_color_space: str = "camera_raw",
+) -> None:
+    path = _demosaic_cache_path(raw_path, recipe, cache_root, output_color_space=output_color_space)
     temp_path: Path | None = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -408,4 +525,6 @@ def _fake_metadata(path: Path):
         capture_datetime=None,
         dimensions=None,
         intermediate_working_space="scene_linear_camera_rgb",
+        embedded_profile_description=None,
+        embedded_profile_source=None,
     )

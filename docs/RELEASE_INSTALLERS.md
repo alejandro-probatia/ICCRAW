@@ -77,6 +77,17 @@ deben apuntar a `nexoraw-ui.exe` y usar el icono `nexoraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.2.3
+
+La release 0.2.3 introduce:
+
+- flujo sin carta con perfiles estandar reales en lugar de perfiles genericos
+  generados por NexoRAW,
+- seleccion preferente de `AdobeRGB1998.icc` cuando existe en el sistema,
+- manifiestos NexoRAW Proof/C2PA con ajustes completos de receta, nitidez,
+  contraste/render y gestion de color,
+- visor de metadatos ampliado para mostrar esos ajustes reproducibles.
+
 ## Release 0.2.2
 
 La release 0.2.2 introduce:

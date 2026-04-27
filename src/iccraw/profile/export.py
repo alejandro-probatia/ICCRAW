@@ -35,7 +35,11 @@ from ..provenance.nexoraw_proof import (
     proof_config_from_environment,
     sign_nexoraw_proof,
 )
-from ..raw.pipeline import develop_scene_linear_array, render_recipe_output_array
+from ..raw.pipeline import (
+    develop_scene_linear_array,
+    develop_standard_linear_array,
+    render_recipe_output_array,
+)
 from ..session import cache_dir as session_cache_dir
 from ..sidecar import write_raw_sidecar
 from ..version import __version__
@@ -55,7 +59,7 @@ DEFAULT_BATCH_WORKER_RAM_MB = 2800
 def batch_develop(
     raws_dir: Path,
     recipe: Recipe,
-    profile_path: Path,
+    profile_path: Path | None,
     out_dir: Path,
     *,
     workers: int | None = None,
@@ -78,10 +82,15 @@ def batch_develop(
     if not files:
         raise RuntimeError(f"No se encontraron RAWs ni imagenes compatibles en: {raws_dir}")
 
-    if not profile_path.exists():
+    if profile_path is not None and not profile_path.exists():
         raise FileNotFoundError(f"No existe perfil ICC: {profile_path}")
+    if profile_path is None and not is_generic_output_space(recipe.output_space):
+        raise RuntimeError(
+            "batch-develop sin --profile solo es valido con output_space estandar "
+            "(srgb, adobe_rgb o prophoto_rgb)."
+        )
 
-    color_mode = color_management_mode(recipe)
+    color_mode = color_management_mode_for_render(recipe, profile_path=profile_path)
     proof_sign_config = proof_config or proof_config_from_environment()
 
     recipe_sha = hashlib.sha256(json.dumps(asdict(recipe), sort_keys=True).encode("utf-8")).hexdigest()
@@ -142,7 +151,7 @@ def batch_develop(
 
     return BatchManifest(
         recipe_sha256=recipe_sha,
-        profile_path=str(profile_path),
+        profile_path=str(profile_path) if profile_path is not None else "",
         color_management_mode=color_mode,
         output_color_space=recipe.output_space,
         software_version=__version__,
@@ -223,7 +232,7 @@ def _process_batch_develop_job(
         Path,
         Path,
         Recipe,
-        Path,
+        Path | None,
         C2PASignConfig | None,
         NexoRawProofConfig,
         str,
@@ -242,12 +251,16 @@ def _process_batch_develop_job(
         color_mode,
         demosaic_cache_dir,
     ) = job
-    scene_linear = develop_scene_linear_array(raw, recipe, cache_dir=demosaic_cache_dir)
-    write_tiff16(out_linear, scene_linear)
+    if profile_path is None and is_generic_output_space(recipe.output_space):
+        linear = develop_standard_linear_array(raw, recipe, cache_dir=demosaic_cache_dir)
+    else:
+        linear = develop_scene_linear_array(raw, recipe, cache_dir=demosaic_cache_dir)
+    write_tiff16(out_linear, linear)
+    generic_profile_dir = out_final.parent / "_profiles"
     # Render final output from the in-memory array to avoid a second TIFF
     # quantization/read cycle. The audit TIFF is still written and hashed in
     # the manifest, preserving the forensic artifact.
-    image = render_recipe_output_array(scene_linear, recipe)
+    image = render_recipe_output_array(linear, recipe)
     write_mode, proof_result = write_signed_profiled_tiff(
         out_final,
         image,
@@ -257,11 +270,13 @@ def _process_batch_develop_job(
         c2pa_config=c2pa_config,
         proof_config=proof_sign_config,
         render_context={"entrypoint": "batch_develop", "linear_audit_tiff": str(out_linear)},
+        generic_profile_dir=generic_profile_dir,
     )
     rendered_profile_path = profile_path_for_render_settings(
         recipe,
         input_profile_path=profile_path,
         color_management_mode=write_mode,
+        generic_profile_dir=generic_profile_dir,
     )
     if raw.suffix.lower() in RAW_EXTENSIONS:
         write_raw_sidecar(
@@ -281,7 +296,7 @@ def _process_batch_develop_job(
         source_sha256=sha256_file(raw),
         output_tiff=str(out_final),
         output_sha256=sha256_file(out_final),
-        profile_path=str(rendered_profile_path or profile_path),
+        profile_path=str(rendered_profile_path or profile_path or ""),
         color_management_mode=color_mode,
         output_color_space=recipe.output_space,
         linear_audit_tiff=str(out_linear),
@@ -430,7 +445,7 @@ def color_management_mode(recipe: Recipe) -> str:
         if recipe.output_linear:
             raise RuntimeError(
                 f"output_space={recipe.output_space} requiere output_linear=false para usar "
-                "un perfil ICC generico de salida."
+                "un perfil ICC estandar de salida."
             )
         if generic_space == "srgb":
             return "converted_srgb"
@@ -439,6 +454,20 @@ def color_management_mode(recipe: Recipe) -> str:
         f"output_space no soportado para export ICC: {recipe.output_space!r}. "
         "Valores soportados: scene_linear_camera_rgb, camera_rgb, camera, srgb, adobe_rgb, prophoto_rgb."
     )
+
+
+def color_management_mode_for_render(recipe: Recipe, *, profile_path: Path | None) -> str:
+    if profile_path is not None:
+        return color_management_mode(recipe)
+    generic_space = canonical_generic_output_space(recipe.output_space)
+    if generic_space is None:
+        return "no_profile"
+    if recipe.output_linear:
+        raise RuntimeError(
+            f"output_space={recipe.output_space} requiere output_linear=false para usar "
+            "un perfil ICC estandar de salida."
+        )
+    return f"standard_{generic_space}_output_icc"
 
 
 def write_profiled_tiff(
@@ -454,12 +483,12 @@ def write_profiled_tiff(
             if recipe.output_linear:
                 raise RuntimeError(
                     f"output_space={recipe.output_space} requiere output_linear=false para incrustar "
-                    "un perfil ICC generico de salida."
+                    "un perfil ICC estandar de salida."
                 )
             output_profile = ensure_generic_output_profile(recipe.output_space, directory=generic_profile_dir)
             space = generic_output_profile(recipe.output_space).key
             write_tiff16(out_tiff, image_linear_rgb, icc_profile=output_profile.read_bytes())
-            return f"assigned_{space}_output_icc"
+            return f"standard_{space}_output_icc"
         write_tiff16(out_tiff, image_linear_rgb)
         return "no_profile"
 
@@ -599,7 +628,11 @@ def profile_path_for_render_settings(
 ) -> Path | None:
     if color_management_mode == "camera_rgb_with_input_icc":
         return input_profile_path
-    if color_management_mode.startswith("assigned_") or color_management_mode.startswith("converted_"):
+    if (
+        color_management_mode.startswith("standard_")
+        or color_management_mode.startswith("assigned_")
+        or color_management_mode.startswith("converted_")
+    ):
         if is_generic_output_space(recipe.output_space):
             return ensure_generic_output_profile(recipe.output_space, directory=generic_profile_dir)
     return None
@@ -610,7 +643,11 @@ def profile_role_for_color_management(color_management_mode: str, profile_path: 
         return None
     if color_management_mode == "camera_rgb_with_input_icc":
         return "session_input_icc"
-    if color_management_mode.startswith("assigned_") or color_management_mode.startswith("converted_"):
+    if (
+        color_management_mode.startswith("standard_")
+        or color_management_mode.startswith("assigned_")
+        or color_management_mode.startswith("converted_")
+    ):
         return "generic_output_icc"
     return "icc_profile"
 

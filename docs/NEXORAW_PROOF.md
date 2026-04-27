@@ -107,7 +107,9 @@ nexoraw verify-proof captura.tiff.nexoraw.proof.json \
 ```
 
 La verificacion devuelve `status=ok` solo si firma, clave publica, RAW, TIFF y
-hash de ajustes coinciden.
+hash de ajustes coinciden. El hash de ajustes no es el unico registro: se usa
+como control de integridad sobre un bloque `render_settings` completo que queda
+firmado dentro del proof.
 
 ## Contenido firmado
 
@@ -122,7 +124,11 @@ El sidecar incluye y firma:
 - receta completa y hash de receta;
 - perfil ICC usado y hash;
 - modo de gestion de color;
-- ajustes de render y nitidez;
+- bloque `render_settings` completo: receta RAW, ajustes de detalle/nitidez,
+  ajustes de contraste/render, gestion de color, flujo RAW/color y criterios de
+  reproducibilidad;
+- resumen de ajustes para lectura rapida, manteniendo el bloque completo para
+  reproduccion experimental;
 - estado C2PA si se incrusto;
 - clave publica y huella SHA-256 del firmante.
 

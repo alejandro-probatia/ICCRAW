@@ -82,9 +82,9 @@ como `raw/captura.NEF` contra `01_ORG/captura.NEF` cuando existe el archivo.
 - Siempre se guarda sidecar `.profile.json` con matriz, recipe y métricas para reproducibilidad.
 - Si hay carta, el ICC se trata como perfil de entrada de sesion y se incrusta
   en el TIFF maestro sin convertir a un espacio generico.
-- Si no hay carta, NexoRAW genera o selecciona un ICC generico de salida
-  (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`) y lo declara como
-  `generic_output_icc`.
+- Si no hay carta, NexoRAW revela el RAW en un espacio RGB estandar real
+  (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`), copia/incrusta el ICC estandar
+  del sistema o de ArgyllCMS y lo declara como `generic_output_icc`.
 
 ## Perfiles de ajuste
 

@@ -119,7 +119,8 @@ La asercion `org.probatia.iccraw.raw-link.v1` registra:
 - Metadatos de camara disponibles.
 - Hash de receta NexoRAW.
 - Hash del perfil ICC usado, si existe.
-- Hash del bloque `render_settings`.
+- Hash del bloque `render_settings` como control de integridad, no como unico
+  registro de ajustes.
 - Version de NexoRAW.
 - Backend RAW, demosaicing, espacio de salida y modo de gestion de color.
 - Receta completa aplicada al revelado/render.
@@ -129,6 +130,9 @@ La asercion `org.probatia.iccraw.raw-link.v1` registra:
   brillo, niveles negro/blanco, contraste, medios y curva tonal avanzada.
 - Gestion de color de salida: modo ICC, perfil, espacio de trabajo, espacio de
   salida y salida lineal/no lineal.
+- Resumen reproducible de ajustes dentro del bloque `nexoraw`, duplicando los
+  puntos criticos para lectores que no desplieguen el JSON completo de
+  `render_settings`.
 - Hash de manifiesto tecnico externo si se proporciona y ya existe.
 - Identificador de sesion opcional.
 - Fecha/hora UTC de generacion.

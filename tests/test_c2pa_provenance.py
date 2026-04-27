@@ -133,11 +133,22 @@ def test_raw_link_assertion_uses_raw_sha_as_probative_identifier(tmp_path: Path)
     assert assertion["nexoraw"]["icc_profile_sha256"] == sha256_file(profile)
     assert assertion["nexoraw"]["demosaicing_algorithm"] == "amaze"
     assert assertion["nexoraw"]["render_settings_sha256"] == settings["settings_sha256"]
+    summary = assertion["nexoraw"]["render_settings_summary"]
+    assert summary["settings_sha256"] == settings["settings_sha256"]
+    assert summary["detail_adjustments"]["sharpen_amount"] == 0.3
+    assert summary["render_adjustments"]["brightness_ev"] == 0.5
+    assert summary["color_management"]["mode"] == "camera_rgb_with_input_icc"
+    assert summary["complete_render_settings_embedded"] is True
     assert assertion["render_settings"]["schema"] == RENDER_SETTINGS_SCHEMA
     assert assertion["render_settings"]["recipe_parameters"]["demosaic_algorithm"] == "amaze"
     assert assertion["render_settings"]["detail_adjustments"]["denoise_luminance"] == 0.2
     assert assertion["render_settings"]["render_adjustments"]["brightness_ev"] == 0.5
     assert assertion["render_settings"]["context"]["entrypoint"] == "unit-test"
+    assert assertion["render_settings"]["reproducibility"]["complete_settings_embedded"] is True
+    pipeline = assertion["render_settings"]["color_management"]["raw_color_pipeline"]
+    assert pipeline["raw_engine"] == "LibRaw/rawpy"
+    assert pipeline["camera_to_xyz"] == "deferred_to_embedded_session_input_icc"
+    assert pipeline["export_transform"] == "embed_session_input_icc_without_output_conversion"
     assert "output_sha256" not in str(assertion)
 
 
@@ -193,6 +204,7 @@ def test_sign_tiff_with_c2pa_replaces_output_and_hashes_after_signing(tmp_path: 
     assert client.calls[0]["source_ingredient_path"] is None
     raw_link = json.loads(client.calls[0]["manifest"]["assertions"][1]["data"])
     assert raw_link["nexoraw"]["render_settings_sha256"] == "render-hash"
+    assert raw_link["nexoraw"]["render_settings_summary"]["render_adjustments"]["contrast"] == 0.2
     assert raw_link["render_settings"]["render_adjustments"]["contrast"] == 0.2
     assert "output_sha256" not in str(client.calls[0]["manifest"])
 

@@ -54,6 +54,8 @@ def test_nexoraw_proof_signs_and_verifies_raw_tiff_link(tmp_path: Path):
     assert result.signer_public_key_sha256 == identity["public_key_sha256"]
     assert verified["proof"]["subject"]["source_raw"]["sha256"] == result.raw_sha256
     assert verified["proof"]["process"]["demosaicing_algorithm"] == "amaze"
+    assert verified["proof"]["process"]["render_settings"]["render_adjustments"]["applied"] is False
+    assert verified["proof"]["process"]["render_settings"]["reproducibility"]["complete_settings_embedded"] is True
 
 
 def test_nexoraw_proof_detects_modified_tiff(tmp_path: Path):

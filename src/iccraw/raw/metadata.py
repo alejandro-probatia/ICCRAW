@@ -48,6 +48,9 @@ def raw_info(path: Path) -> RawMetadata:
                 capture_datetime=exif.get("DateTimeOriginal") or exif.get("CreateDate"),
                 dimensions=[int(raw.sizes.raw_width), int(raw.sizes.raw_height)],
                 intermediate_working_space="scene_linear_camera_rgb",
+                black_level_per_channel=[int(v) for v in black_levels] if black_levels else None,
+                embedded_profile_description=_embedded_profile_description(exif),
+                embedded_profile_source=_embedded_profile_source(exif),
             )
     except Exception:
         return _fallback_metadata(path, exif)
@@ -110,6 +113,8 @@ def _fallback_metadata(path: Path, exif: dict[str, Any]) -> RawMetadata:
         capture_datetime=exif.get("DateTimeOriginal") or exif.get("CreateDate"),
         dimensions=_extract_dimensions(exif),
         intermediate_working_space="scene_linear_camera_rgb",
+        embedded_profile_description=_embedded_profile_description(exif),
+        embedded_profile_source=_embedded_profile_source(exif),
     )
 
 
@@ -126,6 +131,29 @@ def _extract_dimensions(exif: dict[str, Any]) -> list[int] | None:
     )
     if width and height:
         return [int(width), int(height)]
+    return None
+
+
+def _embedded_profile_description(exif: dict[str, Any]) -> str | None:
+    for key in (
+        "ProfileDescription",
+        "ICCProfileName",
+        "ColorProfile",
+        "CurrentICCProfile",
+        "EmbeddedProfileName",
+    ):
+        value = exif.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _embedded_profile_source(exif: dict[str, Any]) -> str | None:
+    if _embedded_profile_description(exif):
+        return "embedded_or_metadata_profile"
+    color_space = str(exif.get("ColorSpace") or "").strip()
+    if color_space:
+        return f"metadata_color_space:{color_space}"
     return None
 
 

@@ -130,12 +130,14 @@ Modos de salida:
    perfil ICC de entrada generado para la sesión. Es el modo del TIFF maestro
    cuando hay carta de color.
 2. `converted_srgb`: usa `cctiff` como CMM para transformar desde el perfil ICC
-   de entrada a un perfil sRGB generico de salida. Existen modos equivalentes
+   de entrada a un perfil sRGB estandar de salida. Existen modos equivalentes
    `converted_adobe_rgb` y `converted_prophoto_rgb`.
-3. `assigned_<espacio>_output_icc`: para sesiones sin carta. No hay ICC de
-   entrada medido; NexoRAW guarda la receta manual, genera sRGB, Adobe RGB
-   (1998) o ProPhoto RGB en `00_configuraciones/profiles/generic/` y lo incrusta como perfil de
-   salida.
+3. `standard_<espacio>_output_icc`: para sesiones sin carta. No hay ICC de
+   entrada medido; NexoRAW guarda la receta manual, revela el RAW en sRGB,
+   Adobe RGB (1998) o ProPhoto RGB con LibRaw, copia un ICC estandar real en
+   `00_configuraciones/profiles/standard/` (o `_profiles/` en batch CLI) y lo
+   incrusta como perfil de salida. `assigned_<espacio>_output_icc` se conserva
+   solo como compatibilidad de metadatos antiguos.
 
 La metodologia completa se documenta en
 [`docs/METODOLOGIA_COLOR_RAW.md`](METODOLOGIA_COLOR_RAW.md).

@@ -632,7 +632,11 @@ def test_manual_development_profile_is_saved_relative_to_session(tmp_path: Path,
         window.close()
 
 
-def test_manual_development_profile_can_use_generic_icc_without_chart(tmp_path: Path, qapp):
+def test_manual_development_profile_can_use_generic_icc_without_chart(tmp_path: Path, monkeypatch, qapp):
+    standard_profiles = tmp_path / "standard-profiles"
+    standard_profiles.mkdir()
+    (standard_profiles / "ProPhoto.icm").write_bytes(b"p" * 256)
+    monkeypatch.setenv("NEXORAW_STANDARD_ICC_DIR", str(standard_profiles))
     root = tmp_path / "session"
     payload = create_session(root, name="Sesion sin carta")
 
@@ -656,7 +660,7 @@ def test_manual_development_profile_can_use_generic_icc_without_chart(tmp_path: 
         assert payload["recipe"]["output_linear"] is False
         assert payload["generic_output_space"] == "prophoto_rgb"
         assert payload["icc_profile_path"] == ""
-        assert payload["output_icc_profile_path"] == "00_configuraciones/profiles/generic/nexoraw-generic-prophoto-rgb.icc"
+        assert payload["output_icc_profile_path"] == "00_configuraciones/profiles/standard/ProPhoto.icm"
         assert (root / payload["output_icc_profile_path"]).exists()
         assert manifest["generic_output_space"] == "prophoto_rgb"
     finally:

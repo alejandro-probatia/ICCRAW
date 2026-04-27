@@ -65,6 +65,16 @@ def _proof_config(tmp_path: Path) -> NexoRawProofConfig:
     )
 
 
+def _fake_standard_profiles(tmp_path: Path, monkeypatch) -> Path:
+    profile_dir = tmp_path / "standard-profiles"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    (profile_dir / "sRGB.icm").write_bytes(b"s" * 256)
+    (profile_dir / "AdobeRGB1998.icc").write_bytes(b"a" * 256)
+    (profile_dir / "ProPhoto.icm").write_bytes(b"p" * 256)
+    monkeypatch.setenv("NEXORAW_STANDARD_ICC_DIR", str(profile_dir))
+    return profile_dir
+
+
 def test_color_management_mode_assigns_camera_profile_by_default():
     recipe = Recipe(output_space="scene_linear_camera_rgb", output_linear=True)
     assert color_management_mode(recipe) == "camera_rgb_with_input_icc"
@@ -81,7 +91,8 @@ def test_color_management_mode_accepts_generic_output_spaces():
     assert color_management_mode(Recipe(output_space="prophoto_rgb", output_linear=False)) == "converted_prophoto_rgb"
 
 
-def test_write_profiled_tiff_assigns_generic_output_profile_without_chart(tmp_path: Path):
+def test_write_profiled_tiff_embeds_standard_output_profile_without_chart(tmp_path: Path, monkeypatch):
+    _fake_standard_profiles(tmp_path, monkeypatch)
     out = tmp_path / "manual_prophoto.tiff"
     image = np.full((6, 8, 3), 0.25, dtype=np.float32)
 
@@ -93,12 +104,37 @@ def test_write_profiled_tiff_assigns_generic_output_profile_without_chart(tmp_pa
         generic_profile_dir=tmp_path / "profiles",
     )
 
-    assert mode == "assigned_prophoto_rgb_output_icc"
+    assert mode == "standard_prophoto_rgb_output_icc"
     assert ensure_generic_output_profile("prophoto_rgb", directory=tmp_path / "profiles").exists()
     with tifffile.TiffFile(out) as tif:
         tags = tif.pages[0].tags
         assert 34675 in tags
         assert len(bytes(tags[34675].value)) > 128
+
+
+def test_batch_develop_without_chart_uses_standard_output_profile(tmp_path: Path, monkeypatch):
+    _fake_standard_profiles(tmp_path, monkeypatch)
+    raws = tmp_path / "inputs"
+    out_dir = tmp_path / "out"
+    raws.mkdir()
+    image = np.full((6, 8, 3), 0.25, dtype=np.float32)
+    tifffile.imwrite(str(raws / "capture_01.tiff"), (image * 65535).astype(np.uint16), photometric="rgb", metadata=None)
+
+    manifest = batch_develop(
+        raws_dir=raws,
+        recipe=Recipe(output_space="prophoto_rgb", output_linear=False, tone_curve="gamma:1.8"),
+        profile_path=None,
+        out_dir=out_dir,
+        proof_config=_proof_config(tmp_path),
+    )
+
+    entry = manifest.entries[0]
+    assert manifest.profile_path == ""
+    assert manifest.color_management_mode == "standard_prophoto_rgb_output_icc"
+    assert entry.color_management_mode == "standard_prophoto_rgb_output_icc"
+    assert Path(entry.profile_path).name == "ProPhoto.icm"
+    assert Path(entry.profile_path).parent == out_dir / "_profiles"
+    assert (out_dir / "capture_01.tiff").exists()
 
 
 def test_write_profiled_tiff_assigns_input_profile_without_conversion(tmp_path: Path):

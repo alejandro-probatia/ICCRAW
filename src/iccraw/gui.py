@@ -61,6 +61,7 @@ from .provenance.nexoraw_proof import (
 from .qa_compare import compare_qa_reports
 from .raw.pipeline import (
     develop_image_array,
+    develop_standard_output_array,
     is_libraw_demosaic_supported,
     rawpy_feature_flags,
     unavailable_demosaic_reason,
@@ -1699,16 +1700,17 @@ if QtWidgets is not None:
             self.development_profile_name_edit = QtWidgets.QLineEdit("Perfil manual")
             grid.addWidget(self.development_profile_name_edit, 1, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("ICC sin carta"), 2, 0)
+            grid.addWidget(QtWidgets.QLabel("Espacio estandar sin carta"), 2, 0)
             self.development_output_space_combo = QtWidgets.QComboBox()
             self.development_output_space_combo.setToolTip(
-                "Para imagenes sin carta, asigna un perfil ICC generico de salida al TIFF. "
-                "Con carta se recomienda mantener RGB de camara e incrustar el ICC de entrada generado."
+                "Para imagenes sin carta, revela el RAW en un espacio RGB estandar real "
+                "(sRGB, Adobe RGB o ProPhoto RGB) e incrusta ese perfil ICC estandar. "
+                "Con carta se mantiene RGB de camara e ICC de entrada de sesion."
             )
             self.development_output_space_combo.addItem("Carta / RGB de cámara", "scene_linear_camera_rgb")
-            self.development_output_space_combo.addItem("sRGB genérico", "srgb")
-            self.development_output_space_combo.addItem("Adobe RGB (1998) genérico", "adobe_rgb")
-            self.development_output_space_combo.addItem("ProPhoto RGB genérico", "prophoto_rgb")
+            self.development_output_space_combo.addItem("sRGB estandar", "srgb")
+            self.development_output_space_combo.addItem("Adobe RGB (1998) estandar", "adobe_rgb")
+            self.development_output_space_combo.addItem("ProPhoto RGB estandar", "prophoto_rgb")
             self.development_output_space_combo.currentIndexChanged.connect(self._on_development_output_space_changed)
             grid.addWidget(self.development_output_space_combo, 2, 1, 1, 2)
 
@@ -4019,7 +4021,7 @@ if QtWidgets is not None:
                 root = Path(text).expanduser() if text else None
             if root is None:
                 return None
-            return self._session_paths_from_root(Path(root).expanduser())["profiles"] / "generic"
+            return self._session_paths_from_root(Path(root).expanduser())["profiles"] / "standard"
 
         def _render_profile_path_for_recipe(
             self,
@@ -4046,7 +4048,7 @@ if QtWidgets is not None:
                     directory=self._session_generic_profile_dir(),
                 )
                 mode = (
-                    f"assigned_{generic_output_profile(recipe.output_space).key}_output_icc"
+                    f"standard_{generic_output_profile(recipe.output_space).key}_output_icc"
                     if input_profile_path is None
                     else f"converted_{generic_output_profile(recipe.output_space).key}"
                 )
@@ -4273,7 +4275,7 @@ if QtWidgets is not None:
                 if input_profile is not None:
                     mode = "converted_srgb" if generic_key == "srgb" else f"converted_{generic_key}"
                 else:
-                    mode = f"assigned_{generic_key}_output_icc"
+                    mode = f"standard_{generic_key}_output_icc"
                 return rendered_profile, mode
             return input_profile, "camera_rgb_with_input_icc" if input_profile is not None else "no_profile"
 
@@ -8397,7 +8399,11 @@ if QtWidgets is not None:
                 return
 
             def task():
-                image = develop_image_array(in_path, recipe)
+                image = (
+                    develop_standard_output_array(in_path, recipe)
+                    if profile_path is None and is_generic_output_space(recipe.output_space)
+                    else develop_image_array(in_path, recipe)
+                )
                 image = self._apply_output_adjustments(
                     image,
                     denoise_luma=nl,
@@ -9170,7 +9176,7 @@ if QtWidgets is not None:
             sidecar_render_state = sidecar_render_adjustments or render_adjustments
 
             generic_profile_dir = (
-                self._session_paths_from_root(self._active_session_root)["profiles"] / "generic"
+                self._session_paths_from_root(self._active_session_root)["profiles"] / "standard"
                 if self._active_session_root is not None
                 else None
             )
@@ -9203,7 +9209,11 @@ if QtWidgets is not None:
             ) -> tuple[int, dict[str, str] | None, dict[str, str] | None]:
                 try:
                     if src.suffix.lower() in RAW_EXTENSIONS:
-                        image = develop_image_array(src, recipe)
+                        image = (
+                            develop_standard_output_array(src, recipe)
+                            if not use_profile and is_generic_output_space(recipe.output_space)
+                            else develop_image_array(src, recipe)
+                        )
                     else:
                         image = read_image(src)
 

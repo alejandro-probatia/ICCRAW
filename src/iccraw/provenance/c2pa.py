@@ -375,6 +375,17 @@ def build_render_settings(
             "output_space": recipe.output_space,
             "working_space": recipe.working_space,
             "output_linear": recipe.output_linear,
+            "raw_color_pipeline": _raw_color_pipeline_trace(recipe, color_management_mode),
+        },
+        "reproducibility": {
+            "complete_settings_embedded": True,
+            "settings_sha256_role": "integrity_check_over_recipe_detail_render_and_color_management",
+            "experimental_replay_inputs": [
+                "recipe_parameters",
+                "detail_adjustments",
+                "render_adjustments",
+                "color_management",
+            ],
         },
         "context": _normalize_json(context or {}),
     }
@@ -388,9 +399,55 @@ def _icc_profile_role(color_management_mode: str, profile_path: Path | None) -> 
     mode = str(color_management_mode or "")
     if mode == "camera_rgb_with_input_icc":
         return "session_input_icc"
-    if mode.startswith("assigned_") or mode.startswith("converted_"):
+    if mode.startswith("standard_") or mode.startswith("assigned_") or mode.startswith("converted_"):
         return "generic_output_icc"
     return "icc_profile"
+
+
+def _raw_color_pipeline_trace(recipe: Recipe, color_management_mode: str) -> dict[str, Any]:
+    mode = str(color_management_mode or "")
+    output_space = str(recipe.output_space or "").strip()
+    trace: dict[str, Any] = {
+        "raw_engine": "LibRaw/rawpy",
+        "metadata_read": [
+            "camera_model",
+            "cfa_pattern",
+            "black_level",
+            "white_level",
+            "as_shot_white_balance",
+            "camera_matrix_if_available",
+            "embedded_profile_if_available",
+        ],
+        "libraw_linear_steps": [
+            "raw_unpack",
+            "black_subtraction",
+            "white_normalization",
+            "white_balance_in_camera_space",
+            "demosaicing",
+        ],
+        "nexoraw_linear_editing": {
+            "working_space": recipe.working_space,
+            "domain": "float32_linear",
+        },
+        "display_transform": "preview_sRGB_to_monitor_ICC_with_LittleCMS_ImageCms",
+        "export_transform": None,
+    }
+    if mode == "camera_rgb_with_input_icc":
+        trace["camera_to_xyz"] = "deferred_to_embedded_session_input_icc"
+        trace["export_transform"] = "embed_session_input_icc_without_output_conversion"
+    elif mode.startswith("standard_"):
+        trace["camera_to_xyz"] = "LibRaw_camera_profile_to_standard_rgb"
+        trace["export_transform"] = f"LibRaw_to_{output_space}_then_embed_standard_output_icc"
+    elif mode.startswith("converted_"):
+        trace["camera_to_xyz"] = "session_input_icc_used_by_ArgyllCMS_cctiff"
+        trace["export_transform"] = f"ArgyllCMS_cctiff_to_{output_space}_and_embed_output_icc"
+    elif mode == "no_profile":
+        trace["camera_to_xyz"] = "not_applied"
+        trace["export_transform"] = "write_pixels_without_icc"
+    else:
+        trace["camera_to_xyz"] = "mode_specific"
+        trace["export_transform"] = mode
+    return trace
 
 
 def estimate_mime_type(path: Path) -> str:
@@ -452,6 +509,7 @@ def build_raw_link_assertion(
             "output_space": recipe.output_space,
             "color_management_mode": color_management_mode,
             "render_settings_sha256": settings.get("settings_sha256") if isinstance(settings, dict) else None,
+            "render_settings_summary": _render_settings_summary(settings),
             "technical_manifest_sha256": technical_manifest_sha,
             "technical_manifest_path_auxiliary": str(technical_manifest_path) if technical_manifest_sha else None,
             "session_id": session_id,
@@ -464,6 +522,34 @@ def build_raw_link_assertion(
             "signed_output_hash_is_external_only": True,
             "raw_original_modified": False,
         },
+    }
+
+
+def _render_settings_summary(settings: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(settings, dict):
+        return {}
+    recipe = settings.get("recipe_parameters") if isinstance(settings.get("recipe_parameters"), dict) else {}
+    return {
+        "settings_sha256": settings.get("settings_sha256"),
+        "recipe_parameters": {
+            "raw_developer": recipe.get("raw_developer"),
+            "demosaic_algorithm": recipe.get("demosaic_algorithm"),
+            "black_level_mode": recipe.get("black_level_mode"),
+            "white_balance_mode": recipe.get("white_balance_mode"),
+            "wb_multipliers": recipe.get("wb_multipliers"),
+            "exposure_compensation": recipe.get("exposure_compensation"),
+            "tone_curve": recipe.get("tone_curve"),
+            "working_space": recipe.get("working_space"),
+            "output_space": recipe.get("output_space"),
+            "output_linear": recipe.get("output_linear"),
+            "profile_engine": recipe.get("profile_engine"),
+            "argyll_colprof_args": recipe.get("argyll_colprof_args"),
+        },
+        "detail_adjustments": _normalize_json(settings.get("detail_adjustments") or {}),
+        "render_adjustments": _normalize_json(settings.get("render_adjustments") or {}),
+        "color_management": _normalize_json(settings.get("color_management") or {}),
+        "context": _normalize_json(settings.get("context") or {}),
+        "complete_render_settings_embedded": True,
     }
 
 
@@ -810,8 +896,11 @@ def _camera_metadata_payload(metadata: RawMetadata) -> dict[str, Any]:
         "available_white_balance": metadata.available_white_balance,
         "white_balance_multipliers": metadata.wb_multipliers,
         "black_level": metadata.black_level,
+        "black_level_per_channel": metadata.black_level_per_channel,
         "white_level": metadata.white_level,
         "intermediate_working_space": metadata.intermediate_working_space,
+        "embedded_profile_description": metadata.embedded_profile_description,
+        "embedded_profile_source": metadata.embedded_profile_source,
     }
 
 

@@ -57,9 +57,10 @@ La metodologia completa queda descrita en
 7. [x] El perfil ICC no debe compensar exposición/densidad básica si la carta
    permite construir antes una receta calibrada.
 8. [x] Si hay carta y perfil ICC de sesion, el TIFF maestro conserva RGB lineal
-   de camara/sesion e incrusta ese ICC. Los perfiles genericos de salida quedan
-   para derivados o flujos sin carta; en el flujo sin carta se generan dentro
-   de `00_configuraciones/profiles/generic/` y se declaran como `generic_output_icc`.
+   de camara/sesion e incrusta ese ICC. Los perfiles estandar de salida quedan
+   para derivados o flujos sin carta; en el flujo sin carta el RAW se revela en
+   sRGB/Adobe RGB/ProPhoto RGB real, se copia el ICC estandar en
+   `00_configuraciones/profiles/standard/` y se declara como `generic_output_icc`.
 9. [x] La visualizacion en pantalla usa una conversion exclusiva de display:
    desde la preview sRGB de trabajo hacia el perfil ICC del monitor configurado
    en el sistema, con sRGB solo como fallback si no hay perfil detectable.

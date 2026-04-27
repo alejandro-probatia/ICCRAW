@@ -255,6 +255,28 @@ def test_load_image_for_preview_hq_uses_half_size_when_preview_is_smaller(tmp_pa
     assert max(loaded.shape[0], loaded.shape[1]) <= 2400
 
 
+def test_load_image_for_preview_hq_uses_standard_space_renderer(tmp_path: Path, monkeypatch):
+    raw_path = tmp_path / "sample.nef"
+    raw_path.write_bytes(b"raw")
+    recipe = Recipe(output_space="prophoto_rgb", output_linear=False, tone_curve="gamma:1.8")
+    called: dict[str, bool] = {}
+
+    monkeypatch.setattr(preview_module, "_raw_preview_source_max_side", lambda _path: 6200)
+
+    def fake_standard_develop(_path, _recipe, *, half_size=False):
+        called["standard"] = True
+        called["half_size"] = bool(half_size)
+        return np.full((3000, 2000, 3), 0.25, dtype=np.float32)
+
+    monkeypatch.setattr(preview_module, "develop_standard_output_array", fake_standard_develop)
+
+    loaded, msg = load_image_for_preview(raw_path, recipe=recipe, fast_raw=False, max_preview_side=2400)
+
+    assert called == {"standard": True, "half_size": True}
+    assert "HQ optimizado" in msg
+    assert max(loaded.shape[0], loaded.shape[1]) <= 2400
+
+
 def test_load_image_for_preview_hq_can_disable_half_size_by_env(tmp_path: Path, monkeypatch):
     raw_path = tmp_path / "sample.nef"
     raw_path.write_bytes(b"raw")

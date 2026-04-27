@@ -14,7 +14,7 @@ from ..core.recipe import load_recipe
 from ..core.utils import RAW_EXTENSIONS, read_image
 from ..profile.export import apply_profile_matrix
 from .compat import open_rawpy, rawpy
-from .pipeline import develop_image_array
+from .pipeline import develop_image_array, develop_standard_output_array, is_standard_output_space
 
 
 _PROFILE_PREVIEW_LUT_CACHE: dict[tuple[str, int], np.ndarray] = {}
@@ -53,7 +53,11 @@ def load_image_for_preview(
 
     # Preview de alta calidad: mismo render que develop_controlled, sin TIFF temporal.
     half_size_hq = _prefer_half_size_high_quality_preview(input_path, max_preview_side=max_preview_side)
-    image = develop_image_array(input_path, recipe, half_size=half_size_hq)
+    image = (
+        develop_standard_output_array(input_path, recipe, half_size=half_size_hq)
+        if is_standard_output_space(recipe.output_space)
+        else develop_image_array(input_path, recipe, half_size=half_size_hq)
+    )
     image = _downscale_for_preview(image, max_preview_side=max_preview_side)
     image = _camera_rgb_display_balance_if_needed(image, recipe)
     if half_size_hq:
@@ -66,6 +70,8 @@ def _develop_raw_fast_preview(input_path: Path, recipe: Recipe) -> np.ndarray:
     if embedded is not None:
         return embedded
 
+    if is_standard_output_space(recipe.output_space):
+        return develop_standard_output_array(input_path, recipe, half_size=True)
     return develop_image_array(input_path, recipe, half_size=True)
 
 

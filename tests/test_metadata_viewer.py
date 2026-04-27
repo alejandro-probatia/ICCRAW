@@ -117,3 +117,85 @@ def test_c2pa_absence_is_not_reported_as_valid():
     assert c2pa_items["Estado"] == "Ausente o no valido"
     assert c2pa_items["Validacion"] == "no manifest"
     assert c2pa_items["Vinculo RAW-TIFF C2PA"] == "No disponible"
+
+
+def test_metadata_display_exposes_nexoraw_proof_render_settings():
+    display = metadata_display_sections(
+        {
+            "file": {"basename": "rendered.tiff"},
+            "exif_gps": {"groups": {}, "all": {}, "gps": {}},
+            "c2pa": {"status": "skipped"},
+            "nexoraw_proof": {
+                "status": "ok",
+                "proof_path": "rendered.tiff.nexoraw.proof.json",
+                "signature_valid": True,
+                "public_key_sha256_actual": "pub",
+                "proof": {
+                    "subject": {
+                        "source_raw": {"sha256": "raw-sha", "basename": "capture.NEF"},
+                        "output_tiff": {"sha256": "tiff-sha", "basename": "rendered.tiff"},
+                    },
+                    "signer": {"name": "Unit Test"},
+                    "process": {
+                        "recipe_sha256": "recipe-sha",
+                        "render_settings_sha256": "settings-sha",
+                        "demosaicing_algorithm": "dcb",
+                        "color_management_mode": "camera_rgb_with_input_icc",
+                        "render_settings": {
+                            "settings_sha256": "settings-sha",
+                            "recipe_parameters": {
+                                "raw_developer": "libraw",
+                                "demosaic_algorithm": "dcb",
+                                "black_level_mode": "metadata",
+                                "white_balance_mode": "camera_metadata",
+                                "wb_multipliers": [2.0, 1.0, 1.4, 1.0],
+                                "exposure_compensation": 0.25,
+                                "tone_curve": "linear",
+                                "working_space": "scene_linear_camera_rgb",
+                                "output_space": "camera_rgb",
+                                "output_linear": True,
+                            },
+                            "detail_adjustments": {
+                                "sharpen_amount": 0.7,
+                                "sharpen_radius": 1.2,
+                            },
+                            "render_adjustments": {
+                                "contrast": 0.18,
+                                "brightness_ev": 0.1,
+                            },
+                            "color_management": {
+                                "mode": "camera_rgb_with_input_icc",
+                                "working_space": "scene_linear_camera_rgb",
+                                "output_space": "camera_rgb",
+                                "raw_color_pipeline": {
+                                    "raw_engine": "LibRaw/rawpy",
+                                    "camera_to_xyz": "deferred_to_embedded_session_input_icc",
+                                    "export_transform": "embed_session_input_icc_without_output_conversion",
+                                    "display_transform": "preview_sRGB_to_monitor_ICC_with_LittleCMS_ImageCms",
+                                    "libraw_linear_steps": ["raw_unpack", "demosaicing"],
+                                },
+                            },
+                            "reproducibility": {
+                                "complete_settings_embedded": True,
+                                "settings_sha256_role": "integrity_check",
+                                "experimental_replay_inputs": ["recipe_parameters"],
+                            },
+                            "context": {"entrypoint": "unit-test"},
+                        },
+                    },
+                },
+            },
+        }
+    )
+
+    c2pa_items = {
+        item["label"]: item["value"]
+        for group in display["c2pa"]
+        for item in group["items"]
+    }
+    titles = [group["title"] for group in display["c2pa"]]
+    assert "Ajustes TIFF NexoRAW Proof: detalle y nitidez" in titles
+    assert c2pa_items["sharpen_amount"] == "0.7"
+    assert c2pa_items["contrast"] == "0.18"
+    assert c2pa_items["Camera RGB -> XYZ/RGB"] == "deferred_to_embedded_session_input_icc"
+    assert c2pa_items["Ajustes completos incrustados"] == "True"

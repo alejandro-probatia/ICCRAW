@@ -412,6 +412,7 @@ def _proof_display(proof: dict[str, Any]) -> list[dict[str, Any]]:
     output_tiff = subject.get("output_tiff", {}) if isinstance(subject, dict) else {}
     process = proof_payload.get("process", {}) if isinstance(proof_payload, dict) else {}
     signer = proof_payload.get("signer", {}) if isinstance(proof_payload, dict) else {}
+    render_settings = process.get("render_settings") if isinstance(process, dict) else None
     return [
         {
             "title": "NexoRAW Proof",
@@ -436,7 +437,7 @@ def _proof_display(proof: dict[str, Any]) -> list[dict[str, Any]]:
                 ("Modo color", process.get("color_management_mode") if isinstance(process, dict) else None),
             ),
         },
-    ]
+    ] + _render_settings_display("Ajustes TIFF NexoRAW Proof", render_settings)
 
 
 def _c2pa_display(c2pa: dict[str, Any]) -> list[dict[str, Any]]:
@@ -508,30 +509,93 @@ def _c2pa_display(c2pa: dict[str, Any]) -> list[dict[str, Any]]:
                 ("Generado UTC", nexoraw.get("generated_at_utc")),
             ),
         },
-        {
-            "title": "Ajustes TIFF NexoRAW",
-            "items": _items(
-                ("Hash ajustes", render_settings.get("settings_sha256") if isinstance(render_settings, dict) else None),
-                ("RAW developer", recipe_parameters.get("raw_developer") if isinstance(recipe_parameters, dict) else None),
-                ("Demosaicing", recipe_parameters.get("demosaic_algorithm") if isinstance(recipe_parameters, dict) else None),
-                ("WB modo", recipe_parameters.get("white_balance_mode") if isinstance(recipe_parameters, dict) else None),
-                ("WB multiplicadores", recipe_parameters.get("wb_multipliers") if isinstance(recipe_parameters, dict) else None),
-                ("Exposicion receta EV", recipe_parameters.get("exposure_compensation") if isinstance(recipe_parameters, dict) else None),
-                ("Curva receta", recipe_parameters.get("tone_curve") if isinstance(recipe_parameters, dict) else None),
-                ("Espacio trabajo", recipe_parameters.get("working_space") if isinstance(recipe_parameters, dict) else None),
-                ("Espacio salida", recipe_parameters.get("output_space") if isinstance(recipe_parameters, dict) else None),
-                ("Salida lineal", recipe_parameters.get("output_linear") if isinstance(recipe_parameters, dict) else None),
-                ("Correccion basica/curvas", render_settings.get("render_adjustments") if isinstance(render_settings, dict) else None),
-                ("Nitidez", render_settings.get("detail_adjustments") if isinstance(render_settings, dict) else None),
-                ("Gestion color", render_settings.get("color_management") if isinstance(render_settings, dict) else None),
-                ("Contexto", render_settings.get("context") if isinstance(render_settings, dict) else None),
-            ),
-        },
+        *_render_settings_display("Ajustes TIFF NexoRAW C2PA", render_settings),
         {
             "title": "Validacion",
             "items": _validation_items(c2pa.get("validation_status")),
         },
     ]
+
+
+def _render_settings_display(title: str, render_settings: Any) -> list[dict[str, Any]]:
+    if not isinstance(render_settings, dict) or not render_settings:
+        return [{"title": title, "items": [{"label": "Estado", "value": "No registrado"}]}]
+    recipe = render_settings.get("recipe_parameters") if isinstance(render_settings.get("recipe_parameters"), dict) else {}
+    detail = render_settings.get("detail_adjustments") if isinstance(render_settings.get("detail_adjustments"), dict) else {}
+    render = render_settings.get("render_adjustments") if isinstance(render_settings.get("render_adjustments"), dict) else {}
+    color = render_settings.get("color_management") if isinstance(render_settings.get("color_management"), dict) else {}
+    reproducibility = (
+        render_settings.get("reproducibility")
+        if isinstance(render_settings.get("reproducibility"), dict)
+        else {}
+    )
+    raw_pipeline = color.get("raw_color_pipeline") if isinstance(color.get("raw_color_pipeline"), dict) else {}
+    return [
+        {
+            "title": f"{title}: receta RAW",
+            "items": _items(
+                ("Hash ajustes", render_settings.get("settings_sha256")),
+                ("RAW developer", recipe.get("raw_developer")),
+                ("Demosaicing", recipe.get("demosaic_algorithm")),
+                ("Black level", recipe.get("black_level_mode")),
+                ("WB modo", recipe.get("white_balance_mode")),
+                ("WB multiplicadores", recipe.get("wb_multipliers")),
+                ("Exposicion receta EV", recipe.get("exposure_compensation")),
+                ("Curva receta", recipe.get("tone_curve")),
+                ("Espacio trabajo", recipe.get("working_space")),
+                ("Espacio salida", recipe.get("output_space")),
+                ("Salida lineal", recipe.get("output_linear")),
+                ("Motor perfil", recipe.get("profile_engine")),
+                ("Args Argyll colprof", recipe.get("argyll_colprof_args")),
+            ),
+        },
+        {
+            "title": f"{title}: detalle y nitidez",
+            "items": _settings_dict_items(
+                detail,
+                empty_label="Sin ajustes de detalle declarados",
+            ),
+        },
+        {
+            "title": f"{title}: contraste, tono y render",
+            "items": _settings_dict_items(
+                render,
+                empty_label="Sin ajustes de render declarados",
+            ),
+        },
+        {
+            "title": f"{title}: gestion de color",
+            "items": _items(
+                ("Modo", color.get("mode")),
+                ("Rol ICC", color.get("icc_profile_role")),
+                ("ICC auxiliar", color.get("icc_profile_path_auxiliary")),
+                ("ICC SHA-256", color.get("icc_profile_sha256")),
+                ("Espacio trabajo", color.get("working_space")),
+                ("Espacio salida", color.get("output_space")),
+                ("Salida lineal", color.get("output_linear")),
+                ("Motor RAW", raw_pipeline.get("raw_engine")),
+                ("Camera RGB -> XYZ/RGB", raw_pipeline.get("camera_to_xyz")),
+                ("Transformacion exportacion", raw_pipeline.get("export_transform")),
+                ("Transformacion monitor", raw_pipeline.get("display_transform")),
+                ("Pasos LibRaw", raw_pipeline.get("libraw_linear_steps")),
+            ),
+        },
+        {
+            "title": f"{title}: reproducibilidad",
+            "items": _items(
+                ("Ajustes completos incrustados", reproducibility.get("complete_settings_embedded")),
+                ("Rol del hash", reproducibility.get("settings_sha256_role")),
+                ("Entradas para reproduccion", reproducibility.get("experimental_replay_inputs")),
+                ("Contexto", render_settings.get("context")),
+            ),
+        },
+    ]
+
+
+def _settings_dict_items(value: dict[str, Any], *, empty_label: str) -> list[dict[str, str]]:
+    if not value:
+        return [{"label": "Estado", "value": empty_label}]
+    return [{"label": str(key), "value": _format_value(val)} for key, val in sorted(value.items())]
 
 
 def _grouped_tree(groups: dict[str, Any]) -> list[dict[str, Any]]:

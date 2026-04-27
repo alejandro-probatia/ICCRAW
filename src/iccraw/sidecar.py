@@ -157,7 +157,7 @@ def _icc_profile_role(color_management_mode: str, icc_profile_path: Path | None)
     mode = str(color_management_mode or "")
     if mode == "camera_rgb_with_input_icc":
         return "session_input_icc"
-    if mode.startswith("assigned_") or mode.startswith("converted_"):
+    if mode.startswith("standard_") or mode.startswith("assigned_") or mode.startswith("converted_"):
         return "generic_output_icc"
     return "icc_profile"
 

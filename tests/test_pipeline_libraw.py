@@ -14,6 +14,7 @@ from iccraw.raw.pipeline import (
     _parse_int_mode_value,
     develop_scene_linear_array,
     develop_image_array,
+    develop_standard_output_array,
     develop_controlled,
     libraw_demosaic_value,
 )
@@ -52,6 +53,30 @@ def test_build_libraw_kwargs_with_camera_wb_and_white_level():
     assert kwargs["use_camera_wb"] is True
     assert kwargs["user_wb"] is None
     assert kwargs["user_sat"] == 15000
+
+
+def test_build_libraw_kwargs_uses_real_standard_output_spaces():
+    assert (
+        _build_libraw_postprocess_kwargs(
+            Recipe(output_space="srgb"),
+            output_color_space="srgb",
+        )["output_color"]
+        == rawpy.ColorSpace.sRGB
+    )
+    assert (
+        _build_libraw_postprocess_kwargs(
+            Recipe(output_space="adobe_rgb"),
+            output_color_space="Adobe RGB (1998)",
+        )["output_color"]
+        == rawpy.ColorSpace.Adobe
+    )
+    assert (
+        _build_libraw_postprocess_kwargs(
+            Recipe(output_space="prophoto_rgb"),
+            output_color_space="prophoto_rgb",
+        )["output_color"]
+        == rawpy.ColorSpace.ProPhoto
+    )
 
 
 def test_parse_int_mode_value_rejects_invalid():
@@ -133,9 +158,10 @@ def test_scene_linear_demosaic_cache_reuses_raw_decode(tmp_path: Path, monkeypat
     cache = tmp_path / "cache"
     calls = {"count": 0}
 
-    def fake_develop_with_libraw(_path, _recipe, *, half_size=False):
+    def fake_develop_with_libraw(_path, _recipe, *, half_size=False, output_color_space="camera_raw"):
         calls["count"] += 1
         assert half_size is False
+        assert output_color_space == "camera_raw"
         return np.full((4, 5, 3), 0.25, dtype=np.float32)
 
     monkeypatch.setattr(pipeline, "develop_with_libraw", fake_develop_with_libraw)
@@ -155,8 +181,9 @@ def test_scene_linear_demosaic_cache_key_includes_demosaic_algorithm(tmp_path: P
     cache = tmp_path / "cache"
     calls = {"count": 0}
 
-    def fake_develop_with_libraw(_path, recipe, *, half_size=False):
+    def fake_develop_with_libraw(_path, recipe, *, half_size=False, output_color_space="camera_raw"):
         calls["count"] += 1
+        assert output_color_space == "camera_raw"
         value = 0.2 if recipe.demosaic_algorithm == "dcb" else 0.4
         return np.full((4, 5, 3), value, dtype=np.float32)
 
@@ -167,3 +194,25 @@ def test_scene_linear_demosaic_cache_key_includes_demosaic_algorithm(tmp_path: P
 
     assert calls["count"] == 2
     assert not np.allclose(first, second)
+
+
+def test_develop_standard_output_array_requests_standard_libraw_space(tmp_path: Path, monkeypatch):
+    raw = tmp_path / "capture.nef"
+    raw.write_bytes(b"fake-raw")
+    captured: dict[str, str] = {}
+
+    def fake_develop_with_libraw(_path, _recipe, *, half_size=False, output_color_space="camera_raw"):
+        captured["space"] = output_color_space
+        captured["half_size"] = str(bool(half_size))
+        return np.full((4, 5, 3), 0.25, dtype=np.float32)
+
+    monkeypatch.setattr(pipeline, "develop_with_libraw", fake_develop_with_libraw)
+
+    out = develop_standard_output_array(
+        raw,
+        Recipe(output_space="prophoto_rgb", output_linear=False, tone_curve="gamma:1.8"),
+    )
+
+    assert captured == {"space": "prophoto_rgb", "half_size": "False"}
+    assert out.dtype == np.float32
+    assert out.shape == (4, 5, 3)

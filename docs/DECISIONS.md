@@ -202,10 +202,11 @@ Decision:
 - el TIFF maestro conserva RGB lineal de camara/sesion e incrusta ese ICC;
 - no se convierte el TIFF maestro a sRGB, AdobeRGB o ProPhoto si existe ICC de
   sesion;
-- los perfiles genericos de salida quedan reservados para sesiones sin carta o
+- los perfiles estandar de salida quedan reservados para sesiones sin carta o
   para derivados explicitamente convertidos mediante CMM;
-- en sesiones sin carta, el perfil manual puede usar sRGB, Adobe RGB (1998) o
-  ProPhoto RGB como `generic_output_icc` incrustado en el TIFF;
+- en sesiones sin carta, el perfil manual puede revelar a sRGB, Adobe RGB
+  (1998) o ProPhoto RGB reales y usar su ICC estandar como
+  `generic_output_icc` incrustado en el TIFF;
 - la receta calibrada creada desde carta fuerza `tone_curve=linear`,
   `output_linear=true` y `output_space=scene_linear_camera_rgb` para mantener
   coherencia con el ICC generado.

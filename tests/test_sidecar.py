@@ -66,7 +66,7 @@ def test_write_raw_sidecar_preserves_output_history(tmp_path: Path):
 
 def test_write_raw_sidecar_records_generic_output_icc_role(tmp_path: Path):
     raw = tmp_path / "capture.NEF"
-    generic_profile = tmp_path / "profiles" / "nexoraw-generic-prophoto-rgb.icc"
+    generic_profile = tmp_path / "profiles" / "ProPhoto.icm"
     raw.write_bytes(b"raw bytes")
     generic_profile.parent.mkdir()
     generic_profile.write_bytes(b"icc bytes")
@@ -76,11 +76,11 @@ def test_write_raw_sidecar_records_generic_output_icc_role(tmp_path: Path):
         recipe=Recipe(output_space="prophoto_rgb", output_linear=False),
         development_profile={"id": "manual", "name": "Manual", "kind": "manual"},
         icc_profile_path=generic_profile,
-        color_management_mode="assigned_prophoto_rgb_output_icc",
+        color_management_mode="standard_prophoto_rgb_output_icc",
         session_root=tmp_path,
     )
 
     payload = load_raw_sidecar(raw)
     assert payload["development_profile"]["profile_type"] == "basic"
     assert payload["color_management"]["icc_profile_role"] == "generic_output_icc"
-    assert payload["color_management"]["icc_profile_path"] == "profiles/nexoraw-generic-prophoto-rgb.icc"
+    assert payload["color_management"]["icc_profile_path"] == "profiles/ProPhoto.icm"

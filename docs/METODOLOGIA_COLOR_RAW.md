@@ -38,6 +38,34 @@ un espacio destino como sRGB, un espacio amplio o un perfil de impresora. Ese
 paso no debe confundirse con asignar el perfil propio de la sesion al RGB que
 todavia esta en dominio de camara/sesion.
 
+## Flujo tecnico de color recomendado
+
+El contrato metodologico para RAW es:
+
+1. Abrir el RAW con LibRaw.
+2. Leer modelo de camara, CFA, black level, white level, white balance as-shot,
+   matriz de camara y perfil embebido cuando existan.
+3. Normalizar los datos RAW a `float32` lineal.
+4. Aplicar sustraccion de negro y normalizacion por blanco.
+5. Aplicar balance de blancos en espacio de camara.
+6. Ejecutar demosaicing.
+7. Convertir Camera RGB a XYZ con el perfil/matriz correspondiente.
+8. Aplicar adaptacion cromatica si procede.
+9. Convertir XYZ al espacio de trabajo lineal.
+10. Realizar la edicion en un espacio lineal amplio.
+11. Para pantalla, transformar desde RGB de preview al ICC de monitor mediante
+    LittleCMS/ImageCms.
+12. Para exportacion, transformar al perfil de salida, incrustar el ICC y
+    registrar la transformacion aplicada.
+
+Implementacion actual: los pasos 1 a 8 quedan delegados a LibRaw/rawpy cuando se
+elige un espacio estandar sin carta (`sRGB`, `Adobe RGB (1998)` o
+`ProPhoto RGB`). Cuando existe ICC de sesion, NexoRAW conserva el RGB lineal de
+camara/sesion e incrusta ese ICC como perfil de entrada; la conversion de salida
+se hace despues mediante CMM/ArgyllCMS (`cctiff`) en derivados. Esta distincion
+se registra en `render_settings.color_management.raw_color_pipeline` dentro de
+NexoRAW Proof/C2PA.
+
 En NexoRAW 0.2, el ajuste parametrico se considera una propiedad asignada a un
 RAW concreto mediante su mochila `RAW.nexoraw.json`. Una sesion puede tener
 varios perfiles de ajuste: algunos avanzados, nacidos de carta de color, y otros
@@ -85,9 +113,9 @@ Cuando no existe carta:
 1. No se inventa un ICC de sesion.
 2. Se permite guardar un perfil de revelado manual con los parametros definidos
    por el usuario.
-3. El usuario puede elegir un ICC generico de salida: sRGB, Adobe RGB (1998) o
-   ProPhoto RGB. NexoRAW genera ese perfil dentro de la sesion y lo incrusta en
-   el TIFF final.
+3. El usuario puede elegir un espacio RGB estandar de salida: sRGB, Adobe RGB
+   (1998) o ProPhoto RGB. NexoRAW revela el RAW directamente en ese espacio con
+   LibRaw y copia/incrusta un perfil ICC estandar real del sistema o de ArgyllCMS.
 4. La trazabilidad debe declarar que no hay perfil de entrada medido y que el
    ICC incrustado es un `generic_output_icc`.
 
@@ -105,15 +133,15 @@ NexoRAW distingue dos tipos de salida:
 - **TIFF derivado de intercambio**: convertido mediante CMM desde el ICC de
   sesion hacia un perfil de salida generico o de dispositivo, con ese perfil de
   salida incrustado.
-- **TIFF manual sin carta**: receta paramétrica definida por el usuario,
-  mochila NexoRAW por archivo, ICC generico de salida incrustado. Este flujo es
-  funcional, pero no sustituye la precision de una carta colorimetrica.
+- **TIFF manual sin carta**: receta parametrica definida por el usuario,
+  mochila NexoRAW por archivo, RAW revelado en sRGB/Adobe RGB/ProPhoto RGB real
+  e ICC estandar incrustado. Este flujo es funcional, pero no sustituye la
+  precision de una carta colorimetrica.
 
 La version actual implementa el TIFF maestro de sesion como salida preferente
-cuando hay carta. Para sesiones sin carta implementa la asignacion de sRGB,
-Adobe RGB (1998) o ProPhoto RGB como perfiles genericos de salida; cuando existe
-ICC de entrada de sesion, las salidas genericas se tratan como derivados
-convertidos por CMM.
+cuando hay carta. Para sesiones sin carta implementa sRGB, Adobe RGB (1998) y
+ProPhoto RGB como perfiles estandar reales de salida; cuando existe ICC de
+entrada de sesion, esas salidas se tratan como derivados convertidos por CMM.
 
 ## Sidecars mochila
 

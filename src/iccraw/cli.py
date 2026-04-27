@@ -134,7 +134,14 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     s = sub.add_parser("batch-develop")
     s.add_argument("input")
     s.add_argument("--recipe", required=True)
-    s.add_argument("--profile", required=True)
+    s.add_argument(
+        "--profile",
+        default=None,
+        help=(
+            "Perfil ICC de entrada de sesion. Opcional solo cuando la receta usa "
+            "output_space estandar sin carta (srgb, adobe_rgb o prophoto_rgb)."
+        ),
+    )
     s.add_argument("--out", required=True)
     s.add_argument(
         "--workers",
@@ -394,7 +401,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest = batch_develop(
                 raws_dir=Path(args.input),
                 recipe=recipe,
-                profile_path=Path(args.profile),
+                profile_path=Path(args.profile) if args.profile else None,
                 out_dir=Path(args.out),
                 workers=args.workers,
                 cache_dir=Path(args.cache_dir) if args.cache_dir else None,

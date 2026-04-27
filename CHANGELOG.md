@@ -18,6 +18,25 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-04-27
+
+### Changed
+
+- El flujo sin carta deja de generar perfiles `NexoRAW generic ...`: el RAW se
+  revela en un espacio RGB estandar real (`sRGB`, `Adobe RGB (1998)` o
+  `ProPhoto RGB`) con LibRaw y se incrusta un ICC estandar copiado del sistema o
+  de ArgyllCMS.
+- Los manifiestos de render registran `raw_color_pipeline`, indicando si la
+  transformacion de color la resolvio LibRaw, el ICC de sesion o ArgyllCMS/CMM.
+- NexoRAW Proof/C2PA declaran los ajustes completos aplicados (`recipe`,
+  detalle/nitidez, contraste/render y gestion de color); el hash de ajustes
+  queda como control de integridad, no como unico dato visible para auditoria.
+
+### Added
+
+- Tests de perfiles estandar reales para evitar que Adobe RGB caiga en un
+  perfil compatible cuando existe `AdobeRGB1998.icc`.
+
 ## [0.2.2] - 2026-04-27
 
 ### Added
