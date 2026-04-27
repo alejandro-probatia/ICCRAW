@@ -1,50 +1,52 @@
-﻿# Politica de seguridad
+_Spanish version: [SECURITY.es.md](SECURITY.es.md)_
 
-## Versiones soportadas
+# Security policy
 
-| Version | Estado | Soporte de seguridad |
+## Supported versions
+
+| Version | State | Security Support |
 | --- | --- | --- |
-| 0.2.x (beta) | Activa | Si |
-| 0.1.x (beta historica) | Mantenimiento minimo | No |
+| 0.2.x (beta) | Active | Yes |
+| 0.1.x (historical beta) | Minimum maintenance | No |
 | < 0.1.0-beta.5 | Legacy | No |
 
-## Como reportar una vulnerabilidad
+## How to report a vulnerability
 
-No abras issues publicos para vulnerabilidades.
+Do not open public issues for vulnerabilities.
 
-Reporta de forma privada a: `[contacto-pendiente@dominio]`.
+Report privately to: `[contacto-pendiente@dominio]`.
 
-Incluye, si es posible:
+Include, if possible:
 
-- Version de NexoRAW y sistema operativo.
-- Vector de ataque y pasos reproducibles.
-- Impacto potencial (confidencialidad, integridad, disponibilidad).
-- Prueba de concepto minima.
+- NexoRAW version and operating system.
+- Attack vector and reproducible steps.
+- Potential impact (confidentiality, integrity, availability).
+- Minimum proof of concept.
 
-## Tiempos de respuesta esperados
+## Expected response times
 
-- Acuse de recibo: hasta 72 horas.
-- Evaluacion inicial: hasta 7 dias naturales.
-- Propuesta de mitigacion o plan de parche: hasta 21 dias naturales.
+- Acknowledgment of receipt: up to 72 hours.
+- Initial evaluation: up to 7 calendar days.
+- Mitigation proposal or patch plan: up to 21 calendar days.
 
-Si el caso requiere coordinacion con terceros, se informara el estado por el
-mismo canal privado.
+If the case requires coordination with third parties, the status will be reported by the
+same private channel.
 
-## Alcance (in scope)
+## Scope (in scope)
 
-- Vulnerabilidades en parsing de RAW o de imagenes usadas en el pipeline.
-- Riesgos en ejecucion de subprocesos externos (`ExifTool`, `ArgyllCMS`).
-- Manipulacion maliciosa de sidecars, manifests o proof (`.nexoraw.proof.json`,
-  `batch_manifest.json`, C2PA) que comprometa trazabilidad.
+- Vulnerabilities in RAW parsing or images used in the pipeline.
+- Risks in the execution of external subprocesses (`ExifTool`, `ArgyllCMS`).
+- Malicious manipulation of sidecars, manifests or proof (`.nexoraw.proof.json`,
+  `batch_manifest.json`, C2PA) that compromises traceability.
 
-## Fuera de alcance (out of scope)
+## Out of scope
 
-- Errores cosmeticos de GUI sin impacto de seguridad.
-- Fallos de dependencias upstream sin exploit propio en NexoRAW.
-  En esos casos, reporta tambien al tracker del proveedor afectado.
-- Solicitudes de hardening generico sin escenario reproducible.
+- Cosmetic GUI errors without security impact.
+- Upstream dependencies failures without own exploit in NexoRAW.
+  In those cases, also report to the tracker of the affected supplier.
+- Generic hardening requests without reproducible scenario.
 
-## Divulgacion responsable
+## Responsible disclosure
 
-No publiques detalles tecnicos de una vulnerabilidad antes de que exista parche
-o mitigacion documentada para usuarios.
+Do not publish technical details of a vulnerability before a patch exists
+or documented mitigation for users.

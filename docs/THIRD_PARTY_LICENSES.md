@@ -1,63 +1,64 @@
-# Licencias de terceros (resumen operativo)
+_Spanish version: [THIRD_PARTY_LICENSES.es.md](THIRD_PARTY_LICENSES.es.md)_
 
-Este archivo resume licencias de componentes clave y como se integran en NexoRAW.
+# Third party licenses (operational summary)
 
-Fecha de revision: 2026-04-25.
+This file summarizes licenses for key components and how they are integrated into NexoRAW.
 
-## 1) NexoRAW (repositorio principal)
+Review date: 2026-04-25.
 
-- Licencia: `AGPL-3.0-or-later`.
-- Codigo mantenido por la comunidad de la Asociacion Espanola de Imagen Cientifica y Forense.
+## 1) NexoRAW (main repository)
+
+- License: `AGPL-3.0-or-later`.
+- Code maintained by the community of the Spanish Association of Scientific and Forensic Imaging.
 
 ## 2) ArgyllCMS (`colprof`, `xicclu`, `cctiff`)
 
-- Uso en NexoRAW: herramienta externa por subprocess para generar perfiles ICC,
-  validar el ICC real y convertir TIFFs finales a perfiles de salida.
-- Licencia declarada por ArgyllCMS: AGPL para el paquete principal.
-- Politica en NexoRAW:
-  - no se redistribuyen binarios dentro del repositorio,
-  - se exige instalacion desde fuente oficial o paquete del sistema,
-  - se registran version y contexto en trazabilidad.
+- Use in NexoRAW: external tool per thread to generate ICC profiles,
+  validate the actual ICC and convert final TIFFs to output profiles.
+- ArgyllCMS declared license: AGPL for the main package.
+- NexoRAW Policy:
+  - no binaries are redistributed within the repository,
+  - installation from official source or system package is required,
+  - Version and context are recorded in traceability.
 
-## 3) LibRaw / rawpy / rawpy-demosaic
+## 3) LibRaw/rawpy/rawpy-demosaic
 
-- Uso en NexoRAW: motor unico de revelado RAW mediante el modulo Python
-  `rawpy`, vinculado a LibRaw.
-- Dependencia base instalable: `rawpy`, vinculada a LibRaw.
-- Backend GPL3 para AMaZE: `rawpy-demosaic`, fork GPL3 de `rawpy` que incluye
-  los demosaic packs GPL2/GPL3 de LibRaw y exporta el mismo modulo `rawpy`.
-- Licencias declaradas:
-  - LibRaw: LGPL/CDDL segun upstream.
-  - `rawpy`: MIT, sin demosaic packs GPL en wheels estandar.
+- Use in NexoRAW: unique RAW development engine using the Python module
+  `rawpy`, linked to LibRaw.
+- Installable base dependency: `rawpy`, linked to LibRaw.
+- GPL3 backend for AMaZE: `rawpy-demosaic`, GPL3 fork of `rawpy` including
+  the demosaic packs GPL2/GPL3 from LibRaw and exports the same module `rawpy`.
+- Declared licenses:
+  - LibRaw: LGPL/CDDL according to upstream.
+  - `rawpy`: MIT, without GPL demosaic packs on standard wheels.
   - `rawpy-demosaic`: `GPL-3.0-or-later`.
-  - LibRaw demosaic pack GPL3: GPL3+, incluye AMaZE.
-- Politica en NexoRAW:
-  - NexoRAW se mantiene bajo `AGPL-3.0-or-later`, compatible con GPL3+,
-  - se registra version de `rawpy`, distribucion instalada (`rawpy` o
-    `rawpy-demosaic`), LibRaw y `rawpy.flags` en contexto de ejecucion,
-  - AMaZE solo se anuncia como disponible cuando `DEMOSAIC_PACK_GPL3=True`,
-  - se incluyen avisos de licencia al publicar builds que redistribuyan wheels.
+  - LibRaw demosaic pack GPL3: GPL3+, includes AMaZE.
+- NexoRAW Policy:
+  - NexoRAW remains under `AGPL-3.0-or-later`, GPL3+ compliant,
+  - version of `rawpy`, installed distribution (`rawpy` or
+    `rawpy-demosaic`), LibRaw and `rawpy.flags` in execution context,
+  - AMaZE is only advertised as available when `DEMOSAIC_PACK_GPL3=True`,
+  - License notices are included when publishing builds that redistribute wheels.
 
-## 4) PySide6 / Qt (GUI opcional)
+## 4) Py
+Side6/Qt (GUI optional)
 
-- Uso en NexoRAW: interfaz grafica opcional.
-- Licencia comunitaria de Qt for Python: LGPLv3/GPLv3 (segun documentacion oficial de Qt).
-- Politica en NexoRAW:
-  - dependencia opcional (`pip install -e .[gui]`),
-  - mantener avisos de licencia al redistribuir builds con GUI.
+- Use in NexoRAW: optional graphical interface.
+- Qt for Python Community License: LGPLv3/GPLv3 (according to official Qt documentation).
+- NexoRAW Policy:
+  - optional dependency (`pip install -e .[gui]`),
+  - keep license notices when redistributing builds with GUI.
 
-## 5) c2pa-python (C2PA/CAI para TIFF final firmado)
+## 5) c2pa-python (C2PA/CAI for final signed TIFF)- Use in NexoRAW: signing and reading C2PA manifests embedded in final TIFF.
+- License declared by `contentauth/c2pa-python`: Apache-2.0 or MIT.
+- NexoRAW Policy:
+  - dependency installed via extra (`pip install -e .[c2pa]`),
+  - mandatory to generate final NexoRAW TIFFs,
+  - does not replace `batch_manifest.json`, SHA-256 hashes or linear auditing,
+  - the private key is passed via file path and is not recorded in logs,
+  - review certificates, TSA and trust policy before trial use.
 
-- Uso en NexoRAW: firma y lectura de manifiestos C2PA embebidos en TIFF final.
-- Licencia declarada por `contentauth/c2pa-python`: Apache-2.0 o MIT.
-- Politica en NexoRAW:
-  - dependencia instalada mediante extra (`pip install -e .[c2pa]`),
-  - obligatoria para generar TIFFs finales NexoRAW,
-  - no sustituye `batch_manifest.json`, hashes SHA-256 ni auditoria lineal,
-  - la clave privada se pasa por ruta de archivo y no se registra en logs,
-  - revisar certificados, TSA y politica de confianza antes de uso probatorio.
-
-## 6) Dependencias Python relevantes
+## 6) Relevant Python dependencies
 
 - `opencv-python-headless`: BSD-3-Clause (OpenCV).
 - `tifffile`: BSD.
@@ -65,38 +66,36 @@ Fecha de revision: 2026-04-25.
 - `scipy`: BSD-3-Clause.
 - `PyYAML`: MIT.
 - `colour-science`: BSD-3-Clause.
-- `Pillow`: HPND-like (PIL Software License). NexoRAW usa `ImageCms` solo
-  para conversion ICC de monitor en el visor; el pipeline cientifico/export
-  sigue usando ArgyllCMS para perfilado, validacion y conversiones ICC finales.
-- `rawpy`: MIT; wheels estandar sin demosaic packs GPL.
-- `rawpy-demosaic`: GPL-3.0-or-later; habilita demosaic packs GPL2/GPL3.
-- `c2pa-python`: Apache-2.0 o MIT; requerido para firmar TIFFs finales.
+- `Pillow`: HPND-like (PIL Software License). NexoRAW uses `ImageCms` only
+  for ICC conversion of monitor in the viewfinder; the scientific/export pipeline
+  continues to use ArgyllCMS for profiling, validation and final ICC conversions.
+- `rawpy`: MIT; Standard wheels without GPL demosaic packs.
+- `rawpy-demosaic`: GPL-3.0-or-later; enables demosaic packs GPL2/GPL3.
+- `c2pa-python`: Apache-2.0 or MIT; required to sign final TIFFs.
 
-## 8) Herramientas de empaquetado Windows
+## 8) Windows Packaging Tools
 
-- `PyInstaller`: herramienta de build para crear los ejecutables Windows.
-- `Inno Setup`: herramienta externa para generar el instalador `.exe`.
-- Politica en NexoRAW:
-  - se usan como herramientas de construccion,
-  - no se versionan binarios generados en el repositorio,
-  - revisar licencias y avisos antes de publicar una release redistribuible.
+- `PyInstaller`: build tool to create Windows executables.
+- `Inno Setup`: external tool to generate the `.exe` installer.
+- NexoRAW Policy:
+  - are used as construction tools,
+  - binaries generated in the repository are not versioned,
+  - review licenses and notices before publishing a redistributable release.
 
-## 9) Regla de distribucion del proyecto
+## 9) Project distribution rule
 
-Antes de publicar release/binarios/contenedor:
+Before publishing release/binaries/container:
 
-1. incluir `LICENSE` (AGPL) del proyecto,
-2. incluir este archivo o equivalente actualizado,
-3. incluir instrucciones para obtener codigo fuente correspondiente,
-4. verificar licencias de binarios de sistema empaquetados (si se empaquetan),
-5. si se distribuye AMaZE, incluir avisos GPL3 de `rawpy-demosaic`, LibRaw y
-   demosaic packs, junto con el codigo fuente correspondiente o URL publica.
+1. include `LICENSE` (AGPL) of the project,
+2. include this file or updated equivalent,
+3. include instructions to obtain corresponding source code,
+4. verify licenses of packaged system binaries (if packaged),
+5. if AMaZE is distributed, include GPL3 notices from `rawpy-demosaic`, LibRaw and
+   demosaic packs, along with the corresponding source code or public URL.
 
-## 10) Contributor Covenant 2.1 (codigo de conducta)
-
-- Uso en NexoRAW: textos `CODE_OF_CONDUCT.md` y `CODE_OF_CONDUCT.es.md`.
-- Fuente: `https://www.contributor-covenant.org/version/2/1/code_of_conduct/`.
-- Licencia declarada por el proyecto Contributor Covenant: CC-BY-4.0.
-- Politica en NexoRAW:
-  - se conserva la atribucion al texto original,
-  - solo se sustituye el metodo de contacto por el del mantenedor del proyecto.
+## 10) Contributor Covenant 2.1 (code of conduct)- Use in NexoRAW: texts `CODE_OF_CONDUCT.md` and `CODE_OF_CONDUCT.es.md`.
+- Source: `https://www.contributor-covenant.org/version/2/1/code_of_conduct/`.
+- License declared by the Contributor Covenant project: CC-BY-4.0.
+- NexoRAW Policy:
+  - the attribution to the original text is preserved,
+  - Only the contact method is replaced by that of the project maintainer.

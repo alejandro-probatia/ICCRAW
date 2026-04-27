@@ -1,665 +1,656 @@
-# Revision operativa y plan de profesionalizacion
+_Spanish version: [OPERATIVE_REVIEW_PLAN.es.md](OPERATIVE_REVIEW_PLAN.es.md)_
 
-Fecha de revision: 2026-04-24.
+# Operational review and professionalization plan
 
-Estado: documento rector para convertir el prototipo actual en una herramienta
-operativa, auditable y apta para validacion cientifica.
+Revision date: 2026-04-24.
 
-Nota de estado 0.2: varios hallazgos P0/P1 de esta revision ya estan mitigados
-o implementados en la rama actual. Este documento se conserva como registro
-metodologico y plan de contraste; el estado operativo resumido vive en
-`docs/ISSUES.md`, `docs/COLOR_PIPELINE.md` y `CHANGELOG.md`.
+Status: Governing document to convert the current prototype into a tool
+operational, auditable and suitable for scientific validation.
 
-## 1. Alcance
+Status Note 0.2: Several P0/P1 findings from this patch are now mitigated
+or implemented in the current branch. This document is kept as a record
+methodological and contrast plan; summary operating status lives in
+`docs/ISSUES.md`, `docs/COLOR_PIPELINE.md` and `CHANGELOG.md`.
 
-Este documento recoge los hallazgos tecnicos detectados en la revision del
-proyecto NexoRAW y define un plan de trabajo estructurado para implementar las
-correcciones de forma profesional.
+## 1. Scope
 
-El objetivo no es convertir el proyecto en un editor fotografico generalista.
-El objetivo es un pipeline controlado para captura, revelado RAW, perfilado ICC,
-aplicacion a lotes, validacion colorimetrica y trazabilidad de uso cientifico,
-documental y forense.
+This document includes the technical findings detected in the review of the
+NexoRAW project and defines a structured work plan to implement the
+professional corrections.
 
-## 2. Resumen ejecutivo
+The goal is not to turn the project into a generalist photo editor.
+The goal is a controlled pipeline for capture, RAW development, ICC profiling,
+batch application, colorimetric validation and traceability for scientific use,
+documentary and forensic.
 
-NexoRAW ya tiene una base razonable:
+## 2. Executive summary
 
-- arquitectura Python modular,
-- CLI funcional,
-- GUI inicial,
-- recetas reproducibles,
-- integracion con LibRaw/rawpy, `exiftool` y ArgyllCMS,
-- sidecars JSON y manifiestos de lote,
-- tests unitarios iniciales.
+NexoRAW already has a reasonable foundation:
 
-Pero el proyecto aun no debe considerarse operativo en produccion cientifica.
-Los principales bloqueos estan en:
+- modular Python architecture,
+- Functional CLI,
+- initial GUI,
+- reproducible recipes,
+- integration with LibRaw/rawpy, `exiftool` and ArgyllCMS,
+- JSON sidecars and batch manifests,
+- initial unit tests.
 
-1. contrato de revelado RAW insuficientemente estricto,
-2. gestion de color ICC no alineada con un flujo CMM estandar,
-3. validacion que no comprueba realmente el perfil ICC generado,
-4. deteccion de carta demasiado permisiva,
-5. recetas que declaran parametros que el codigo no aplica,
-6. ausencia de dataset RAW real para regresion.
+But the project should not yet be considered operational in scientific production.
+The main blockages are in:
 
-La prioridad es cerrar estos puntos antes de ampliar GUI, automatizaciones o
-funciones avanzadas.
+1. insufficiently strict RAW development contract,
+2. ICC color management not aligned with a standard CMM flow,
+3. validation that does not actually check the generated ICC profile,
+4. detection of too permissive card,
+5. recipes that declare parameters that the code does not apply,
+6. absence of real RAW dataset for regression.
 
-## 3. Referencias tecnicas y estandares
+The priority is to close these points before extending GUIs, automations or
+advanced features.
 
-El desarrollo debe alinearse, como minimo, con estas referencias:
+## 3. Technical references and standards
 
-- ISO 17321-1:2012: caracterizacion de color de camaras digitales.
+The development must align, at a minimum, with these references:
+- ISO 17321-1:2012: color characterization of digital cameras.
   https://www.iso.org/standard/56537.html
-- ISO 12234-4:2026: Digital Negative (DNG), formato RAW abierto/normalizado.
+- ISO 12234-4:2026: Digital Negative (DNG), open/normalized RAW format.
   https://www.iso.org/standard/86123.html
-- ICC v4.4 / ISO 15076: arquitectura y formato de perfiles ICC.
+- ICC v4.4 / ISO 15076: architecture and format of ICC profiles.
   https://color.org/index.xalter
 - ISO/CIE 11664-4:2019: CIE 1976 L*a*b*.
   https://www.iso.org/standard/74166.html
-- CIE 199:2011: recomendacion de CIELAB/CIEDE2000 para diferencias de color.
+- CIE 199:2011: CIELAB/CIEDE2000 recommendation for color differences.
   https://www.cie.co.at/publications/methods-evaluating-colour-differences-images
-- ISO 15739:2023: ruido y rango dinamico en camaras digitales.
+- ISO 15739:2023: noise and dynamic range in digital cameras.
   https://www.iso.org/standard/82233.html
-- ISO 17957:2015: medicion de shading en camaras digitales.
+- ISO 17957:2015: shading measurement in digital cameras.
   https://www.iso.org/standard/31974.html
-- EMVA 1288 Release 4.0: caracterizacion objetiva de camaras/sensores.
+- EMVA 1288 Release 4.0: objective characterization of cameras/sensors.
   https://www.emva.org/news/new-release-4-0-of-emva-1288-standard-for-camera-characterization-in-effect/
-- ArgyllCMS `colprof`: generacion de perfiles desde valores de carta.
+- ArgyllCMS `colprof`: generation of profiles from card values.
   https://argyllcms.com/doc/colprof.html
 
-## 4. Hallazgos tecnicos
+## 4. Technical findings
 
-### H-001 Gestion ICC no estandar en salida de lote
+### H-001 Non-standard ICC management in batch output
 
-Criticidad: critica.
+Criticality: criticism.
 
-Estado de implementacion:
+Implementation status:
 
-- mitigacion implementada: la exportacion de lote ya separa RGB de camara
-  con perfil de entrada incrustado y conversion a sRGB mediante ArgyllCMS
+- mitigation implemented: batch export now separates RGB from camera
+  with embedded input profile and conversion to sRGB using ArgyllCMS
   (`cctiff`).
-- pendiente: validacion cruzada externa mas amplia de perfiles ICC reales.
+- pending: broader external cross-validation of real ICC profiles.
 
-Situacion detectada en la revision inicial:
+Situation detected in the initial review:
 
-- `batch_develop` revela a TIFF lineal, aplica una matriz propia
-  `camera_to_xyz -> sRGB` y despues incrusta el ICC generado.
-- Esto mezcla dos conceptos distintos:
-  - asignar un perfil de entrada a datos RGB de camara,
-  - convertir datos a un espacio de salida mediante un CMM.
+- `batch_develop` reveals to linear TIFF, applies own matrix
+  `camera_to_xyz -> sRGB` and then embeds the generated ICC.
+- This mixes two different concepts:
+  - assign an input profile to camera RGB data,
+  - convert data to an output space using a CMM.
 
-Evidencia local:
+Local evidence:
 
-- `src/iccraw/profile/export.py`: `batch_develop` y `apply_profile_matrix`.
-- `src/iccraw/profile/builder.py`: calculo de `matrix_camera_to_xyz` y sidecar
+- `src/iccraw/profile/export.py`: `batch_develop` and `apply_profile_matrix`.
+- `src/iccraw/profile/builder.py`: calculation of `matrix_camera_to_xyz` and sidecar
   `.profile.json`.
 
-Riesgo:
+Risk:
 
-- conversion doble,
-- clipping no controlado,
-- TIFF que declara un perfil que no describe realmente sus pixeles,
-- resultados distintos segun aplicacion externa.
+- double conversion,
+- uncontrolled clipping,
+- TIFF that declares a profile that does not actually describe its pixels,
+- different results depending on external application.
 
-Direccion tecnica:
+Technical address:
 
-1. Definir dos modos explicitos:
-   - `assign-input-profile`: TIFF en RGB camara + perfil ICC de entrada incrustado.
-   - `convert-to-output-profile`: transformacion con CMM real a sRGB/AdobeRGB/XYZ/Lab.
-2. Integrar un CMM real para conversiones ICC:
-   - ArgyllCMS (`cctiff`/`xicclu`) para mantener un unico proveedor CMM externo.
-3. Eliminar la aplicacion silenciosa de la matriz lateral como salida principal.
-4. Mantener la matriz solo como artefacto diagnostico, no como sustituto del ICC.
+1. Define two explicit modes:
+   - `assign-input-profile`: TIFF in RGB camera + embedded input ICC profile.
+   - `convert-to-output-profile`: transformation with real CMM to sRGB/AdobeRGB/XYZ/Lab.
+2. Integrate a real CMM for ICC conversions:
+   - ArgyllCMS (`cctiff`/`xicclu`) to maintain a single external CMM provider.
+3. Eliminate the silent application of the side array as the main output.
+4. Keep the matrix only as a diagnostic artifact, not as a substitute for the ICC.
 
-Criterios de aceptacion:
+Acceptance criteria:
+- a TIFF converted to sRGB declares sRGB profile, not camera profile,
+- a TIFF in RGB camera declares camera profile and has not been transformed,
+- tests compare ICC transformation with external reference tool,
+- the manifest declares the color management mode used.
 
-- un TIFF convertido a sRGB declara perfil sRGB, no perfil de camara,
-- un TIFF en RGB camara declara perfil de camara y no ha sido transformado,
-- pruebas comparan transformacion ICC con herramienta externa de referencia,
-- el manifiesto declara modo de gestion de color usado.
+### H-002 RAW Recipe declares algorithms not supported by the backend
 
-### H-002 Receta RAW declara algoritmos no soportados por el backend
+Criticality: criticism.
 
-Criticidad: critica.
+Implementation status:
 
-Estado de implementacion:
+- mitigated: the project uses LibRaw/rawpy as the only RAW backend, recipes
+  example with `demosaic_algorithm: dcb` and strict validation.
 
-- mitigado: el proyecto usa LibRaw/rawpy como unico backend RAW, recetas de
-  ejemplo con `demosaic_algorithm: dcb` y validacion estricta.
+Situation detected in the initial review:
 
-Situacion detectada en la revision inicial:
+- The example recipe used `demosaic_algorithm: rcd`.
+- The code silently mapped unsupported names to another algorithm.
 
-- La receta de ejemplo usaba `demosaic_algorithm: rcd`.
-- El codigo mapeaba nombres no soportados a otro algoritmo de forma silenciosa.
+Local evidence:
 
-Evidencia local:
+- `testdata/recipes/scientific_recipe.yml`: scientific recipe.
+- `src/iccraw/raw/pipeline.py`: `LIBRAW_DEMOSAIC_MAP` validation.
 
-- `testdata/recipes/scientific_recipe.yml`: receta cientifica.
-- `src/iccraw/raw/pipeline.py`: validacion `LIBRAW_DEMOSAIC_MAP`.
+Risk:
 
-Riesgo:
+- Traceability says that RCD was used, but AHD was actually used,
+- a demosaicing change invalidates colorimetric comparisons,
+- there is no early failure when the recipe is not executable.
 
-- la trazabilidad dice que se uso RCD, pero realmente se uso AHD,
-- un cambio de demosaicing invalida comparaciones colorimetricas,
-- no hay fallo temprano cuando la receta no es ejecutable.
+Technical address:
 
-Direccion tecnica:
+1. Replace silent mappings with strict validation.
+2. Enter `effective_recipe` or `execution_contract` in sidecars.
+3. Keep LibRaw/rawpy as a single backend and extend only supported algorithms
+   for that engine.
 
-1. Sustituir mapeos silenciosos por validacion estricta.
-2. Introducir `effective_recipe` o `execution_contract` en sidecars.
-3. Mantener LibRaw/rawpy como backend unico y ampliar solo algoritmos soportados
-   por ese motor.
+Acceptance criteria:
 
-Criterios de aceptacion:
+- recipe with unsupported algorithm fails before processing,
+- sidecar records real command and effective parameters,
+- tests cover valid and invalid recipes per backend.
 
-- receta con algoritmo no soportado falla antes de procesar,
-- sidecar registra comando real y parametros efectivos,
-- tests cubren recetas validas e invalidas por backend.
+### H-003 `audit_linear_tiff` may not be linear
 
-### H-003 `audit_linear_tiff` puede no ser lineal
+Criticality: high.
 
-Criticidad: alta.
+Implementation status:
 
-Estado de implementacion:
+- mitigated: `audit_linear_tiff` is written before exposure compensation and
+  exit curves.
 
-- mitigado: `audit_linear_tiff` se escribe antes de compensacion de exposicion y
-  curvas de salida.
+Situation detected in the initial review:
 
-Situacion detectada en la revision inicial:
+- The audit TIFF is written after applying exposure compensation and
+  possible tonal curve.
 
-- El TIFF de auditoria se escribe despues de aplicar compensacion de exposicion y
-  posible curva tonal.
-
-Evidencia local:
+Local evidence:
 
 - `src/iccraw/raw/pipeline.py`: `develop_controlled`.
 
-Riesgo:
+Risk:
 
-- el artefacto llamado "linear" no garantiza linealidad escena/sensor,
-- no sirve como evidencia intermedia fiable.
+- the artifact called "linear" does not guarantee scene/sensor linearity,
+- does not serve as reliable intermediate evidence.
 
-Direccion tecnica:
-
-1. Separar estados internos:
+Technical address:
+1. Separate internal states:
    - `developed_scene_linear`,
    - `rendered_output`,
    - `profiled_output`.
-2. Escribir `audit_linear_tiff` inmediatamente despues de revelado lineal y antes
-   de curvas, OETF o conversion de salida.
-3. Registrar en metadatos si se aplicaron WB, black/white level, demosaicing y
-   normalizacion.
+2. Write `audit_linear_tiff` immediately after linear development and before
+   of curves, OETF or output conversion.
+3. Record in metadata if WB, black/white level, demosaicing and
+   normalization.
 
-Criterios de aceptacion:
+Acceptance criteria:
 
-- test con `tone_curve: srgb` demuestra que `audit_linear_tiff` no cambia,
-- nombre de archivo y sidecar describen claramente cada estado,
-- no hay curva tonal en modo `profiling_mode`.
+- test with `tone_curve: srgb` shows that `audit_linear_tiff` does not change,
+- filename and sidecar clearly describe each state,
+- there is no tonal curve in `profiling_mode` mode.
 
-### H-004 Validacion basada en matriz lateral, no en perfil ICC real
+### H-004 Validation based on lateral matrix, not on real ICC profile
 
-Criticidad: alta.
+Criticality: high.
 
-Estado de implementacion:
+Implementation status:
 
-- mitigado: `validate-profile` consulta el ICC real con ArgyllCMS (`xicclu` o
-  `icclu`) y ya no depende de la matriz del sidecar `.profile.json`.
-- pendiente: separar formalmente muestras de entrenamiento y validacion cuando
-  exista dataset de capturas reales suficiente.
+- mitigated: `validate-profile` queries actual ICC with ArgyllCMS (`xicclu` or
+  `icclu`) and no longer depends on the sidecar matrix `.profile.json`.
+- pending: formally separate training and validation samples when
+  There is sufficient real capture dataset.
 
-Situacion detectada en la revision inicial:
+Situation detected in the initial review:
 
-- `validate-profile` carga `.profile.json` y aplica la matriz propia.
-- No valida la transformacion ICC generada por `colprof`.
-- No obliga a separar muestras de entrenamiento y validacion.
+- `validate-profile` loads `.profile.json` and applies the own matrix.
+- Does not validate the ICC transformation generated by `colprof`.
+- It does not require separating training and validation samples.
 
-Evidencia local:
+Local evidence:
 
 - `src/iccraw/profile/builder.py`: `validate_profile`.
 - `src/iccraw/profile/builder.py`: `_build_profile_with_argyll`.
 
-Riesgo:
+Risk:
 
-- metricas DeltaE optimistas o no representativas,
-- el ICC puede ser invalido aunque la matriz lateral parezca aceptable,
-- no hay control de generalizacion entre capturas.
+- optimistic or non-representative DeltaE metrics,
+- the ICC may be invalid even if the lateral matrix appears acceptable,
+- there is no generalization control between captures.
 
-Direccion tecnica:
+Technical address:
 
-1. Validar el ICC real con CMM/ArgyllCMS, no solo la matriz lateral.
-2. Separar:
-   - `fit_report`: errores sobre muestras usadas para construir perfil,
-   - `validation_report`: errores sobre capturas independientes.
-3. Registrar DeltaE76 y DeltaE2000, ademas de outliers por parche.
-4. Definir umbrales por caso de uso y tipo de carta.
+1. Validate the actual ICC with CMM/ArgyllCMS, not just the lateral matrix.
+2. Separate:
+   - `fit_report`: errors on samples used to build profile,
+   - `validation_report`: errors about independent captures.
+3. Register DeltaE76 and DeltaE2000, in addition to outliers per patch.
+4. Define thresholds by use case and letter type.
 
-Criterios de aceptacion:
+Acceptance criteria:
 
-- validacion falla si falta el ICC aunque exista sidecar,
-- validacion cruzada usa capturas no incluidas en construccion,
-- reporte incluye media, mediana, p95, maximo y parches fuera de tolerancia.
+- validation fails if the ICC is missing even if there is a sidecar,
+- cross validation uses captures not included in construction,
+- report includes mean, median, p95, maximum and patches out of tolerance.
 
-### H-005 Deteccion de carta demasiado permisiva
+### H-005 Too permissive card detection
 
-Criticidad: alta.
+Criticality: high.
 
-Estado de implementacion:
+Implementation status:
+- mitigated: fallback detection is marked as `detection_mode=fallback`,
+  It has maximum confidence 0.05 and `valid_patch_ratio=0.0`.
+- mitigated: `auto-profile-batch` and automatic profile generation reject
+  default fallback; It is only accepted with explicit opt-in.
+- mitigated: automatic detection incorporates adjustment by internal pattern of
+  ColorChecker24 patches, validated with two real Pixel 6a DNGs.
+- mitigated: `detect-chart --manual-corners` allows marking four corners and
+  generate `detection.json` reviewable with overlay.
+- mitigated: GUI allows marking four points in the viewer and saving one
+  manual detection with overlay.
+- pending: link saved manual detections with each capture within the
+  Automatic batch flow.
 
-- mitigado: la deteccion fallback queda marcada como `detection_mode=fallback`,
-  tiene confianza maxima 0.05 y `valid_patch_ratio=0.0`.
-- mitigado: `auto-profile-batch` y la generacion automatica de perfil rechazan
-  fallback por defecto; solo se acepta con opt-in explicito.
-- mitigado: la deteccion automatica incorpora ajuste por patron interno de
-  parches ColorChecker24, validado con dos DNG reales de Pixel 6a.
-- mitigado: `detect-chart --manual-corners` permite marcar cuatro esquinas y
-  generar `detection.json` revisable con overlay.
-- mitigado: la GUI permite marcar cuatro puntos en el visor y guardar una
-  deteccion manual con overlay.
-- pendiente: enlazar detecciones manuales guardadas con cada captura dentro del
-  flujo batch automatico.
+Situation detected in the initial review:
 
-Situacion detectada en la revision inicial:
+- If no contour is detected, a fallback bbox is used.
+- That fallback can return high confidence if the apparent geometry fits.
 
-- Si no se detecta contorno, se usa un bbox de fallback.
-- Ese fallback puede devolver una confianza alta si la geometria aparente encaja.
+Local evidence:
 
-Evidencia local:
+- `src/iccraw/chart/detection.py`: `detect_chart` and `_confidence_score`.
+- Observed in smoke test: fallback warning with `confidence_score: 1.0`.
 
-- `src/iccraw/chart/detection.py`: `detect_chart` y `_confidence_score`.
-- Observado en smoke test: warning de fallback con `confidence_score: 1.0`.
+Risk:
 
-Riesgo:
+- sampling of incorrect areas,
+- profile built with wrong samples,
+- apparently valid but scientifically invalid results.
 
-- muestreo de zonas incorrectas,
-- perfil construido con muestras erroneas,
-- resultados aparentemente validos pero cientificamente invalidos.
+Technical address:
 
-Direccion tecnica:
+1. Geometric fallback must have low confidence or require manual confirmation.
+2. `auto-profile-batch` should not accept fallback without explicit opt-in.
+3. Detection must incorporate orientation, patch layout and coherence checks
+   chromaticity/luminance.
+4. Add manual assisted mode for letter corners.
+5. Add patch pattern detector for Passport cards or scenes with
+   ambiguous outer contour.
 
-1. Fallback geometrico debe tener confianza baja o requerir confirmacion manual.
-2. `auto-profile-batch` no debe aceptar fallback sin opt-in explicito.
-3. La deteccion debe incorporar checks de orientacion, patch layout y coherencia
-   cromatica/luminancia.
-4. Añadir modo manual asistido para esquinas de carta.
-5. Añadir detector por patron de parches para cartas Passport o escenas con
-   contorno exterior ambiguo.
+Acceptance criteria:
 
-Criterios de aceptacion:
+- fallback does not exceed `min_confidence` by default,
+- report brand `detection_mode: automatic|manual|fallback`,
+- overlay and JSON include blocking warnings where appropriate.
+- two real DNGs with ColorChecker Passport detect the bottom card
+  Automatic with high confidence.
 
-- fallback no supera `min_confidence` por defecto,
-- reporte marca `detection_mode: automatic|manual|fallback`,
-- overlay y JSON incluyen warnings bloqueantes cuando proceda.
-- dos DNG reales con ColorChecker Passport detectan la carta inferior de forma
-  automatica con confianza alta.
+### H-005b Scientific development profile prior to the ICC
 
-### H-005b Perfil de revelado cientifico previo al ICC
+Criticality: high.
 
-Criticidad: alta.
+Implementation status:
+- mitigated: `build-develop-profile` calculates fixed WB and EV compensation from the
+  neutral row of the card.
+- mitigated: EV compensation is limited by preserving highlights of the
+  letter to avoid clipping.
+- mitigated: `auto-profile-batch` executes double pass:
+  base recipe -> development profile -> calibrated recipe -> ICC.
+- mitigated: the detected geometry is reused in the calibrated pass so that
+  sampling does not depend on rendering.
 
-Estado de implementacion:
+Risk:
 
-- mitigado: `build-develop-profile` calcula WB fijo y compensacion EV desde la
-  fila neutra de la carta.
-- mitigado: la compensacion EV se limita por preservacion de altas luces de la
-  carta para evitar clipping.
-- mitigado: `auto-profile-batch` ejecuta doble pasada:
-  receta base -> perfil de revelado -> receta calibrada -> ICC.
-- mitigado: la geometria detectada se reutiliza en la pasada calibrada para que
-  el muestreo no dependa del renderizado.
+- if the ICC absorbs exposure, density or neutrality errors, the profile
+  It stops describing only the chromatic response of camera + illuminant.
 
-Riesgo:
+Technical address:
 
-- si el ICC absorbe errores de exposición, densidad o neutralidad, el perfil
-  deja de describir solo la respuesta cromatica de cámara + iluminante.
+1. Separate development profile and ICC profile as different artifacts.
+2. Use card to normalize neutrality and density before outlining.
+3. Keep local sharpness/contrast as a measurable QA, not a creative adjustment.
 
-Direccion tecnica:
+### H-006 Recipe parameters ignored by sampling
 
-1. Separar perfil de revelado y perfil ICC como artefactos distintos.
-2. Usar carta para normalizar neutralidad y densidad antes de perfilar.
-3. Mantener nitidez/contraste local como QA medible, no como ajuste creativo.
+Criticality: medium.
 
-### H-006 Parametros de receta ignorados por el muestreo
+Implementation status:
 
-Criticidad: media.
+- mitigated: `sampling_trim_percent` and `sampling_reject_saturated` are loaded from
+  YAML/JSON recipes and are applied in sampling.
+- pending: configurable patch margin and advanced exclusion criteria.
 
-Estado de implementacion:
+Situation detected in the initial review:
 
-- mitigado: `sampling_trim_percent` y `sampling_reject_saturated` se cargan desde
-  recetas YAML/JSON y se aplican en el muestreo.
-- pendiente: margen de parche configurable y criterios avanzados de exclusion.
+- The recipe declares `trim_percent` and `reject_saturated`.
+- The code normalizes `sampling_strategy` to a string and uses fixed `0.1`.
 
-Situacion detectada en la revision inicial:
+Local evidence:
 
-- La receta declara `trim_percent` y `reject_saturated`.
-- El codigo normaliza `sampling_strategy` a un string y usa `0.1` fijo.
-
-Evidencia local:
-
-- `testdata/recipes/scientific_recipe.yml`: bloque `sampling_strategy`.
+- `testdata/recipes/scientific_recipe.yml`: `sampling_strategy` block.
 - `src/iccraw/core/recipe.py`: `_normalize_recipe_payload`.
 - `src/iccraw/chart/sampling.py`: `_sample_patch`.
 
-Riesgo:
+Risk:
 
-- el operador cree que controla el muestreo, pero el codigo no obedece,
-- se reduce reproducibilidad y auditabilidad.
+- the operator believes he controls the sampling, but the code does not obey,
+- Reproducibility and auditability are reduced.
 
-Direccion tecnica:
+Technical address:
 
-1. Modelar `sampling_strategy` como estructura, no solo string.
-2. Aplicar `trim_percent`, `reject_saturated`, margen de parche y criterios de
-   exclusion desde receta.
-3. Registrar parametros efectivos por parche.
+1. Model `sampling_strategy` as a structure, not just a string.
+2. Apply `trim_percent`, `reject_saturated`, patch margin and criteria
+   exclusion from prescription.
+3. Record effective parameters per patch.
 
-Criterios de aceptacion:
+Acceptance criteria:
 
-- tests demuestran que cambiar `trim_percent` cambia el resultado,
-- sidecar de muestras incluye parametros efectivos,
-- receta invalida falla con mensaje claro.
+- tests show that changing `trim_percent` changes the result,
+- sample sidecar includes effective parameters,
+- invalid recipe fails with clear message.
 
-### H-007 Referencias de carta y observador insuficientemente tipadas
+### H-007 Insufficiently typed chart and observer references
 
-Criticidad: media.
+Criticality: medium.
 
-Estado de implementacion:
+Implementation status:
+- mitigated: `ReferenceCatalog.from_path()` validates required metadata,
+  illuminant D50, observer 2 degrees, reference source, patch ids and
+  Lab values.
+- pending: support documented chromatic adaptation for non-D50 references
+  if you decide to expand the pipeline.
 
-- mitigado: `ReferenceCatalog.from_path()` valida metadatos obligatorios,
-  iluminante D50, observador 2 grados, fuente de referencia, ids de parche y
-  valores Lab.
-- pendiente: soportar adaptacion cromatica documentada para referencias no D50
-  si se decide ampliar el pipeline.
+Situation detected in the initial review:
 
-Situacion detectada en la revision inicial:
+- The catalog reads `observer`, but the profiling internally sets D50.
+- It is not validated that `reference_lab` corresponds to the expected illuminant/observer.
 
-- El catalogo lee `observer`, pero el perfilado fija internamente D50.
-- No se valida que `reference_lab` corresponda al iluminante/observador esperado.
-
-Evidencia local:
+Local evidence:
 
 - `src/iccraw/chart/sampling.py`: `ReferenceCatalog`.
 - `src/iccraw/profile/builder.py`: `D50_XYZ`.
 
-Riesgo:
+Risk:
 
-- mezcla involuntaria de referencias D50/D65 u observador 2/10 grados,
-- DeltaE no comparable entre sesiones.
+- unintentional mixing of references D50/D65 or observer 2/10 degrees,
+- DeltaE not comparable between sessions.
 
-Direccion tecnica:
+Technical address:
 
-1. Tipar catalogo de referencia con iluminante, observador, fuente y version.
-2. Validar compatibilidad entre referencia, receta e iluminacion de sesion.
-3. Soportar adaptacion cromatica documentada si se aceptan referencias no D50.
+1. Type reference catalog with illuminant, observer, source and version.
+2. Validate compatibility between reference, recipe and session lighting.
+3. Support documented chromatic adaptation if non-D50 references are accepted.
 
-Criterios de aceptacion:
+Acceptance criteria:
 
-- referencia sin iluminante/observador falla en modo estricto,
-- reporte incluye fuente/version de referencia,
-- tests cubren D50 compatible y referencia incompatible.
+- reference without illuminant/observer fails in strict mode,
+- report includes reference source/version,
+- tests cover D50 compatible and reference incompatible.
 
-### H-008 Falta dataset RAW real para regresion
+### H-008 Real RAW dataset missing for regression
 
-Criticidad: critica para produccion, alta para desarrollo.
+Criticality: critical for production, high for development.
 
-Situacion:
+Situation:
 
-- Los archivos `testdata/raw/*.nef` y `*.cr3` actuales son marcadores de texto.
-- Las pruebas no ejercitan revelado RAW real.
+- The current files `testdata/raw/*.nef` and `*.cr3` are text markers.
+- The tests do not exercise real RAW development.
 
-Evidencia local:
+Local evidence:
 
 - `testdata/raw/mock_capture.nef`.
 - `testdata/raw/batch/session_001.nef`.
 - `testdata/raw/batch/session_002.cr3`.
-- `tests/test_pipeline_libraw.py` cubre contrato de parametros LibRaw; falta
-  dataset RAW real para integracion.
+- `tests/test_pipeline_libraw.py` covers LibRaw parameter contract; missing
+  Real RAW dataset for integration.
 
-Riesgo:
+Risk:
 
-- CI verde sin cubrir el punto mas importante del proyecto,
-- incompatibilidades con camaras reales detectadas tarde,
-- no se puede medir determinismo entre versiones.
+- Green IC without covering the most important point of the project,
+- incompatibilities with real cameras detected late,
+- determinism cannot be measured between versions.
 
-Direccion tecnica:
+Technical address:
 
-1. Crear dataset minimo con DNG/NEF/CR2/ARW reales, licencia clara y tamaño
-   controlado.
-2. Mantener subset pequeño en repo o descargarlo en CI con checksum.
-3. Separar tests unitarios, smoke e integracion pesada.
+1. Create minimum dataset with real DNG/NEF/CR2/ARW, clear license and size
+   controlled.
+2. Keep small subset in repo or download it to CI with checksum.
+3. Separate unit tests, smoke and heavy integration.
 
-Criterios de aceptacion:
+Acceptance criteria:
 
-- al menos un test revela un RAW/DNG real con herramientas externas,
-- checksums de salidas son estables bajo tolerancia definida,
-- CI distingue tests que requieren RAW real/`colprof`.
+- at least one test reveals a real RAW/DNG with external tools,
+- output checksums are stable under defined tolerance,
+- CI distinguishes tests that require real RAW/`colprof`.
 
-## 5. Plan de trabajo profesional
+## 5. Professional work plan
 
-### Fase 0 - Cierre de contrato tecnico
+### Phase 0 - Closing of technical contract
+Objective:
 
-Objetivo:
+- convert implicit decisions into verifiable execution contracts.
 
-- convertir decisiones implicitas en contratos de ejecucion verificables.
+Deliverables:
 
-Entregables:
+1. Pipeline contract document:
+   - image states,
+   - color spaces,
+   - use of ICC,
+   - intermediate artifacts,
+   - scientific invariants.
+2. ADRs for:
+   - primary RAW backend,
+   - CMM motor,
+   - ICC profile policy,
+   - DeltaE validation policy.
+3. Recipe compatibility table per backend.
 
-1. Documento de contrato de pipeline:
-   - estados de imagen,
-   - espacios de color,
-   - uso de ICC,
-   - artefactos intermedios,
-   - invariantes cientificas.
-2. ADRs para:
-   - backend RAW primario,
-   - motor CMM,
-   - politica de perfiles ICC,
-   - politica de validacion DeltaE.
-3. Tabla de compatibilidad de receta por backend.
+Exit criteria:
 
-Criterio de salida:
+- no critical function accepts parameters that it cannot execute faithfully.
 
-- ninguna funcion critica acepta parametros que no pueda ejecutar fielmente.
+### Phase 1 - P0 RAW and traceability
 
-### Fase 1 - P0 RAW y trazabilidad
+Objective:
 
-Objetivo:
+- ensure that the development carried out coincides exactly with what was declared.
 
-- asegurar que el revelado ejecutado coincide exactamente con lo declarado.
+Tasks:
 
-Tareas:
+1. Strict recipe validation.
+2. Registration of effective LibRaw parameters and external versions.
+3. Separation of `audit_linear_tiff` and rendered output.
+4. Valid/invalid recipe tests.
+5. Minimum real RAW dataset.
 
-1. Validacion estricta de receta.
-2. Registro de parametros efectivos LibRaw y versiones externas.
-3. Separacion de `audit_linear_tiff` y salida renderizada.
-4. Tests de recetas validas/invalidas.
-5. Dataset RAW real minimo.
+Exit criteria:
 
-Criterio de salida:
+- the pipeline fails early due to unsupported configuration and generates sidecars
+  enough to repeat the execution.
 
-- el pipeline falla temprano ante configuracion no soportada y genera sidecars
-  suficientes para repetir la ejecucion.
+### Phase 2 - P0 ICC management and batch output
 
-### Fase 2 - P0 gestion ICC y salida de lote
+Objective:
 
-Objetivo:
+- align the output with an interoperable ICC stream.
 
-- alinear la salida con un flujo ICC interoperable.
+Tasks:
 
-Tareas:
-
-1. Definir modos de salida:
+1. Define output modes:
    - `camera_rgb_with_input_icc`,
    - `converted_srgb`,
-   - `converted_xyz_or_lab` si se justifica cientificamente.
-2. Integrar CMM real.
-3. Sustituir aplicacion de matriz por transformacion ICC validada.
-4. Validar perfiles con herramientas externas (`iccdump`, ArgyllCMS).
-5. Documentar comportamiento de TIFF final.
+   - `converted_xyz_or_lab` if scientifically justified.
+2. Integrate real CMM.
+3. Replace matrix application with validated ICC transformation.
+4. Validate profiles with external tools (`iccdump`, ArgyllCMS).
+5. Document final TIFF behavior.
 
-Criterio de salida:
+Exit criteria:
 
-- cualquier TIFF exportado puede abrirse en software color-managed y su perfil
-  describe correctamente los pixeles.
+- any exported TIFF can be opened in color-managed software and its profile
+  correctly describes the pixels.
 
-### Fase 3 - P1 carta, muestreo y QA de captura
+### Phase 3 - P1 letter, sampling and capture QA
 
-Objetivo:
+Objective:
 
-- impedir que una deteccion o muestra mala produzca un perfil aparentemente valido.
+- prevent a bad detection or sample from producing an apparently valid profile.
 
-Tareas:
+Tasks:
 
-1. Reducir confianza del fallback y hacerlo bloqueante por defecto.
-2. Añadir modo manual asistido para esquinas de carta.
-3. Aplicar parametros reales de muestreo desde receta.
-4. Detectar saturacion, bajo nivel, no uniformidad e iluminacion irregular.
-5. Reportar outliers por parche y motivo de exclusion.
+1. Reduce fallback confidence and make it blocking by default.
+2. Add manual assisted mode for letter corners.
+3. Apply real sampling parameters from recipe.
+4. Detect saturation, low level, non-uniformity and irregular lighting.
+5. Report outliers by patch and reason for exclusion.
 
-Criterio de salida:
+Exit criteria:
 
-- una captura deficiente produce un diagnostico claro y no genera perfil sin
-  confirmacion explicita.
+- a poor capture produces a clear diagnosis and does not generate a profile without
+  explicit confirmation.### Phase 4 - P1 colorimetric validation
 
-### Fase 4 - P1 validacion colorimetrica
+Objective:
 
-Objetivo:
+- separate construction, validation and usability of the profile.
 
-- separar construccion, validacion y aptitud de uso del perfil.
+Tasks:
 
-Tareas:
+1. Split samples: training/validation.
+2. Validation of the real ICC using CMM.
+3. DeltaE thresholds by discipline or preset.
+4. Comparable reports between sessions.
+5. Stability tests between repeated runs.
 
-1. Split de muestras: entrenamiento/validacion.
-2. Validacion del ICC real mediante CMM.
-3. Umbrales DeltaE por disciplina o preset.
-4. Reportes comparables entre sesiones.
-5. Pruebas de estabilidad entre ejecuciones repetidas.
+Exit criteria:
 
-Criterio de salida:
+- a profile has status `draft`, `validated`, `rejected` or `expired`, with
+  auditable reasons.
 
-- un perfil tiene estado `draft`, `validated`, `rejected` o `expired`, con
-  razones auditables.
+### Phase 5 - P2 reproducibility, CI and distribution
 
-### Fase 5 - P2 reproducibilidad, CI y distribucion
+Objective:
 
-Objetivo:
+- make the behavior sustainable by the community.
 
-- hacer que el comportamiento sea sostenible por la comunidad.
+Tasks:
 
-Tareas:
-
-1. CI con matrices:
-   - unit,
+1. CI with arrays:
+   -unit,
    - integration-with-tools,
    - optional-gui-smoke.
-2. Checks de versiones de herramientas externas.
-3. Contenedor o entorno reproducible para validacion.
-4. Benchmark de determinismo y rendimiento.
-5. Auditoria de licencias antes de releases.
+2. Version checks of external tools.
+3. Container or reproducible environment for validation.
+4. Determinism and performance benchmark.
+5. License audit before releases.
 
-Criterio de salida:
+Exit criteria:
 
-- una release puede reconstruirse, probarse y auditarse con instrucciones claras.
+- a release can be rebuilt, tested and audited with clear instructions.
 
-### Fase 6 - P3 ampliacion controlada
+### Phase 6 - P3 controlled expansion
 
-Objetivo:
+Objective:
 
-- ampliar capacidades sin comprometer trazabilidad.
+- expand capacities without compromising traceability.
 
-Tareas:
+Tasks:
 
-1. Soporte IT8 completo.
-2. Perfiles LUT si el caso de uso lo justifica.
-3. Comparador de perfiles entre sesiones/iluminantes.
-4. C2PA/CAI para cadena de custodia.
-5. Internacionalizacion y presets por disciplina.
+1. Full IT8 support.
+2. LUT profiles if the use case warrants it.
+3. Profile comparator between sessions/illuminants.
+4. C2PA/CAI for chain of custody.
+5. Internationalization and presets by discipline.
 
-Criterio de salida:
+Exit criteria:
 
-- las funciones avanzadas heredan el mismo contrato de validacion y auditoria.
+- advanced functions inherit the same validation and auditing contract.
 
-## 6. Definicion de "hecho"
+## 6. Definition of "fact"
 
-Una tarea critica se considera terminada solo si cumple:
+A critical task is considered completed only if it meets:
 
-1. codigo implementado con tests unitarios,
-2. smoke test CLI documentado,
-3. sidecars/manifiestos actualizados,
-4. documentacion de usuario o tecnica actualizada,
-5. entrada en `CHANGELOG.md`,
-6. impacto en reproducibilidad evaluado,
-7. no introduce cambios silenciosos en salida colorimetrica.
+1. code implemented with unit tests,
+2. smoke test CLI documented,
+3. updated sidecars/manifests,
+4. updated user or technical documentation,
+5. entry in `CHANGELOG.md`,
+6. impact on reproducibility evaluated,
+7. does not introduce silent changes in colorimetric output.
 
-## 7. Criterios de operatividad minima
+## 7. Minimum operational criteria
 
-El proyecto podra considerarse "operativo para pruebas cientificas controladas"
-cuando cumpla:
+The project could be considered "operational for controlled scientific tests"
+when you meet:
+1. Real RAW development tested with minimal dataset,
+2. strict recipes without silent mappings,
+3. truly linear TIFF audit,
+4. Interoperable ICC output,
+5. validation of the real ICC,
+6. default blocking card fallback,
+7. DeltaE reports with thresholds and outliers,
+8. Batch manifest with hashes, versions, profile and color mode.
 
-1. revelado RAW real probado con dataset minimo,
-2. recetas estrictas sin mapeos silenciosos,
-3. audit TIFF realmente lineal,
-4. salida ICC interoperable,
-5. validacion del ICC real,
-6. fallback de carta bloqueante por defecto,
-7. reportes DeltaE con umbrales y outliers,
-8. manifiesto de lote con hashes, versiones, perfil y modo de color.
+It should not be considered "validated for forensic production" until it also has
+with:
 
-No deberia considerarse "validado para produccion forense" hasta contar ademas
-con:
+1. approved capture protocol,
+2. multi-chamber regression dataset,
+3. independent validation by laboratory or technical community,
+4. documented chain of custody,
+5. Version control of profiles and recipes per session.
 
-1. protocolo de captura aprobado,
-2. dataset de regresion multi-camara,
-3. validacion independiente por laboratorio o comunidad tecnica,
-4. cadena de custodia documentada,
-5. control de versiones de perfiles y recetas por sesion.
+## 8. Recommended order of implementation
 
-## 8. Orden recomendado de implementacion
+1. Strict recipe validation and elimination of silent mappings.
+2. Correction of `audit_linear_tiff`.
+3. Separation of ICC modes in batch.
+4. Real CMM integration.
+5. Validation of the real ICC.
+6. Card fallback blocking.
+7. Complete sampling parameters.
+8. Real RAW Dataset and Integration CI.
+9. Quality reports per session.
+10. C2PA/CAI and reproducible packaging.
 
-1. Validacion estricta de receta y eliminacion de mapeos silenciosos.
-2. Correccion de `audit_linear_tiff`.
-3. Separacion de modos ICC en batch.
-4. Integracion de CMM real.
-5. Validacion del ICC real.
-6. Bloqueo de fallback de carta.
-7. Parametros de muestreo completos.
-8. Dataset RAW real y CI de integracion.
-9. Reportes de calidad por sesion.
-10. C2PA/CAI y empaquetado reproducible.
+## 9. Main risks
 
-## 9. Riesgos principales
+1. RAW Compatibility:
+   - LibRaw/rawpy covers more modern formats, but may vary between versions.
+   - Mitigation: register LibRaw/rawpy version and use RAW regression dataset.
+2. ICC Interoperability:
+   - Not all consumers interpret entry profiles in the same way.
+   - Mitigation: validate with ArgyllCMS and reference TIFFs.
+3. Reference data:
+   - Charts age, references change and metrology may not be drawn.
+   - Mitigation: version references and register source/spectrophotometer.
+4. Forensic use:
+   - A technical tool is not enough without a capture and custody protocol.
+   - Mitigation: document procedure and separate technical result from opinion.
 
-1. Compatibilidad RAW:
-   - LibRaw/rawpy cubre mas formatos modernos, pero puede variar entre versiones.
-   - Mitigacion: registrar version LibRaw/rawpy y usar dataset RAW de regresion.
-2. Interoperabilidad ICC:
-   - no todos los consumidores interpretan igual perfiles de entrada.
-   - Mitigacion: validar con ArgyllCMS y TIFFs de referencia.
-3. Datos de referencia:
-   - cartas envejecen, referencias cambian y metrologia puede no estar trazada.
-   - Mitigacion: versionar referencias y registrar fuente/espectrofotometro.
-4. Uso forense:
-   - una herramienta tecnica no basta sin protocolo de captura y custodia.
-   - Mitigacion: documentar procedimiento y separar resultado tecnico de dictamen.
+## 10. State of testing observed in this review
 
-## 10. Estado de pruebas observado en esta revision
+Local environment:
 
-Entorno local:
+- `rawpy`/LibRaw: available in development environment.
+- `colprof 3.1.0`: available.
+- `exiftool 12.76`: available.
+- Python tests in `.venv`: `21 passed`.
 
-- `rawpy`/LibRaw: disponible en entorno de desarrollo.
-- `colprof 3.1.0`: disponible.
-- `exiftool 12.76`: disponible.
-- tests Python en `.venv`: `21 passed`.
+Smoke test with synthetic TIFF:
+- detection, sampling, build-profile, validate-profile and batch-develop run,
+- the ICC profile is generated with ArgyllCMS,
+- the final TIFF embeds ICC,
+- It is observed that the lateral matrix can produce clipping and that the fallback of
+  detection can return confidence too high.
 
-Smoke test con TIFF sintetico:
+Important limitation:
 
-- deteccion, muestreo, build-profile, validate-profile y batch-develop ejecutan,
-- el perfil ICC se genera con ArgyllCMS,
-- el TIFF final incrusta ICC,
-- se observa que la matriz lateral puede producir clipping y que el fallback de
-  deteccion puede devolver confianza demasiado alta.
-
-Limitacion importante:
-
-- no se ha validado con RAW real porque los RAW de `testdata/raw` son ficheros
-  de texto de placeholder.
+- it has not been validated with real RAW because the RAWs of `testdata/raw` are files
+  placeholder text.

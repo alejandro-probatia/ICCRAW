@@ -662,7 +662,7 @@ if QtWidgets is not None:
             self._hist_b = None
             self._clip_shadow = np.zeros(3, dtype=np.float32)
             self._clip_highlight = np.zeros(3, dtype=np.float32)
-            self.setToolTip("")
+            self.setToolTip(self.tr(""))
             self.update()
 
         def set_clip_markers_enabled(self, enabled: bool) -> None:
@@ -1118,7 +1118,7 @@ if QtWidgets is not None:
     class NexoRawMainWindow(QtWidgets.QMainWindow):
         def __init__(self) -> None:
             super().__init__()
-            self.setWindowTitle(f"{APP_NAME} - Ajuste paramétrico RAW")
+            self.setWindowTitle(f"{APP_NAME} - " + self.tr("Ajuste paramétrico RAW"))
             icon = _app_icon()
             if not icon.isNull():
                 self.setWindowIcon(icon)
@@ -1239,7 +1239,7 @@ if QtWidgets is not None:
             if not self._restore_startup_context():
                 self._set_current_directory(self._current_dir)
             self._refresh_queue_table()
-            self.statusBar().showMessage("Listo")
+            self.statusBar().showMessage(self.tr("Listo"))
 
         def _build_ui(self) -> None:
             root = QtWidgets.QWidget()
@@ -1251,14 +1251,14 @@ if QtWidgets is not None:
             header.setContentsMargins(0, 0, 0, 0)
             header.setSpacing(6)
             header.addStretch(1)
-            header.addWidget(self._button("Inicio", self._go_home_directory))
-            header.addWidget(self._button("Abrir carpeta...", self._pick_directory))
-            header.addWidget(self._button("Recargar", self._reload_current_directory))
-            header.addWidget(self._button("Pantalla completa", self._menu_toggle_fullscreen))
+            header.addWidget(self._button(self.tr("Inicio"), self._go_home_directory))
+            header.addWidget(self._button(self.tr("Abrir carpeta..."), self._pick_directory))
+            header.addWidget(self._button(self.tr("Recargar"), self._reload_current_directory))
+            header.addWidget(self._button(self.tr("Pantalla completa"), self._menu_toggle_fullscreen))
             root_layout.addLayout(header)
 
             task_bar = QtWidgets.QHBoxLayout()
-            self.global_status_label = QtWidgets.QLabel("Listo")
+            self.global_status_label = QtWidgets.QLabel(self.tr("Listo"))
             self.global_status_label.setStyleSheet("font-size: 12px; color: #374151;")
             self.global_progress = QtWidgets.QProgressBar()
             self.global_progress.setRange(0, 1)
@@ -1274,9 +1274,9 @@ if QtWidgets is not None:
             raw_tab = self._build_tab_raw_develop()
             queue_tab = self._build_tab_queue()
 
-            self.main_tabs.addTab(session_tab, "1. Sesión")
-            self.main_tabs.addTab(raw_tab, "2. Ajustar / Aplicar")
-            self.main_tabs.addTab(queue_tab, "3. Cola de Revelado")
+            self.main_tabs.addTab(session_tab, self.tr("1. Sesión"))
+            self.main_tabs.addTab(raw_tab, self.tr("2. Ajustar / Aplicar"))
+            self.main_tabs.addTab(queue_tab, self.tr("3. Cola de Revelado"))
 
             root_layout.addWidget(self.main_tabs, 1)
 
@@ -1286,46 +1286,46 @@ if QtWidgets is not None:
         def _build_menu_bar(self) -> None:
             mb = self.menuBar()
 
-            menu_file = mb.addMenu("Archivo")
-            menu_file.addAction(self._action("Crear sesión...", self._on_create_session))
-            menu_file.addAction(self._action("Abrir sesión...", self._on_open_session))
-            menu_file.addAction(self._action("Guardar sesión", self._on_save_session, "Ctrl+Shift+S"))
+            menu_file = mb.addMenu(self.tr("Archivo"))
+            menu_file.addAction(self._action(self.tr("Crear sesión..."), self._on_create_session))
+            menu_file.addAction(self._action(self.tr("Abrir sesión..."), self._on_open_session))
+            menu_file.addAction(self._action(self.tr("Guardar sesión"), self._on_save_session, "Ctrl+Shift+S"))
             menu_file.addSeparator()
-            menu_file.addAction(self._action("Abrir carpeta...", self._pick_directory, "Ctrl+O"))
-            menu_file.addAction(self._action("Guardar preview PNG", self._on_save_preview, "Ctrl+S"))
-            menu_file.addAction(self._action("Aplicar ajustes a selección", self._on_batch_develop_selected, "Ctrl+R"))
+            menu_file.addAction(self._action(self.tr("Abrir carpeta..."), self._pick_directory, "Ctrl+O"))
+            menu_file.addAction(self._action(self.tr("Guardar preview PNG"), self._on_save_preview, "Ctrl+S"))
+            menu_file.addAction(self._action(self.tr("Aplicar ajustes a selección"), self._on_batch_develop_selected, "Ctrl+R"))
             menu_file.addSeparator()
-            menu_file.addAction(self._action("Salir", self.close, "Ctrl+Q"))
+            menu_file.addAction(self._action(self.tr("Salir"), self.close, "Ctrl+Q"))
 
-            menu_cfg = mb.addMenu("Configuracion")
-            menu_cfg.addAction(self._action("Cargar receta...", self._menu_load_recipe))
-            menu_cfg.addAction(self._action("Guardar receta...", self._menu_save_recipe))
-            menu_cfg.addAction(self._action("Receta por defecto", self._menu_reset_recipe))
+            menu_cfg = mb.addMenu(self.tr("Configuracion"))
+            menu_cfg.addAction(self._action(self.tr("Cargar receta..."), self._menu_load_recipe))
+            menu_cfg.addAction(self._action(self.tr("Guardar receta..."), self._menu_save_recipe))
+            menu_cfg.addAction(self._action(self.tr("Receta por defecto"), self._menu_reset_recipe))
             menu_cfg.addSeparator()
-            menu_cfg.addAction(self._action("Configuracion global...", self._open_global_settings_dialog))
+            menu_cfg.addAction(self._action(self.tr("Configuracion global..."), self._open_global_settings_dialog))
             menu_cfg.addSeparator()
-            menu_cfg.addAction(self._action("Ir a pestaña Sesión", lambda: self.main_tabs.setCurrentIndex(0)))
-            menu_cfg.addAction(self._action("Ir a pestaña Revelado", lambda: self.main_tabs.setCurrentIndex(1)))
-            menu_cfg.addAction(self._action("Ir a pestaña Cola", lambda: self.main_tabs.setCurrentIndex(2)))
+            menu_cfg.addAction(self._action(self.tr("Ir a pestaña Sesión"), lambda: self.main_tabs.setCurrentIndex(0)))
+            menu_cfg.addAction(self._action(self.tr("Ir a pestaña Revelado"), lambda: self.main_tabs.setCurrentIndex(1)))
+            menu_cfg.addAction(self._action(self.tr("Ir a pestaña Cola"), lambda: self.main_tabs.setCurrentIndex(2)))
 
-            menu_profile = mb.addMenu("Perfil ICC")
-            menu_profile.addAction(self._action("Cargar perfil activo...", self._menu_load_profile))
-            menu_profile.addAction(self._action("Usar perfil generado", self._use_generated_profile_as_active))
-            menu_profile.addAction(self._action("Comparar reportes QA...", self._menu_compare_qa_reports))
+            menu_profile = mb.addMenu(self.tr("Perfil ICC"))
+            menu_profile.addAction(self._action(self.tr("Cargar perfil activo..."), self._menu_load_profile))
+            menu_profile.addAction(self._action(self.tr("Usar perfil generado"), self._use_generated_profile_as_active))
+            menu_profile.addAction(self._action(self.tr("Comparar reportes QA..."), self._menu_compare_qa_reports))
 
-            menu_view = mb.addMenu("Vista")
-            a_compare = self._action("Comparar original/resultado", self._menu_toggle_compare)
+            menu_view = mb.addMenu(self.tr("Vista"))
+            a_compare = self._action(self.tr("Comparar original/resultado"), self._menu_toggle_compare)
             a_compare.setCheckable(True)
             a_compare.setChecked(False)
             self._action_compare = a_compare
             menu_view.addAction(a_compare)
-            menu_view.addAction(self._action("Ir a Nitidez", lambda: self._go_to_nitidez_tab()))
-            menu_view.addAction(self._action("Pantalla completa", self._menu_toggle_fullscreen, "F11"))
-            menu_view.addAction(self._action("Restablecer distribución", self._reset_layout_splitters))
+            menu_view.addAction(self._action(self.tr("Ir a Nitidez"), lambda: self._go_to_nitidez_tab()))
+            menu_view.addAction(self._action(self.tr("Pantalla completa"), self._menu_toggle_fullscreen, "F11"))
+            menu_view.addAction(self._action(self.tr("Restablecer distribución"), self._reset_layout_splitters))
 
-            menu_help = mb.addMenu("Ayuda")
-            menu_help.addAction(self._action("Diagnóstico herramientas...", self._menu_check_tools))
-            menu_help.addAction(self._action("Buscar actualizaciones...", self._menu_check_updates))
+            menu_help = mb.addMenu(self.tr("Ayuda"))
+            menu_help.addAction(self._action(self.tr("Diagnóstico herramientas..."), self._menu_check_tools))
+            menu_help.addAction(self._action(self.tr("Buscar actualizaciones..."), self._menu_check_updates))
             menu_help.addAction(self._action(f"Acerca de {APP_NAME}", self._menu_about))
 
         def _go_to_nitidez_tab(self) -> None:
@@ -1465,7 +1465,7 @@ if QtWidgets is not None:
                     return True
                 except Exception as exc:
                     self._settings.remove("session/last_root")
-                    self._set_status(f"No se pudo restaurar la última sesión: {exc}")
+                    self._set_status(self.tr("No se pudo restaurar la ultima sesion:") + f" {exc}")
 
             folder = self._persistent_directory("browser/last_dir")
             if folder is not None:
@@ -1483,41 +1483,41 @@ if QtWidgets is not None:
             outer.setContentsMargins(8, 8, 8, 8)
             outer.setSpacing(8)
 
-            session_box = QtWidgets.QGroupBox("Gestión de sesión")
+            session_box = QtWidgets.QGroupBox(self.tr("Gestión de sesión"))
             grid = QtWidgets.QGridLayout(session_box)
 
             self.session_root_path = QtWidgets.QLineEdit(str(self._current_dir / "nexoraw_session"))
-            self._add_path_row(grid, 0, "Directorio raíz de sesión", self.session_root_path, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 0, self.tr("Directorio raíz de sesión"), self.session_root_path, file_mode=False, save_mode=False, dir_mode=True)
             self.session_root_path.editingFinished.connect(self._on_session_root_edited)
             self.session_root_path.textChanged.connect(lambda _text: self._session_root_update_timer.start(150))
 
-            grid.addWidget(QtWidgets.QLabel("Nombre de sesión"), 1, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Nombre de sesión")), 1, 0)
             self.session_name_edit = QtWidgets.QLineEdit("")
             grid.addWidget(self.session_name_edit, 1, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Condiciones de iluminación"), 2, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Condiciones de iluminación")), 2, 0)
             self.session_illumination_edit = QtWidgets.QLineEdit("")
             grid.addWidget(self.session_illumination_edit, 2, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Notas de toma"), 3, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Notas de toma")), 3, 0)
             self.session_capture_edit = QtWidgets.QLineEdit("")
             grid.addWidget(self.session_capture_edit, 3, 1, 1, 2)
 
             row = QtWidgets.QHBoxLayout()
-            row.addWidget(self._button("Usar carpeta actual", self._use_current_dir_as_session_root))
-            row.addWidget(self._button("Crear sesión", self._on_create_session))
-            row.addWidget(self._button("Abrir sesión", self._on_open_session))
-            row.addWidget(self._button("Guardar sesión", self._on_save_session))
+            row.addWidget(self._button(self.tr("Usar carpeta actual"), self._use_current_dir_as_session_root))
+            row.addWidget(self._button(self.tr("Crear sesión"), self._on_create_session))
+            row.addWidget(self._button(self.tr("Abrir sesión"), self._on_open_session))
+            row.addWidget(self._button(self.tr("Guardar sesión"), self._on_save_session))
             grid.addLayout(row, 4, 0, 1, 3)
 
-            self.session_active_label = QtWidgets.QLabel("Sin sesión activa")
+            self.session_active_label = QtWidgets.QLabel(self.tr("Sin sesión activa"))
             self.session_active_label.setWordWrap(True)
             self.session_active_label.setStyleSheet("font-size: 12px; color: #1f2937;")
             grid.addWidget(self.session_active_label, 5, 0, 1, 3)
 
             outer.addWidget(session_box)
 
-            dirs_box = QtWidgets.QGroupBox("Estructura persistente del proyecto")
+            dirs_box = QtWidgets.QGroupBox(self.tr("Estructura persistente del proyecto"))
             dirs_grid = QtWidgets.QGridLayout(dirs_box)
 
             self.session_dir_charts = QtWidgets.QLineEdit("")
@@ -1533,11 +1533,11 @@ if QtWidgets is not None:
             self.session_dir_work = QtWidgets.QLineEdit("")
             self.session_dir_work.setReadOnly(True)
 
-            dirs_grid.addWidget(QtWidgets.QLabel("00_configuraciones"), 0, 0)
+            dirs_grid.addWidget(QtWidgets.QLabel(self.tr("00_configuraciones")), 0, 0)
             dirs_grid.addWidget(self.session_dir_config, 0, 1)
-            dirs_grid.addWidget(QtWidgets.QLabel("01_ORG originales RAW"), 1, 0)
+            dirs_grid.addWidget(QtWidgets.QLabel(self.tr("01_ORG originales RAW")), 1, 0)
             dirs_grid.addWidget(self.session_dir_raw, 1, 1)
-            dirs_grid.addWidget(QtWidgets.QLabel("02_DRV derivados"), 2, 0)
+            dirs_grid.addWidget(QtWidgets.QLabel(self.tr("02_DRV derivados")), 2, 0)
             dirs_grid.addWidget(self.session_dir_exports, 2, 1)
 
             outer.addWidget(dirs_box)
@@ -1570,42 +1570,42 @@ if QtWidgets is not None:
             outer.setContentsMargins(8, 8, 8, 8)
             outer.setSpacing(8)
 
-            box = QtWidgets.QGroupBox("Carta de color: perfil avanzado de ajuste + ICC de entrada")
+            box = QtWidgets.QGroupBox(self.tr("Carta de color: perfil avanzado de ajuste + ICC de entrada"))
             grid = QtWidgets.QGridLayout(box)
 
             self.profile_charts_dir = QtWidgets.QLineEdit(str(self._current_dir))
-            self._add_path_row(grid, 0, "Carpeta de referencias colorimétricas", self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 0, self.tr("Carpeta de referencias colorimétricas"), self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
 
-            self.profile_chart_selection_label = QtWidgets.QLabel("Referencias colorimétricas: todas las compatibles de la carpeta indicada")
+            self.profile_chart_selection_label = QtWidgets.QLabel(self.tr("Referencias colorimétricas: todas las compatibles de la carpeta indicada"))
             self.profile_chart_selection_label.setWordWrap(True)
             self.profile_chart_selection_label.setStyleSheet("font-size: 12px; color: #374151;")
             grid.addWidget(self.profile_chart_selection_label, 1, 0, 1, 3)
 
             self.path_reference = QtWidgets.QLineEdit("testdata/references/colorchecker24_colorchecker2005_d50.json")
-            self._add_path_row(grid, 2, "Referencia carta JSON", self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
+            self._add_path_row(grid, 2, self.tr("Referencia carta JSON"), self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
 
             self.profile_out_path_edit = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
             self.path_profile_out = self.profile_out_path_edit
-            self._add_path_row(grid, 3, "Perfil ICC de entrada", self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
+            self._add_path_row(grid, 3, self.tr("Perfil ICC de entrada"), self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
 
             self.profile_report_out = QtWidgets.QLineEdit("/tmp/profile_report_gui.json")
-            self._hide_row_widgets(self._add_path_row(grid, 4, "Reporte perfil JSON", self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False))
+            self._hide_row_widgets(self._add_path_row(grid, 4, self.tr("Reporte perfil JSON"), self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False))
 
             self.profile_workdir = QtWidgets.QLineEdit("/tmp/nexoraw_profile_work")
-            self._hide_row_widgets(self._add_path_row(grid, 5, "Directorio artefactos", self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True))
+            self._hide_row_widgets(self._add_path_row(grid, 5, self.tr("Directorio artefactos"), self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True))
 
             self.develop_profile_out = QtWidgets.QLineEdit("/tmp/development_profile_gui.json")
-            self._hide_row_widgets(self._add_path_row(grid, 6, "Perfil de ajuste avanzado JSON", self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False))
+            self._hide_row_widgets(self._add_path_row(grid, 6, self.tr("Perfil de ajuste avanzado JSON"), self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False))
 
             self.calibrated_recipe_out = QtWidgets.QLineEdit("/tmp/recipe_calibrated_gui.yml")
-            self._hide_row_widgets(self._add_path_row(grid, 7, "Receta calibrada", self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False))
+            self._hide_row_widgets(self._add_path_row(grid, 7, self.tr("Receta calibrada"), self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False))
 
-            grid.addWidget(QtWidgets.QLabel("Tipo de carta"), 8, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Tipo de carta")), 8, 0)
             self.profile_chart_type = QtWidgets.QComboBox()
             self.profile_chart_type.addItems(["colorchecker24", "it8"])
             grid.addWidget(self.profile_chart_type, 8, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Confianza mínima"), 9, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Confianza mínima")), 9, 0)
             self.profile_min_conf = QtWidgets.QDoubleSpinBox()
             self.profile_min_conf.setRange(0.0, 1.0)
             self.profile_min_conf.setSingleStep(0.05)
@@ -1613,41 +1613,41 @@ if QtWidgets is not None:
             self.profile_min_conf.setValue(0.35)
             grid.addWidget(self.profile_min_conf, 9, 1, 1, 2)
 
-            self.profile_allow_fallback = QtWidgets.QCheckBox("Permitir fallback")
+            self.profile_allow_fallback = QtWidgets.QCheckBox(self.tr("Permitir fallback"))
             self.profile_allow_fallback.setChecked(False)
             grid.addWidget(self.profile_allow_fallback, 10, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Formato ICC"), 11, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Formato ICC")), 11, 0)
             self.combo_profile_format = QtWidgets.QComboBox()
             self.combo_profile_format.addItems(PROFILE_FORMAT_OPTIONS)
             grid.addWidget(self.combo_profile_format, 11, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Tipo de perfil ICC"), 12, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Tipo de perfil ICC")), 12, 0)
             self.combo_profile_algo = QtWidgets.QComboBox()
             for label, flag in PROFILE_ALGO_OPTIONS:
-                self.combo_profile_algo.addItem(label, flag)
+                self.combo_profile_algo.addItem(self.tr(label), flag)
             grid.addWidget(self.combo_profile_algo, 12, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Calidad colprof"), 13, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Calidad colprof")), 13, 0)
             self.combo_profile_quality = QtWidgets.QComboBox()
             for label, q in PROFILE_QUALITY_OPTIONS:
-                self.combo_profile_quality.addItem(label, q)
+                self.combo_profile_quality.addItem(self.tr(label), q)
             self.combo_profile_quality.setCurrentIndex(1)
             grid.addWidget(self.combo_profile_quality, 13, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Args extra colprof"), 14, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Args extra colprof")), 14, 0)
             self.edit_colprof_args = QtWidgets.QLineEdit("")
-            self.edit_colprof_args.setPlaceholderText("Ejemplo: -D \"Perfil Camara Museo\"")
+            self.edit_colprof_args.setPlaceholderText(self.tr("Ejemplo: -D \"Perfil Camara Museo\""))
             grid.addWidget(self.edit_colprof_args, 14, 1, 1, 2)
 
-            label_camera = QtWidgets.QLabel("Cámara (opcional)")
+            label_camera = QtWidgets.QLabel(self.tr("Cámara (opcional)"))
             grid.addWidget(label_camera, 15, 0)
             self.profile_camera = QtWidgets.QLineEdit("")
             grid.addWidget(self.profile_camera, 15, 1, 1, 2)
             label_camera.hide()
             self.profile_camera.hide()
 
-            label_lens = QtWidgets.QLabel("Lente (opcional)")
+            label_lens = QtWidgets.QLabel(self.tr("Lente (opcional)"))
             grid.addWidget(label_lens, 16, 0)
             self.profile_lens = QtWidgets.QLineEdit("")
             grid.addWidget(self.profile_lens, 16, 1, 1, 2)
@@ -1656,31 +1656,31 @@ if QtWidgets is not None:
 
             outer.addWidget(box)
 
-            manual_box = QtWidgets.QGroupBox("Marcado manual de carta")
+            manual_box = QtWidgets.QGroupBox(self.tr("Marcado manual de carta"))
             manual_layout = QtWidgets.QVBoxLayout(manual_box)
             manual_buttons = QtWidgets.QHBoxLayout()
-            manual_buttons.addWidget(self._button("Marcar en visor", self._start_manual_chart_marking))
-            manual_buttons.addWidget(self._button("Limpiar puntos", self._clear_manual_chart_points))
-            manual_buttons.addWidget(self._button("Guardar detección", self._save_manual_chart_detection))
+            manual_buttons.addWidget(self._button(self.tr("Marcar en visor"), self._start_manual_chart_marking))
+            manual_buttons.addWidget(self._button(self.tr("Limpiar puntos"), self._clear_manual_chart_points))
+            manual_buttons.addWidget(self._button(self.tr("Guardar detección"), self._save_manual_chart_detection))
             manual_layout.addLayout(manual_buttons)
-            self.manual_chart_points_label = QtWidgets.QLabel("Puntos: 0/4")
+            self.manual_chart_points_label = QtWidgets.QLabel(self.tr("Puntos: 0/4"))
             self.manual_chart_points_label.setWordWrap(True)
             self.manual_chart_points_label.setStyleSheet("font-size: 12px; color: #374151;")
             manual_layout.addWidget(self.manual_chart_points_label)
             outer.addWidget(manual_box)
 
             row_generate = QtWidgets.QHBoxLayout()
-            row_generate.addWidget(self._button("Generar perfil avanzado con carta", self._on_generate_profile))
+            row_generate.addWidget(self._button(self.tr("Generar perfil avanzado con carta"), self._on_generate_profile))
             outer.addLayout(row_generate)
 
-            self.profile_summary_label = QtWidgets.QLabel("Sin perfil avanzado generado")
+            self.profile_summary_label = QtWidgets.QLabel(self.tr("Sin perfil avanzado generado"))
             self.profile_summary_label.setWordWrap(True)
             self.profile_summary_label.setStyleSheet("font-size: 12px; color: #d1d5db;")
             outer.addWidget(self.profile_summary_label)
 
             self.profile_output = QtWidgets.QPlainTextEdit()
             self.profile_output.setReadOnly(True)
-            self.profile_output.setPlaceholderText("Resultado JSON de la generación de perfil")
+            self.profile_output.setPlaceholderText(self.tr("Resultado JSON de la generación de perfil"))
             self.profile_output.setMaximumHeight(170)
             outer.addWidget(self.profile_output, 1)
             return tab
@@ -1689,38 +1689,40 @@ if QtWidgets is not None:
             tab = QtWidgets.QWidget()
             grid = QtWidgets.QGridLayout(tab)
 
-            grid.addWidget(QtWidgets.QLabel("Perfil de ajuste activo"), 0, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Perfil de ajuste activo")), 0, 0)
             self.development_profile_combo = QtWidgets.QComboBox()
             self.development_profile_combo.setToolTip(
-                "Perfil de ajuste guardado. Al aplicarlo, sus parametros pasan a los controles de revelado del RAW."
+                self.tr("Perfil de ajuste guardado. Al aplicarlo, sus parametros pasan a los controles de revelado del RAW.")
             )
             grid.addWidget(self.development_profile_combo, 0, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Nombre del ajuste"), 1, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Nombre del ajuste")), 1, 0)
             self.development_profile_name_edit = QtWidgets.QLineEdit("Perfil manual")
             grid.addWidget(self.development_profile_name_edit, 1, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Espacio estandar sin carta"), 2, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Espacio estandar sin carta")), 2, 0)
             self.development_output_space_combo = QtWidgets.QComboBox()
             self.development_output_space_combo.setToolTip(
-                "Para imagenes sin carta, revela el RAW en un espacio RGB estandar real "
-                "(sRGB, Adobe RGB o ProPhoto RGB) e incrusta ese perfil ICC estandar. "
-                "Con carta se mantiene RGB de camara e ICC de entrada de sesion."
+                self.tr(
+                    "Para imagenes sin carta, revela el RAW en un espacio RGB estandar real "
+                    "(sRGB, Adobe RGB o ProPhoto RGB) e incrusta ese perfil ICC estandar. "
+                    "Con carta se mantiene RGB de camara e ICC de entrada de sesion."
+                )
             )
-            self.development_output_space_combo.addItem("Carta / RGB de cámara", "scene_linear_camera_rgb")
-            self.development_output_space_combo.addItem("sRGB estandar", "srgb")
-            self.development_output_space_combo.addItem("Adobe RGB (1998) estandar", "adobe_rgb")
-            self.development_output_space_combo.addItem("ProPhoto RGB estandar", "prophoto_rgb")
+            self.development_output_space_combo.addItem(self.tr("Carta / RGB de cámara"), "scene_linear_camera_rgb")
+            self.development_output_space_combo.addItem(self.tr("sRGB estandar"), "srgb")
+            self.development_output_space_combo.addItem(self.tr("Adobe RGB (1998) estandar"), "adobe_rgb")
+            self.development_output_space_combo.addItem(self.tr("ProPhoto RGB estandar"), "prophoto_rgb")
             self.development_output_space_combo.currentIndexChanged.connect(self._on_development_output_space_changed)
             grid.addWidget(self.development_output_space_combo, 2, 1, 1, 2)
 
             profile_buttons = QtWidgets.QGridLayout()
-            profile_buttons.addWidget(self._button("Guardar perfil básico", self._save_current_development_profile), 0, 0)
-            profile_buttons.addWidget(self._button("Aplicar a controles", self._activate_selected_development_profile), 0, 1)
-            profile_buttons.addWidget(self._button("Asignar activo a cola", self._queue_assign_active_development_profile), 1, 0, 1, 2)
+            profile_buttons.addWidget(self._button(self.tr("Guardar perfil básico"), self._save_current_development_profile), 0, 0)
+            profile_buttons.addWidget(self._button(self.tr("Aplicar a controles"), self._activate_selected_development_profile), 0, 1)
+            profile_buttons.addWidget(self._button(self.tr("Asignar activo a cola"), self._queue_assign_active_development_profile), 1, 0, 1, 2)
             grid.addLayout(profile_buttons, 3, 0, 1, 3)
 
-            self.development_profile_status_label = QtWidgets.QLabel("Sin perfiles de ajuste guardados")
+            self.development_profile_status_label = QtWidgets.QLabel(self.tr("Sin perfiles de ajuste guardados"))
             self.development_profile_status_label.setWordWrap(True)
             self.development_profile_status_label.setStyleSheet("font-size: 12px; color: #374151;")
             grid.addWidget(self.development_profile_status_label, 4, 0, 1, 3)
@@ -1734,7 +1736,7 @@ if QtWidgets is not None:
             layout.setContentsMargins(8, 8, 8, 8)
             layout.setSpacing(10)
 
-            profile_box = QtWidgets.QGroupBox("Perfiles de ajuste por archivo")
+            profile_box = QtWidgets.QGroupBox(self.tr("Perfiles de ajuste por archivo"))
             profile_layout = QtWidgets.QVBoxLayout(profile_box)
             profile_layout.addWidget(self._build_development_profiles_panel())
             layout.addWidget(profile_box)
@@ -1742,7 +1744,7 @@ if QtWidgets is not None:
             layout.addWidget(self._build_tab_profile_generation())
 
             self._advanced_profile_config = self._build_tab_profile_config()
-            icc_box = QtWidgets.QGroupBox("ICC activo para preview y exportación")
+            icc_box = QtWidgets.QGroupBox(self.tr("ICC activo para preview y exportación"))
             icc_layout = QtWidgets.QVBoxLayout(icc_box)
             icc_layout.addWidget(self._advanced_profile_config)
             layout.addWidget(icc_box)
@@ -1755,24 +1757,24 @@ if QtWidgets is not None:
             outer.setContentsMargins(8, 8, 8, 8)
             outer.setSpacing(8)
 
-            queue_box = QtWidgets.QGroupBox("Cola de imágenes para revelado")
+            queue_box = QtWidgets.QGroupBox(self.tr("Cola de imágenes para revelado"))
             queue_layout = QtWidgets.QVBoxLayout(queue_box)
 
             queue_actions = QtWidgets.QHBoxLayout()
-            queue_actions.addWidget(self._button("Añadir selección", self._queue_add_selected))
-            queue_actions.addWidget(self._button("Añadir RAW de sesión", self._queue_add_session_raws))
-            queue_actions.addWidget(self._button("Asignar perfil activo", self._queue_assign_active_development_profile))
-            queue_actions.addWidget(self._button("Quitar seleccionados", self._queue_remove_selected))
-            queue_actions.addWidget(self._button("Limpiar cola", self._queue_clear))
-            queue_actions.addWidget(self._button("Revelar cola", self._queue_process))
+            queue_actions.addWidget(self._button(self.tr("Añadir selección"), self._queue_add_selected))
+            queue_actions.addWidget(self._button(self.tr("Añadir RAW de sesión"), self._queue_add_session_raws))
+            queue_actions.addWidget(self._button(self.tr("Asignar perfil activo"), self._queue_assign_active_development_profile))
+            queue_actions.addWidget(self._button(self.tr("Quitar seleccionados"), self._queue_remove_selected))
+            queue_actions.addWidget(self._button(self.tr("Limpiar cola"), self._queue_clear))
+            queue_actions.addWidget(self._button(self.tr("Revelar cola"), self._queue_process))
             queue_layout.addLayout(queue_actions)
 
-            self.queue_status_label = QtWidgets.QLabel("Cola vacía")
+            self.queue_status_label = QtWidgets.QLabel(self.tr("Cola vacía"))
             self.queue_status_label.setStyleSheet("font-size: 12px; color: #374151;")
             queue_layout.addWidget(self.queue_status_label)
 
             self.queue_table = QtWidgets.QTableWidget(0, 5)
-            self.queue_table.setHorizontalHeaderLabels(["Archivo", "Perfil", "Estado", "TIFF salida", "Mensaje"])
+            self.queue_table.setHorizontalHeaderLabels([self.tr("Archivo"), self.tr("Perfil"), self.tr("Estado"), self.tr("TIFF salida"), self.tr("Mensaje")])
             self.queue_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
             self.queue_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
             self.queue_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
@@ -1783,11 +1785,11 @@ if QtWidgets is not None:
 
             outer.addWidget(queue_box, 2)
 
-            monitor_box = QtWidgets.QGroupBox("Monitoreo de ejecución")
+            monitor_box = QtWidgets.QGroupBox(self.tr("Monitoreo de ejecución"))
             monitor_layout = QtWidgets.QVBoxLayout(monitor_box)
 
             top = QtWidgets.QHBoxLayout()
-            self.monitor_status_label = QtWidgets.QLabel("Sin tareas en ejecución")
+            self.monitor_status_label = QtWidgets.QLabel(self.tr("Sin tareas en ejecución"))
             self.monitor_progress = QtWidgets.QProgressBar()
             self.monitor_progress.setRange(0, 1)
             self.monitor_progress.setValue(0)
@@ -1796,7 +1798,7 @@ if QtWidgets is not None:
             monitor_layout.addLayout(top)
 
             self.monitor_tasks = QtWidgets.QTableWidget(0, 4)
-            self.monitor_tasks.setHorizontalHeaderLabels(["ID", "Tarea", "Estado", "Detalle"])
+            self.monitor_tasks.setHorizontalHeaderLabels([self.tr("ID"), self.tr("Tarea"), self.tr("Estado"), self.tr("Detalle")])
             self.monitor_tasks.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
             self.monitor_tasks.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
             self.monitor_tasks.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
@@ -1805,7 +1807,7 @@ if QtWidgets is not None:
 
             self.monitor_log = QtWidgets.QPlainTextEdit()
             self.monitor_log.setReadOnly(True)
-            self.monitor_log.setPlaceholderText("Eventos y trazas de flujo")
+            self.monitor_log.setPlaceholderText(self.tr("Eventos y trazas de flujo"))
             monitor_layout.addWidget(self.monitor_log, 1)
 
             outer.addWidget(monitor_box, 2)
@@ -1821,27 +1823,27 @@ if QtWidgets is not None:
             self.left_tabs = QtWidgets.QTabWidget()
             self.left_tabs.setTabPosition(QtWidgets.QTabWidget.West)
             self.left_tabs.setDocumentMode(True)
-            self.left_tabs.addTab(self._build_browser_panel(), "Explorador")
-            self.left_tabs.addTab(self._build_viewer_controls_panel(), "Visor")
-            self.left_tabs.addTab(self._build_analysis_panel(), "Análisis")
-            self.left_tabs.addTab(self._build_metadata_panel(), "Metadatos")
-            self.left_tabs.addTab(self._build_preview_log_panel(), "Log")
+            self.left_tabs.addTab(self._build_browser_panel(), self.tr("Explorador"))
+            self.left_tabs.addTab(self._build_viewer_controls_panel(), self.tr("Visor"))
+            self.left_tabs.addTab(self._build_analysis_panel(), self.tr("Análisis"))
+            self.left_tabs.addTab(self._build_metadata_panel(), self.tr("Metadatos"))
+            self.left_tabs.addTab(self._build_preview_log_panel(), self.tr("Log"))
             layout.addWidget(self.left_tabs, 1)
             return pane
 
         def _build_browser_panel(self) -> QtWidgets.QWidget:
-            box = QtWidgets.QGroupBox("Explorador de unidades y carpetas")
+            box = QtWidgets.QGroupBox(self.tr("Explorador de unidades y carpetas"))
             box_layout = QtWidgets.QVBoxLayout(box)
 
             root_row = QtWidgets.QHBoxLayout()
-            root_row.addWidget(QtWidgets.QLabel("Unidad / raiz"))
+            root_row.addWidget(QtWidgets.QLabel(self.tr("Unidad / raiz")))
             self.storage_root_combo = QtWidgets.QComboBox()
             self.storage_root_combo.currentIndexChanged.connect(self._on_storage_root_changed)
             root_row.addWidget(self.storage_root_combo, 1)
-            root_row.addWidget(self._button("Actualizar", self._refresh_storage_roots))
+            root_row.addWidget(self._button(self.tr("Actualizar"), self._refresh_storage_roots))
             box_layout.addLayout(root_row)
 
-            self.current_dir_label = QtWidgets.QLabel("")
+            self.current_dir_label = QtWidgets.QLabel(self.tr(""))
             self.current_dir_label.setWordWrap(True)
             self.current_dir_label.setStyleSheet("font-size: 12px; color: #374151;")
             box_layout.addWidget(self.current_dir_label)
@@ -1859,21 +1861,23 @@ if QtWidgets is not None:
             layout.setContentsMargins(8, 8, 8, 8)
             layout.setSpacing(8)
 
-            layout.addWidget(QtWidgets.QLabel("Archivo actual"))
-            self.selected_file_label = QtWidgets.QLabel("Sin archivo seleccionado")
+            layout.addWidget(QtWidgets.QLabel(self.tr("Archivo actual")))
+            self.selected_file_label = QtWidgets.QLabel(self.tr("Sin archivo seleccionado"))
             self.selected_file_label.setWordWrap(True)
             self.selected_file_label.setStyleSheet("font-size: 12px; color: #1f2937;")
             layout.addWidget(self.selected_file_label)
 
-            self.chk_compare = QtWidgets.QCheckBox("Comparar original / resultado")
+            self.chk_compare = QtWidgets.QCheckBox(self.tr("Comparar original / resultado"))
             self.chk_compare.toggled.connect(self._toggle_compare)
             layout.addWidget(self.chk_compare)
 
-            self.chk_apply_profile = QtWidgets.QCheckBox("Aplicar perfil ICC en resultado")
+            self.chk_apply_profile = QtWidgets.QCheckBox(self.tr("Aplicar perfil ICC en resultado"))
             self.chk_apply_profile.setChecked(False)
             self.chk_apply_profile.setToolTip(
-                "Desactivado por defecto para evitar dominantes si el perfil no corresponde "
-                "a camara + iluminacion + receta actuales."
+                self.tr(
+                    "Desactivado por defecto para evitar dominantes si el perfil no corresponde "
+                    "a camara + iluminacion + receta actuales."
+                )
             )
             self.chk_apply_profile.toggled.connect(lambda _v: self._schedule_preview_refresh())
             layout.addWidget(self.chk_apply_profile)
@@ -1881,19 +1885,19 @@ if QtWidgets is not None:
             zoom_grid = QtWidgets.QGridLayout()
             zoom_grid.setHorizontalSpacing(6)
             zoom_grid.setVerticalSpacing(6)
-            self.viewer_zoom_label = QtWidgets.QLabel("100%")
+            self.viewer_zoom_label = QtWidgets.QLabel(self.tr("100%"))
             self.viewer_zoom_label.setAlignment(QtCore.Qt.AlignCenter)
             self.viewer_zoom_label.setMinimumWidth(52)
-            zoom_grid.addWidget(self._button("-", self._viewer_zoom_out), 0, 0)
+            zoom_grid.addWidget(self._button(self.tr("-"), self._viewer_zoom_out), 0, 0)
             zoom_grid.addWidget(self.viewer_zoom_label, 0, 1)
-            zoom_grid.addWidget(self._button("+", self._viewer_zoom_in), 0, 2)
-            zoom_grid.addWidget(self._button("1:1", self._viewer_zoom_100), 1, 0)
-            zoom_grid.addWidget(self._button("Girar izq.", self._viewer_rotate_left), 1, 1)
-            zoom_grid.addWidget(self._button("Girar der.", self._viewer_rotate_right), 1, 2)
-            zoom_grid.addWidget(self._button("Encajar", self._viewer_fit), 2, 0, 1, 3)
+            zoom_grid.addWidget(self._button(self.tr("+"), self._viewer_zoom_in), 0, 2)
+            zoom_grid.addWidget(self._button(self.tr("1:1"), self._viewer_zoom_100), 1, 0)
+            zoom_grid.addWidget(self._button(self.tr("Girar izq."), self._viewer_rotate_left), 1, 1)
+            zoom_grid.addWidget(self._button(self.tr("Girar der."), self._viewer_rotate_right), 1, 2)
+            zoom_grid.addWidget(self._button(self.tr("Encajar"), self._viewer_fit), 2, 0, 1, 3)
             layout.addLayout(zoom_grid)
 
-            histogram_box = QtWidgets.QGroupBox("Histograma RGB")
+            histogram_box = QtWidgets.QGroupBox(self.tr("Histograma RGB"))
             histogram_layout = QtWidgets.QVBoxLayout(histogram_box)
             histogram_layout.setContentsMargins(6, 6, 6, 6)
             histogram_layout.setSpacing(4)
@@ -1917,9 +1921,9 @@ if QtWidgets is not None:
             histogram_layout.addWidget(self.check_image_clip_overlay)
             clip_row = QtWidgets.QHBoxLayout()
             clip_row.setContentsMargins(0, 0, 0, 0)
-            self.histogram_shadow_label = QtWidgets.QLabel("Sombras: --")
+            self.histogram_shadow_label = QtWidgets.QLabel(self.tr("Sombras: --"))
             self.histogram_shadow_label.setStyleSheet("font-size: 12px; color: #6b7280;")
-            self.histogram_highlight_label = QtWidgets.QLabel("Luces: --")
+            self.histogram_highlight_label = QtWidgets.QLabel(self.tr("Luces: --"))
             self.histogram_highlight_label.setStyleSheet("font-size: 12px; color: #6b7280;")
             clip_row.addWidget(self.histogram_shadow_label, 1)
             clip_row.addWidget(self.histogram_highlight_label, 1)
@@ -1957,7 +1961,7 @@ if QtWidgets is not None:
             layout.setContentsMargins(4, 4, 4, 4)
             self.preview_analysis = QtWidgets.QPlainTextEdit()
             self.preview_analysis.setReadOnly(True)
-            self.preview_analysis.setPlaceholderText("Analisis tecnico lineal")
+            self.preview_analysis.setPlaceholderText(self.tr("Analisis tecnico lineal"))
             layout.addWidget(self.preview_analysis, 1)
             return panel
 
@@ -1967,14 +1971,14 @@ if QtWidgets is not None:
             layout.setContentsMargins(4, 4, 4, 4)
             layout.setSpacing(6)
 
-            self.metadata_file_label = QtWidgets.QLabel("Sin archivo seleccionado")
+            self.metadata_file_label = QtWidgets.QLabel(self.tr("Sin archivo seleccionado"))
             self.metadata_file_label.setWordWrap(True)
             self.metadata_file_label.setStyleSheet("font-size: 12px; color: #d1d5db;")
             layout.addWidget(self.metadata_file_label)
 
             actions = QtWidgets.QHBoxLayout()
-            actions.addWidget(self._button("Leer metadatos", self._refresh_metadata_view))
-            actions.addWidget(self._button("JSON completo", self._show_metadata_all_tab))
+            actions.addWidget(self._button(self.tr("Leer metadatos"), self._refresh_metadata_view))
+            actions.addWidget(self._button(self.tr("JSON completo"), self._show_metadata_all_tab))
             layout.addLayout(actions)
 
             self.metadata_tabs = QtWidgets.QTabWidget()
@@ -1983,17 +1987,17 @@ if QtWidgets is not None:
             self.metadata_gps = self._metadata_tree_widget()
             self.metadata_c2pa = self._metadata_tree_widget()
             self.metadata_all = self._metadata_text_widget("JSON completo")
-            self.metadata_tabs.addTab(self.metadata_summary, "Resumen")
-            self.metadata_tabs.addTab(self.metadata_exif, "EXIF")
-            self.metadata_tabs.addTab(self.metadata_gps, "GPS")
-            self.metadata_tabs.addTab(self.metadata_c2pa, "C2PA")
-            self.metadata_tabs.addTab(self.metadata_all, "Todo")
+            self.metadata_tabs.addTab(self.metadata_summary, self.tr("Resumen"))
+            self.metadata_tabs.addTab(self.metadata_exif, self.tr("EXIF"))
+            self.metadata_tabs.addTab(self.metadata_gps, self.tr("GPS"))
+            self.metadata_tabs.addTab(self.metadata_c2pa, self.tr("C2PA"))
+            self.metadata_tabs.addTab(self.metadata_all, self.tr("Todo"))
             layout.addWidget(self.metadata_tabs, 1)
             return panel
 
         def _metadata_tree_widget(self) -> QtWidgets.QTreeWidget:
             tree = QtWidgets.QTreeWidget()
-            tree.setHeaderLabels(["Campo", "Valor"])
+            tree.setHeaderLabels([self.tr("Campo"), self.tr("Valor")])
             tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
             tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
             tree.setAlternatingRowColors(True)
@@ -2015,7 +2019,7 @@ if QtWidgets is not None:
             layout.setContentsMargins(4, 4, 4, 4)
             self.preview_log = QtWidgets.QPlainTextEdit()
             self.preview_log.setReadOnly(True)
-            self.preview_log.setPlaceholderText("Eventos y trazas de ejecucion")
+            self.preview_log.setPlaceholderText(self.tr("Eventos y trazas de ejecucion"))
             layout.addWidget(self.preview_log, 1)
             return panel
 
@@ -2027,7 +2031,7 @@ if QtWidgets is not None:
 
             toolbar = QtWidgets.QHBoxLayout()
             toolbar.setContentsMargins(4, 0, 4, 0)
-            toolbar.addWidget(QtWidgets.QLabel("Miniaturas"))
+            toolbar.addWidget(QtWidgets.QLabel(self.tr("Miniaturas")))
             self.thumbnail_size_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
             self.thumbnail_size_slider.setRange(MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE)
             self.thumbnail_size_slider.setSingleStep(8)
@@ -2082,14 +2086,14 @@ if QtWidgets is not None:
             layout.addWidget(self.file_list, 1)
 
             row = QtWidgets.QHBoxLayout()
-            row.addWidget(self._button("Usar selección como referencias colorimétricas", self._use_selected_files_as_profile_charts))
-            row.addWidget(self._button("Añadir selección a cola", self._queue_add_selected))
+            row.addWidget(self._button(self.tr("Usar selección como referencias colorimétricas"), self._use_selected_files_as_profile_charts))
+            row.addWidget(self._button(self.tr("Añadir selección a cola"), self._queue_add_selected))
             layout.addLayout(row)
 
             profile_row = QtWidgets.QHBoxLayout()
-            profile_row.addWidget(self._button("Guardar perfil básico en imagen", self._save_current_development_settings_to_selected))
-            profile_row.addWidget(self._button("Copiar perfil de ajuste", self._copy_development_settings_from_selected))
-            profile_row.addWidget(self._button("Pegar perfil de ajuste", self._paste_development_settings_to_selected))
+            profile_row.addWidget(self._button(self.tr("Guardar perfil básico en imagen"), self._save_current_development_settings_to_selected))
+            profile_row.addWidget(self._button(self.tr("Copiar perfil de ajuste"), self._copy_development_settings_from_selected))
+            profile_row.addWidget(self._button(self.tr("Pegar perfil de ajuste"), self._paste_development_settings_to_selected))
             layout.addLayout(profile_row)
             return pane
 
@@ -2131,7 +2135,7 @@ if QtWidgets is not None:
 
             self.viewer_stack = QtWidgets.QStackedWidget()
 
-            self.image_result_single = ImagePanel("Resultado")
+            self.image_result_single = ImagePanel(self.tr("Resultado"))
             self.image_result_single.imageClicked.connect(self._on_result_image_click)
             single_page = QtWidgets.QWidget()
             single_layout = QtWidgets.QVBoxLayout(single_page)
@@ -2139,8 +2143,8 @@ if QtWidgets is not None:
             single_layout.addWidget(self.image_result_single, 1)
             self.viewer_stack.addWidget(single_page)
 
-            self.image_original_compare = ImagePanel("", framed=False, background="#15181d")
-            self.image_result_compare = ImagePanel("", framed=False, background="#15181d")
+            self.image_original_compare = ImagePanel(self.tr(""), framed=False, background="#15181d")
+            self.image_result_compare = ImagePanel(self.tr(""), framed=False, background="#15181d")
             self.image_result_compare.imageClicked.connect(self._on_result_image_click)
             self.compare_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
             self.compare_splitter.setChildrenCollapsible(True)
@@ -2165,8 +2169,8 @@ if QtWidgets is not None:
             compare_header_layout.setContentsMargins(0, 2, 0, 2)
             compare_header_layout.setSpacing(0)
             compare_header_layout.addStretch(1)
-            before_label = QtWidgets.QLabel("Antes")
-            after_label = QtWidgets.QLabel("Despues")
+            before_label = QtWidgets.QLabel(self.tr("Antes"))
+            after_label = QtWidgets.QLabel(self.tr("Despues"))
             for label in (before_label, after_label):
                 label.setAlignment(QtCore.Qt.AlignCenter)
                 label.setMinimumWidth(72)
@@ -2207,13 +2211,13 @@ if QtWidgets is not None:
             layout.setSpacing(6)
 
             self.config_tabs = CollapsibleToolPanel()
-            self.config_tabs.addItem(self._build_tab_brightness_contrast(), "Brillo y contraste", expanded=True)
-            self.config_tabs.addItem(self._build_tab_color_adjustments(), "Color", expanded=True)
-            self.config_tabs.addItem(self._build_tab_preview_settings(), "Nitidez", expanded=True)
-            self.config_tabs.addItem(self._build_color_management_calibration_panel(), "Gestión de color y calibración", expanded=True)
-            self._advanced_raw_config = self._build_tab_raw_config("Criterios RAW globales")
-            self.config_tabs.addItem(self._advanced_raw_config, "RAW Global", expanded=False)
-            self.config_tabs.addItem(self._build_tab_batch_config(), "Exportar derivados", expanded=False)
+            self.config_tabs.addItem(self._build_tab_brightness_contrast(), self.tr("Brillo y contraste"), expanded=True)
+            self.config_tabs.addItem(self._build_tab_color_adjustments(), self.tr("Color"), expanded=True)
+            self.config_tabs.addItem(self._build_tab_preview_settings(), self.tr("Nitidez"), expanded=True)
+            self.config_tabs.addItem(self._build_color_management_calibration_panel(), self.tr("Gestión de color y calibración"), expanded=True)
+            self._advanced_raw_config = self._build_tab_raw_config(self.tr("Criterios RAW globales"))
+            self.config_tabs.addItem(self._advanced_raw_config, self.tr("RAW Global"), expanded=False)
+            self.config_tabs.addItem(self._build_tab_batch_config(), self.tr("Exportar derivados"), expanded=False)
             layout.addWidget(self.config_tabs, 1)
 
             return pane
@@ -2222,15 +2226,15 @@ if QtWidgets is not None:
             tab = QtWidgets.QWidget()
             grid = QtWidgets.QGridLayout(tab)
 
-            grid.addWidget(QtWidgets.QLabel("Iluminante final"), 0, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Iluminante final")), 0, 0)
             self.combo_illuminant_render = QtWidgets.QComboBox()
             for label, temp, tint in ILLUMINANT_OPTIONS:
-                self.combo_illuminant_render.addItem(label, {"temperature": temp, "tint": tint})
+                self.combo_illuminant_render.addItem(self.tr(label), {"temperature": temp, "tint": tint})
             self.combo_illuminant_render.setCurrentIndex(1)
             self.combo_illuminant_render.currentIndexChanged.connect(self._on_illuminant_changed)
             grid.addWidget(self.combo_illuminant_render, 0, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Temperatura (K)"), 1, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Temperatura (K)")), 1, 0)
             self.spin_render_temperature = QtWidgets.QSpinBox()
             self.spin_render_temperature.setRange(2000, 12000)
             self.spin_render_temperature.setSingleStep(50)
@@ -2238,7 +2242,7 @@ if QtWidgets is not None:
             self.spin_render_temperature.valueChanged.connect(lambda _v: self._on_render_control_change())
             grid.addWidget(self.spin_render_temperature, 1, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Matiz"), 2, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Matiz")), 2, 0)
             self.spin_render_tint = QtWidgets.QDoubleSpinBox()
             self.spin_render_tint.setRange(-100.0, 100.0)
             self.spin_render_tint.setSingleStep(1.0)
@@ -2247,17 +2251,17 @@ if QtWidgets is not None:
             grid.addWidget(self.spin_render_tint, 2, 1, 1, 2)
 
             neutral_row = QtWidgets.QHBoxLayout()
-            self.btn_neutral_picker = QtWidgets.QPushButton("Cuentagotas neutro")
+            self.btn_neutral_picker = QtWidgets.QPushButton(self.tr("Cuentagotas neutro"))
             self.btn_neutral_picker.setCheckable(True)
             self.btn_neutral_picker.clicked.connect(self._toggle_neutral_picker)
             neutral_row.addWidget(self.btn_neutral_picker)
-            self.label_neutral_picker = QtWidgets.QLabel("Punto neutro: sin muestra")
+            self.label_neutral_picker = QtWidgets.QLabel(self.tr("Punto neutro: sin muestra"))
             self.label_neutral_picker.setWordWrap(True)
             self.label_neutral_picker.setStyleSheet("font-size: 12px; color: #cbd5e1;")
             neutral_row.addWidget(self.label_neutral_picker, 1)
             grid.addLayout(neutral_row, 3, 0, 1, 3)
 
-            grid.addWidget(self._button("Restablecer color", self._reset_color_adjustments), 4, 0, 1, 3)
+            grid.addWidget(self._button(self.tr("Restablecer color"), self._reset_color_adjustments), 4, 0, 1, 3)
             return tab
 
         def _build_tab_brightness_contrast(self) -> QtWidgets.QWidget:
@@ -2269,7 +2273,7 @@ if QtWidgets is not None:
                 maximum=200,
                 value=0,
                 on_change=self._on_render_control_change,
-                formatter=lambda v: f"Brillo: {v / 100:+.2f} EV",
+                formatter=lambda v: self.tr("Brillo") + f": {v / 100:+.2f} EV",
             )
             grid.addWidget(self.label_brightness, 0, 0, 1, 3)
             grid.addWidget(self.slider_brightness, 1, 0, 1, 3)
@@ -2279,7 +2283,7 @@ if QtWidgets is not None:
                 maximum=300,
                 value=0,
                 on_change=self._on_render_control_change,
-                formatter=lambda v: f"Nivel negro: {v / 1000:.3f}",
+                formatter=lambda v: self.tr("Nivel negro") + f": {v / 1000:.3f}",
             )
             grid.addWidget(self.label_black_point, 2, 0, 1, 3)
             grid.addWidget(self.slider_black_point, 3, 0, 1, 3)
@@ -2289,7 +2293,7 @@ if QtWidgets is not None:
                 maximum=1000,
                 value=1000,
                 on_change=self._on_render_control_change,
-                formatter=lambda v: f"Nivel blanco: {v / 1000:.3f}",
+                formatter=lambda v: self.tr("Nivel blanco") + f": {v / 1000:.3f}",
             )
             grid.addWidget(self.label_white_point, 4, 0, 1, 3)
             grid.addWidget(self.slider_white_point, 5, 0, 1, 3)
@@ -2299,7 +2303,7 @@ if QtWidgets is not None:
                 maximum=100,
                 value=0,
                 on_change=self._on_render_control_change,
-                formatter=lambda v: f"Contraste: {v / 100:+.2f}",
+                formatter=lambda v: self.tr("Contraste") + f": {v / 100:+.2f}",
             )
             grid.addWidget(self.label_contrast, 6, 0, 1, 3)
             grid.addWidget(self.slider_contrast, 7, 0, 1, 3)
@@ -2309,20 +2313,20 @@ if QtWidgets is not None:
                 maximum=200,
                 value=100,
                 on_change=self._on_render_control_change,
-                formatter=lambda v: f"Curva medios: {v / 100:.2f}",
+                formatter=lambda v: self.tr("Curva medios") + f": {v / 100:.2f}",
             )
             grid.addWidget(self.label_midtone, 8, 0, 1, 3)
             grid.addWidget(self.slider_midtone, 9, 0, 1, 3)
 
-            self.check_tone_curve_enabled = QtWidgets.QCheckBox("Curva tonal avanzada")
+            self.check_tone_curve_enabled = QtWidgets.QCheckBox(self.tr("Curva tonal avanzada"))
             self.check_tone_curve_enabled.setChecked(False)
             self.check_tone_curve_enabled.toggled.connect(self._on_tone_curve_enabled_changed)
             grid.addWidget(self.check_tone_curve_enabled, 10, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Preset curva"), 11, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Preset curva")), 11, 0)
             self.combo_tone_curve_preset = QtWidgets.QComboBox()
             for label, key, _points in TONE_CURVE_PRESETS:
-                self.combo_tone_curve_preset.addItem(label, key)
+                self.combo_tone_curve_preset.addItem(self.tr(label), key)
             self.combo_tone_curve_preset.currentIndexChanged.connect(self._on_tone_curve_preset_changed)
             grid.addWidget(self.combo_tone_curve_preset, 11, 1, 1, 2)
 
@@ -2331,7 +2335,7 @@ if QtWidgets is not None:
                 maximum=950,
                 value=0,
                 on_change=self._on_tone_curve_range_changed,
-                formatter=lambda v: f"Negro curva: {v / 1000:.3f}",
+                formatter=lambda v: self.tr("Negro curva") + f": {v / 1000:.3f}",
             )
             grid.addWidget(self.label_tone_curve_black, 12, 0, 1, 3)
             grid.addWidget(self.slider_tone_curve_black, 13, 0, 1, 3)
@@ -2341,7 +2345,7 @@ if QtWidgets is not None:
                 maximum=1000,
                 value=1000,
                 on_change=self._on_tone_curve_range_changed,
-                formatter=lambda v: f"Blanco curva: {v / 1000:.3f}",
+                formatter=lambda v: self.tr("Blanco curva") + f": {v / 1000:.3f}",
             )
             grid.addWidget(self.label_tone_curve_white, 14, 0, 1, 3)
             grid.addWidget(self.slider_tone_curve_white, 15, 0, 1, 3)
@@ -2350,10 +2354,10 @@ if QtWidgets is not None:
             self.tone_curve_editor.pointsChanged.connect(self._on_tone_curve_points_changed)
             self.tone_curve_editor.interactionFinished.connect(self._on_render_control_change)
             grid.addWidget(self.tone_curve_editor, 16, 0, 1, 3)
-            grid.addWidget(self._button("Restablecer curva", self._reset_tone_curve), 17, 0, 1, 3)
+            grid.addWidget(self._button(self.tr("Restablecer curva"), self._reset_tone_curve), 17, 0, 1, 3)
             self._set_tone_curve_controls_enabled(False)
 
-            grid.addWidget(self._button("Restablecer brillo y contraste", self._reset_tone_adjustments), 18, 0, 1, 3)
+            grid.addWidget(self._button(self.tr("Restablecer brillo y contraste"), self._reset_tone_adjustments), 18, 0, 1, 3)
             return tab
 
         def _build_tab_preview_settings(self) -> QtWidgets.QWidget:
@@ -2365,7 +2369,7 @@ if QtWidgets is not None:
                 maximum=300,
                 value=0,
                 on_change=self._on_slider_change,
-                formatter=lambda v: f"Nitidez (amount): {v / 100:.2f}",
+                formatter=lambda v: self.tr("Nitidez (amount)") + f": {v / 100:.2f}",
             )
             grid.addWidget(self.label_sharpen, 0, 0, 1, 3)
             grid.addWidget(self.slider_sharpen, 1, 0, 1, 3)
@@ -2375,7 +2379,7 @@ if QtWidgets is not None:
                 maximum=80,
                 value=10,
                 on_change=self._on_slider_change,
-                formatter=lambda v: f"Radio nitidez: {v / 10:.1f}",
+                formatter=lambda v: self.tr("Radio nitidez") + f": {v / 10:.1f}",
             )
             grid.addWidget(self.label_radius, 2, 0, 1, 3)
             grid.addWidget(self.slider_radius, 3, 0, 1, 3)
@@ -2385,7 +2389,7 @@ if QtWidgets is not None:
                 maximum=100,
                 value=0,
                 on_change=self._on_slider_change,
-                formatter=lambda v: f"Ruido luminancia: {v / 100:.2f}",
+                formatter=lambda v: self.tr("Ruido luminancia") + f": {v / 100:.2f}",
             )
             grid.addWidget(self.label_noise_luma, 4, 0, 1, 3)
             grid.addWidget(self.slider_noise_luma, 5, 0, 1, 3)
@@ -2395,7 +2399,7 @@ if QtWidgets is not None:
                 maximum=100,
                 value=0,
                 on_change=self._on_slider_change,
-                formatter=lambda v: f"Ruido color: {v / 100:.2f}",
+                formatter=lambda v: self.tr("Ruido color") + f": {v / 100:.2f}",
             )
             grid.addWidget(self.label_noise_color, 6, 0, 1, 3)
             grid.addWidget(self.slider_noise_color, 7, 0, 1, 3)
@@ -2405,7 +2409,7 @@ if QtWidgets is not None:
                 maximum=100,
                 value=0,
                 on_change=self._on_slider_change,
-                formatter=lambda v: f"CA lateral rojo/cian: {1.0 + v / 10000:.4f}",
+                formatter=lambda v: self.tr("CA lateral rojo/cian") + f": {1.0 + v / 10000:.4f}",
             )
             grid.addWidget(self.label_ca_red, 8, 0, 1, 3)
             grid.addWidget(self.slider_ca_red, 9, 0, 1, 3)
@@ -2415,16 +2419,16 @@ if QtWidgets is not None:
                 maximum=100,
                 value=0,
                 on_change=self._on_slider_change,
-                formatter=lambda v: f"CA lateral azul/amarillo: {1.0 + v / 10000:.4f}",
+                formatter=lambda v: self.tr("CA lateral azul/amarillo") + f": {1.0 + v / 10000:.4f}",
             )
             grid.addWidget(self.label_ca_blue, 10, 0, 1, 3)
             grid.addWidget(self.slider_ca_blue, 11, 0, 1, 3)
 
             self.check_precision_detail_preview = QtWidgets.QCheckBox(
-                "Modo precision 1:1 para nitidez (mas lento)"
+                self.tr("Modo precision 1:1 para nitidez (mas lento)")
             )
             self.check_precision_detail_preview.setToolTip(
-                "Aplica ajustes de nitidez/ruido/CA sobre fuente a resolucion real durante el arrastre."
+                self.tr("Aplica ajustes de nitidez/ruido/CA sobre fuente a resolucion real durante el arrastre.")
             )
             self.check_precision_detail_preview.setChecked(
                 self._settings_bool("preview/precision_detail_1to1", False)
@@ -2435,24 +2439,26 @@ if QtWidgets is not None:
             grid.addWidget(self.check_precision_detail_preview, 12, 0, 1, 3)
 
             recipe_filter_note = QtWidgets.QLabel(
-                "Modo receta de denoise y sharpen para el revelado final. "
-                "Se aplica al lote y al preview, no a la generación de perfil ICC."
+                self.tr(
+                    "Modo receta de denoise y sharpen para el revelado final. "
+                    "Se aplica al lote y al preview, no a la generación de perfil ICC."
+                )
             )
             recipe_filter_note.setWordWrap(True)
             recipe_filter_note.setStyleSheet("font-size: 12px; color: #6b7280; padding-top: 6px;")
             grid.addWidget(recipe_filter_note, 13, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Denoise modo receta"), 14, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Denoise modo receta")), 14, 0)
             self.combo_recipe_denoise = QtWidgets.QComboBox()
             self.combo_recipe_denoise.addItems(FILTER_MODE_OPTIONS)
             grid.addWidget(self.combo_recipe_denoise, 14, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Sharpen modo receta"), 15, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Sharpen modo receta")), 15, 0)
             self.combo_recipe_sharpen = QtWidgets.QComboBox()
             self.combo_recipe_sharpen.addItems(FILTER_MODE_OPTIONS)
             grid.addWidget(self.combo_recipe_sharpen, 15, 1, 1, 2)
 
-            grid.addWidget(self._button("Restablecer nitidez", self._reset_adjustments), 16, 0, 1, 3)
+            grid.addWidget(self._button(self.tr("Restablecer nitidez"), self._reset_adjustments), 16, 0, 1, 3)
             return tab
 
         def _build_tab_raw_config(self, title: str | None = None) -> QtWidgets.QWidget:
@@ -2460,67 +2466,69 @@ if QtWidgets is not None:
             grid = QtWidgets.QGridLayout(tab)
 
             self.path_recipe = QtWidgets.QLineEdit("testdata/recipes/scientific_recipe.yml")
-            self._add_path_row(grid, 0, "Receta YAML/JSON", self.path_recipe, file_mode=True, save_mode=False, dir_mode=False)
+            self._add_path_row(grid, 0, self.tr("Receta YAML/JSON"), self.path_recipe, file_mode=True, save_mode=False, dir_mode=False)
 
             row_recipe = QtWidgets.QHBoxLayout()
-            row_recipe.addWidget(self._button("Cargar receta", self._menu_load_recipe))
-            row_recipe.addWidget(self._button("Guardar receta", self._menu_save_recipe))
-            row_recipe.addWidget(self._button("Receta por defecto", self._menu_reset_recipe))
+            row_recipe.addWidget(self._button(self.tr("Cargar receta"), self._menu_load_recipe))
+            row_recipe.addWidget(self._button(self.tr("Guardar receta"), self._menu_save_recipe))
+            row_recipe.addWidget(self._button(self.tr("Receta por defecto"), self._menu_reset_recipe))
             grid.addLayout(row_recipe, 1, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Motor RAW"), 2, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Motor RAW")), 2, 0)
             self.combo_raw_developer = QtWidgets.QComboBox()
-            self.combo_raw_developer.addItem("LibRaw / rawpy", "libraw")
+            self.combo_raw_developer.addItem(self.tr("LibRaw / rawpy"), "libraw")
             self.combo_raw_developer.setEnabled(False)
             grid.addWidget(self.combo_raw_developer, 2, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Demosaic/interpolacion"), 3, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Demosaic/interpolacion")), 3, 0)
             self.combo_demosaic = QtWidgets.QComboBox()
             for label, opt in DEMOSAIC_OPTIONS:
-                self.combo_demosaic.addItem(label, opt)
+                self.combo_demosaic.addItem(self.tr(label), opt)
             self._sync_demosaic_capabilities()
             grid.addWidget(self.combo_demosaic, 3, 1, 1, 2)
 
             note = QtWidgets.QLabel(
-                "LibRaw/rawpy es el único motor RAW. DCB es el preset instalable de alta calidad. "
-                "AMaZE queda disponible solo cuando rawpy informa DEMOSAIC_PACK_GPL3=True."
+                self.tr(
+                    "LibRaw/rawpy es el único motor RAW. DCB es el preset instalable de alta calidad. "
+                    "AMaZE queda disponible solo cuando rawpy informa DEMOSAIC_PACK_GPL3=True."
+                )
             )
             note.setWordWrap(True)
             note.setStyleSheet("font-size: 12px; color: #6b7280;")
             grid.addWidget(note, 4, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Balance de blancos"), 5, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Balance de blancos")), 5, 0)
             self.combo_wb_mode = QtWidgets.QComboBox()
             for label, val in WB_MODE_OPTIONS:
-                self.combo_wb_mode.addItem(label, val)
+                self.combo_wb_mode.addItem(self.tr(label), val)
             grid.addWidget(self.combo_wb_mode, 5, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("WB multiplicadores"), 6, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("WB multiplicadores")), 6, 0)
             self.edit_wb_multipliers = QtWidgets.QLineEdit("1,1,1,1")
-            self.edit_wb_multipliers.setToolTip("Formato: R,G,B,G (o R,G,B)")
+            self.edit_wb_multipliers.setToolTip(self.tr("Formato: R,G,B,G (o R,G,B)"))
             grid.addWidget(self.edit_wb_multipliers, 6, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Black level mode"), 7, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Black level mode")), 7, 0)
             self.combo_black_mode = QtWidgets.QComboBox()
             for label, val in BLACK_MODE_OPTIONS:
-                self.combo_black_mode.addItem(label, val)
+                self.combo_black_mode.addItem(self.tr(label), val)
             grid.addWidget(self.combo_black_mode, 7, 1)
             self.spin_black_value = QtWidgets.QSpinBox()
             self.spin_black_value.setRange(0, 65535)
             self.spin_black_value.setValue(0)
             grid.addWidget(self.spin_black_value, 7, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Exposure compensation (EV)"), 8, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Exposure compensation (EV)")), 8, 0)
             self.spin_exposure = QtWidgets.QDoubleSpinBox()
             self.spin_exposure.setRange(-8.0, 8.0)
             self.spin_exposure.setDecimals(2)
             self.spin_exposure.setSingleStep(0.1)
             grid.addWidget(self.spin_exposure, 8, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Tone curve"), 9, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Tone curve")), 9, 0)
             self.combo_tone_curve = QtWidgets.QComboBox()
             for label, val in TONE_OPTIONS:
-                self.combo_tone_curve.addItem(label, val)
+                self.combo_tone_curve.addItem(self.tr(label), val)
             grid.addWidget(self.combo_tone_curve, 9, 1)
             self.spin_gamma = QtWidgets.QDoubleSpinBox()
             self.spin_gamma.setRange(0.8, 4.0)
@@ -2528,42 +2536,44 @@ if QtWidgets is not None:
             self.spin_gamma.setValue(2.2)
             grid.addWidget(self.spin_gamma, 9, 2)
 
-            self.check_output_linear = QtWidgets.QCheckBox("Salida lineal")
+            self.check_output_linear = QtWidgets.QCheckBox(self.tr("Salida lineal"))
             self.check_output_linear.setChecked(True)
             grid.addWidget(self.check_output_linear, 10, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Working space"), 11, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Working space")), 11, 0)
             self.combo_working_space = QtWidgets.QComboBox()
             self.combo_working_space.addItems(SPACE_OPTIONS)
             grid.addWidget(self.combo_working_space, 11, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Output space"), 12, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Output space")), 12, 0)
             self.combo_output_space = QtWidgets.QComboBox()
             self.combo_output_space.addItems(SPACE_OPTIONS)
             grid.addWidget(self.combo_output_space, 12, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Sampling strategy"), 13, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Sampling strategy")), 13, 0)
             self.combo_sampling = QtWidgets.QComboBox()
             self.combo_sampling.addItems(SAMPLE_OPTIONS)
             grid.addWidget(self.combo_sampling, 13, 1, 1, 2)
 
-            self.check_profiling_mode = QtWidgets.QCheckBox("Profiling mode")
+            self.check_profiling_mode = QtWidgets.QCheckBox(self.tr("Profiling mode"))
             self.check_profiling_mode.setChecked(True)
             grid.addWidget(self.check_profiling_mode, 14, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Input color assumption"), 15, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Input color assumption")), 15, 0)
             self.edit_input_color = QtWidgets.QLineEdit("camera_native")
             grid.addWidget(self.edit_input_color, 15, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Illuminant metadata"), 16, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Illuminant metadata")), 16, 0)
             self.edit_illuminant = QtWidgets.QLineEdit("")
             grid.addWidget(self.edit_illuminant, 16, 1, 1, 2)
 
             scientific_note = QtWidgets.QLabel(
-                "Durante la generación de un perfil avanzado con carta, NexoRAW fuerza estos parámetros a "
-                "modo objetivo: tone_curve=linear, salida lineal=on, output_space=scene_linear_camera_rgb. "
-                "Denoise y sharpen quedan desactivados durante la medición de carta y se "
-                "configuran en la pestaña Nitidez para el revelado final."
+                self.tr(
+                    "Durante la generación de un perfil avanzado con carta, NexoRAW fuerza estos parámetros a "
+                    "modo objetivo: tone_curve=linear, salida lineal=on, output_space=scene_linear_camera_rgb. "
+                    "Denoise y sharpen quedan desactivados durante la medición de carta y se "
+                    "configuran en la pestaña Nitidez para el revelado final."
+                )
             )
             scientific_note.setWordWrap(True)
             scientific_note.setStyleSheet("font-size: 12px; color: #6b7280; padding-top: 6px;")
@@ -2575,11 +2585,11 @@ if QtWidgets is not None:
             grid = QtWidgets.QGridLayout(tab)
 
             self.path_profile_active = QtWidgets.QLineEdit("/tmp/camera_profile.icc")
-            self._add_path_row(grid, 0, "Perfil ICC de entrada activo", self.path_profile_active, file_mode=True, save_mode=False, dir_mode=False)
+            self._add_path_row(grid, 0, self.tr("Perfil ICC de entrada activo"), self.path_profile_active, file_mode=True, save_mode=False, dir_mode=False)
 
             row = QtWidgets.QHBoxLayout()
-            row.addWidget(self._button("Cargar perfil activo", self._menu_load_profile))
-            row.addWidget(self._button("Usar perfil generado", self._use_generated_profile_as_active))
+            row.addWidget(self._button(self.tr("Cargar perfil activo"), self._menu_load_profile))
+            row.addWidget(self._button(self.tr("Usar perfil generado"), self._use_generated_profile_as_active))
             grid.addLayout(row, 1, 0, 1, 3)
             return tab
 
@@ -2589,28 +2599,28 @@ if QtWidgets is not None:
             grid = QtWidgets.QGridLayout()
 
             self.batch_input_dir = QtWidgets.QLineEdit(str(self._current_dir))
-            self._add_path_row(grid, 0, "RAW a revelar (carpeta)", self.batch_input_dir, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 0, self.tr("RAW a revelar (carpeta)"), self.batch_input_dir, file_mode=False, save_mode=False, dir_mode=True)
 
             self.batch_out_dir = QtWidgets.QLineEdit("/tmp/nexoraw_batch_tiffs")
-            self._add_path_row(grid, 1, "Salida TIFF derivados", self.batch_out_dir, file_mode=False, save_mode=False, dir_mode=True)
+            self._add_path_row(grid, 1, self.tr("Salida TIFF derivados"), self.batch_out_dir, file_mode=False, save_mode=False, dir_mode=True)
 
-            self.batch_embed_profile = QtWidgets.QCheckBox("Incrustar/aplicar ICC en TIFF")
+            self.batch_embed_profile = QtWidgets.QCheckBox(self.tr("Incrustar/aplicar ICC en TIFF"))
             self.batch_embed_profile.setChecked(True)
             self.batch_embed_profile.setEnabled(False)
             grid.addWidget(self.batch_embed_profile, 2, 0, 1, 3)
 
-            self.batch_apply_adjustments = QtWidgets.QCheckBox("Aplicar ajustes básicos y de nitidez")
+            self.batch_apply_adjustments = QtWidgets.QCheckBox(self.tr("Aplicar ajustes básicos y de nitidez"))
             self.batch_apply_adjustments.setChecked(True)
             grid.addWidget(self.batch_apply_adjustments, 3, 0, 1, 3)
 
             row_1 = QtWidgets.QHBoxLayout()
-            row_1.addWidget(self._button("Usar carpeta actual", self._use_current_dir_as_batch_input))
-            row_1.addWidget(self._button("Aplicar a selección", self._on_batch_develop_selected))
-            row_1.addWidget(self._button("Aplicar a carpeta", self._on_batch_develop_directory))
+            row_1.addWidget(self._button(self.tr("Usar carpeta actual"), self._use_current_dir_as_batch_input))
+            row_1.addWidget(self._button(self.tr("Aplicar a selección"), self._on_batch_develop_selected))
+            row_1.addWidget(self._button(self.tr("Aplicar a carpeta"), self._on_batch_develop_directory))
 
             self.batch_output = QtWidgets.QPlainTextEdit()
             self.batch_output.setReadOnly(True)
-            self.batch_output.setPlaceholderText("Salida JSON de exportación de derivados")
+            self.batch_output.setPlaceholderText(self.tr("Salida JSON de exportación de derivados"))
 
             layout.addLayout(grid)
             layout.addLayout(row_1)
@@ -2619,15 +2629,17 @@ if QtWidgets is not None:
 
         def _build_global_settings_dialog(self) -> None:
             dialog = QtWidgets.QDialog(self)
-            dialog.setWindowTitle("Configuracion global de NexoRAW")
+            dialog.setWindowTitle(self.tr("Configuracion global de NexoRAW"))
             dialog.setModal(False)
             dialog.resize(760, 620)
             self.global_settings_dialog = dialog
 
             layout = QtWidgets.QVBoxLayout(dialog)
             intro = QtWidgets.QLabel(
-                "Ajustes globales de trazabilidad, C2PA, previsualizacion y gestion de color del monitor. "
-                "Estos controles no modifican la imagen por si mismos; definen infraestructura de firma y visualizacion."
+                self.tr(
+                    "Ajustes globales de trazabilidad, C2PA, previsualizacion y gestion de color del monitor. "
+                    "Estos controles no modifican la imagen por si mismos; definen infraestructura de firma y visualizacion."
+                )
             )
             intro.setWordWrap(True)
             intro.setStyleSheet("font-size: 12px; color: #6b7280;")
@@ -2636,18 +2648,18 @@ if QtWidgets is not None:
             self.global_settings_tabs = QtWidgets.QTabWidget()
             self.global_settings_tabs.addTab(
                 self._settings_scroll_area(self._build_signature_settings_panel()),
-                "Firma / C2PA",
+                self.tr("Firma / C2PA"),
             )
             self.global_settings_tabs.addTab(
                 self._settings_scroll_area(self._build_preview_monitor_settings_panel()),
-                "Preview / monitor",
+                self.tr("Preview / monitor"),
             )
             layout.addWidget(self.global_settings_tabs, 1)
 
             buttons = QtWidgets.QHBoxLayout()
             buttons.addStretch(1)
-            buttons.addWidget(self._button("Guardar configuracion", self._save_global_settings))
-            buttons.addWidget(self._button("Cerrar", dialog.hide))
+            buttons.addWidget(self._button(self.tr("Guardar configuracion"), self._save_global_settings))
+            buttons.addWidget(self._button(self.tr("Cerrar"), dialog.hide))
             layout.addLayout(buttons)
 
         def _settings_scroll_area(self, widget: QtWidgets.QWidget) -> QtWidgets.QScrollArea:
@@ -2660,70 +2672,74 @@ if QtWidgets is not None:
             tab = QtWidgets.QWidget()
             layout = QtWidgets.QVBoxLayout(tab)
 
-            proof_box = QtWidgets.QGroupBox("NexoRAW Proof")
+            proof_box = QtWidgets.QGroupBox(self.tr("NexoRAW Proof"))
             proof_grid = QtWidgets.QGridLayout(proof_box)
 
             self.batch_proof_key_path = QtWidgets.QLineEdit(str(self._settings.value("proof/key_path") or ""))
-            self._add_path_row(proof_grid, 0, "Clave privada Proof (Ed25519)", self.batch_proof_key_path, file_mode=True, save_mode=False, dir_mode=False)
+            self._add_path_row(proof_grid, 0, self.tr("Clave privada Proof (Ed25519)"), self.batch_proof_key_path, file_mode=True, save_mode=False, dir_mode=False)
 
             self.batch_proof_public_key_path = QtWidgets.QLineEdit(str(self._settings.value("proof/public_key_path") or ""))
-            self._add_path_row(proof_grid, 1, "Clave publica Proof", self.batch_proof_public_key_path, file_mode=True, save_mode=False, dir_mode=False)
+            self._add_path_row(proof_grid, 1, self.tr("Clave publica Proof"), self.batch_proof_public_key_path, file_mode=True, save_mode=False, dir_mode=False)
 
-            proof_grid.addWidget(QtWidgets.QLabel("Frase clave Proof"), 2, 0)
+            proof_grid.addWidget(QtWidgets.QLabel(self.tr("Frase clave Proof")), 2, 0)
             self.batch_proof_key_passphrase = QtWidgets.QLineEdit("")
             self.batch_proof_key_passphrase.setEchoMode(QtWidgets.QLineEdit.Password)
-            self.batch_proof_key_passphrase.setPlaceholderText("No se guarda")
+            self.batch_proof_key_passphrase.setPlaceholderText(self.tr("No se guarda"))
             proof_grid.addWidget(self.batch_proof_key_passphrase, 2, 1, 1, 2)
 
-            proof_grid.addWidget(QtWidgets.QLabel("Firmante Proof"), 3, 0)
+            proof_grid.addWidget(QtWidgets.QLabel(self.tr("Firmante Proof")), 3, 0)
             self.batch_proof_signer_name = QtWidgets.QLineEdit(str(self._settings.value("proof/signer_name") or "NexoRAW local signer"))
             proof_grid.addWidget(self.batch_proof_signer_name, 3, 1, 1, 2)
 
-            proof_grid.addWidget(self._button("Generar identidad local Proof", self._generate_local_proof_identity), 4, 0, 1, 3)
+            proof_grid.addWidget(self._button(self.tr("Generar identidad local Proof"), self._generate_local_proof_identity), 4, 0, 1, 3)
 
             proof_note = QtWidgets.QLabel(
-                "Firma autonoma obligatoria para los TIFF finales. Vincula RAW, TIFF, receta, perfil y ajustes "
-                "sin depender de una autoridad central."
+                self.tr(
+                    "Firma autonoma obligatoria para los TIFF finales. Vincula RAW, TIFF, receta, perfil y ajustes "
+                    "sin depender de una autoridad central."
+                )
             )
             proof_note.setWordWrap(True)
             proof_note.setStyleSheet("font-size: 12px; color: #6b7280; padding-top: 4px;")
             proof_grid.addWidget(proof_note, 5, 0, 1, 3)
             layout.addWidget(proof_box)
 
-            c2pa_box = QtWidgets.QGroupBox("C2PA / CAI")
+            c2pa_box = QtWidgets.QGroupBox(self.tr("C2PA / CAI"))
             c2pa_grid = QtWidgets.QGridLayout(c2pa_box)
 
             self.batch_c2pa_cert_path = QtWidgets.QLineEdit(str(self._settings.value("c2pa/cert_path") or ""))
-            self._add_path_row(c2pa_grid, 0, "Certificado C2PA opcional (PEM)", self.batch_c2pa_cert_path, file_mode=True, save_mode=False, dir_mode=False)
+            self._add_path_row(c2pa_grid, 0, self.tr("Certificado C2PA opcional (PEM)"), self.batch_c2pa_cert_path, file_mode=True, save_mode=False, dir_mode=False)
 
             self.batch_c2pa_key_path = QtWidgets.QLineEdit(str(self._settings.value("c2pa/key_path") or ""))
-            self._add_path_row(c2pa_grid, 1, "Clave privada C2PA opcional", self.batch_c2pa_key_path, file_mode=True, save_mode=False, dir_mode=False)
+            self._add_path_row(c2pa_grid, 1, self.tr("Clave privada C2PA opcional"), self.batch_c2pa_key_path, file_mode=True, save_mode=False, dir_mode=False)
 
-            c2pa_grid.addWidget(QtWidgets.QLabel("Frase clave C2PA"), 2, 0)
+            c2pa_grid.addWidget(QtWidgets.QLabel(self.tr("Frase clave C2PA")), 2, 0)
             self.batch_c2pa_key_passphrase = QtWidgets.QLineEdit("")
             self.batch_c2pa_key_passphrase.setEchoMode(QtWidgets.QLineEdit.Password)
-            self.batch_c2pa_key_passphrase.setPlaceholderText("No se guarda")
+            self.batch_c2pa_key_passphrase.setPlaceholderText(self.tr("No se guarda"))
             c2pa_grid.addWidget(self.batch_c2pa_key_passphrase, 2, 1, 1, 2)
 
-            c2pa_grid.addWidget(QtWidgets.QLabel("Algoritmo C2PA"), 3, 0)
+            c2pa_grid.addWidget(QtWidgets.QLabel(self.tr("Algoritmo C2PA")), 3, 0)
             self.batch_c2pa_alg = QtWidgets.QComboBox()
             self.batch_c2pa_alg.addItems(["ps256", "ps384", "es256", "es384"])
             self._set_combo_text(self.batch_c2pa_alg, str(self._settings.value("c2pa/alg") or "ps256"))
             c2pa_grid.addWidget(self.batch_c2pa_alg, 3, 1, 1, 2)
 
-            c2pa_grid.addWidget(QtWidgets.QLabel("Servidor TSA"), 4, 0)
+            c2pa_grid.addWidget(QtWidgets.QLabel(self.tr("Servidor TSA")), 4, 0)
             self.batch_c2pa_timestamp_url = QtWidgets.QLineEdit(
                 str(self._settings.value("c2pa/timestamp_url") or DEFAULT_TIMESTAMP_URL)
             )
             c2pa_grid.addWidget(self.batch_c2pa_timestamp_url, 4, 1, 1, 2)
 
-            c2pa_grid.addWidget(QtWidgets.QLabel("Firmante C2PA"), 5, 0)
+            c2pa_grid.addWidget(QtWidgets.QLabel(self.tr("Firmante C2PA")), 5, 0)
             self.batch_c2pa_signer_name = QtWidgets.QLineEdit(str(self._settings.value("c2pa/signer_name") or APP_NAME))
             c2pa_grid.addWidget(self.batch_c2pa_signer_name, 5, 1, 1, 2)
 
             c2pa_note = QtWidgets.QLabel(
-                "C2PA se usa automaticamente con una identidad local de laboratorio cuando no hay certificado externo. "
-                "Los certificados CAI oficiales solo son necesarios si se quiere aparecer como firmante reconocido por su lista de confianza."
+                self.tr(
+                    "C2PA se usa automaticamente con una identidad local de laboratorio cuando no hay certificado externo. "
+                    "Los certificados CAI oficiales solo son necesarios si se quiere aparecer como firmante reconocido por su lista de confianza."
+                )
             )
             c2pa_note.setWordWrap(True)
             c2pa_note.setStyleSheet("font-size: 12px; color: #6b7280; padding-top: 4px;")
@@ -2751,15 +2767,17 @@ if QtWidgets is not None:
             grid = QtWidgets.QGridLayout(tab)
 
             note = QtWidgets.QLabel(
-                "Opciones globales de navegacion y visualizacion. La preview rapida no debe usarse como referencia "
-                "colorimetrica. La vista de maxima calidad se carga automaticamente al activar comparar original/resultado."
+                self.tr(
+                    "Opciones globales de navegacion y visualizacion. La preview rapida no debe usarse como referencia "
+                    "colorimetrica. La vista de maxima calidad se carga automaticamente al activar comparar original/resultado."
+                )
             )
             note.setWordWrap(True)
             note.setStyleSheet("font-size: 12px; color: #6b7280; padding-bottom: 6px;")
             grid.addWidget(note, 0, 0, 1, 3)
 
             preview_policy = QtWidgets.QLabel(
-                "Politica fija: preview RAW automatica (rapida en navegacion, maxima calidad en comparar)."
+                self.tr("Politica fija: preview RAW automatica (rapida en navegacion, maxima calidad en comparar).")
             )
             preview_policy.setWordWrap(True)
             preview_policy.setStyleSheet("font-size: 12px; color: #9ca3af;")
@@ -2767,16 +2785,16 @@ if QtWidgets is not None:
 
             # Compat attribute kept for tests/legacy sessions. Policy is now fixed.
             self.check_fast_raw_preview = QtWidgets.QCheckBox(
-                "Modo preview RAW automatico (rapida fuera de comparar, maxima calidad en comparar)"
+                self.tr("Modo preview RAW automatico (rapida fuera de comparar, maxima calidad en comparar)")
             )
             self.check_fast_raw_preview.setChecked(True)
             self.check_fast_raw_preview.setEnabled(False)
             self.check_fast_raw_preview.hide()
             grid.addWidget(self.check_fast_raw_preview, 1, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Resolucion de preview"), 2, 0)
+            grid.addWidget(QtWidgets.QLabel(self.tr("Resolucion de preview")), 2, 0)
             self.preview_resolution_policy_label = QtWidgets.QLabel(
-                "Automatica: usa fuente completa cuando es necesario (1:1 / precision / comparar)."
+                self.tr("Automatica: usa fuente completa cuando es necesario (1:1 / precision / comparar).")
             )
             self.preview_resolution_policy_label.setWordWrap(True)
             self.preview_resolution_policy_label.setStyleSheet("font-size: 12px; color: #9ca3af;")
@@ -2789,10 +2807,12 @@ if QtWidgets is not None:
             self.spin_preview_max_side.setValue(int(PREVIEW_AUTO_BASE_MAX_SIDE))
             self.spin_preview_max_side.hide()
 
-            self.check_display_color_management = QtWidgets.QCheckBox("Gestion ICC del monitor del sistema")
+            self.check_display_color_management = QtWidgets.QCheckBox(self.tr("Gestion ICC del monitor del sistema"))
             self.check_display_color_management.setToolTip(
-                "Usa automaticamente el perfil ICC configurado para el monitor en el sistema. "
-                "Si necesitas revisar otro monitor o flujo, puedes seleccionar un perfil manualmente."
+                self.tr(
+                    "Usa automaticamente el perfil ICC configurado para el monitor en el sistema. "
+                    "Si necesitas revisar otro monitor o flujo, puedes seleccionar un perfil manualmente."
+                )
             )
             self.check_display_color_management.setChecked(self._settings_bool("display/color_management_enabled", True))
             self.check_display_color_management.toggled.connect(self._on_display_color_settings_changed)
@@ -2800,11 +2820,11 @@ if QtWidgets is not None:
 
             self.path_display_profile = QtWidgets.QLineEdit(str(self._settings.value("display/monitor_profile") or ""))
             self.path_display_profile.editingFinished.connect(self._on_display_color_settings_changed)
-            self._add_path_row(grid, 4, "Perfil ICC monitor", self.path_display_profile, file_mode=True, save_mode=False, dir_mode=False)
+            self._add_path_row(grid, 4, self.tr("Perfil ICC monitor"), self.path_display_profile, file_mode=True, save_mode=False, dir_mode=False)
 
             display_row = QtWidgets.QHBoxLayout()
-            display_row.addWidget(self._button("Detectar", self._detect_display_profile))
-            self.display_profile_status = QtWidgets.QLabel("")
+            display_row.addWidget(self._button(self.tr("Detectar"), self._detect_display_profile))
+            self.display_profile_status = QtWidgets.QLabel(self.tr(""))
             self.display_profile_status.setWordWrap(True)
             self.display_profile_status.setStyleSheet("font-size: 12px; color: #6b7280;")
             display_row.addWidget(self.display_profile_status, 1)
@@ -2817,14 +2837,14 @@ if QtWidgets is not None:
             self.path_preview_png.editingFinished.connect(self._save_preview_monitor_settings)
 
             self.preview_png_policy_label = QtWidgets.QLabel(
-                "Exportacion PNG: se elige destino con 'Guardar preview PNG' (Guardar como...)."
+                self.tr("Exportacion PNG: se elige destino con 'Guardar preview PNG' (Guardar como...).")
             )
             self.preview_png_policy_label.setWordWrap(True)
             self.preview_png_policy_label.setStyleSheet("font-size: 12px; color: #9ca3af;")
             grid.addWidget(self.preview_png_policy_label, 6, 0, 1, 3)
 
             cache_row = QtWidgets.QHBoxLayout()
-            cache_row.addWidget(self._button("Limpiar cache", self._on_clear_preview_caches))
+            cache_row.addWidget(self._button(self.tr("Limpiar cache"), self._on_clear_preview_caches))
             cache_row.addStretch(1)
             grid.addLayout(cache_row, 7, 0, 1, 3)
 
@@ -2888,8 +2908,8 @@ if QtWidgets is not None:
         def _on_clear_preview_caches(self) -> None:
             reply = QtWidgets.QMessageBox.question(
                 self,
-                "Limpiar cache",
-                (
+                self.tr("Limpiar cache"),
+                self.tr(
                     "Se eliminaran caches de previews y miniaturas (sesion y usuario).\n"
                     "Se regeneraran cuando sea necesario.\n\n"
                     "¿Continuar?"
@@ -2927,12 +2947,12 @@ if QtWidgets is not None:
             if self._selected_file is not None:
                 self._on_load_selected(show_message=False)
 
-            self._set_status(f"Cache limpiada: {removed_dirs} carpetas, {removed_files} archivos.")
+            self._set_status(self.tr("Cache limpiada:") + f" {removed_dirs} " + self.tr("carpetas,") + f" {removed_files} " + self.tr("archivos."))
             self._log_preview(f"Cache limpiada ({removed_dirs} carpetas, {removed_files} archivos).")
             if errors:
                 QtWidgets.QMessageBox.warning(
                     self,
-                    "Cache parcialmente limpiada",
+                    self.tr("Cache parcialmente limpiada"),
                     "\n".join(errors[:6]),
                 )
 
@@ -2965,7 +2985,7 @@ if QtWidgets is not None:
             self._save_signature_settings()
             self._save_preview_monitor_settings()
             self._on_display_color_settings_changed()
-            self._set_status("Configuracion global guardada")
+            self._set_status(self.tr("Configuracion global guardada"))
 
         def _save_signature_settings(self) -> None:
             self._settings.setValue("proof/key_path", self.batch_proof_key_path.text().strip())
@@ -3000,20 +3020,20 @@ if QtWidgets is not None:
                 self._save_signature_settings()
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Identidad Proof existente",
-                    "Ya existe una identidad local NexoRAW Proof. Se han cargado sus rutas.",
+                    self.tr("Identidad Proof existente"),
+                    self.tr("Ya existe una identidad local NexoRAW Proof. Se han cargado sus rutas."),
                 )
                 return
             except Exception as exc:
-                QtWidgets.QMessageBox.warning(self, "Error Proof", str(exc))
+                QtWidgets.QMessageBox.warning(self, self.tr("Error Proof"), str(exc))
                 return
             self.batch_proof_key_path.setText(result["private_key"])
             self.batch_proof_public_key_path.setText(result["public_key"])
             self._save_signature_settings()
             QtWidgets.QMessageBox.information(
                 self,
-                "Identidad Proof generada",
-                f"Clave publica SHA-256:\n{result['public_key_sha256']}",
+                self.tr("Identidad Proof generada"),
+                self.tr("Clave publica SHA-256:") + f"\n{result['public_key_sha256']}",
             )
 
         def _technical_manifest_path_for_c2pa(self) -> Path | None:
@@ -3106,10 +3126,12 @@ if QtWidgets is not None:
         def _show_signature_config_error(self, exc: Exception) -> None:
             QtWidgets.QMessageBox.warning(
                 self,
-                "Firma forense requerida",
+                self.tr("Firma forense requerida"),
                 f"{exc}\n\n"
-                "NexoRAW crea por defecto una identidad local Proof y una identidad C2PA local. "
-                "Revisa Configuracion > Configuracion global si quieres usar credenciales propias.",
+                + self.tr(
+                    "NexoRAW crea por defecto una identidad local Proof y una identidad C2PA local. "
+                    "Revisa Configuracion > Configuracion global si quieres usar credenciales propias."
+                ),
             )
 
         def _show_c2pa_config_error(self, exc: Exception) -> None:
@@ -3405,7 +3427,7 @@ if QtWidgets is not None:
             label = QtWidgets.QLabel(label_text)
             grid.addWidget(label, row, 0)
             grid.addWidget(line_edit, row, 1)
-            browse = QtWidgets.QPushButton("...")
+            browse = QtWidgets.QPushButton(self.tr("..."))
             browse.setMaximumWidth(36)
             browse.clicked.connect(
                 lambda: self._browse_for_path(
@@ -3425,19 +3447,19 @@ if QtWidgets is not None:
         def _browse_for_path(self, target, *, file_mode: bool, save_mode: bool, dir_mode: bool) -> None:
             start = target.text().strip() or str(self._current_dir)
             if dir_mode:
-                path = QtWidgets.QFileDialog.getExistingDirectory(self, "Selecciona directorio", start)
+                path = QtWidgets.QFileDialog.getExistingDirectory(self, self.tr("Selecciona directorio"), start)
                 if path:
                     target.setText(path)
                     target.editingFinished.emit()
                 return
             if save_mode:
-                path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Guardar como", start)
+                path, _ = QtWidgets.QFileDialog.getSaveFileName(self, self.tr("Guardar como"), start)
                 if path:
                     target.setText(path)
                     target.editingFinished.emit()
                 return
             if file_mode:
-                path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Selecciona archivo", start)
+                path, _ = QtWidgets.QFileDialog.getOpenFileName(self, self.tr("Selecciona archivo"), start)
                 if path:
                     target.setText(path)
                     target.editingFinished.emit()
@@ -3447,8 +3469,8 @@ if QtWidgets is not None:
             if detected is None:
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Info",
-                    "No se pudo detectar automaticamente el perfil ICC del monitor. Seleccionalo manualmente.",
+                    self.tr("Info"),
+                    self.tr("No se pudo detectar automaticamente el perfil ICC del monitor. Seleccionalo manualmente."),
                 )
                 return
             self.path_display_profile.setText(str(detected))
@@ -3565,19 +3587,19 @@ if QtWidgets is not None:
             if not hasattr(self, "display_profile_status"):
                 return
             if error:
-                self.display_profile_status.setText("Monitor: error de perfil; mostrando sRGB")
+                self.display_profile_status.setText(self.tr("Monitor: error de perfil; mostrando sRGB"))
                 return
             profile_path = self._active_display_profile_path()
             if profile_path is None:
                 if hasattr(self, "check_display_color_management") and not self.check_display_color_management.isChecked():
-                    self.display_profile_status.setText("Monitor: gestion ICC desactivada")
+                    self.display_profile_status.setText(self.tr("Monitor: gestion ICC desactivada"))
                 else:
-                    self.display_profile_status.setText("Monitor: sRGB (sin perfil de sistema detectado)")
+                    self.display_profile_status.setText(self.tr("Monitor: sRGB (sin perfil de sistema detectado)"))
                 return
             if not profile_path.exists():
-                self.display_profile_status.setText(f"Monitor: perfil no encontrado ({profile_path.name})")
+                self.display_profile_status.setText(self.tr("Monitor: perfil no encontrado") + f" ({profile_path.name})")
                 return
-            self.display_profile_status.setText(f"Monitor: {display_profile_label(profile_path)}")
+            self.display_profile_status.setText(self.tr("Monitor:") + f" {display_profile_label(profile_path)}")
 
         def _initialize_session_tab_defaults(self) -> None:
             suggested = (self._current_dir / "nexoraw_session").resolve()
@@ -3783,7 +3805,7 @@ if QtWidgets is not None:
                 )
                 return False
 
-            self._set_status(f"No se usan {reason} como referencias colorimetricas.")
+            self._set_status(self.tr("No se usan") + f" {reason} " + self.tr("como referencias colorimetricas."))
             return False
 
         def _folder_has_browsable_files(self, folder: Path) -> bool:
@@ -4083,7 +4105,7 @@ if QtWidgets is not None:
             current = self._active_development_profile_id
             self.development_profile_combo.blockSignals(True)
             self.development_profile_combo.clear()
-            self.development_profile_combo.addItem("Ajustes actuales", "")
+            self.development_profile_combo.addItem(self.tr("Ajustes actuales"), "")
             for profile in self._development_profiles:
                 profile_id = str(profile.get("id") or "").strip()
                 if not profile_id:
@@ -4408,7 +4430,7 @@ if QtWidgets is not None:
         def _save_current_development_settings_to_selected(self) -> None:
             files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
             if not files:
-                QtWidgets.QMessageBox.information(self, "Info", "Selecciona uno o más RAW para guardar un perfil básico.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona uno o mas RAW para guardar un perfil basico."))
                 return
             written = 0
             for path in files:
@@ -4416,12 +4438,12 @@ if QtWidgets is not None:
                     written += 1
             if self._selected_file is not None and any(self._normalized_path_key(self._selected_file) == self._normalized_path_key(p) for p in files):
                 self._apply_raw_sidecar_to_controls(self._selected_file)
-            self._set_status(f"Perfil básico guardado en {written} imagen(es)")
+            self._set_status(self.tr("Perfil basico guardado en") + f" {written} " + self.tr("imagen(es)"))
 
         def _copy_development_settings_from_selected(self) -> None:
             files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
             if not files:
-                QtWidgets.QMessageBox.information(self, "Info", "Selecciona un RAW con perfil de ajuste.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona un RAW con perfil de ajuste."))
                 return
             source = files[0]
             try:
@@ -4429,17 +4451,17 @@ if QtWidgets is not None:
             except FileNotFoundError:
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Info",
-                    "Esta imagen todavía no tiene perfil de ajuste guardado. Usa primero 'Guardar perfil básico en imagen' o genera un perfil con carta.",
+                    self.tr("Info"),
+                    self.tr("Esta imagen todavia no tiene perfil de ajuste guardado. Usa primero 'Guardar perfil basico en imagen' o genera un perfil con carta."),
                 )
                 return
             except Exception as exc:
-                QtWidgets.QMessageBox.warning(self, "Mochila no válida", str(exc))
+                QtWidgets.QMessageBox.warning(self, self.tr("Mochila no válida"), str(exc))
                 return
             self._development_settings_clipboard = self._development_settings_payload_from_sidecar(source, sidecar)
             profile_type = self._adjustment_profile_type_from_sidecar(sidecar)
-            label = "avanzado" if profile_type == "advanced" else "básico"
-            self._set_status(f"Perfil de ajuste {label} copiado: {source.name}")
+            label = self.tr("avanzado") if profile_type == "advanced" else self.tr("basico")
+            self._set_status(self.tr("Perfil de ajuste") + f" {label} " + self.tr("copiado:") + f" {source.name}")
 
         def _icc_profile_path_from_copied_settings(self, copied: dict[str, Any]) -> Path | None:
             color = copied.get("color_management") if isinstance(copied.get("color_management"), dict) else {}
@@ -4455,15 +4477,15 @@ if QtWidgets is not None:
         def _paste_development_settings_to_selected(self) -> None:
             copied = self._development_settings_clipboard
             if not copied:
-                QtWidgets.QMessageBox.information(self, "Info", "Copia primero un perfil de ajuste desde una miniatura.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "Copia primero un perfil de ajuste desde una miniatura.")
                 return
             files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
             if not files:
-                QtWidgets.QMessageBox.information(self, "Info", "Selecciona uno o más RAW de destino.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "Selecciona uno o más RAW de destino.")
                 return
             recipe = self._recipe_from_payload(copied.get("recipe"))
             if recipe is None:
-                QtWidgets.QMessageBox.warning(self, "Mochila no válida", "El perfil de ajuste copiado no contiene una receta válida.")
+                QtWidgets.QMessageBox.warning(self, self.tr("Mochila no válida"), "El perfil de ajuste copiado no contiene una receta válida.")
                 return
             profile = copied.get("development_profile") if isinstance(copied.get("development_profile"), dict) else {}
             detail = copied.get("detail_adjustments") if isinstance(copied.get("detail_adjustments"), dict) else {}
@@ -4499,7 +4521,7 @@ if QtWidgets is not None:
                 self._apply_raw_sidecar_to_controls(self._selected_file)
                 if self._original_linear is not None:
                     self._on_load_selected(show_message=False)
-            self._set_status(f"Perfil de ajuste pegado en {written} imagen(es)")
+            self._set_status(self.tr("Perfil de ajuste pegado en") + f" {written} " + self.tr("imagen(es)"))
 
         def _apply_raw_sidecar_to_controls(self, path: Path) -> bool:
             try:
@@ -4619,7 +4641,7 @@ if QtWidgets is not None:
                 },
                 activate=True,
             )
-            self._set_status(f"Perfil de ajuste básico guardado: {name}")
+            self._set_status(self.tr("Perfil de ajuste basico guardado:") + f" {name}")
 
         def _activate_selected_development_profile(self) -> None:
             profile_id = str(self.development_profile_combo.currentData() or "")
@@ -4645,7 +4667,7 @@ if QtWidgets is not None:
             self._refresh_development_profile_combo()
             self._invalidate_preview_cache()
             self._save_active_session(silent=True)
-            self._set_status(f"Perfil de ajuste activo: {settings['name']}")
+            self._set_status(self.tr("Perfil de ajuste activo:") + f" {settings['name']}")
 
         def _register_chart_development_profile(
             self,
@@ -4701,16 +4723,16 @@ if QtWidgets is not None:
             if not profile_id and hasattr(self, "development_profile_combo"):
                 profile_id = str(self.development_profile_combo.currentData() or "")
             if not profile_id:
-                QtWidgets.QMessageBox.information(self, "Info", "Activa o guarda primero un perfil de ajuste.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "Activa o guarda primero un perfil de ajuste.")
                 return
             try:
                 settings = self._development_profile_settings(profile_id)
             except Exception as exc:
-                QtWidgets.QMessageBox.warning(self, "Perfil de ajuste no válido", str(exc))
+                QtWidgets.QMessageBox.warning(self, self.tr("Perfil de ajuste no válido"), str(exc))
                 return
             rows = sorted({i.row() for i in self.queue_table.selectionModel().selectedRows()})
             if not rows:
-                QtWidgets.QMessageBox.information(self, "Info", "Selecciona filas de la cola.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "Selecciona filas de la cola.")
                 return
             rendered_profile, mode = self._render_profile_and_mode_for_development_settings(settings)
             development_profile = self._profile_payload_from_development_settings(settings)
@@ -4732,14 +4754,14 @@ if QtWidgets is not None:
             self._refresh_queue_table()
             self._refresh_color_reference_thumbnail_markers()
             self._save_active_session(silent=True)
-            self._set_status(f"Perfil asignado a {len(rows)} elemento(s) de cola")
+            self._set_status(self.tr("Perfil asignado a") + f" {len(rows)} " + self.tr("elemento(s) de cola"))
 
         def _use_current_dir_as_session_root(self) -> None:
             root = self._project_root_for_path(self._current_dir) or self._current_dir
             self.session_root_path.setText(str(root))
             self.session_name_edit.setText(root.name)
             self._populate_session_directory_fields(self._session_paths_from_root(root))
-            self._set_status(f"Raíz de sesión: {root}")
+            self._set_status(self.tr("Raiz de sesion:") + f" {root}")
 
         def _on_session_root_edited(self) -> None:
             text = self.session_root_path.text().strip()
@@ -5037,17 +5059,17 @@ if QtWidgets is not None:
             self._set_current_directory(start_dir)
 
             self.session_active_label.setText(
-                f"Sesión activa: {session_name}\n"
-                f"Raíz: {self._active_session_root}\n"
-                f"Configuración: {session_file_path(self._active_session_root)}"
+                self.tr("Sesion activa:") + f" {session_name}\n"
+                + self.tr("Raiz:") + f" {self._active_session_root}\n"
+                + self.tr("Configuracion:") + f" {session_file_path(self._active_session_root)}"
             )
-            self._set_status(f"Sesión activa: {session_name}")
+            self._set_status(self.tr("Sesion activa:") + f" {session_name}")
             self._save_active_session(silent=True)
 
         def _on_create_session(self) -> None:
             root_text = self.session_root_path.text().strip()
             if not root_text:
-                QtWidgets.QMessageBox.information(self, "Info", "Indica un directorio raíz para la sesión.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Indica un directorio raiz para la sesion."))
                 return
 
             root = Path(root_text).expanduser()
@@ -5055,8 +5077,8 @@ if QtWidgets is not None:
             if existing_session.exists():
                 resp = QtWidgets.QMessageBox.question(
                     self,
-                    "Sesión existente",
-                    "Ya existe una sesión en ese directorio. ¿Sobrescribir configuración?",
+                    self.tr("Sesión existente"),
+                    self.tr("Ya existe una sesion en ese directorio. Sobrescribir configuracion?"),
                 )
                 if resp != QtWidgets.QMessageBox.Yes:
                     return
@@ -5077,7 +5099,7 @@ if QtWidgets is not None:
             start = self.session_root_path.text().strip() or str(self._current_dir)
             selected = QtWidgets.QFileDialog.getExistingDirectory(
                 self,
-                "Abrir sesión (directorio raíz)",
+                self.tr("Abrir sesion (directorio raiz)"),
                 start,
             )
             if not selected:
@@ -5088,8 +5110,8 @@ if QtWidgets is not None:
             except FileNotFoundError:
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Info",
-                    f"No se encontró configuración de sesión en:\n{session_file_path(root)}",
+                    self.tr("Info"),
+                    self.tr("No se encontro configuracion de sesion en:") + f"\n{session_file_path(root)}",
                 )
                 return
             self._activate_session(root, payload)
@@ -5101,7 +5123,7 @@ if QtWidgets is not None:
             root_text = self.session_root_path.text().strip()
             if not root_text:
                 if not silent:
-                    QtWidgets.QMessageBox.information(self, "Info", "Define un directorio de sesión.")
+                    QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Define un directorio de sesion."))
                 return False
 
             root = Path(root_text).expanduser()
@@ -5135,12 +5157,12 @@ if QtWidgets is not None:
             self._active_session_root = root.resolve()
             self._settings.setValue("session/last_root", str(self._active_session_root))
             self.session_active_label.setText(
-                f"Sesión activa: {saved['metadata']['name']}\n"
-                f"Raíz: {self._active_session_root}\n"
-                f"Configuración: {session_file_path(self._active_session_root)}"
+                self.tr("Sesion activa:") + f" {saved['metadata']['name']}\n"
+                + self.tr("Raiz:") + f" {self._active_session_root}\n"
+                + self.tr("Configuracion:") + f" {session_file_path(self._active_session_root)}"
             )
             if not silent:
-                self._set_status(f"Sesión guardada: {session_file_path(self._active_session_root)}")
+                self._set_status(self.tr("Sesion guardada:") + f" {session_file_path(self._active_session_root)}")
             return True
 
         def _on_save_session(self) -> None:
@@ -5177,32 +5199,32 @@ if QtWidgets is not None:
         def _queue_add_selected(self) -> None:
             files = self._collect_selected_file_paths()
             if not files:
-                QtWidgets.QMessageBox.information(self, "Info", "No hay selección para añadir a la cola.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("No hay seleccion para anadir a la cola."))
                 return
             added = self._queue_add_files(files)
-            self._set_status(f"Cola actualizada: {added} elementos añadidos")
+            self._set_status(self.tr("Cola actualizada:") + f" {added} " + self.tr("elementos anadidos"))
 
         def _queue_add_session_raws(self) -> None:
             source_dir = Path(self.batch_input_dir.text().strip() or self._current_dir)
             if not source_dir.exists() or not source_dir.is_dir():
-                QtWidgets.QMessageBox.information(self, "Info", f"Directorio inválido: {source_dir}")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), f"Directorio inválido: {source_dir}")
                 return
             files = [
                 p for p in sorted(source_dir.iterdir())
                 if p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
             ]
             if not files:
-                QtWidgets.QMessageBox.information(self, "Info", "No hay RAW/imágenes compatibles en el directorio.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("No hay RAW/imagenes compatibles en el directorio."))
                 return
             added = self._queue_add_files(files)
-            self._set_status(f"Cola actualizada: {added} archivos añadidos desde {source_dir}")
+            self._set_status(self.tr("Cola actualizada:") + f" {added} " + self.tr("archivos anadidos desde") + f" {source_dir}")
 
         def _queue_remove_selected(self) -> None:
             if not self._develop_queue:
                 return
             rows = sorted({i.row() for i in self.queue_table.selectionModel().selectedRows()}, reverse=True)
             if not rows:
-                QtWidgets.QMessageBox.information(self, "Info", "Selecciona filas de la cola para quitar.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "Selecciona filas de la cola para quitar.")
                 return
             for row in rows:
                 if 0 <= row < len(self._develop_queue):
@@ -5214,7 +5236,7 @@ if QtWidgets is not None:
             self._develop_queue = []
             self._refresh_queue_table()
             self._save_active_session(silent=True)
-            self._set_status("Cola vaciada")
+            self._set_status(self.tr("Cola vaciada"))
 
         def _refresh_queue_table(self) -> None:
             if not hasattr(self, "queue_table"):
@@ -5248,7 +5270,7 @@ if QtWidgets is not None:
 
         def _queue_process(self) -> None:
             if not self._develop_queue:
-                QtWidgets.QMessageBox.information(self, "Info", "No hay elementos en cola.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "No hay elementos en cola.")
                 return
 
             valid_entries: list[tuple[dict[str, str], Path]] = []
@@ -5264,7 +5286,7 @@ if QtWidgets is not None:
             if not valid_entries:
                 self._refresh_queue_table()
                 self._save_active_session(silent=True)
-                QtWidgets.QMessageBox.information(self, "Info", "No hay archivos válidos para procesar en la cola.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "No hay archivos válidos para procesar en la cola.")
                 return
 
             valid_sources = {str(p) for _item, p in valid_entries}
@@ -5290,7 +5312,7 @@ if QtWidgets is not None:
                     for profile_id in groups
                 }
             except Exception as exc:
-                QtWidgets.QMessageBox.warning(self, "Perfil de ajuste no válido", str(exc))
+                QtWidgets.QMessageBox.warning(self, self.tr("Perfil de ajuste no válido"), str(exc))
                 return
             try:
                 proof_config = self._resolve_proof_config_for_gui()
@@ -5357,10 +5379,10 @@ if QtWidgets is not None:
                     f"Cola procesada: {len(payload.get('outputs', []))} OK / {len(payload.get('errors', []))} errores"
                 )
 
-            self._start_background_task("Procesar cola de revelado", task, on_success)
+            self._start_background_task(self.tr("Procesar cola de revelado"), task, on_success)
 
         def _pick_directory(self) -> None:
-            p = QtWidgets.QFileDialog.getExistingDirectory(self, "Selecciona directorio")
+            p = QtWidgets.QFileDialog.getExistingDirectory(self, self.tr("Selecciona directorio"))
             if not p:
                 return
             selected = Path(p)
@@ -5433,7 +5455,7 @@ if QtWidgets is not None:
         def _set_current_directory(self, folder: Path) -> None:
             resolved_folder = self._resolve_existing_directory(folder)
             if resolved_folder is None:
-                self._set_status(f"Directorio no encontrado: {folder}")
+                self._set_status(self.tr("Directorio no encontrado:") + f" {folder}")
                 return
             folder = self._preferred_browsing_directory(resolved_folder)
             self._current_dir = folder
@@ -5449,7 +5471,7 @@ if QtWidgets is not None:
                 self.dir_tree.blockSignals(False)
             self._sync_operational_dirs_from_browser(folder)
             self._populate_file_list(folder)
-            self._set_status(f"Directorio actual: {folder}")
+            self._set_status(self.tr("Directorio actual:") + f" {folder}")
 
         def _reload_current_directory(self) -> None:
             self._populate_file_list(self._current_dir)
@@ -5465,7 +5487,7 @@ if QtWidgets is not None:
             self._selected_file = None
             self._clear_manual_chart_points_for_file_change()
             self._last_loaded_preview_key = None
-            self.selected_file_label.setText("Sin archivo seleccionado")
+            self.selected_file_label.setText(self.tr("Sin archivo seleccionado"))
             self._clear_metadata_view()
             self._clear_viewer_histogram()
 
@@ -5957,11 +5979,11 @@ if QtWidgets is not None:
                 self.file_list.takeItem(row)
             self._selected_file = None
             self._clear_manual_chart_points_for_file_change()
-            self.selected_file_label.setText("Sin archivo seleccionado")
+            self.selected_file_label.setText(self.tr("Sin archivo seleccionado"))
             self._selection_load_timer.stop()
             self._metadata_timer.stop()
             self._clear_metadata_view()
-            self._set_status(f"Archivo no encontrado, miniatura retirada: {path.name}")
+            self._set_status(self.tr("Archivo no encontrado, miniatura retirada:") + f" {path.name}")
 
         @staticmethod
         def _build_thumbnail_payloads(paths: list[Path], size: int) -> list[tuple[str, str, np.ndarray]]:
@@ -6130,7 +6152,7 @@ if QtWidgets is not None:
             if item is None:
                 self._selected_file = None
                 self._clear_manual_chart_points_for_file_change()
-                self.selected_file_label.setText("Sin archivo seleccionado")
+                self.selected_file_label.setText(self.tr("Sin archivo seleccionado"))
                 self._selection_load_timer.stop()
                 self._metadata_timer.stop()
                 self._clear_metadata_view()
@@ -6159,7 +6181,7 @@ if QtWidgets is not None:
             self._apply_raw_sidecar_to_controls(self._selected_file)
             self._queue_metadata_load(self._selected_file, include_c2pa=False)
             if self._selected_file.suffix.lower() in BROWSABLE_EXTENSIONS:
-                self._set_status(f"Seleccionado: {self._selected_file.name}. Cargando preview...")
+                self._set_status(self.tr("Seleccionado:") + f" {self._selected_file.name}. " + self.tr("Cargando preview..."))
                 self._selection_load_timer.start(250)
 
         def _on_file_double_clicked(self, _item) -> None:
@@ -6174,22 +6196,22 @@ if QtWidgets is not None:
                 self.file_list.setCurrentItem(item)
 
             menu = QtWidgets.QMenu(self)
-            menu.addAction("Guardar perfil básico en imagen", self._save_current_development_settings_to_selected)
-            menu.addAction("Copiar perfil de ajuste", self._copy_development_settings_from_selected)
-            paste_action = menu.addAction("Pegar perfil de ajuste", self._paste_development_settings_to_selected)
+            menu.addAction(self.tr("Guardar perfil basico en imagen"), self._save_current_development_settings_to_selected)
+            menu.addAction(self.tr("Copiar perfil de ajuste"), self._copy_development_settings_from_selected)
+            paste_action = menu.addAction(self.tr("Pegar perfil de ajuste"), self._paste_development_settings_to_selected)
             paste_action.setEnabled(self._development_settings_clipboard is not None)
             menu.addSeparator()
-            menu.addAction("Usar como referencia colorimétrica", self._use_selected_files_as_profile_charts)
-            menu.addAction("Añadir a cola", self._queue_add_selected)
+            menu.addAction(self.tr("Usar como referencia colorimetrica"), self._use_selected_files_as_profile_charts)
+            menu.addAction(self.tr("Anadir a cola"), self._queue_add_selected)
             menu.exec(self.file_list.mapToGlobal(pos))
 
         def _queue_metadata_load(self, path: Path, *, delay_ms: int = 180, include_c2pa: bool = True) -> None:
             self._metadata_generation += 1
             self._queued_metadata_include_c2pa = bool(include_c2pa)
             if hasattr(self, "metadata_file_label"):
-                self.metadata_file_label.setText(f"Metadatos: {path.name}")
+                self.metadata_file_label.setText(self.tr("Metadatos:") + f" {path.name}")
             if hasattr(self, "metadata_summary"):
-                self._metadata_tree_message(self.metadata_summary, "Leyendo metadatos...")
+                self._metadata_tree_message(self.metadata_summary, self.tr("Leyendo metadatos..."))
             self._metadata_timer.start(max(0, int(delay_ms)))
 
         def _load_metadata_from_timer(self) -> None:
@@ -6201,9 +6223,9 @@ if QtWidgets is not None:
                 return
             selected = self._selected_file
             if hasattr(self, "metadata_file_label"):
-                self.metadata_file_label.setText(f"Metadatos: {selected}")
+                self.metadata_file_label.setText(self.tr("Metadatos:") + f" {selected}")
             if hasattr(self, "metadata_summary"):
-                self._metadata_tree_message(self.metadata_summary, "Leyendo metadatos...")
+                self._metadata_tree_message(self.metadata_summary, self.tr("Leyendo metadatos..."))
             if self._metadata_task_active:
                 self._metadata_pending_request = (selected, bool(include_c2pa))
                 return
@@ -6260,7 +6282,7 @@ if QtWidgets is not None:
         def _apply_metadata_payload(self, path: Path, payload: dict[str, Any]) -> None:
             sections = metadata_sections_text(payload)
             display = metadata_display_sections(payload)
-            self.metadata_file_label.setText(f"Metadatos: {path}")
+            self.metadata_file_label.setText(self.tr("Metadatos:") + f" {path}")
             self._populate_metadata_tree(self.metadata_summary, display["summary"])
             self._populate_metadata_tree(self.metadata_exif, display["exif"])
             self._populate_metadata_tree(self.metadata_gps, display["gps"])
@@ -6270,7 +6292,7 @@ if QtWidgets is not None:
         def _clear_metadata_view(self) -> None:
             if not hasattr(self, "metadata_summary"):
                 return
-            self.metadata_file_label.setText("Sin archivo seleccionado")
+            self.metadata_file_label.setText(self.tr("Sin archivo seleccionado"))
             for widget in (
                 self.metadata_summary,
                 self.metadata_exif,
@@ -6373,18 +6395,18 @@ if QtWidgets is not None:
             if payload.get("error"):
                 QtWidgets.QMessageBox.warning(
                     self,
-                    "Actualizaciones",
+                    self.tr("Actualizaciones"),
                     status_text,
                 )
                 return
-            QtWidgets.QMessageBox.information(self, "Actualizaciones", status_text)
+            QtWidgets.QMessageBox.information(self, self.tr("Actualizaciones"), status_text)
 
         def _on_manual_update_check_error(self, message: str) -> None:
-            QtWidgets.QMessageBox.warning(self, "Actualizaciones", message)
+            QtWidgets.QMessageBox.warning(self, self.tr("Actualizaciones"), message)
 
         def _menu_about(self) -> None:
             dialog = QtWidgets.QDialog(self)
-            dialog.setWindowTitle(f"Acerca de {APP_NAME}")
+            dialog.setWindowTitle(self.tr("Acerca de ") + APP_NAME)
             dialog.setModal(True)
             dialog.resize(640, 360)
 
@@ -6397,7 +6419,7 @@ if QtWidgets is not None:
             layout.addWidget(title)
 
             subtitle = QtWidgets.QLabel(
-                "Revelado RAW tecnico, trazable y reproducible para entornos cientificos."
+                self.tr("Revelado RAW tecnico, trazable y reproducible para entornos cientificos.")
             )
             subtitle.setWordWrap(True)
             subtitle.setStyleSheet("font-size: 12px; color: #4b5563;")
@@ -6417,27 +6439,27 @@ if QtWidgets is not None:
                 grid.addWidget(v, row, 1)
                 return v
 
-            add_row(0, "Director del proyecto:", PROJECT_DIRECTOR_NAME)
-            add_row(1, "Version en ejecucion:", __version__)
-            add_row(2, "Backend:", "LibRaw/rawpy + ArgyllCMS")
+            add_row(0, self.tr("Director del proyecto:"), PROJECT_DIRECTOR_NAME)
+            add_row(1, self.tr("Version en ejecucion:"), __version__)
+            add_row(2, self.tr("Backend:"), "LibRaw/rawpy + ArgyllCMS")
             amaze_info = self._amaze_status_summary()
-            add_row(3, "Soporte AMaZE:", amaze_info)
-            latest_label = add_row(4, "Estado de version:", "Sin comprobar")
+            add_row(3, self.tr("Soporte AMaZE:"), amaze_info)
+            latest_label = add_row(4, self.tr("Estado de version:"), self.tr("Sin comprobar"))
 
             layout.addLayout(grid)
 
             status_note = QtWidgets.QLabel(
-                "La comprobacion usa GitHub Releases; la actualizacion automatica descarga y ejecuta el instalador."
+                self.tr("La comprobacion usa GitHub Releases; la actualizacion automatica descarga y ejecuta el instalador.")
             )
             status_note.setWordWrap(True)
             status_note.setStyleSheet("font-size: 12px; color: #6b7280;")
             layout.addWidget(status_note)
 
             button_row = QtWidgets.QHBoxLayout()
-            btn_check = QtWidgets.QPushButton("Comprobar ultima version")
-            btn_update = QtWidgets.QPushButton("Actualizar automaticamente")
-            btn_release = QtWidgets.QPushButton("Abrir releases")
-            btn_close = QtWidgets.QPushButton("Cerrar")
+            btn_check = QtWidgets.QPushButton(self.tr("Comprobar ultima version"))
+            btn_update = QtWidgets.QPushButton(self.tr("Actualizar automaticamente"))
+            btn_release = QtWidgets.QPushButton(self.tr("Abrir releases"))
+            btn_close = QtWidgets.QPushButton(self.tr("Cerrar"))
             btn_update.setEnabled(False)
             button_row.addWidget(btn_check)
             button_row.addWidget(btn_update)
@@ -6457,12 +6479,12 @@ if QtWidgets is not None:
 
             def open_release_page() -> None:
                 payload = state.get("payload") or {}
-                url = str(payload.get("release_url") or f"https://github.com/{os.environ.get('NEXORAW_RELEASE_REPOSITORY', 'alejandro-probatia/NexoRAW')}/releases")
+                url = str(payload.get("release_url") or f"https://github.com/{os.environ.get('NEXORAW_RELEASE_REPOSITORY', self.tr('alejandro-probatia/NexoRAW'))}/releases")
                 QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
 
             def run_check() -> None:
                 btn_check.setEnabled(False)
-                latest_label.setText("Comprobando version mas reciente...")
+                latest_label.setText(self.tr("Comprobando version mas reciente..."))
 
                 def ok(payload: dict[str, Any]) -> None:
                     state["payload"] = payload
@@ -6481,26 +6503,25 @@ if QtWidgets is not None:
             def run_auto_update() -> None:
                 payload = state.get("payload")
                 if not isinstance(payload, dict):
-                    QtWidgets.QMessageBox.information(dialog, "Actualizacion", "Primero comprueba la ultima version.")
+                    QtWidgets.QMessageBox.information(dialog, self.tr("Actualizacion"), self.tr("Primero comprueba la ultima version."))
                     return
                 if payload.get("error"):
-                    QtWidgets.QMessageBox.warning(dialog, "Actualizacion", str(payload.get("error")))
+                    QtWidgets.QMessageBox.warning(dialog, self.tr("Actualizacion"), str(payload.get("error")))
                     return
                 if not payload.get("update_available"):
-                    QtWidgets.QMessageBox.information(dialog, "Actualizacion", "Ya estas en la ultima version.")
+                    QtWidgets.QMessageBox.information(dialog, self.tr("Actualizacion"), self.tr("Ya estas en la ultima version."))
                     return
                 if not payload.get("asset_url"):
                     QtWidgets.QMessageBox.information(
                         dialog,
-                        "Actualizacion",
-                        "No hay instalador automatico para esta plataforma en la release detectada.",
+                        self.tr("Actualizacion"),
+                        self.tr("No hay instalador automatico para esta plataforma en la release detectada."),
                     )
                     return
                 answer = QtWidgets.QMessageBox.question(
                     dialog,
-                    "Actualizar automaticamente",
-                    "Se descargara el instalador mas reciente y se ejecutara en modo silencioso.\n"
-                    "Deseas continuar?",
+                    self.tr("Actualizar automaticamente"),
+                    self.tr("Se descargara el instalador mas reciente y se ejecutara en modo silencioso.\nDeseas continuar?"),
                     QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                     QtWidgets.QMessageBox.No,
                 )
@@ -6509,7 +6530,7 @@ if QtWidgets is not None:
 
                 btn_update.setEnabled(False)
                 btn_check.setEnabled(False)
-                latest_label.setText("Descargando e iniciando actualizacion...")
+                latest_label.setText(self.tr("Descargando e iniciando actualizacion..."))
 
                 def task() -> dict[str, Any]:
                     fresh_check = check_latest_release()
@@ -6523,20 +6544,19 @@ if QtWidgets is not None:
 
                 def ok(result: dict[str, Any]) -> None:
                     installer_path = str(result.get("installer_path") or "")
-                    latest_label.setText("Instalador lanzado correctamente.")
+                    latest_label.setText(self.tr("Instalador lanzado correctamente."))
                     QtWidgets.QMessageBox.information(
                         dialog,
-                        "Actualizacion iniciada",
-                        "Se ha iniciado el instalador de actualizacion:\n"
-                        f"{installer_path}\n\n"
-                        "Cierra NexoRAW cuando el instalador lo solicite.",
+                        self.tr("Actualizacion iniciada"),
+                        self.tr("Se ha iniciado el instalador de actualizacion:") + f"\n{installer_path}\n\n"
+                        + self.tr("Cierra NexoRAW cuando el instalador lo solicite."),
                     )
                     btn_check.setEnabled(True)
                     btn_update.setEnabled(True)
 
                 def fail(message: str) -> None:
-                    latest_label.setText("No se pudo iniciar la actualizacion automatica.")
-                    QtWidgets.QMessageBox.warning(dialog, "Actualizacion", message)
+                    latest_label.setText(self.tr("No se pudo iniciar la actualizacion automatica."))
+                    QtWidgets.QMessageBox.warning(dialog, self.tr("Actualizacion"), message)
                     btn_check.setEnabled(True)
                     btn_update.setEnabled(True)
 
@@ -6612,24 +6632,24 @@ if QtWidgets is not None:
             if hasattr(self, "profile_summary_label"):
                 if missing:
                     self.profile_summary_label.setText(
-                        "Diagnostico herramientas: faltan " + ", ".join(str(name) for name in missing)
+                        self.tr("Diagnostico herramientas: faltan") + " " + ", ".join(str(name) for name in missing)
                     )
                 else:
-                    self.profile_summary_label.setText("Diagnostico herramientas: entorno externo completo")
+                    self.profile_summary_label.setText(self.tr("Diagnostico herramientas: entorno externo completo"))
             if missing:
                 QtWidgets.QMessageBox.warning(
                     self,
-                    "Diagnostico herramientas",
-                    "Faltan herramientas requeridas en PATH: " + ", ".join(str(name) for name in missing),
+                    self.tr("Diagnostico herramientas"),
+                    self.tr("Faltan herramientas requeridas en PATH:") + " " + ", ".join(str(name) for name in missing),
                 )
-                self._set_status("Faltan herramientas externas requeridas")
+                self._set_status(self.tr("Faltan herramientas externas requeridas"))
             else:
-                self._set_status("Herramientas externas disponibles")
+                self._set_status(self.tr("Herramientas externas disponibles"))
 
         def _menu_load_profile(self) -> None:
             path, _ = QtWidgets.QFileDialog.getOpenFileName(
                 self,
-                "Selecciona perfil ICC",
+                self.tr("Selecciona perfil ICC"),
                 self.path_profile_active.text().strip(),
                 "ICC Profiles (*.icc *.icm);;Todos (*)",
             )
@@ -6637,23 +6657,23 @@ if QtWidgets is not None:
                 return
             profile_path = Path(path).expanduser()
             if not self._profile_can_be_active(profile_path):
-                status = self._profile_status_for_path(profile_path) or "no disponible"
+                status = self._profile_status_for_path(profile_path) or self.tr("no disponible")
                 QtWidgets.QMessageBox.warning(
                     self,
-                    "Perfil no activable",
-                    f"No se activa el perfil porque su estado QA es '{status}'. "
-                    "Regenera el perfil con referencias RAW/DNG originales.",
+                    self.tr("Perfil no activable"),
+                    self.tr("No se activa el perfil porque su estado QA es") + f" '{status}'. "
+                    + self.tr("Regenera el perfil con referencias RAW/DNG originales."),
                 )
                 return
             self.path_profile_active.setText(path)
-            self._set_status(f"Perfil activo: {path}")
+            self._set_status(self.tr("Perfil activo:") + f" {path}")
             self._refresh_preview()
             self._save_active_session(silent=True)
 
         def _menu_compare_qa_reports(self) -> None:
             paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
                 self,
-                "Comparar reportes QA de sesión",
+                self.tr("Comparar reportes QA de sesion"),
                 str(self._current_dir),
                 "Reportes JSON (*.json);;Todos (*)",
             )
@@ -6662,12 +6682,12 @@ if QtWidgets is not None:
             try:
                 comparison = compare_qa_reports([Path(path) for path in paths])
             except Exception as exc:
-                QtWidgets.QMessageBox.warning(self, "Comparación QA", str(exc))
+                QtWidgets.QMessageBox.warning(self, self.tr("Comparacion QA"), str(exc))
                 return
             self.profile_output.setPlainText(json.dumps(comparison, indent=2, ensure_ascii=False))
             if hasattr(self, "profile_summary_label"):
                 self.profile_summary_label.setText(self._qa_comparison_summary(comparison))
-            self._set_status(f"Comparados {comparison.get('report_count', len(paths))} reportes QA")
+            self._set_status(self.tr("Comparados") + f" {comparison.get('report_count', len(paths))} " + self.tr("reportes QA"))
 
         def _qa_comparison_summary(self, comparison: dict[str, Any]) -> str:
             status_counts = comparison.get("status_counts") if isinstance(comparison.get("status_counts"), dict) else {}
@@ -6703,14 +6723,14 @@ if QtWidgets is not None:
             recipe = load_recipe(recipe_path)
             self.path_recipe.setText(str(recipe_path))
             self._apply_recipe_to_controls(recipe)
-            self._set_status(f"Receta cargada: {recipe_path}")
+            self._set_status(self.tr("Receta cargada:") + f" {recipe_path}")
             self._save_active_session(silent=True)
 
         def _menu_save_recipe(self) -> None:
             start = self.path_recipe.text().strip() or str(Path.cwd() / "recipe.yml")
             path, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self,
-                "Guardar receta",
+                self.tr("Guardar receta"),
                 start,
                 "YAML (*.yml *.yaml);;JSON (*.json)",
             )
@@ -6726,12 +6746,12 @@ if QtWidgets is not None:
             else:
                 out.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
             self.path_recipe.setText(str(out))
-            self._set_status(f"Receta guardada: {out}")
+            self._set_status(self.tr("Receta guardada:") + f" {out}")
             self._save_active_session(silent=True)
 
         def _menu_reset_recipe(self) -> None:
             self._apply_recipe_to_controls(Recipe())
-            self._set_status("Receta restablecida a valores por defecto")
+            self._set_status(self.tr("Receta restablecida a valores por defecto"))
             self._save_active_session(silent=True)
 
         def _apply_recipe_to_controls(self, recipe: Recipe) -> None:
@@ -6890,8 +6910,8 @@ if QtWidgets is not None:
             self.slider_tone_curve_white.setValue(int(round(white * 1000.0)))
             self.slider_tone_curve_black.blockSignals(False)
             self.slider_tone_curve_white.blockSignals(False)
-            self.label_tone_curve_black.setText(f"Negro curva: {self.slider_tone_curve_black.value() / 1000:.3f}")
-            self.label_tone_curve_white.setText(f"Blanco curva: {self.slider_tone_curve_white.value() / 1000:.3f}")
+            self.label_tone_curve_black.setText(self.tr("Negro curva:") + f" {self.slider_tone_curve_black.value() / 1000:.3f}")
+            self.label_tone_curve_white.setText(self.tr("Blanco curva:") + f" {self.slider_tone_curve_white.value() / 1000:.3f}")
             self.tone_curve_editor.set_input_range(
                 self.slider_tone_curve_black.value() / 1000.0,
                 self.slider_tone_curve_white.value() / 1000.0,
@@ -6939,15 +6959,15 @@ if QtWidgets is not None:
         def _toggle_neutral_picker(self, checked: bool = False) -> None:
             if checked and self._original_linear is None:
                 self._set_neutral_picker_active(False)
-                QtWidgets.QMessageBox.information(self, "Info", "Carga primero una imagen en el visor.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Carga primero una imagen en el visor."))
                 return
             self._set_neutral_picker_active(bool(checked))
             if self._neutral_picker_active:
                 self._manual_chart_marking = False
                 self._sync_manual_chart_overlay()
-                self._set_status("Cuentagotas neutro activo: haz clic en un gris/blanco sin saturar")
+                self._set_status(self.tr("Cuentagotas neutro activo: haz clic en un gris/blanco sin saturar"))
             else:
-                self._set_status("Cuentagotas neutro desactivado")
+                self._set_status(self.tr("Cuentagotas neutro desactivado"))
 
         def _sample_neutral_patch(self, x: float, y: float, *, radius: int = 9) -> tuple[np.ndarray, int]:
             if self._original_linear is None:
@@ -6981,7 +7001,7 @@ if QtWidgets is not None:
                 sample, count = self._sample_neutral_patch(x, y)
                 temperature, tint = estimate_temperature_tint_from_neutral_sample(sample)
             except ValueError as exc:
-                QtWidgets.QMessageBox.information(self, "Punto neutro", str(exc))
+                QtWidgets.QMessageBox.information(self, self.tr("Punto neutro"), str(exc))
                 self._set_status(str(exc))
                 return
 
@@ -7008,7 +7028,7 @@ if QtWidgets is not None:
             if self._original_linear is not None:
                 self._refresh_preview()
             self._save_active_session(silent=True)
-            self._set_status(f"Balance neutro aplicado: {temperature} K, matiz {tint:+.1f}")
+            self._set_status(self.tr("Balance neutro aplicado:") + f" {temperature} K, " + self.tr("matiz") + f" {tint:+.1f}")
 
         def _on_tone_curve_enabled_changed(self, enabled: bool) -> None:
             self._set_tone_curve_controls_enabled(enabled)
@@ -7055,7 +7075,7 @@ if QtWidgets is not None:
         def _reset_color_adjustments(self, *_args: object, refresh: bool = True) -> None:
             self._set_neutral_picker_active(False)
             if hasattr(self, "label_neutral_picker"):
-                self.label_neutral_picker.setText("Punto neutro: sin muestra")
+                self.label_neutral_picker.setText(self.tr("Punto neutro: sin muestra"))
             self.combo_illuminant_render.setCurrentIndex(1)
             self.spin_render_temperature.setValue(5003)
             self.spin_render_tint.setValue(0.0)
@@ -7186,16 +7206,16 @@ if QtWidgets is not None:
             if not hasattr(self, "histogram_shadow_label") or not hasattr(self, "histogram_highlight_label"):
                 return
             if metrics is None:
-                self.histogram_shadow_label.setText("Sombras: --")
-                self.histogram_highlight_label.setText("Luces: --")
+                self.histogram_shadow_label.setText(self.tr("Sombras: --"))
+                self.histogram_highlight_label.setText(self.tr("Luces: --"))
                 self.histogram_shadow_label.setStyleSheet("font-size: 12px; color: #6b7280;")
                 self.histogram_highlight_label.setStyleSheet("font-size: 12px; color: #6b7280;")
                 return
 
             shadow_pct = float(metrics.get("shadow_any", 0.0)) * 100.0
             highlight_pct = float(metrics.get("highlight_any", 0.0)) * 100.0
-            self.histogram_shadow_label.setText(f"Sombras: {shadow_pct:.2f}%")
-            self.histogram_highlight_label.setText(f"Luces: {highlight_pct:.2f}%")
+            self.histogram_shadow_label.setText(self.tr("Sombras:") + f" {shadow_pct:.2f}%")
+            self.histogram_highlight_label.setText(self.tr("Luces:") + f" {highlight_pct:.2f}%")
             alert_pct = float(VIEWER_HISTOGRAM_CLIP_ALERT_RATIO) * 100.0
             shadow_alert = shadow_pct > alert_pct
             highlight_alert = highlight_pct > alert_pct
@@ -7450,7 +7470,7 @@ if QtWidgets is not None:
             if self._selected_file is None:
                 self._clear_viewer_histogram()
                 if show_message:
-                    QtWidgets.QMessageBox.information(self, "Info", "Selecciona primero un archivo.")
+                    QtWidgets.QMessageBox.information(self, self.tr("Info"), "Selecciona primero un archivo.")
                 return
 
             original_selected = self._selected_file
@@ -7461,12 +7481,12 @@ if QtWidgets is not None:
                 self._selected_file = None
                 self._last_loaded_preview_key = None
                 self._clear_manual_chart_points_for_file_change()
-                self.selected_file_label.setText("Sin archivo seleccionado")
+                self.selected_file_label.setText(self.tr("Sin archivo seleccionado"))
                 self._clear_metadata_view()
                 self._clear_viewer_histogram()
-                self._set_status(f"Archivo no encontrado: {original_selected}")
+                self._set_status(self.tr("Archivo no encontrado:") + f" {original_selected}")
                 if show_message:
-                    QtWidgets.QMessageBox.information(self, "Info", f"No existe el archivo:\n{original_selected}")
+                    QtWidgets.QMessageBox.information(self, self.tr("Info"), f"No existe el archivo:\n{original_selected}")
                 return
             if self._normalized_path_key(selected) != self._normalized_path_key(original_selected):
                 self._selected_file = selected
@@ -7530,7 +7550,7 @@ if QtWidgets is not None:
                 self._clear_adjustment_caches()
                 self._refresh_preview()
                 self._log_preview(f"Preview cargada desde cache: {selected.name}")
-                self._set_status(f"Preview en cache: {selected.name}")
+                self._set_status(self.tr("Preview en cache:") + f" {selected.name}")
                 if self._manual_chart_marking_after_reload:
                     self._manual_chart_marking_after_reload = False
                     self._begin_manual_chart_marking()
@@ -7551,7 +7571,7 @@ if QtWidgets is not None:
                 return
             self._preview_load_pending_request = None
             self._start_preview_load_task(request)
-            self._set_status(f"Cargando preview: {selected.name}")
+            self._set_status(self.tr("Cargando preview:") + f" {selected.name}")
 
         def _start_preview_load_task(
             self,
@@ -7604,7 +7624,7 @@ if QtWidgets is not None:
                     self._cache_preview_image(loaded_key, self._original_linear, selected=loaded_selected)
                     self._refresh_preview()
                     self._log_preview(msg)
-                    self._set_status(f"Preview cargada: {loaded_selected.name}")
+                    self._set_status(self.tr("Preview cargada:") + f" {loaded_selected.name}")
                     if self._manual_chart_marking_after_reload:
                         self._manual_chart_marking_after_reload = False
                         self._begin_manual_chart_marking()
@@ -7615,7 +7635,7 @@ if QtWidgets is not None:
                 try:
                     self._log_preview(trace[-1200:])
                     if self._selected_file == selected:
-                        self._set_status(f"Error de preview: {selected.name}")
+                        self._set_status(self.tr("Error de preview:") + f" {selected.name}")
                 finally:
                     cleanup()
 
@@ -7635,16 +7655,15 @@ if QtWidgets is not None:
         def _on_precache_visible_previews(self, *, full_resolution: bool) -> None:
             files = [p for p in self._file_list_paths() if p.suffix.lower() in RAW_EXTENSIONS]
             if not files:
-                QtWidgets.QMessageBox.information(self, "Info", "No hay RAW visibles para precache.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "No hay RAW visibles para precache.")
                 return
             mode_label = "1:1" if full_resolution else "normal"
             reply = QtWidgets.QMessageBox.question(
                 self,
-                "Precache de previews",
+                self.tr("Precache de previews"),
                 (
-                    f"Se van a precalcular {len(files)} previews RAW en modo {mode_label}.\n\n"
-                    "Este proceso puede tardar, pero mejora la respuesta posterior.\n"
-                    "¿Continuar?"
+                    self.tr("Se van a precalcular") + f" {len(files)} " + self.tr("previews RAW en modo") + f" {mode_label}.\n\n"
+                    + self.tr("Este proceso puede tardar, pero mejora la respuesta posterior.\nContinuar?")
                 ),
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                 QtWidgets.QMessageBox.Yes,
@@ -7708,11 +7727,11 @@ if QtWidgets is not None:
                 skipped = int(payload.get("skipped", 0))
                 errors = payload.get("errors", [])
                 self._log_preview(
-                    f"Precache {payload.get('mode', 'normal')}: "
+                    f"Precache {payload.get('mode', self.tr('normal'))}: "
                     f"{built} generadas, {skipped} ya en cache, {len(errors)} errores (total {total})."
                 )
                 self._set_status(
-                    f"Precache {payload.get('mode', 'normal')} completada: "
+                    f"Precache {payload.get('mode', self.tr('normal'))} completada: "
                     f"{built} nuevas, {skipped} reutilizadas."
                 )
                 if full_resolution and self._selected_file is not None:
@@ -8289,7 +8308,7 @@ if QtWidgets is not None:
                 self._set_result_display_u8(display_u8, compare_enabled=compare_enabled)
                 self.preview_analysis.setPlainText(preview_analysis_text(preview_source, adjusted))
             except Exception as exc:
-                QtWidgets.QMessageBox.warning(self, "Aviso", str(exc))
+                QtWidgets.QMessageBox.warning(self, self.tr("Aviso"), str(exc))
 
         def _schedule_preview_refresh(self) -> None:
             if self._original_linear is None:
@@ -8328,13 +8347,13 @@ if QtWidgets is not None:
 
         def _on_save_preview(self) -> None:
             if self._preview_srgb is None:
-                QtWidgets.QMessageBox.information(self, "Info", "No hay preview para guardar.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "No hay preview para guardar.")
                 return
             self._ensure_session_output_controls()
             default_out = str(self._session_default_outputs()["preview"])
             out_text, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self,
-                "Guardar preview PNG",
+                self.tr("Guardar preview PNG"),
                 default_out,
                 "PNG (*.png)",
             )
@@ -8347,15 +8366,15 @@ if QtWidgets is not None:
             bgr = np.clip(np.round(self._preview_srgb[..., ::-1] * 255.0), 0, 255).astype(np.uint8)
             ok = cv2.imwrite(str(out), bgr)
             if not ok:
-                QtWidgets.QMessageBox.critical(self, "Error", f"No se pudo guardar: {out}")
+                QtWidgets.QMessageBox.critical(self, self.tr("Error"), self.tr("No se pudo guardar:") + f" {out}")
                 return
             self._log_preview(f"Preview guardada en: {out}")
-            self._set_status(f"Preview guardada: {out}")
+            self._set_status(self.tr("Preview guardada:") + f" {out}")
             self._save_active_session(silent=True)
 
         def _on_develop_selected(self) -> None:
             if self._selected_file is None:
-                QtWidgets.QMessageBox.information(self, "Info", "Selecciona un archivo para revelar.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona un archivo para revelar."))
                 return
 
             in_path = self._selected_file
@@ -8470,10 +8489,10 @@ if QtWidgets is not None:
                 if payload.get("raw_sidecar"):
                     self._log_preview(f"Mochila NexoRAW: {payload['raw_sidecar']}")
                 self._refresh_color_reference_thumbnail_markers()
-                self._set_status(f"Revelado completado: {payload['output_tiff']}")
+                self._set_status(self.tr("Revelado completado:") + f" {payload['output_tiff']}")
                 self._save_active_session(silent=True)
 
-            self._start_background_task("Revelado a TIFF", task, on_success)
+            self._start_background_task(self.tr("Revelado a TIFF"), task, on_success)
 
         def _use_current_dir_as_profile_charts(self) -> None:
             accepted = self._set_profile_reference_dir(self._current_dir)
@@ -8481,7 +8500,7 @@ if QtWidgets is not None:
             self._sync_profile_chart_selection_label()
             self._refresh_color_reference_thumbnail_markers()
             if accepted:
-                self._set_status(f"Directorio de referencias colorimetricas: {self._current_dir}")
+                self._set_status(self.tr("Directorio de referencias colorimetricas:") + f" {self._current_dir}")
             self._save_active_session(silent=True)
 
         def _use_selected_files_as_profile_charts(self) -> None:
@@ -8495,9 +8514,9 @@ if QtWidgets is not None:
                     reason = rejected[0][1]
                     QtWidgets.QMessageBox.information(
                         self,
-                        "Referencias no validas",
-                        "Las referencias colorimetricas deben ser RAW/DNG o TIFFs originales de carta, "
-                        f"no {reason}. Selecciona las capturas en 01_ORG.",
+                        self.tr("Referencias no validas"),
+                        self.tr("Las referencias colorimetricas deben ser RAW/DNG o TIFFs originales de carta, no")
+                        + f" {reason}. " + self.tr("Selecciona las capturas en 01_ORG."),
                     )
                     fallback = self._preferred_profile_reference_dir()
                     if fallback is not None:
@@ -8509,8 +8528,8 @@ if QtWidgets is not None:
                     return
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Info",
-                    "Selecciona una o mas capturas RAW/DNG/TIFF como referencias colorimetricas.",
+                    self.tr("Info"),
+                    self.tr("Selecciona una o mas capturas RAW/DNG/TIFF como referencias colorimetricas."),
                 )
                 return
             self._selected_chart_files = sorted(set(files), key=lambda p: str(p))
@@ -8519,22 +8538,22 @@ if QtWidgets is not None:
                 self.profile_charts_dir.setText(str(next(iter(parents))))
             self._sync_profile_chart_selection_label()
             self._refresh_color_reference_thumbnail_markers()
-            suffix = f"; ignoradas {len(rejected)} no validas" if rejected else ""
-            self._set_status(f"Referencias colorimetricas seleccionadas: {len(self._selected_chart_files)}{suffix}")
+            suffix = ("; " + self.tr("ignoradas") + f" {len(rejected)} " + self.tr("no validas")) if rejected else ""
+            self._set_status(self.tr("Referencias colorimetricas seleccionadas:") + f" {len(self._selected_chart_files)}{suffix}")
             self._save_active_session(silent=True)
 
         def _sync_profile_chart_selection_label(self) -> None:
             if not hasattr(self, "profile_chart_selection_label"):
                 return
             if not self._selected_chart_files:
-                self.profile_chart_selection_label.setText("Referencias colorimétricas: todas las compatibles de la carpeta indicada")
+                self.profile_chart_selection_label.setText(self.tr("Referencias colorimetricas: todas las compatibles de la carpeta indicada"))
                 self._refresh_color_reference_thumbnail_markers()
                 return
             preview = ", ".join(p.name for p in self._selected_chart_files[:4])
             if len(self._selected_chart_files) > 4:
                 preview += f" (+{len(self._selected_chart_files) - 4} más)"
             self.profile_chart_selection_label.setText(
-                f"Referencias colorimétricas seleccionadas: {len(self._selected_chart_files)} - {preview}"
+                self.tr("Referencias colorimetricas seleccionadas:") + f" {len(self._selected_chart_files)} - {preview}"
             )
             self._refresh_color_reference_thumbnail_markers()
 
@@ -8564,7 +8583,7 @@ if QtWidgets is not None:
                 if len(parents) == 1:
                     self.profile_charts_dir.setText(str(next(iter(parents))))
                 self._refresh_color_reference_thumbnail_markers()
-                self._set_status(f"Referencias colorimétricas tomadas de la selección: {len(self._selected_chart_files)}")
+                self._set_status(self.tr("Referencias colorimetricas tomadas de la seleccion:") + f" {len(self._selected_chart_files)}")
                 return list(self._selected_chart_files)
 
             if (
@@ -8576,14 +8595,14 @@ if QtWidgets is not None:
                 self.profile_charts_dir.setText(str(self._selected_file.parent))
                 self._sync_profile_chart_selection_label()
                 self._refresh_color_reference_thumbnail_markers()
-                self._set_status(f"Referencia colorimétrica tomada del archivo cargado: {self._selected_file.name}")
+                self._set_status(self.tr("Referencia colorimetrica tomada del archivo cargado:") + f" {self._selected_file.name}")
                 return list(self._selected_chart_files)
 
             if rejected:
                 fallback = self._preferred_profile_reference_dir()
                 if fallback is not None:
                     self.profile_charts_dir.setText(str(fallback))
-                self._set_status("Se ignoraron referencias colorimetricas no validas en carpetas operativas.")
+                self._set_status(self.tr("Se ignoraron referencias colorimetricas no validas en carpetas operativas."))
 
             return None
 
@@ -8684,7 +8703,7 @@ if QtWidgets is not None:
 
         def _use_current_dir_as_batch_input(self) -> None:
             self.batch_input_dir.setText(str(self._current_dir))
-            self._set_status(f"Directorio lote: {self._current_dir}")
+            self._set_status(self.tr("Directorio lote:") + f" {self._current_dir}")
             self._save_active_session(silent=True)
 
         def _on_generate_profile(self) -> None:
@@ -8704,9 +8723,9 @@ if QtWidgets is not None:
                     else:
                         QtWidgets.QMessageBox.information(
                             self,
-                            "Referencias no validas",
-                            "La generacion de perfil no puede usar carpetas operativas de la sesion "
-                            f"({reason}). Selecciona capturas RAW/DNG originales en 01_ORG.",
+                            self.tr("Referencias no validas"),
+                            self.tr("La generacion de perfil no puede usar carpetas operativas de la sesion")
+                            + f" ({reason}). " + self.tr("Selecciona capturas RAW/DNG originales en 01_ORG."),
                         )
                         return
             if chart_capture_files is None and not self._directory_has_chart_captures(charts):
@@ -8719,8 +8738,8 @@ if QtWidgets is not None:
                 else:
                     QtWidgets.QMessageBox.information(
                         self,
-                        "Sin capturas de carta",
-                        "Selecciona una o más miniaturas con carta, carga una carta en el visor o abre una carpeta con capturas RAW/DNG/TIFF.",
+                        self.tr("Sin capturas de carta"),
+                        self.tr("Selecciona una o mas miniaturas con carta, carga una carta en el visor o abre una carpeta con capturas RAW/DNG/TIFF."),
                     )
                     return
             manual_detections = self._manual_detections_for_profile(chart_capture_files)
@@ -8830,10 +8849,10 @@ if QtWidgets is not None:
                     self.profile_summary_label.setText(self._profile_success_summary(payload, profile_out))
                 self._log_preview(f"Perfil de ajuste avanzado: {payload.get('development_profile_path')}")
                 self._log_preview(f"Perfil ICC de entrada generado: {profile_out}")
-                self._set_status(f"Perfil avanzado con carta + ICC de entrada generado: {profile_out}")
+                self._set_status(self.tr("Perfil avanzado con carta + ICC de entrada generado:") + f" {profile_out}")
                 self._save_active_session(silent=True)
 
-            self._start_background_task("Generación de perfil avanzado con carta + ICC", task, on_success)
+            self._start_background_task(self.tr("Generacion de perfil avanzado con carta + ICC"), task, on_success)
 
         def _profile_chart_candidate_count(self, charts: Path, chart_capture_files: list[Path] | None) -> int:
             if chart_capture_files is not None:
@@ -8892,13 +8911,13 @@ if QtWidgets is not None:
 
         def _start_manual_chart_marking(self) -> None:
             if self._original_linear is None:
-                QtWidgets.QMessageBox.information(self, "Info", "Carga primero la captura de carta en el visor.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Carga primero la captura de carta en el visor."))
                 return
             if self._selected_file is None or self._selected_file.suffix.lower() not in PROFILE_CHART_EXTENSIONS:
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Referencia no compatible",
-                    "El marcado manual para perfilado cientifico solo acepta RAW/DNG/TIFF.",
+                    self.tr("Referencia no compatible"),
+                    self.tr("El marcado manual para perfilado cientifico solo acepta RAW/DNG/TIFF."),
                 )
                 return
             if (
@@ -8908,7 +8927,7 @@ if QtWidgets is not None:
             ):
                 self._manual_chart_marking_after_reload = True
                 self._last_loaded_preview_key = None
-                self._set_status("Recargando preview de alta calidad antes del marcado manual")
+                self._set_status(self.tr("Recargando preview de alta calidad antes del marcado manual"))
                 self._on_load_selected(show_message=False)
                 return
             self._begin_manual_chart_marking()
@@ -8921,14 +8940,14 @@ if QtWidgets is not None:
             self._manual_chart_points = []
             self._manual_chart_points_source = self._selected_file.expanduser().resolve(strict=False) if self._selected_file else None
             self._sync_manual_chart_overlay()
-            self._set_status("Marcado manual activo sobre preview de revelado: selecciona 4 esquinas en el visor")
+            self._set_status(self.tr("Marcado manual activo sobre preview de revelado: selecciona 4 esquinas en el visor"))
 
         def _clear_manual_chart_points(self) -> None:
             self._manual_chart_marking = False
             self._manual_chart_points = []
             self._manual_chart_points_source = None
             self._sync_manual_chart_overlay()
-            self._set_status("Marcado manual limpiado")
+            self._set_status(self.tr("Marcado manual limpiado"))
 
         def _clear_manual_chart_points_for_file_change(self) -> None:
             if not self._manual_chart_points and not self._manual_chart_marking and self._manual_chart_points_source is None:
@@ -8963,9 +8982,9 @@ if QtWidgets is not None:
             self._manual_chart_points.append((float(x), float(y)))
             if len(self._manual_chart_points) == 4:
                 self._manual_chart_marking = False
-                self._set_status("Cuatro esquinas marcadas; revisa y guarda la detección")
+                self._set_status(self.tr("Cuatro esquinas marcadas; revisa y guarda la deteccion"))
             else:
-                self._set_status(f"Punto {len(self._manual_chart_points)}/4 marcado")
+                self._set_status(self.tr("Punto") + f" {len(self._manual_chart_points)}/4 " + self.tr("marcado"))
             self._sync_manual_chart_overlay()
 
         def _sync_manual_chart_overlay(self) -> None:
@@ -8973,9 +8992,9 @@ if QtWidgets is not None:
             if hasattr(self, "manual_chart_points_label"):
                 if points:
                     coords = " | ".join(f"{idx}:{x:.0f},{y:.0f}" for idx, (x, y) in enumerate(points, start=1))
-                    self.manual_chart_points_label.setText(f"Puntos: {len(points)}/4 - {coords}")
+                    self.manual_chart_points_label.setText(self.tr("Puntos:") + f" {len(points)}/4 - {coords}")
                 else:
-                    self.manual_chart_points_label.setText("Puntos: 0/4")
+                    self.manual_chart_points_label.setText(self.tr("Puntos: 0/4"))
             if hasattr(self, "image_result_single"):
                 self.image_result_single.set_overlay_points(points)
             if hasattr(self, "image_result_compare"):
@@ -8983,27 +9002,27 @@ if QtWidgets is not None:
 
         def _save_manual_chart_detection(self) -> None:
             if self._selected_file is None:
-                QtWidgets.QMessageBox.information(self, "Info", "Selecciona primero una captura de carta.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona primero una captura de carta."))
                 return
             if self._selected_file.suffix.lower() not in PROFILE_CHART_EXTENSIONS:
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Referencia no compatible",
-                    "Las detecciones de carta para perfilado cientifico solo aceptan RAW/DNG/TIFF.",
+                    self.tr("Referencia no compatible"),
+                    self.tr("Las detecciones de carta para perfilado cientifico solo aceptan RAW/DNG/TIFF."),
                 )
                 return
             if self._original_linear is None:
-                QtWidgets.QMessageBox.information(self, "Info", "Carga primero la captura de carta en el visor.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Carga primero la captura de carta en el visor."))
                 return
             if len(self._manual_chart_points) != 4:
-                QtWidgets.QMessageBox.information(self, "Info", "Marca exactamente 4 esquinas antes de guardar.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Marca exactamente 4 esquinas antes de guardar."))
                 return
             if not self._manual_chart_points_match_selected_file():
                 self._clear_manual_chart_points_for_file_change()
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Marcado no valido",
-                    "El marcado manual pertenecia a otra imagen. Marca de nuevo la carta en la captura actual.",
+                    self.tr("Marcado no valido"),
+                    self.tr("El marcado manual pertenecia a otra imagen. Marca de nuevo la carta en la captura actual."),
                 )
                 return
 
@@ -9013,7 +9032,7 @@ if QtWidgets is not None:
             default_path = default_dir / f"{self._selected_file.stem}.manual_detection.json"
             out_text, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self,
-                "Guardar detección manual",
+                self.tr("Guardar deteccion manual"),
                 str(default_path),
                 "JSON (*.json)",
             )
@@ -9064,9 +9083,9 @@ if QtWidgets is not None:
                     self._sync_profile_chart_selection_label()
                 self.profile_charts_dir.setText(str(source.parent))
                 self._log_preview(f"Detección manual guardada: {payload['detection_json']}")
-                self._set_status(f"Detección manual asociada a carta: {source.name}")
+                self._set_status(self.tr("Deteccion manual asociada a carta:") + f" {source.name}")
 
-            self._start_background_task("Detección manual de carta", task, on_success)
+            self._start_background_task(self.tr("Deteccion manual de carta"), task, on_success)
 
         def _collect_selected_file_paths(self) -> list[Path]:
             files: list[Path] = []
@@ -9086,21 +9105,21 @@ if QtWidgets is not None:
         def _on_batch_develop_selected(self) -> None:
             files = self._collect_selected_file_paths()
             if not files:
-                QtWidgets.QMessageBox.information(self, "Info", "Selecciona uno o más archivos para el lote.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "Selecciona uno o más archivos para el lote.")
                 return
             self._start_batch_develop(files, "Lote desde selección")
 
         def _on_batch_develop_directory(self) -> None:
             folder = Path(self.batch_input_dir.text().strip())
             if not folder.exists() or not folder.is_dir():
-                QtWidgets.QMessageBox.information(self, "Info", f"Directorio inválido: {folder}")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), f"Directorio inválido: {folder}")
                 return
             files = [
                 p for p in sorted(folder.iterdir())
                 if p.is_file() and p.suffix.lower() in BROWSABLE_EXTENSIONS
             ]
             if not files:
-                QtWidgets.QMessageBox.information(self, "Info", "No hay RAW/imagenes compatibles en el directorio.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "No hay RAW/imagenes compatibles en el directorio.")
                 return
             self._start_batch_develop(files, "Lote desde directorio")
 
@@ -9354,8 +9373,8 @@ if QtWidgets is not None:
                     f"({error_count} errores)"
                 )
                 self._set_status(
-                    f"Lote finalizado en {payload['output_dir']} "
-                    f"(OK={ok_count}, errores={error_count})"
+                    self.tr("Lote finalizado en") + f" {payload['output_dir']} "
+                    f"(OK={ok_count}, " + self.tr("errores") + f"={error_count})"
                 )
                 self._refresh_color_reference_thumbnail_markers()
                 self._save_active_session(silent=True)
@@ -9365,15 +9384,15 @@ if QtWidgets is not None:
         def _use_generated_profile_as_active(self) -> None:
             p = self._normalized_profile_out_path()
             if not p.exists():
-                QtWidgets.QMessageBox.information(self, "Info", "El perfil ICC de entrada aún no existe.")
+                QtWidgets.QMessageBox.information(self, self.tr("Info"), "El perfil ICC de entrada aún no existe.")
                 return
             if not self._profile_can_be_active(p):
-                status = self._profile_status_for_path(p) or "no disponible"
+                status = self._profile_status_for_path(p) or self.tr("no disponible")
                 QtWidgets.QMessageBox.warning(
                     self,
-                    "Perfil no activable",
-                    f"No se activa el perfil generado porque su estado QA es '{status}'. "
-                    "Regenera el perfil con referencias RAW/DNG originales.",
+                    self.tr("Perfil no activable"),
+                    self.tr("No se activa el perfil generado porque su estado QA es") + f" '{status}'. "
+                    + self.tr("Regenera el perfil con referencias RAW/DNG originales."),
                 )
                 self.path_profile_active.clear()
                 self.chk_apply_profile.setChecked(False)
@@ -9387,11 +9406,11 @@ if QtWidgets is not None:
                     self._apply_recipe_to_controls(load_recipe(recipe_path))
                 except Exception as exc:
                     self._log_preview(f"No se pudo activar receta calibrada: {exc}")
-            self._set_status(f"Perfil activo: {p}")
+            self._set_status(self.tr("Perfil activo:") + f" {p}")
             self._save_active_session(silent=True)
 
         def _start_background_task(self, label: str, task, on_success) -> None:
-            self._set_status(f"Ejecutando: {label}")
+            self._set_status(self.tr("Ejecutando:") + f" {label}")
             task_row = self._monitor_task_start(label)
             thread = TaskThread(task)
             self._threads.append(thread)
@@ -9404,17 +9423,17 @@ if QtWidgets is not None:
             def ok(payload) -> None:
                 try:
                     on_success(payload)
-                    self._set_status(f"Completado: {label}")
-                    self._monitor_task_finish(task_row, "Completado", "OK")
+                    self._set_status(self.tr("Completado:") + f" {label}")
+                    self._monitor_task_finish(task_row, self.tr("Completado"), "OK")
                 finally:
                     cleanup()
 
             def fail(trace: str) -> None:
                 cleanup()
                 self._log_preview(trace[-1200:])
-                self._set_status(f"Error en: {label}")
-                self._monitor_task_finish(task_row, "Error", trace.strip().splitlines()[-1] if trace.strip() else "Error")
-                QtWidgets.QMessageBox.critical(self, "Error", trace[-4000:])
+                self._set_status(self.tr("Error en:") + f" {label}")
+                self._monitor_task_finish(task_row, self.tr("Error"), trace.strip().splitlines()[-1] if trace.strip() else self.tr("Error"))
+                QtWidgets.QMessageBox.critical(self, self.tr("Error"), trace[-4000:])
 
             thread.succeeded.connect(ok)
             thread.failed.connect(fail)
@@ -9452,7 +9471,7 @@ if QtWidgets is not None:
             if self._active_tasks == 0:
                 self.monitor_progress.setRange(0, 1)
                 self.monitor_progress.setValue(1 if status == "Completado" else 0)
-                self.monitor_status_label.setText("Sin tareas en ejecución")
+                self.monitor_status_label.setText(self.tr("Sin tareas en ejecucion"))
                 if hasattr(self, "global_status_label"):
                     self.global_progress.setRange(0, 1)
                     self.global_progress.setValue(1 if status == "Completado" else 0)
@@ -9462,7 +9481,7 @@ if QtWidgets is not None:
         def _reset_global_progress_if_idle(self) -> None:
             if self._active_tasks != 0 or not hasattr(self, "global_status_label"):
                 return
-            self.global_status_label.setText("Listo")
+            self.global_status_label.setText(self.tr("Listo"))
             self.global_progress.setRange(0, 1)
             self.global_progress.setValue(0)
 
@@ -9473,7 +9492,7 @@ if QtWidgets is not None:
             self._interactive_preview_spinner.setValue(0)
             self._interactive_preview_spinner.setFixedWidth(84)
             self._interactive_preview_spinner.setMaximumHeight(9)
-            self._interactive_preview_time_label = QtWidgets.QLabel("Ultimo ajuste: -- ms")
+            self._interactive_preview_time_label = QtWidgets.QLabel(self.tr("Ultimo ajuste: -- ms"))
             self._interactive_preview_time_label.setStyleSheet("color: #4b5563;")
             status = self.statusBar()
             status.addPermanentWidget(self._interactive_preview_spinner)
@@ -9489,7 +9508,7 @@ if QtWidgets is not None:
                     spinner.setValue(0)
             label = getattr(self, "_interactive_preview_time_label", None)
             if label is not None and bool(busy):
-                label.setText("Ajustando...")
+                label.setText(self.tr("Ajustando..."))
             elif label is not None:
                 self._update_interactive_preview_time_label()
 
@@ -9498,9 +9517,9 @@ if QtWidgets is not None:
             if label is None:
                 return
             if self._interactive_preview_last_ms is None:
-                label.setText("Ultimo ajuste: -- ms")
+                label.setText(self.tr("Ultimo ajuste: -- ms"))
                 return
-            label.setText(f"Ultimo ajuste: {int(round(self._interactive_preview_last_ms))} ms")
+            label.setText(self.tr("Ultimo ajuste:") + f" {int(round(self._interactive_preview_last_ms))} ms")
 
         def _set_status(self, text: str) -> None:
             self.statusBar().showMessage(text, 8000)
@@ -9524,6 +9543,14 @@ def main(argv: list[str] | None = None) -> int:
     icon = _app_icon()
     if not icon.isNull():
         app.setWindowIcon(icon)
+
+    # Cargar traductor antes de crear la ventana, para que todos los widgets
+    # reciban las cadenas traducidas desde el primer paint.
+    from .i18n import install_translator
+    _lang_settings = _make_app_settings()
+    _lang = str(_lang_settings.value("app/language", "es") or "es").strip()
+    install_translator(app, _lang)
+
     win = NexoRawMainWindow()
     win.show()
     return app.exec()

@@ -1,74 +1,74 @@
-﻿# Guia de contribucion
+_Spanish version: [CONTRIBUTING.es.md](CONTRIBUTING.es.md)_
 
-Gracias por colaborar con NexoRAW. Este proyecto prioriza reproducibilidad,
-auditoria y trazabilidad para fotografia cientifica, forense y de patrimonio.
+# Contribution guide
 
-## Tipos de contribucion bienvenidos
+Thank you for collaborating with NexoRAW. This project prioritizes reproducibility,
+audit and traceability for scientific, forensic and heritage photography.
 
-- Codigo (CLI, GUI, tooling y documentacion tecnica).
-- Datasets de cartas de color con licencia clara y trazabilidad documental.
-- Validaciones colorimetricas de campo (metricas DeltaE y contexto de captura).
-- Traducciones y mejora de documentacion para usuarios no desarrolladores.
-- Casos de uso documentados (cientifico, forense, patrimonio, docencia).
-- Revision normativa y legal (metadatos, cadena de custodia, licencias).
+## Types of contributions welcome
 
-## Flujo recomendado
+- Code (CLI, GUI, tooling and technical documentation).
+- Datasets of color charts with clear license and documentary traceability.
+- Field colorimetric validations (DeltaE metrics and capture context).
+- Translations and improvement of documentation for non-developer users.
+- Documented use cases (scientific, forensic, heritage, teaching).
+- Regulatory and legal review (metadata, chain of custody, licenses).
 
-1. Haz `fork` del repositorio.
-2. Crea una rama descriptiva (`feat/...`, `fix/...`, `docs/...`).
-3. Implementa el cambio con tests o evidencia reproducible.
-4. Ejecuta las comprobaciones locales.
-5. Abre un Pull Request hacia `main`.
-6. Atiende revision tecnica y legal antes de merge.
+## Recommended flow
 
-## Entorno local y checks
+1. Get `fork` from the repository.
+2. Create a descriptive branch (`feat/...`, `fix/...`, `docs/...`).
+3. Implement the change with tests or reproducible evidence.
+4. Run local checks.
+5. Open a Pull Request towards `main`.
+6. Attend technical and legal review before merge.
 
+## Local environment and checks
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .
 bash scripts/run_checks.sh
 ```
+Expected checks for code contributions:
 
-Checks esperados para contribuciones de codigo:
+- `pytest` in green.
+- Support for `black`, `ruff` and `mypy` in changed files.
+- Consistency with `pyproject.toml` (Python version, extras and metadata).
+- No silent changes in colorimetric output or traceability.
 
-- `pytest` en verde.
-- Compatibilidad con `black`, `ruff` y `mypy` en los archivos cambiados.
-- Coherencia con `pyproject.toml` (version de Python, extras y metadatos).
-- Sin cambios silenciosos de salida colorimetrica ni de trazabilidad.
+## Commit policy
 
-## Politica de commits
+Use semantic prefixes:
 
-Usa prefijos semanticos:
+- `feat:` new capacity
+- `fix:` bug fix
+- `docs:` documentation
+- `test:` tests
+- `refactor:` refactor without functional change
 
-- `feat:` nueva capacidad
-- `fix:` correccion de bug
-- `docs:` documentacion
-- `test:` pruebas
-- `refactor:` refactor sin cambio funcional
+Example: `docs: add colorimetric validation issue template`.
 
-Ejemplo: `docs: add colorimetric validation issue template`.
+## How to add a new letter or reference
 
-## Como anadir una nueva carta o referencia
+1. Document origin, license and version of the letter.
+2. Add reference in `testdata/references/` or `src/iccraw/resources/references/`.
+3. Includes illuminant, observer, source and version in the reference JSON.
+4. Attach reproducible example (detection + sample + QA).
+5. Update methodological documentation if the flow changes.
 
-1. Documenta origen, licencia y version de la carta.
-2. Anade referencia en `testdata/references/` o `src/iccraw/resources/references/`.
-3. Incluye iluminante, observador, fuente y version en el JSON de referencia.
-4. Adjunta ejemplo reproducible (deteccion + sample + QA).
-5. Actualiza documentacion metodologica si cambia el flujo.
+## Dataset policy
 
-## Politica de datasets
+- Clear license required (`CC0`, `CC-BY` or compatible equivalent).
+- Include SHA-256 checksums for each file.
+- Declare origin, author, date and conditions of capture.
+- Do not upload sensitive material or data with legal restrictions.
 
-- Licencia clara obligatoria (`CC0`, `CC-BY` o equivalente compatible).
-- Incluir checksums SHA-256 de cada archivo.
-- Declarar procedencia, autor, fecha y condiciones de captura.
-- No subir material sensible ni datos con restriccion legal.
+## AGPL Reminder
 
-## Recordatorio AGPL
+NexoRAW uses `AGPL-3.0-or-later`. If you run a derived version like
+network service, you must publish the corresponding source code of the derivative.
 
-NexoRAW usa `AGPL-3.0-or-later`. Si ejecutas una version derivada como
-servicio en red, debes publicar el codigo fuente correspondiente del derivado.
+## Community behavior
 
-## Conducta comunitaria
-
-Toda participacion se rige por [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+All participation is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).

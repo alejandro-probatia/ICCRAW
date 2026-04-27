@@ -1,226 +1,224 @@
+_Spanish version: [DECISIONS.es.md](DECISIONS.es.md)_
+
 # Technical Decisions
 
-## DEC-0001: Lenguaje principal del núcleo
+## DEC-0001: Core Core Language
 
-- Estado: aceptada
-- Fecha: 2026-04-23
-
-Decisión:
-
-- usar **Python** como lenguaje principal del núcleo y CLI para maximizar mantenibilidad comunitaria y velocidad de iteración científica.
-
-Motivación:
-
-1. ecosistema científico maduro,
-2. menor barrera de contribución,
-3. integración directa con tooling de visión/colorimetría.
-
-## DEC-0002: Motor de perfil ICC
-
-- Estado: aceptada
-- Fecha: 2026-04-23
-
-Decisión:
-
-- motor de build de perfil ICC: **ArgyllCMS** (`colprof`) como único backend soportado.
-
-Motivación:
-
-1. ArgyllCMS es referencia técnica consolidada,
-2. permite validación/contraste externo,
-3. evita divergencias entre motores y mejora la reproducibilidad entre entornos.
-
-## DEC-0003: Dependencias de imagen y RAW
-
-- Estado: aceptada
-- Fecha: 2026-04-23
-
-Decisión:
-
-- LibRaw mediante `rawpy` como motor único de revelado RAW,
-- `opencv-python-headless` para detección geométrica,
-- `tifffile` para export TIFF 16-bit,
-- `colour-science` para métricas y conversiones colorimétricas.
-
-## DEC-0004: Licencia inicial
-
-- Estado: aceptada
-- Fecha: 2026-04-23
-
-Decisión:
-
-- licencia del repositorio: `AGPL-3.0-or-later`.
-- gobernanza y mantenimiento: comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
-
-Compatibilidad (resumen):
-
-1. LibRaw se integra mediante `rawpy`; ArgyllCMS se usa como herramienta externa para perfilado, validacion y conversion ICC,
-2. OpenCV BSD: compatible,
-3. `rawpy` pasa a ser dependencia crítica del pipeline RAW.
-
-Cumplimiento (resumen):
-
-1. toda distribucion del software debe incluir acceso a la fuente correspondiente bajo AGPL,
-2. en despliegues de red/aplicacion remota, se mantiene obligacion AGPL de ofrecer fuente al usuario remoto,
-3. se conserva trazabilidad de herramientas externas y sus versiones en el contexto de ejecucion.
-
-## DEC-0005: Stack de interfaz grafica
-
-- Estado: aceptada
-- Fecha: 2026-04-23
+- Status: accepted
+- Date: 2026-04-23
 
 Decision:
 
-- usar **Qt for Python (PySide6)** para la GUI.
+- use **Python** as the main core language and CLI to maximize community maintainability and scientific iteration speed.
 
-Motivacion:
+Motivation:
 
-1. mayor mantenibilidad a medio plazo para interfaz tecnica compleja,
-2. buen rendimiento en visualizacion de imagen y herramientas de analisis,
-3. licencia comunitaria LGPLv3/GPLv3 con buen encaje en ecosistema AGPL del proyecto.
+1. mature scientific ecosystem,
+2. lower contribution barrier,
+3. direct integration with vision/colorimetry tooling.
 
-## DEC-0006: Objetivo no comercial y licencia libre
+## DEC-0002: ICC Profile Engine
 
-- Estado: aceptada
-- Fecha: 2026-04-23
-
-Decision:
-
-- mantener `AGPL-3.0-or-later` como licencia del repositorio,
-- declarar explicitamente que el objetivo de gobernanza del proyecto es cientifico/comunitario sin finalidad comercial.
-
-Motivacion:
-
-1. la AGPL protege la reciprocidad de mejoras y uso en red,
-2. añadir clausulas "solo no comercial" romperia compatibilidad open source y reutilizacion cientifica,
-3. se prioriza seguridad juridica y compatibilidad con dependencias libres.
-
-## DEC-0007: AMaZE y demosaic packs GPL3
-
-- Estado: aceptada
-- Fecha: 2026-04-25
+- Status: accepted
+- Date: 2026-04-23
 
 Decision:
 
-- mantener `AGPL-3.0-or-later` como licencia del repositorio,
-- permitir AMaZE cuando el backend `rawpy` este respaldado por LibRaw con
+- ICC profile build engine: **ArgyllCMS** (`colprof`) as the only supported backend.
+
+Motivation:
+
+1. ArgyllCMS is consolidated technical reference,
+2. allows external validation/contrast,
+3. avoids divergences between engines and improves reproducibility between environments.
+
+## DEC-0003: Image and RAW dependencies
+
+- Status: accepted
+- Date: 2026-04-23
+
+Decision:
+
+- LibRaw using `rawpy` as the sole RAW development engine,
+- `opencv-python-headless` for geometric detection,
+- `tifffile` for export TIFF 16-bit,
+- `colour-science` for metrics and colorimetric conversions.
+
+## DEC-0004: Initial license
+
+- Status: accepted
+- Date: 2026-04-23
+
+Decision:
+
+- repository license: `AGPL-3.0-or-later`.
+- governance and maintenance: community of the **Spanish Association of Scientific and Forensic Image**.
+
+Compatibility (summary):
+
+1. LibRaw is integrated using `rawpy`; ArgyllCMS is used as an external tool for ICC profiling, validation and conversion,
+2. OpenCV BSD: supported,
+3. `rawpy` becomes a critical dependency of the RAW pipeline.
+
+Compliance (summary):
+
+1. all distribution of the software must include access to the corresponding source under AGPL,
+2. in remote network/application deployments, the AGPL obligation to offer source to the remote user is maintained,
+3. Traceability of external tools and their versions is preserved in the execution context.
+
+## DEC-0005: Graphical interface stack
+
+- Status: accepted
+- Date: 2026-04-23
+
+Decision:
+
+- use **Qt for Python (PySide6)** for the GUI.
+
+Motivation:
+1. greater medium-term maintainability for complex technical interface,
+2. good performance in image visualization and analysis tools,
+3. LGPLv3/GPLv3 community license with good fit into the project's AGPL ecosystem.
+
+## DEC-0006: Non-commercial objective and free license
+
+- Status: accepted
+- Date: 2026-04-23
+
+Decision:
+
+- maintain `AGPL-3.0-or-later` as the repository license,
+- Explicitly declare that the governance objective of the project is scientific/community without commercial purpose.
+
+Motivation:
+
+1. The AGPL protects the reciprocity of network improvements and use,
+2. adding "non-commercial only" clauses would break open source compatibility and scientific reuse,
+3. Legal security and compatibility with free dependencies are prioritized.
+
+## DEC-0007: AMaZE and GPL3 demosaic packs
+
+- Status: accepted
+- Date: 2026-04-25
+
+Decision:
+
+- maintain `AGPL-3.0-or-later` as the repository license,
+- allow AMaZE when the `rawpy` backend is supported by LibRaw with
   `DEMOSAIC_PACK_GPL3=True`,
-- documentar `rawpy-demosaic` como backend recomendado para builds GPL3,
-- no activar ni anunciar AMaZE si la build instalada no incluye el pack GPL3.
+- document `rawpy-demosaic` as recommended backend for GPL3 builds,
+- do not activate or announce AMaZE if the installed build does not include the GPL3 pack.
 
-Motivacion:
+Motivation:
 
-1. el demosaic pack GPL3 de LibRaw exige GPL3+ para el producto resultante,
-2. la AGPL del proyecto es compatible con GPL3+ y mantiene reciprocidad comunitaria,
-3. la trazabilidad forense requiere registrar el backend exacto y sus flags,
-4. la GUI debe evitar bloqueos interactivos cuando una receta antigua pide AMaZE
-   en un entorno sin soporte GPL3.
+1. LibRaw's GPL3 demosaic pack requires GPL3+ for the resulting product,
+2. the project's AGPL is compatible with GPL3+ and maintains community reciprocity,
+3. Forensic traceability requires recording the exact backend and its flags,
+4. GUI should avoid interactive crashes when an old recipe asks for AMaZE
+   in an environment without GPL3 support.
 
-## DEC-0008: Rendimiento de navegacion RAW y cache de previews
+## DEC-0008: RAW browsing performance and preview cache
 
-- Estado: aceptada
-- Fecha: 2026-04-26
+- Status: accepted
+- Date: 2026-04-26
 
 Decision:
+- treat thumbnails, navigation preview and colorimetric development as three
+  different levels of cost and fidelity,
+- generate RAW thumbnails from the embedded JPEG whenever it exists,
+- do not run massive RAW demosaic to populate the browser with thumbnails,
+- save thumbnails and browsing previews to a persistent cache inside
+  of the session when the file belongs to the project, with user cache
+  as a backup when there is no active session,
+- use keys relative to the session root so that an exported session can
+  reuse cache on another route or device,
+- limit initial work to small batches and preload more thumbnails only
+  when the user approaches the end of the view,
+- use quick RAW preview by default for interactive navigation,
+- reserve full development for explicit loading or for flows where the
+  colorimetric fidelity is necessary.
 
-- tratar miniaturas, preview de navegacion y revelado colorimetrico como tres
-  niveles distintos de coste y fidelidad,
-- generar miniaturas RAW desde el JPEG embebido siempre que exista,
-- no ejecutar demosaic RAW masivo para poblar el navegador de miniaturas,
-- guardar miniaturas y previews de navegacion en una cache persistente dentro
-  de la sesion cuando el archivo pertenece al proyecto, con cache de usuario
-  como respaldo cuando no hay sesion activa,
-- usar claves relativas a la raiz de sesion para que una sesion exportada pueda
-  reutilizar cache en otra ruta o equipo,
-- limitar el trabajo inicial a lotes pequenos y precargar mas miniaturas solo
-  cuando el usuario se acerque al final de la vista,
-- usar preview RAW rapida por defecto para navegacion interactiva,
-- reservar el revelado completo para la carga explicita o para flujos donde la
-  fidelidad colorimetrica sea necesaria.
+Motivation:
 
-Motivacion:
+1. RawTherapee creates the initial thumbnails from the embedded JPEG and the
+   reuses from cache on subsequent openings of a folder.
+2. darktable separates primary cache in memory and secondary backend on disk, and
+   allows you to extract embedded JPEGs to speed up the first contact with a
+   collection.
+3. In folders with many RAWs, the cost of LibRaw/rawpy should not block the
+   selection or user movement.
+4. Colorimetric precision must be maintained in review/development mode,
+   but navigation needs a fast and honest representation about its
+   limits.
 
-1. RawTherapee crea las miniaturas iniciales a partir del JPEG embebido y las
-   reutiliza desde cache en aperturas posteriores de una carpeta.
-2. darktable separa cache primaria en memoria y backend secundario en disco, y
-   permite extraer JPEG embebidos para acelerar el primer contacto con una
-   coleccion.
-3. En carpetas con muchos RAW, el coste de LibRaw/rawpy no debe bloquear la
-   seleccion ni el desplazamiento del usuario.
-4. La precision colorimetrica debe conservarse en el modo de revision/revelado,
-   pero la navegacion necesita una representacion rapida y honesta sobre sus
-   limites.
-
-Referencias:
+References:
 
 - RawTherapee File Browser: https://rawpedia.rawtherapee.com/File_Browser
 - darktable thumbnails: https://docs.darktable.org/usermanual/4.6/en/lighttable/digital-asset-management/thumbnails/
 - darktable lighttable preferences: https://docs.darktable.org/usermanual/4.8/en/preferences-settings/lighttable/
 
-## DEC-0009: Perfiles de revelado de sesion
+## DEC-0009: Session development profiles
 
-- Estado: aceptada
-- Fecha: 2026-04-26
+- Status: accepted
+- Date: 2026-04-26
 
 Decision:
+- separate the session development profile from the camera ICC profile,
+- allow development profiles generated from color chart and profiles
+  saved manuals from user-configured controls,
+- save several development profiles within `00_configuraciones/development_profiles/`,
+- register in the queue which development profile is applied to each image,
+- apply an ICC profile only when the development profile has it associated with it and
+  that ICC is activatable by the current QA rules,
+- preserve relative paths within the session so that profiles, recipes,
+  manifests and cache can move with the entire folder.
 
-- separar el perfil de revelado de la sesion del perfil ICC de camara,
-- permitir perfiles de revelado generados desde carta de color y perfiles
-  manuales guardados desde los controles configurados por el usuario,
-- guardar varios perfiles de revelado dentro de `00_configuraciones/development_profiles/`,
-- registrar en la cola que perfil de revelado se aplica a cada imagen,
-- aplicar un perfil ICC solo cuando el perfil de revelado lo tenga asociado y
-  ese ICC sea activable por las reglas QA actuales,
-- conservar rutas relativas dentro de la sesion para que perfiles, recetas,
-  manifiestos y cache puedan moverse con la carpeta completa.
+Motivation:
 
-Motivacion:
+1. RAW developing programs like RawTherapee separate developing parameters
+   reusable of the concrete image.
+2. NexoRAW should work with both chart-based scientific flow and
+   an operational flow without a letter, where the user manually sets criteria for
+   revealed.
+3. The same session may contain lighting conditions, objectives or
+   different exit criteria; Therefore there should not be a single profile of
+   mandatory global disclosure.
 
-1. Programas de revelado RAW como RawTherapee separan parametros de revelado
-   reutilizables de la imagen concreta.
-2. NexoRAW debe funcionar tanto con flujo cientifico basado en carta como con
-   un flujo operativo sin carta, donde el usuario fija manualmente criterios de
-   revelado.
-3. Una misma sesion puede contener condiciones de iluminacion, objetivos o
-   criterios de salida distintos; por tanto no debe existir un unico perfil de
-   revelado global obligatorio.
-
-Referencias:
+References:
 
 - RawTherapee Sidecar Files - Processing Profiles:
   https://rawpedia.rawtherapee.com/Sidecar_Files_-_Processing_Profiles
 
-## DEC-0010: TIFF maestro con ICC de entrada de sesion
+## DEC-0010: Master TIFF with session input ICC
 
-- Estado: aceptada
-- Fecha: 2026-04-26
+- Status: accepted
+- Date: 2026-04-26
 
 Decision:
 
-- cuando una sesion genera un ICC propio desde carta, NexoRAW lo considera
-  perfil de entrada de sesion;
-- el TIFF maestro conserva RGB lineal de camara/sesion e incrusta ese ICC;
-- no se convierte el TIFF maestro a sRGB, AdobeRGB o ProPhoto si existe ICC de
-  sesion;
-- los perfiles estandar de salida quedan reservados para sesiones sin carta o
-  para derivados explicitamente convertidos mediante CMM;
-- en sesiones sin carta, el perfil manual puede revelar a sRGB, Adobe RGB
-  (1998) o ProPhoto RGB reales y usar su ICC estandar como
-  `generic_output_icc` incrustado en el TIFF;
-- la receta calibrada creada desde carta fuerza `tone_curve=linear`,
-  `output_linear=true` y `output_space=scene_linear_camera_rgb` para mantener
-  coherencia con el ICC generado.
+- when a session generates its own ICC from a card, NexoRAW considers it
+  login profile;
+- the master TIFF preserves linear camera/session RGB and embeds that ICC;
+- the master TIFF is not converted to sRGB, AdobeRGB or ProPhoto if ICC exists
+  session;
+- standard exit profiles are reserved for sessions without a letter or
+  for derivatives explicitly converted using CMM;
+- in non-chart sessions, the manual profile may reveal sRGB, Adobe RGB
+  (1998) or real ProPhoto RGB and use their standard ICC as
+  `generic_output_icc` embedded in TIFF;
+- the calibrated recipe created from force card `tone_curve=linear`,
+  `output_linear=true` and `output_space=scene_linear_camera_rgb` to maintain
+  consistency with the generated ICC.
 
-Motivacion:
+Motivation:
+1. The session ICC is calculated after the card is revealed, but describes the
+   Camera/session RGB produced by that controlled recipe.
+2. Convert directly to a generic space in the TIFF mix master
+   input profile assignment and output conversion.
+3. Keeping the master in the session domain avoids double conversions and
+   preserves a more faithful artifact for auditing and subsequent derivatives.
 
-1. El ICC de sesion se calcula despues de revelar la carta, pero describe los
-   RGB de camara/sesion producidos por esa receta controlada.
-2. Convertir directamente a un espacio generico en el TIFF maestro mezcla
-   asignacion de perfil de entrada y conversion de salida.
-3. Mantener el maestro en el dominio de sesion evita dobles conversiones y
-   conserva un artefacto mas fiel para auditoria y derivados posteriores.
-
-Referencias:
+References:
 
 - RawTherapee Color Management:
   https://rawpedia.rawtherapee.com/Color_Management
@@ -228,64 +226,63 @@ Referencias:
   https://rawpedia.rawtherapee.com/How_to_create_DCP_color_profiles
 - RawTherapee ICC Profile Creator:
   https://rawpedia.rawtherapee.com/ICC_Profile_Creator
-- Metodologia interna:
-  [Metodologia de revelado RAW y gestion ICC](METODOLOGIA_COLOR_RAW.md)
+- Internal methodology:
+  [RAW development methodology and ICC management] (METODOLOGIA_COLOR_RAW.md)
 
-## DEC-0011: Sidecars mochila por RAW
+## DEC-0011: Sidecars backpack by RAW
 
-- Estado: aceptada
-- Fecha: 2026-04-26
+- Status: accepted
+- Date: 2026-04-26
 
 Decision:
 
-- guardar junto a cada RAW un sidecar `nombre.RAW.nexoraw.json`;
-- registrar receta, perfil de revelado asignado, ICC de sesion, ajustes de
-  detalle/render, identidad del RAW y salidas TIFF recientes;
-- usar JSON por coherencia con los sidecars y manifiestos auditables existentes
-  en NexoRAW;
-- cargar automaticamente la mochila al seleccionar o reinsertar un RAW en la
-  cola cuando el perfil de revelado existe en la sesion.
+- store a `nombre.RAW.nexoraw.json` sidecar next to each RAW;
+- record recipe, assigned development profile, session ICC, settings
+  detail/render, RAW identity and recent TIFF outputs;
+- use JSON for consistency with existing auditable sidecars and manifests
+  in NexoRAW;
+- automatically load the backpack when selecting or reinserting a RAW in the
+  queue when the development profile exists in the session.
 
-Motivacion:
+Motivation:
 
-1. Los programas de revelado RAW consolidados tratan el revelado como edicion
-   parametrica y guardan ajustes en sidecars.
-2. Una sesion puede moverse entre equipos o usuarios sin perder los parametros
-   por imagen.
-3. El sidecar por RAW complementa, no sustituye, `session.json`, NexoRAW Proof ni
+1. Established RAW developing programs treat development as editing
+   parametric and save settings on sidecars.
+2. A session can move between teams or users without losing parameters
+   per image.
+3. The sidecar by RAW complements, does not replace, `session.json`, NexoRAW Proof or
    `batch_manifest.json`.
 
-Referencias:
+References:
 
 - RawTherapee Sidecar Files - Processing Profiles:
   https://rawpedia.rawtherapee.com/Sidecar_Files_-_Processing_Profiles
 
-## DEC-0012: Perfil ICC de monitor desde el sistema
+## DEC-0012: Monitor ICC Profile from System
 
-- Estado: aceptada
-- Fecha: 2026-04-26
+- Status: accepted
+- Date: 2026-04-26
 
 Decision:
 
-- activar por defecto la gestion ICC de monitor en la GUI;
-- detectar automaticamente el perfil configurado en el sistema operativo;
-- permitir override manual por usuario;
-- aplicar el perfil de monitor solo a previews y miniaturas, nunca al TIFF
-  maestro, perfiles de sesion ni exportaciones;
-- usar sRGB solo como fallback cuando el sistema no expone ningun perfil o el
-  perfil detectado no puede abrirse.
+- activate by default the ICC monitor management in the GUI;
+- automatically detect the profile configured in the operating system;
+- allow manual override per user;
+- apply the monitor profile only to previews and thumbnails, never to TIFF
+  master, session profiles or exports;
+- use sRGB only as a fallback when the system does not expose any profile or the
+  Detected profile cannot be opened.
 
-Motivacion:
+Motivation:
+1. Not all monitors are sRGB; assuming sRGB can give saturation and hue
+   incorrect on wide-gamut or calibrated displays.
+2. Operating systems already maintain the active ICC profile of the monitor, so
+   so NexoRAW should consume that configuration before asking the user for a
+   manual route.
+3. The monitor profile is a display condition, not a performance parameter.
+   revealed nor a property of the exported file.
 
-1. No todos los monitores son sRGB; asumir sRGB puede dar saturacion y tono
-   incorrectos en pantallas wide-gamut o calibradas.
-2. Los sistemas operativos ya mantienen el perfil ICC activo del monitor, por
-   lo que NexoRAW debe consumir esa configuracion antes que pedir al usuario una
-   ruta manual.
-3. El perfil de monitor es una condicion de visualizacion, no un parametro de
-   revelado ni una propiedad del archivo exportado.
-
-Referencias:
+References:
 
 - Microsoft GetICMProfileW:
   https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-geticmprofilew

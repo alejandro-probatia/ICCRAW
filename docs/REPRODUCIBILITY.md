@@ -1,39 +1,39 @@
-# Reproducibilidad
+_Spanish version: [REPRODUCIBILITY.es.md](REPRODUCIBILITY.es.md)_
 
-NexoRAW separa tres niveles:
+# Reproducibility
 
-- RAW original: nunca se modifica.
-- Escena lineal: salida numerica despues de LibRaw/demosaico/WB/negro.
-- Render final: exposicion, curva, gestion de color, firma y pruebas.
+NexoRAW separates three levels:
+
+- Original RAW: never modified.
+- Linear scene: numerical output after LibRaw/demosaic/WB/black.
+- Final render: exposure, curve, color management, signature and tests.
 
 ## Tests golden
 
-Los casos canonicos estan en `testdata/regression/MANIFEST.json`.
-Cada caso declara:
+The canonical cases are in `testdata/regression/MANIFEST.json`.
+Each case states:
 
-- entrada,
-- receta,
-- SHA-256 del TIFF final,
-- SHA-256 del TIFF lineal de auditoria.
+- entrance,
+- recipe,
+- SHA-256 of the final TIFF,
+- SHA-256 linear TIFF audit.
 
-El test `tests/regression/test_canonical_hashes.py` revela cada caso en un
-directorio temporal y compara hashes byte a byte.
+The `tests/regression/test_canonical_hashes.py` test reveals each case in a
+temporary directory and compare hashes byte by byte.
 
-## Regenerar hashes
+## Regenerate hashes
 
-Solo debe hacerse cuando un cambio de algoritmo o dependencia modifica la
-salida de forma intencional:
-
+This should only be done when an algorithm or dependency change modifies the
+output intentionally:
 ```powershell
 python scripts/regenerate_golden_hashes.py --confirm --note "descripcion breve"
 ```
+The script disables `use_cache` before revealing, updates the manifest, and adds
+an entry in `tests/regression/golden/REGENERATION_LOG.md`.
 
-El script desactiva `use_cache` antes de revelar, actualiza el manifest y anade
-una entrada en `tests/regression/golden/REGENERATION_LOG.md`.
+## Cache and reproducibility
 
-## Cache y reproducibilidad
-
-La cache de demosaico guarda arrays `.npy` de escena lineal para rendimiento.
-Es opt-in y su clave contiene el SHA-256 completo del RAW y los parametros que
-afectan a LibRaw. Los tests golden no usan cache para evitar falsos positivos
-de infraestructura.
+The demo cache stores `.npy` linear scene arrays for performance.
+It is opt-in and its key contains the complete SHA-256 of the RAW and the parameters that
+affect LibRaw. Golden tests do not use cache to avoid false positives
+of infrastructure.

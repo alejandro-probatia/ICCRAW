@@ -1,79 +1,74 @@
-# C2PA/CAI en NexoRAW
+_Spanish version: [C2PA_CAI.es.md](C2PA_CAI.es.md)_
 
-NexoRAW incorpora C2PA como una capa interoperable sobre los TIFF finales,
-sin exigir que el usuario pertenezca a una autoridad central CAI. No sustituye
-los mecanismos existentes ni la capa autonoma
-`NexoRAW Proof`: `batch_manifest.json`, hashes SHA-256, auditoria lineal,
-perfiles ICC, reportes QA y sidecars siguen siendo parte del flujo principal.
+# C2PA/CAI in NexoRAW
 
-La firma obligatoria del flujo NexoRAW es `NexoRAW Proof`, documentada en
-[NexoRAW Proof](NEXORAW_PROOF.md). C2PA se incrusta con certificado externo si
-existe; si no, NexoRAW crea una identidad local autoemitida y la usa como firma
-C2PA de laboratorio.
+NexoRAW incorporates C2PA as an interoperable layer on top of the final TIFFs,
+without requiring the user to belong to a CAI central authority. Does not replace
+the existing mechanisms nor the autonomous layer
+`NexoRAW Proof`: `batch_manifest.json`, SHA-256 hashes, linear auditing,
+ICC profiles, QA reports and sidecars are still part of the main flow.
 
-## Principios de implementacion
+The required signature of the NexoRAW flow is `NexoRAW Proof`, documented in
+[NexoRAW Proof](NEXORAW_PROOF.md). C2PA is embedded with external certificate if
+exists; if not, NexoRAW creates a self-issued local identity and uses it as a signature
+Lab C2PA.
 
-1. El RAW original no se modifica nunca.
-2. NexoRAW no incrusta C2PA en RAW propietarios originales (`CR2`, `CR3`,
+## Implementation principles
+
+1. The original RAW is never modified.
+2. NexoRAW does not embed C2PA in original proprietary RAW (`CR2`, `CR3`,
    `NEF`, `ARW`, `RAF`, `RW2`, `ORF`, `PEF`).
-3. Para RAW propietarios, el vinculo probatorio se declara en el TIFF final con
-   una asercion C2PA firmada: `org.probatia.iccraw.raw-link.v1`.
-4. El identificador probatorio del RAW es el SHA-256 de sus bytes exactos.
-   Nombre de archivo y ruta son solo metadatos auxiliares.
-5. El SHA-256 del TIFF firmado se calcula despues de incrustar C2PA y se guarda
-   en el manifiesto externo de NexoRAW. No se incluye dentro del manifiesto C2PA
-   embebido para evitar una referencia circular.
-6. Si el origen es DNG, NexoRAW intenta pasarlo al SDK C2PA como ingrediente
-   `parentOf`, de modo que las credenciales C2PA preexistentes puedan
-   conservarse si el SDK lo permite.
-7. Los errores de firma, validacion o dependencia ausente no se silencian.
-8. La clave privada no se registra en logs ni se almacena en manifiestos.
-9. NexoRAW no depende de una lista central de confianza C2PA para la prueba
-   autonoma. Si falta el SDK C2PA, el TIFF se exporta con sidecar NexoRAW Proof.
-   Si C2PA fue configurado explicitamente por el usuario y falla, la exportacion
-   se aborta para no ocultar un error de firma solicitado.
+3. For proprietary RAWs, the evidentiary link is declared in the final TIFF with
+   a signed C2PA assertion: `org.probatia.iccraw.raw-link.v1`.
+4. The evidentiary identifier of the RAW is the SHA-256 of its exact bytes.
+   Filename and path are just auxiliary metadata.
+5. The SHA-256 of the signed TIFF is calculated after embedding C2PA and saved
+   in the NexoRAW external manifest. Not included in the C2PA manifesto
+   embedded to avoid a circular reference.
+6. If the source is DNG, NexoRAW tries to pass it to the C2PA SDK as an ingredient
+   `parentOf`, so that pre-existing C2PA credentials can
+   preserved if the SDK allows it.
+7. Signature, validation or missing dependency errors are not silenced.
+8. The private key is not recorded in logs or stored in manifests.
+9. NexoRAW does not depend on a central C2PA trust list for testing
+   autonomous If the C2PA SDK is missing, the TIFF is exported with NexoRAW Proof sidecar.
+   If C2PA was configured explicitly by the user and fails, the export
+   It is aborted so as not to hide a requested signature error.
 
-## Instalacion C2PA
-
+## C2PA installation
 ```bash
 pip install -e .[c2pa]
 ```
+The signature dependency is `c2pa-python>=0.32`.
 
-La dependencia de firma es `c2pa-python>=0.32`.
+In the official Windows installer this dependency is already packaged. In that
+In this case, you do not have to install `pip`, Python or any DLL manually.
 
-En el instalador Windows oficial esta dependencia ya va empaquetada. En ese
-caso no hay que instalar `pip`, Python ni ninguna DLL manualmente.
+## Local C2PA identity
 
-## Identidad C2PA local
-
-Para no depender de certificados emitidos por una autoridad CAI, NexoRAW genera
-automaticamente una identidad local en:
-
+In order not to depend on certificates issued by a CAI authority, NexoRAW generates
+automatically a local identity in:
 ```text
 ~/.nexoraw/c2pa/
 ```
-
-En Windows equivale normalmente a:
-
+On Windows it is normally equivalent to:
 ```text
 %USERPROFILE%\.nexoraw\c2pa\
 ```
+The identity contains:
 
-La identidad contiene:
+- a local RSA private key;
+- a self-issued PEM string compatible with the C2PA SDK;
+- a local root certificate to document the identity used.
 
-- una clave privada RSA local;
-- una cadena PEM autoemitida compatible con el SDK C2PA;
-- un certificado raiz local para documentar la identidad usada.
+External C2PA readers may display `signingCredential.untrusted`. In the
+NexoRAW model this is an external trust warning: the signature is not
+in a central CAI list. It does not mean that the RAW-TIFF manifest is missing or that the
+declared RAW hash is invalid. For evidentiary use, trust is based on the
+custody or publication of the local key/certificate of the laboratory, together with
+`NexoRAW Proof` and `batch_manifest.json`.
 
-Los lectores C2PA externos pueden mostrar `signingCredential.untrusted`. En el
-modelo de NexoRAW esto es una advertencia de confianza externa: la firma no esta
-en una lista CAI central. No significa que el manifiesto RAW-TIFF falte ni que el
-hash RAW declarado sea invalido. Para uso probatorio, la confianza se basa en la
-custodia o publicacion de la clave/certificado local del laboratorio, junto con
-`NexoRAW Proof` y `batch_manifest.json`.
-
-## Firmar TIFFs finales con C2PA
-
+## Sign final TIFFs with C2PA
 ```bash
 nexoraw batch-develop ./raws \
   --recipe recipe_calibrated.yml \
@@ -88,92 +83,85 @@ nexoraw batch-develop ./raws \
   --c2pa-timestamp-url http://timestamp.digicert.com \
   --session-id sesion-2026-04-25
 ```
+If `--c2pa-cert` and `--c2pa-key` are not passed, NexoRAW tries to use first
+environment variables and then the self-issued local identity. If they pass,
+`--c2pa-cert` must point to the PEM public chain and `--c2pa-key` to the key
+private PEM. If no other TSA is indicated, NexoRAW uses
+`http://timestamp.digicert.com`, which is the value used in the documentation
+reference `c2pa-python`. In production or laboratory environments
+recommends migrating the signature to KMS/HSM and defining your own or institutional TSA,
+although the local CLI is useful for testing and controlled deployments.
 
-Si no se pasan `--c2pa-cert` y `--c2pa-key`, NexoRAW intenta usar primero
-variables de entorno y despues la identidad local autoemitida. Si se pasan,
-`--c2pa-cert` debe apuntar a la cadena publica PEM y `--c2pa-key` a la clave
-privada PEM. Si no se indica otra TSA, NexoRAW usa
-`http://timestamp.digicert.com`, que es el valor usado en la documentacion de
-referencia de `c2pa-python`. En entornos de produccion o laboratorio se
-recomienda migrar la firma a KMS/HSM y definir una TSA propia o institucional,
-aunque la CLI local es util para pruebas y despliegues controlados.
-
-La GUI usa las variables de entorno si no se pasan rutas por CLI:
-
+The GUI uses environment variables if routes are not passed via CLI:
 ```bat
 set NEXORAW_C2PA_CERT=G:\ruta\chain.pem
 set NEXORAW_C2PA_KEY=G:\ruta\signing.key
 ```
+The signature is applied to an already rendered temporary TIFF. Only if C2PA signs
+ends correctly, the flow continues. The signed TIFF is then moved to
+final name and the NexoRAW Proof sidecar is signed with the exact hash of that TIFF.
+`batch_manifest.json` saves the final TIFF hash and the proof hash.
 
-La firma se aplica sobre un TIFF temporal ya renderizado. Solo si la firma C2PA
-termina correctamente se continua el flujo. Despues se mueve el TIFF firmado al
-nombre final y se firma el sidecar NexoRAW Proof con el hash exacto de ese TIFF.
-`batch_manifest.json` guarda el hash del TIFF final y el hash del proof.
+## RAW assertion -> TIFF
 
-## Asercion RAW -> TIFF
+The assertion `org.probatia.iccraw.raw-link.v1` records:
 
-La asercion `org.probatia.iccraw.raw-link.v1` registra:
-
-- SHA-256, tamano, nombre base, extension y MIME estimado del RAW.
-- Ruta del RAW como localizador auxiliar no probatorio.
-- Metadatos de camara disponibles.
-- Hash de receta NexoRAW.
-- Hash del perfil ICC usado, si existe.
-- Hash del bloque `render_settings` como control de integridad, no como unico
-  registro de ajustes.
-- Version de NexoRAW.
-- Backend RAW, demosaicing, espacio de salida y modo de gestion de color.
-- Receta completa aplicada al revelado/render.
-- Ajustes de nitidez aplicados en la GUI: denoise, nitidez y aberracion
-  cromatica lateral.
-- Ajustes de correccion basica/render: iluminante, temperatura, matiz,
-  brillo, niveles negro/blanco, contraste, medios y curva tonal avanzada.
-- Gestion de color de salida: modo ICC, perfil, espacio de trabajo, espacio de
-  salida y salida lineal/no lineal.
-- Resumen reproducible de ajustes dentro del bloque `nexoraw`, duplicando los
-  puntos criticos para lectores que no desplieguen el JSON completo de
+- SHA-256, size, base name, extension and estimated MIME of the RAW.
+- RAW route as a non-probative auxiliary locator.
+- Camera metadata available.
+- NexoRAW recipe hash.
+- Hash of the ICC profile used, if it exists.
+- Hash of block `render_settings` as an integrity check, not as a unique
+  settings register.
+- NexoRAW version.
+- RAW backend, demosaicing, output space and color management mode.
+- Complete recipe applied to development/render.
+- Sharpness settings applied in the GUI: denoise, sharpness and aberration
+  lateral chromatic
+- Basic correction/render settings: illuminant, temperature, hue,
+  brightness, black/white levels, contrast, mids and advanced tone curve.
+- Output color management: ICC mode, profile, workspace, color space
+  output and linear/non-linear output.
+- Reproducible summary of settings within the `nexoraw` block, duplicating the
+  critical points for readers who do not display the complete JSON of
   `render_settings`.
-- Hash de manifiesto tecnico externo si se proporciona y ya existe.
-- Identificador de sesion opcional.
-- Fecha/hora UTC de generacion.
+- External technical manifest hash if provided and already exists.
+- Optional session identifier.
+- UTC generation date/time.
 
-## Verificacion
-
+## Verification
 ```bash
 nexoraw verify-c2pa ./tiffs/captura.tiff \
   --raw ./raws/captura.NEF \
   --manifest ./tiffs/batch_manifest.json
 ```
+The verification checks:
 
-La verificacion comprueba:
+- that the TIFF contains a readable C2PA manifesto;
+- that the RAW provided matches the declared SHA-256;
+- that the signed TIFF matches `output_sha256` of the external manifest;
+- that the C2PA SDK does not return technical validation errors.
 
-- que el TIFF contiene un manifiesto C2PA legible;
-- que el RAW aportado coincide con el SHA-256 declarado;
-- que el TIFF firmado coincide con `output_sha256` del manifiesto externo;
-- que el SDK C2PA no devuelve errores de validacion tecnica.
+If `--manifest` is missing, the C2PA and RAW verification is still executed, but the
+global status will not be `ok` because the external manifest could not be checked.
 
-Si falta `--manifest`, la verificacion C2PA y RAW se ejecuta igualmente, pero el
-estado global no sera `ok` porque el manifiesto externo no pudo comprobarse.
+## Reading metadata
 
-## Lectura de metadatos
-
-La GUI incluye un visor de metadatos en la pestaña vertical `Metadatos` de la
-columna izquierda. Para uso CLI:
-
+The GUI includes a metadata viewer in the `Metadatos` vertical tab of the
+left column. For CLI use:
 ```bash
 nexoraw metadata ./tiffs/captura.tiff --out metadata.json
 ```
+This read combines EXIF/GPS using `exiftool`, NexoRAW Proof using
+sidecar `.nexoraw.proof.json` and C2PA manifests using `c2pa-python` if the
+Optional extra is installed.
 
-Esta lectura combina EXIF/GPS mediante `exiftool`, NexoRAW Proof mediante el
-sidecar `.nexoraw.proof.json` y manifiestos C2PA mediante `c2pa-python` si el
-extra opcional esta instalado.
+## Operational notes
 
-## Notas operativas
-
-- El campo `technical_manifest_sha256` solo se incluye si el archivo indicado
-  por `--c2pa-technical-manifest` existe antes de firmar.
-- `batch_manifest.json` se escribe al final del lote, por lo que no puede estar
-  dentro del C2PA del mismo lote sin introducir circularidad.
-- Certificados autofirmados pueden producir avisos de confianza aunque el
-  manifiesto sea tecnicamente legible. Para uso probatorio real, definir una
-  politica de certificados, custodia de clave y TSA verificable.
+- The `technical_manifest_sha256` field is only included if the indicated file
+  by `--c2pa-technical-manifest` exists before signing.
+- `batch_manifest.json` is written at the end of the batch, so it cannot be
+  within the C2PA of the same lot without introducing circularity.
+- Self-signed certificates can produce trust notices even if the
+  manifest is technically readable. For actual evidentiary use, define a
+  certificate policy, key custody and verifiable TSA.

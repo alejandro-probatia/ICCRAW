@@ -1,93 +1,93 @@
+_Spanish version: [ROADMAP.es.md](ROADMAP.es.md)_
+
 # Roadmap
 
-Documento rector del plan operativo:
+Governing document of the operational plan:
 
-- [Revision operativa y plan de profesionalizacion](OPERATIVE_REVIEW_PLAN.md)
+- [Operational review and professionalization plan] (OPERATIVE_REVIEW_PLAN.md)
 
-## Fase 0 (completada)
+## Phase 0 (completed)
 
-- base Python modular,
-- CLI MVP funcional,
-- pipeline reproducible con recipe,
-- tests iniciales,
-- trazabilidad JSON,
-- GUI Qt inicial para previsualización técnica y flujo automático.
-- paquete Linux instalable con nombre NexoRAW, icono y lanzadores propios.
+- modular Python base,
+- Functional MVP CLI,
+- reproducible pipeline with recipe,
+- initial tests,
+- JSON traceability,
+- Initial Qt GUI for technical preview and automatic flow.
+- installable Linux package with name NexoRAW, icon and own launchers.
 
-## Fase 1 - Contrato RAW y trazabilidad (P0)
+## Phase 1 - RAW Contract and traceability (P0)
 
-Objetivo: asegurar que lo ejecutado coincide exactamente con lo declarado.
+Objective: ensure that what was executed exactly matches what was declared.
 
-- validacion estricta de recetas,
-- eliminacion de mapeos silenciosos de demosaicing,
-- registro de comando efectivo y versiones externas,
-- correccion de `audit_linear_tiff` para que sea realmente lineal,
-- dataset RAW real minimo para regresion.
+- strict validation of recipes,
+- removal of silent demosaicing mappings,
+- effective command log and external versions,
+- correction of `audit_linear_tiff` to be truly linear,
+- Minimum real RAW dataset for regression.
 
-## Fase 2 - Gestion ICC interoperable (P0)
+## Phase 2 - Interoperable ICC Management (P0)
 
-Objetivo: separar asignacion de perfil de conversion colorimetrica.
+Objective: separate colorimetric conversion profile assignment.
 
-- modos de salida explicitos:
-  - RGB camara con perfil de entrada,
-  - conversion a espacio de salida mediante CMM,
-- integracion de CMM real,
-- sustitucion de matriz lateral como salida principal,
-- validacion externa de perfiles ICC,
-- manifiesto de lote con modo de gestion de color.
+- explicit output modes:
+  - RGB camera with input profile,
+  - conversion to output space using CMM,
+- real CMM integration,
+- replacement of lateral matrix as main output,
+- external validation of ICC profiles,
+- batch manifest with color management mode.
 
-## Fase 3 - Carta, muestreo y QA de captura (P1)
+## Phase 3 – Letter, Sampling and Capture QA (P1)
 
-Objetivo: impedir que detecciones o muestras defectuosas generen perfiles
-aparentemente validos.
+Objective: Prevent faulty detections or samples from generating profiles
+apparently valid.
 
-- fallback de carta bloqueante por defecto,
-- deteccion automatica por patron interno de parches ColorChecker24,
-- modo manual asistido para esquinas de carta en CLI y GUI,
-- referencia ColorChecker 2005 D50 para uso operativo,
-- perfil de revelado cientifico derivado de fila neutra: WB, densidad y EV,
-- doble pasada carta -> receta calibrada -> ICC,
-- flujo GUI por archivo: ajustar/aplicar, generar perfil avanzado con carta,
-  guardar perfil basico, copiar/pegar ajustes entre miniaturas,
-- parametros de muestreo completos desde receta,
-- deteccion de saturacion, bajo nivel y estimacion de iluminacion irregular,
-- reportes de outliers por parche en QA de sesion,
-- integracion de detecciones manuales por captura en el flujo batch automatico.
+- default blocking card fallback,
+- automatic detection by internal ColorChecker24 patch pattern,
+- Assisted manual mode for chart corners in CLI and GUI,
+- ColorChecker 2005 D50 reference for operational use,
+- scientific development profile derived from neutral row: WB, density and EV,
+- double pass letter -> calibrated recipe -> ICC,
+- GUI flow per file: adjust/apply, generate advanced profile with chart,
+  save basic profile, copy/paste settings between thumbnails,
+- complete sampling parameters from recipe,
+- saturation detection, low level and estimation of irregular lighting,
+- outlier reports per patch in session QA,
+- Integration of manual detections by capture in the automatic batch flow.
 
-## Fase 4 - Validacion colorimetrica (P1)
+## Phase 4 - Colorimetric validation (P1)
 
-Objetivo: validar el ICC real y la aptitud del perfil para una sesion.
+Objective: validate the real ICC and the suitability of the profile for a session.- training/validation separation,
+- validation with CMM/ArgyllCMS of the generated ICC profile,
+- QA session report with status `validated`, `rejected` or `not_validated`,
+- DeltaE thresholds by discipline or preset,
+- profile operational states: `draft`, `validated`, `rejected`, `expired`,
+- Comparable reports between sessions using CLI/GUI.
 
-- separacion entrenamiento/validacion,
-- validacion con CMM/ArgyllCMS del perfil ICC generado,
-- reporte QA de sesion con estado `validated`, `rejected` o `not_validated`,
-- umbrales DeltaE por disciplina o preset,
-- estados operacionales de perfil: `draft`, `validated`, `rejected`, `expired`,
-- reportes comparables entre sesiones mediante CLI/GUI.
+## Phase 5 - Reproducibility, CI and distribution (P2)
 
-## Fase 5 - Reproducibilidad, CI y distribucion (P2)
+Objective: make the behavior sustainable by the community.
 
-Objetivo: hacer que el comportamiento sea sostenible por la comunidad.
-
-- CI con tests unitarios e integracion con herramientas externas,
-- checks de versiones de LibRaw/rawpy, ArgyllCMS y `exiftool` mediante
+- CI with unit tests and integration with external tools,
+- LibRaw/rawpy, ArgyllCMS and `exiftool` version checks using
   CLI/GUI,
-- paquete Debian reproducible para instalacion local,
-- contenedor o entorno reproducible,
-- benchmarks de determinismo y rendimiento,
-- benchmarks de navegacion RAW, cache persistente de miniaturas y cache
-  opcional de previews completas,
-- auditoria de licencias para releases AGPL.
+- reproducible Debian package for local installation,
+- reproducible container or environment,
+- determinism and performance benchmarks,
+- RAW browsing benchmarks, persistent thumbnail cache and cache
+  optional full previews,
+- license audit for AGPL releases.
 
-## Fase 6 - Ampliacion controlada (P3)
+## Phase 6 - Controlled expansion (P3)
 
-Objetivo: ampliar capacidades sin comprometer trazabilidad.
+Objective: expand capacities without compromising traceability.
 
-- sidecars por imagen para separar ajustes globales de sesión y ajustes
-  particulares de captura, con mochilas JSON propias y posible
-  interoperabilidad futura con `.pp3`,
-- soporte IT8 completo,
-- perfiles LUT si el caso de uso lo justifica,
-- comparador automatico de perfiles entre sesiones/iluminantes,
-- C2PA/CAI para cadena de custodia,
-- internacionalizacion GUI (es/en) y presets tecnicos por disciplina.
+- sidecars per image to separate global session settings and settings
+  capture particulars, with own JSON backpacks and possible
+  future interoperability with `.pp3`,
+- full IT8 support,
+- LUT profiles if the use case justifies it,
+- automatic profile comparator between sessions/illuminants,
+- C2PA/CAI for chain of custody,
+- GUI internationalization (es/en) and technical presets by discipline.

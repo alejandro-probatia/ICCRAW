@@ -1,20 +1,22 @@
+_Spanish version: [CHANGELOG.es.md](CHANGELOG.es.md)_
+
 # Changelog
 
-Todos los cambios relevantes de NexoRAW se documentan en este archivo.
+All relevant NexoRAW changes are documented in this file.
 
-Este proyecto sigue:
+This project follows:
 
-- formato inspirado en Keep a Changelog,
-- versionado SemVer,
-- trazabilidad de cambios orientada a uso científico y forense.
+- format inspired by Keep a Changelog,
+- versioned SemVer,
+- traceability of changes aimed at scientific and forensic use.
 
-## Política de actualización
+## Update policy
 
-Para mantener trazabilidad completa, cada cambio debe:
+To maintain full traceability, each change must:
 
-1. añadir una línea en `Unreleased` antes de merge/push,
-2. mover entradas a una versión fechada en cada release,
-3. referenciar, cuando aplique, impacto en reproducibilidad, legalidad o cadena de custodia.
+1. add a line in `Unreleased` before merge/push,
+2. move entries to a dated version in each release,
+3. reference, when applicable, impact on reproducibility, legality or chain of custody.
 
 ## [Unreleased]
 
@@ -22,465 +24,438 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Changed
 
-- El flujo sin carta deja de generar perfiles `NexoRAW generic ...`: el RAW se
-  revela en un espacio RGB estandar real (`sRGB`, `Adobe RGB (1998)` o
-  `ProPhoto RGB`) con LibRaw y se incrusta un ICC estandar copiado del sistema o
-  de ArgyllCMS.
-- Los manifiestos de render registran `raw_color_pipeline`, indicando si la
-  transformacion de color la resolvio LibRaw, el ICC de sesion o ArgyllCMS/CMM.
-- NexoRAW Proof/C2PA declaran los ajustes completos aplicados (`recipe`,
-  detalle/nitidez, contraste/render y gestion de color); el hash de ajustes
-  queda como control de integridad, no como unico dato visible para auditoria.
+- The flow without chart stops generating profiles `NexoRAW generic ...`: the RAW is
+  reveals in a real standard RGB space (`sRGB`, `Adobe RGB (1998)` or
+  `ProPhoto RGB`) with LibRaw and embed a standard ICC copied from the system or
+  by ArgyllCMS.
+- The render manifests register `raw_color_pipeline`, indicating whether the
+  color transformation was solved by LibRaw, session ICC or ArgyllCMS/CMM.
+- NexoRAW Proof/C2PA declare the full settings applied (`recipe`,
+  detail/sharpness, contrast/render and color management); the settings hash
+  It remains as an integrity control, not as the only visible data for audit.
 
 ### Added
 
-- Tests de perfiles estandar reales para evitar que Adobe RGB caiga en un
-  perfil compatible cuando existe `AdobeRGB1998.icc`.
+- Real standard profile tests to prevent Adobe RGB from falling into a
+  compatible profile when `AdobeRGB1998.icc` exists.
 
 ## [0.2.2] - 2026-04-27
 
-### Added
-
-- `scripts/profile_pipeline.py` para perfilar comandos reales con `cProfile`
-  y, si esta instalado, generar flamegraph con `py-spy`.
-- `scripts/benchmark_raw_pipeline.py` para benchmark multiplataforma de
-  demosaico, cache numerica y escalado por procesos con RAWs reales.
-- `scripts/benchmark_gui_interaction.py` para medir fluidez de sliders y curva
-  tonal en Qt con RAW real o fuente sintetica.
-- Flags `--workers` en `batch-develop` y `auto-profile-batch` para fijar el
-  paralelismo sin depender de variables de entorno.
-- Flag `--cache-dir` en `develop`, `batch-develop` y `auto-profile-batch` para
-  ubicar la cache numerica de demosaico cuando la receta active
+### Added- `scripts/profile_pipeline.py` to profile real commands with `c
+Profile`
+  and, if installed, generate flamegraph with `py-spy`.
+- `scripts/benchmark_raw_pipeline.py` for cross-platform benchmark
+  demosaic, numerical cache and process scaling with real RAWs.
+- `scripts/benchmark_gui_interaction.py` to measure slider fluidity and curve
+  tonal in Qt with real RAW or synthetic source.
+- Flags `--workers` in `batch-develop` and `auto-profile-batch` to set the
+  parallelism without depending on environment variables.
+- Flag `--cache-dir` in `develop`, `batch-develop` and `auto-profile-batch` for
+  locate the numerical cache of the demosaic when the recipe activates
   `use_cache: true`.
-- Cache persistente de demosaico RAW en arrays `.npy`, opt-in por receta,
-  con clave basada en SHA-256 completo del RAW y parametros LibRaw que afectan
-  a la escena lineal.
-- Tests golden de hashes canonicos en `tests/regression/` y script
-  `scripts/regenerate_golden_hashes.py` para regenerarlos de forma explicita.
+- Persistent RAW demo cache on `.npy` arrays, opt-in by recipe,
+  with key based on SHA-256 complete RAW and LibRaw parameters that affect
+  to the linear scene.
+- Golden tests of canonical hashes in `tests/regression/` and script
+  `scripts/regenerate_golden_hashes.py` to regenerate them explicitly.
 
 ### Changed
 
-- El analisis de preview e histogramas de GUI muestrea antes de convertir y
-  recortar arrays grandes, reduciendo copias de memoria en imagenes 1:1.
-- `batch-develop` usa multiprocessing real por proceso cuando `workers > 1`;
-  conserva fallback a hilos solo si se inyecta un cliente C2PA no serializable.
-- Los proyectos nuevos disponen de `00_configuraciones/cache/` como ubicacion
-  persistente de cache por sesion.
-- La estimacion automatica de RAM por worker de batch pasa a 2800 MiB para
-  reflejar RAWs de alta resolucion y escritura TIFF real.
-- `write_tiff16` reduce temporales de NumPy usando operaciones `out=`, bajando
-  tiempo y pico de RAM durante la escritura TIFF16.
-- El refresco final de preview tras arrastrar sliders/curva se encola en
-  segundo plano para imagenes grandes cuando no hay preview ICC activo,
-  evitando bloqueos perceptibles del hilo Qt.
+- GUI preview and histogram analysis samples before converting and
+  Trim large arrays, reducing memory copies into 1:1 images.
+- `batch-develop` uses real per-process multiprocessing when `workers > 1`;
+  preserves fallback to threads only if a non-serializable C2PA client is injected.
+- New projects have `00_configuraciones/cache/` as a location
+  persistent cache per session.
+- The automatic estimation of RAM per batch worker goes to 2800 MiB for
+  reflect high resolution RAWs and real TIFF writing.
+- `write_tiff16` reduces NumPy temporals using `out=` operations, lowering
+  time and RAM peak during TIFF16 writing.
+- The final preview refresh after dragging sliders/curve is queued in
+  background for large images when there is no ICC preview active,
+  avoiding noticeable Qt thread locks.
 
 ### Fixed
 
-- Las llamadas basicas a `exiftool` y `git rev-parse` usadas para metadatos y
-  contexto de ejecucion tienen timeout para evitar bloqueos indefinidos.
+- The basic calls to `exiftool` and `git rev-parse` used for metadata and
+  execution context have timeout to avoid indefinite locks.
 
 ## [0.2.1] - 2026-04-27
 
-### Added
-
-- GUI `Ayuda > Acerca de` ampliada con:
-  - director del proyecto configurable (`NEXORAW_PROJECT_DIRECTOR`),
-  - version en ejecucion,
-  - estado operativo de AMaZE,
-  - comprobacion de ultima version publicada en GitHub Releases,
-  - actualizacion automatica que descarga y lanza el instalador de release.
-- Nuevo modulo `iccraw.update` para consulta de releases, comparacion de
-  versiones, descarga de assets y ejecucion de instaladores por plataforma.
-- Histograma RGB en la pestaña `Visor` con lectura de clipping en sombras y
-  luces y testigos visuales.
-- Overlay de clipping en la imagen de preview (azul sombras, rojo luces,
-  magenta cuando coinciden), activable desde `Visor`.
-- Tests unitarios para el sistema de actualizacion (`tests/test_update.py`).
+### Added- `Ayuda > Acerca de` GUI expanded with:
+  - configurable project manager (`NEXORAW_PROJECT_DIRECTOR`),
+  - running version,
+  - AMaZE operational status,
+  - checking the latest version published in GitHub Releases,
+  - automatic update that downloads and launches the release installer.
+- New module `iccraw.update` for querying releases, comparing
+  versions, downloading assets and executing installers by platform.
+- RGB histogram in the `Visor` tab with clipping reading in shadows and
+  lights and visual witnesses.
+- Clipping overlay on the preview image (blue shadows, red lights,
+  magenta when they match), activatable from `Visor`.
+- Unit tests for the update system (`tests/test_update.py`).
 
 ### Changed
 
-- El script Windows `packaging/windows/build_installer.ps1` exige AMaZE por
-  defecto para builds de release (escape explicito: `-AllowNoAmaze` para builds
-  de prueba).
+- Windows script `packaging/windows/build_installer.ps1` requires AMaZE for
+  default for release builds (explicit escape: `-AllowNoAmaze` for builds
+  test).
 
 ## [0.2.0] - 2026-04-26
 
 ### Added
 
-- Manual de usuario orientado a instaladores y flujos GUI, con capturas
-  actualizadas para sesion, flujo con carta, flujo sin carta, mochilas,
-  cola de revelado, metadatos y configuracion global.
-- Flujo documentado para sesiones sin carta: perfil de revelado manual con ICC
-  generico de salida (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`) y mochila
-  `RAW.nexoraw.json` por imagen.
-- Paquete Debian de release `0.2.0`, instalable como aplicacion NexoRAW con
-  lanzadores `nexoraw`/`nexoraw-ui`, iconos hicolor y AMaZE validado en build.
+- User manual aimed at installers and GUI flows, with screenshots
+  updated for session, flow with letter, flow without letter, backpacks,
+  development queue, metadata and global configuration.
+- Documented flow for non-chart sessions: manual development profile with ICC
+  generic output (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`) and backpack
+  `RAW.nexoraw.json` per image.
+- Debian package release `0.2.0`, installable as a NexoRAW application with
+  `nexoraw`/`nexoraw-ui` launchers, hicolor icons and AMaZE validated in build.
 
-### Changed
-
-- El manual deja de explicar instalacion desde codigo y dependencias manuales;
-  la instalacion de usuario se considera cubierta por instaladores
-  multiplataforma.
-- La GUI trata los perfiles como ajustes asignados a RAW: perfil avanzado desde
-  carta marcado en azul y perfil basico/manual marcado en verde, ambos
-  copiables y pegables desde miniaturas.
-- La columna derecha de `2. Ajustar / Aplicar` abandona el modelo de
-  "calibrar sesion" y agrupa los ajustes parametricos por archivo en
-  `Brillo y contraste`, `Color`, `Nitidez`, `Gestión de color y calibración` y
+### Changed- The manual stops explaining installation from code and manual dependencies;
+  user installation is considered covered by installers
+  multiplatform.
+- The GUI treats profiles as settings assigned to RAW: advanced profile from
+  letter marked in blue and basic/manual profile marked in green, both
+  copyable and pasteable from thumbnails.
+- The right column of `2. Ajustar / Aplicar` leaves the model
+  "calibrate session" and groups the parameter settings per file in
+  `Brillo y contraste`, `Color`, `Nitidez`, `Gestión de color y calibración` and
   `RAW Global`.
-- La tira de miniaturas funciona como scroll horizontal con tamaño ajustable y
-  genera miniaturas visuales para RAW aunque no exista preview embebida,
-  usando un revelado rápido cacheado.
-- Se elimina la cabecera persistente con nombre/subtítulo de la aplicación para
-  recuperar espacio vertical de trabajo.
-- La elección de directorio de proyecto es más reactiva: el árbol vigila cambios
-  del sistema, una raíz de proyecto abre `01_ORG/` para navegar RAW y
-  `Usar carpeta actual` promueve `01_ORG/` a su raíz de proyecto.
-- La estructura de proyectos nuevos se simplifica a `00_configuraciones/`,
-  `01_ORG/` y `02_DRV/`; las sesiones heredadas con `config/session.json`
-  siguen abriendose sin conversion destructiva.
+- The thumbnail strip works as a horizontal scroll with adjustable size and
+  generates visual thumbnails for RAW even if there is no embedded preview,
+  using a rapid cached development.
+- Removed the persistent header with name/subtitle from the application to
+  recover vertical work space.
+- The choice of project directory is more reactive: the tree monitors changes
+  system, a project root opens `01_ORG/` to browse RAW and
+  `Usar carpeta actual` promotes `01_ORG/` to its project root.
+- The structure of new projects is simplified to `00_configuraciones/`,
+  `01_ORG/` and `02_DRV/`; legacy sessions with `config/session.json`
+  They continue to open without destructive conversion.
 
 ### Fixed
 
-- GUI: crear o abrir una sesion nueva ya no hereda rutas, miniaturas, cola ni
-  perfiles de revelado de la sesion anterior; las rutas persistidas fuera de la
-  raiz de proyecto se migran a la estructura propia de la sesion.
-- GUI: las miniaturas y selecciones que aun apunten a rutas heredadas
-  `raw/archivo` se resuelven automaticamente contra `01_ORG/archivo`, evitando
-  tracebacks al abrir proyectos migrados.
-- GUI: al generar un perfil desde carta, el perfil avanzado queda asignado a los
-  RAW de carta mediante su mochila `RAW.nexoraw.json`.
+- GUI: creating or opening a new session no longer inherits routes, thumbnails, queue or
+  development profiles from the previous session; routes persisted outside the
+  project root are migrated to the session's own structure.
+- GUI: thumbnails and selections that still point to inherited routes
+  `raw/archivo` automatically resolve against `01_ORG/archivo`, avoiding
+  tracebacks when opening migrated projects.
+- GUI: when generating a profile from a menu, the advanced profile is assigned to the
+  RAW card using your `RAW.nexoraw.json` backpack.
 
 ## [0.1.0-beta.5] - 2026-04-25
 
-### Changed
-
-- El nombre visible del proyecto pasa a ser NexoRAW. Se añaden entry points
-  `nexoraw`/`nexoraw-ui` y se mantienen `iccraw`/`iccraw-ui` como alias
-  heredados para no romper scripts existentes.
-- CMM unificado en ArgyllCMS: se sustituye LittleCMS (`tificc`) por
-  `cctiff`/`xicclu` para conversion ICC de salida, validacion y preview de
-  perfil. Desaparecen las dependencias `liblcms2-utils` y `Pillow.ImageCms` del
-  flujo principal.
-- `apply_profile_preview` reconstruye la previsualizacion ICC a partir de un
-  LUT 17^3 calculado con `xicclu` e interpolacion trilineal cacheada por
-  perfil; se elimina la dependencia del sidecar `.profile.json` para mostrar
-  preview con perfil activo.
-- `build_profile` reporta DeltaE 76/2000 a partir del ICC real generado por
-  `colprof` (consultando `xicclu`). La matriz lateral
-  `matrix_camera_to_xyz` se conserva solo como diagnostico
+### Changed- The visible name of the project becomes NexoRAW. Entry points are added
+  `nexoraw`/`nexoraw-ui` and `iccraw`/`iccraw-ui` are kept as aliases
+  inherited so as not to break existing scripts.
+- Unified CMM in ArgyllCMS: LittleCMS (`tificc`) is replaced by
+  `cctiff`/`xicclu` for output ICC conversion, validation and preview of
+  profile. The dependencies `liblcms2-utils` and `Pillow.ImageCms` disappear from the
+  main flow.
+- `apply_profile_preview` rebuilds the ICC preview from a
+  LUT 17^3 calculated with `xicclu` and trilinear interpolation cached by
+  profile; dependency on sidecar `.profile.json` to display is removed
+  preview with active profile.
+- `build_profile` reports DeltaE 76/2000 from the actual ICC generated by
+  `colprof` (referring to `xicclu`). The lateral matrix
+  `matrix_camera_to_xyz` is kept for diagnostic purposes only
   (`diagnostic_matrix_*`).
-- `auto_generate_profile_from_charts` aplica un guard cientifico estricto:
-  rechaza recetas con `denoise`, `sharpen` o `tone_curve` activos, o con
-  `output_linear=False` u `output_space` distinto de RGB de camara lineal.
-- Las capturas de carta para perfilado se restringen a RAW/DNG/TIFF lineal;
-  PNG/JPG ya no se aceptan ni en CLI ni en GUI.
-- Refactor array-first del workflow de perfilado: `_collect_chart_samples` y
-  `_collect_chart_geometries` usan `develop_image_array` y variantes
+- `auto_generate_profile_from_charts` applies a strict scientific guard:
+  rejects recipes with active `denoise`, `sharpen` or `tone_curve`, or with
+  `output_linear=False` or `output_space` other than linear camera RGB.
+- Card captures for profiling are restricted to linear RAW/DNG/TIFF;
+  PNG/JPG are no longer accepted in either the CLI or GUI.
+- Array-first refactor of the profiling workflow: `_collect_chart_samples` and
+  `_collect_chart_geometries` use `develop_image_array` and variants
   `detect_chart_from_array` / `sample_chart_from_array` /
-  `draw_detection_overlay_array`, evitando roundtrips a TIFF.
-- El instalador Windows empaqueta `tools/argyll/ref/` (incluido `sRGB.icm`)
-  para que la conversion ICC funcione sin perfiles externos. Se elimina la
-  copia de binarios y metadata de LittleCMS.
-- Paquete Debian: se elimina `liblcms2-utils` de las dependencias declaradas.
-- `nexoraw check-tools` requiere `cctiff` (ArgyllCMS) en lugar de `tificc`.
+  `draw_detection_overlay_array`, avoiding roundtrips to TIFF.
+- Windows installer packages `tools/argyll/ref/` (including `sRGB.icm`)
+  so that the ICC conversion works without external profiles. It eliminates the
+  copy of LittleCMS binaries and metadata.
+- Debian package: `liblcms2-utils` is removed from declared dependencies.
+- `nexoraw check-tools` requires `cctiff` (ArgyllCMS) instead of `tificc`.
 
 ### Fixed
 
-- GUI: el histograma del editor de curvas tonales se recalcula solo cuando
-  cambia la imagen base, evitando recomputos en cada movimiento de curva.
-- GUI: el marcado manual de cuatro esquinas de carta sobrevive a recargas
-  asincronas de la imagen seleccionada.
-- GUI: la previsualizacion con perfil ICC ya no requiere `*.profile.json`
-  asociado; un fallo de `xicclu` se registra como aviso y se cae a vista sin
-  perfil sin bloquear el visor.
+- GUI: Tone curve editor histogram is recalculated only when
+  changes the base image, avoiding recomputations with each curve movement.
+- GUI: manual marking of four card corners survives reloads
+  asynchronous images of the selected image.
+- GUI: preview with ICC profile no longer requires `*.profile.json`
+  associate; a `xicclu` fault is logged as a warning and is dropped to view without
+  profile without blocking the viewer.
 
 ## [0.1.0-beta.4] - 2026-04-25
 
-### Changed
-
-- El instalador Windows AMaZE incluye metadata de distribucion
-  `rawpy-demosaic` dentro del ejecutable PyInstaller para que
-  `nexoraw check-amaze` informe el backend exacto.
-- El empaquetado Windows copia avisos/licencias de `rawpy-demosaic`, LibRaw,
-  los demosaic packs GPL2/GPL3 y RawSpeed, junto con hash de wheel y commit de
-  fuente.
+### Changed- Windows AMaZE installer includes distribution metadata
+  `rawpy-demosaic` inside the PyInstaller executable so that
+  `nexoraw check-amaze` report the exact backend.
+- Windows packaging copies notices/licenses from `rawpy-demosaic`, LibRaw,
+  the GPL2/GPL3 and RawSpeed demosaic packs, along with wheel hash and commit
+  source.
 
 ### Fixed
 
-- Soporte operativo de AMaZE en Windows mediante wheel GPL3 de
-  `rawpy-demosaic 0.10.1` enlazada a LibRaw 0.18.7 con
+- AMaZE operational support on Windows via GPL3 wheel
+  `rawpy-demosaic 0.10.1` linked to LibRaw 0.18.7 with
   `DEMOSAIC_PACK_GPL3=True`.
 
 ## [0.1.0-beta.3] - 2026-04-25
 
 ### Added
 
-- Funcion `develop_image_array` para render RAW/TIFF array-first y benchmark
-  basico de preview/render en `scripts/benchmark_pipeline.py`.
-- Script `scripts/check_amaze_support.py` para auditar si el entorno LibRaw/rawpy
-  incluye el demosaic pack GPL3 necesario para AMaZE.
-- Preparado el flujo de empaquetado Windows con scripts PowerShell,
-  PyInstaller, plantilla Inno Setup y documentacion de pruebas.
+- `develop_image_array` function for RAW/TIFF array-first render and benchmark
+  basic preview/render in `scripts/benchmark_pipeline.py`.
+- `scripts/check_amaze_support.py` script to audit whether the LibRaw/rawpy environment
+  includes the GPL3 demosaic pack necessary for AMaZE.
+- Prepared the Windows packaging flow with PowerShell scripts,
+  PyInstaller, Inno Setup template and testing documentation.
 
-### Changed
+### Changed- High quality preview, batch export and GUI development paths avoid
+  Temporary TIFFs when not needed.
+- The RAW preview in RGB/profiled camera mode applies a visual normalization
+  for the viewer only, avoiding green casts when marking unaltered cards
+  Audited TIFFs, sampling or export.
+- The ICC generation options (`colprof`, quality, format and output) and the
+  `RAW global` criteria are displayed within `Calibrar sesion`, before
+  start calibration.
+- Documented AMaZE/GPL3 policy: NexoRAW maintains `AGPL-3.0-or-later`, registers
+  flags of `rawpy` and only enables AMaZE when `DEMOSAIC_PACK_GPL3=True`.
+- Windows installer packages complete flow external tools
+  (`colprof`/`xicclu`, `exiftool` and `tificc`) under `tools/`.
+- GUI automatically loads preview when selecting thumbnails and
+  Adds a top progress bar for long tasks.
+- The viewfinder allows zooming, reframing by dragging and 90 degree rotation.
+- New vertical processing panels: calibration with RAW criteria,
+  basic correction, detail, active profile and session application.
+- Basic preview/batch correction: final illuminant, temperature, hue,
+  brightness, levels, contrast and midrange curve.
+- Preview/batch detail adjustments: luminance/color noise reduction,
+  sharpness and lateral chromatic aberration correction.
 
-- Preview de alta calidad, exportacion batch y rutas GUI de revelado evitan
-  TIFF temporales cuando no son necesarios.
-- La preview RAW en modo camera RGB/perfilado aplica una normalizacion visual
-  solo para el visor, evitando dominantes verdes al marcar cartas sin alterar
-  TIFFs auditados, muestreo ni exportacion.
-- Las opciones de generacion ICC (`colprof`, calidad, formato y salida) y los
-  criterios `RAW global` se muestran dentro de `Calibrar sesion`, antes de
-  iniciar la calibracion.
-- Politica AMaZE/GPL3 documentada: NexoRAW mantiene `AGPL-3.0-or-later`, registra
-  flags de `rawpy` y solo habilita AMaZE cuando `DEMOSAIC_PACK_GPL3=True`.
-- El instalador Windows empaqueta herramientas externas del flujo completo
-  (`colprof`/`xicclu`, `exiftool` y `tificc`) bajo `tools/`.
-- La GUI carga automáticamente la previsualización al seleccionar miniaturas y
-  añade una barra superior de progreso para tareas largas.
-- El visor permite zoom, reencuadre por arrastre y rotación de 90 grados.
-- Nuevos paneles verticales de procesado: calibracion con criterios RAW,
-  corrección básica, detalle, perfil activo y aplicación de sesión.
-- Corrección básica de preview/lote: iluminante final, temperatura, matiz,
-  brillo, niveles, contraste y curva de medios.
-- Ajustes de detalle de preview/lote: reducción de ruido de luminancia/color,
-  nitidez y corrección de aberración cromática lateral.
+- The RAW backend completely moves from `dcraw` to LibRaw/rawpy, with DCB as
+  demosaicing by default installable and AMaZE available only in builds of
+  rawpy/LibRaw with demosaic pack GPL3.
+- Redundant manual loading buttons on the viewer are removed; the selection of
+  miniature becomes the main action.
 
-- El backend RAW pasa completamente de `dcraw` a LibRaw/rawpy, con DCB como
-  demosaicing por defecto instalable y AMaZE disponible solo en builds de
-  rawpy/LibRaw con demosaic pack GPL3.
-- Se eliminan botones redundantes de carga manual en el visor; la selección de
-  miniatura pasa a ser la acción principal.
-
-### Fixed
-
-- Compatibilidad con ArgyllCMS en Windows cuando `colprof` genera `.icm` en
-  lugar de `.icc`.
-- El backend RAW informa de forma explicita cuando una receta pide AMaZE sin
-  demosaic pack GPL3; la GUI evita el bloqueo degradando a `dcb` con aviso.
-- La generacion de perfil desde GUI reutiliza automaticamente las cuatro
-  esquinas manuales pendientes, aunque aun no se haya guardado el JSON de
-  deteccion manual.
-- Las sesiones ya no restauran rutas temporales heredadas de ejecuciones de
-  tests como rutas operativas de cartas, receta, perfiles o lote.
-- La memoria persistente de la GUI recuerda ultima sesion/carpeta valida,
-  ignora rutas obsoletas y usa la home del usuario como directorio inicial
-  portable en Linux, macOS y Windows.
+### Fixed- Support for ArgyllCMS on Windows when `colprof` generates `.icm` on
+  instead of `.icc`.
+- The RAW backend explicitly informs when a recipe calls for AMaZE without
+  demosaic pack GPL3; the GUI avoids the crash by downgrading to `dcb` with warning.
+- Profile generation from GUI automatically reuses the four
+  pending manual corners, even if the JSON of
+  manual detection.
+- Sessions no longer restore temporary paths inherited from executions
+  tests such as operational routes of letters, recipes, profiles or batch.
+- The GUI persistent memory remembers last valid session/folder,
+  ignore obsolete paths and use the user's home as the initial directory
+  portable on Linux, macOS and Windows.
 
 ## [0.1.0-beta.2] - 2026-04-25
 
 ### Fixed
 
-- La referencia ColorChecker 2005 D50 se empaqueta dentro de `iccraw` y se usa
-  como fallback cuando la GUI/CLI se ejecuta desde una instalacion `.deb` sin el
-  arbol `testdata/` del repositorio.
+- ColorChecker 2005 D50 reference is packaged inside `iccraw` and used
+  as a fallback when the GUI/CLI is run from a `.deb` installation without the
+  tree `testdata/` of the repository.
 
 ## [0.1.0-beta.1] - 2026-04-24
 
-### Changed
-
-- La GUI migra rutas heredadas de `/tmp` a la estructura de la sesión:
-  perfiles en `profiles/`, reportes/recetas en `config/`, trabajo en `work/`
-  y TIFF/preview en `exports/`.
-- `batch-develop` separa gestion ICC en modos explicitos:
-  - RGB de camara con perfil ICC de entrada incrustado,
-  - conversion a sRGB mediante LittleCMS (`tificc`) con perfil sRGB incrustado.
-- La GUI reabre la ultima sesion usada y posiciona el explorador en el
-  directorio operativo de la sesion en lugar de arrancar siempre en `$HOME`.
-- `validate-profile` valida el perfil ICC real con ArgyllCMS (`xicclu`/`icclu`)
-  en lugar de calcular DeltaE con la matriz lateral del sidecar.
-- La deteccion de carta por fallback queda marcada como modo `fallback`, con
-  confianza baja y bloqueo por defecto en flujos automaticos.
-- El muestreo de carta aplica `sampling_trim_percent` y
-  `sampling_reject_saturated` desde la receta.
-- Las referencias de carta cargadas desde JSON se validan en modo estricto
-  (fuente, D50, observador 2 grados, ids únicos y Lab completo).
-- Nuevo comando `export-cgats` para exportar muestras a CGATS/CTI3 interoperable.
-- La matriz `matrix_camera_to_xyz` queda como artefacto diagnostico/compatibilidad,
-  no como sustituto de la conversion ICC en exportacion de lote ni de la
-  validacion del perfil.
-- Las recetas de ejemplo pasan de `demosaic_algorithm: rcd` a `ahd`, el modo
-  soportado por `dcraw`.
-- La GUI deja de ofrecer algoritmos de demosaicing que el backend `dcraw` no
-  puede ejecutar.
-- Reorganización estructural del proyecto para crecer como base Python única:
-  - eliminada la capa Rust (`Cargo.toml`, `Cargo.lock`, `core/`, `cli/` Rust, `tests/` Rust) que ya no se usaba,
-  - paquete renombrado `icc_entrada` → `iccraw` alineado con el nombre del repo y del proyecto,
-  - código organizado en subpaquetes por dominio: `core/`, `raw/`, `chart/`, `profile/`,
-  - `__version__` centralizado en `iccraw/version.py` y expuesto por `__init__.py`,
-  - entry points CLI/GUI renombrados a `iccraw` y `iccraw-ui`,
-  - `python -m iccraw` operativo vía `__main__.py`,
-  - tests unificados en `tests/` (antes `tests_py/`) con imports actualizados,
-  - docs duplicadas eliminadas de la raíz (canónicas en `docs/`), rutas absolutas Linux sustituidas por relativas en README.
-
-### Added
-
-- Paquete Debian beta `0.1.0~beta1` con instalacion en `/opt/iccraw`,
-  lanzadores `/usr/bin/iccraw` y `/usr/bin/iccraw-ui`, y dependencias externas
-  declaradas para `dcraw`, ArgyllCMS, LittleCMS y `exiftool`.
-- Script reproducible `packaging/debian/build_deb.sh` para construir el `.deb`
-  desde el arbol de trabajo.
-- Validacion estricta de `demosaic_algorithm` para backend `dcraw`; una receta
-  con algoritmo no soportado falla antes de procesar.
-- Integracion de LittleCMS (`tificc`) como CMM externo para conversion ICC a
+### Changed- The GUI migrates routes inherited from `/tmp` to the session structure:
+  profiles in `profiles/`, reports/recipes in `config/`, work in `work/`
+  and TIFF/preview in `exports/`.
+- `batch-develop` separates ICC management into explicit modes:
+  - Camera RGB with embedded input ICC profile,
+  - conversion to sRGB using LittleCMS (`tificc`) with embedded sRGB profile.
+- The GUI reopens the last used session and positions the browser in the
+  operating directory of the session instead of always booting to `$HOME`.
+- `validate-profile` validates the actual ICC profile with ArgyllCMS (`xicclu`/`icclu`)
+  instead of calculating DeltaE with the sidecar lateral matrix.
+- Card detection by fallback is marked as `fallback` mode, with
+  Low trust and default blocking in automatic flows.
+- Chart sampling applies `sampling_trim_percent` and
+  `sampling_reject_saturated` from the recipe.
+- Letter references loaded from JSON are validated in strict mode
+  (source, D50, observer 2 degrees, unique ids and full Lab).
+- New `export-cgats` command to export samples to interoperable CGATS/CTI3.
+- The `matrix_camera_to_xyz` matrix remains as a diagnostic/compatibility artifact,
+  not as a substitute for the ICC conversion in batch export or the
+  profile validation.
+- The example recipes change from `demosaic_algorithm: rcd` to `ahd`, the mode
+  supported by `dcraw`.
+- The GUI stops offering demosaicing algorithms that the `dcraw` backend does not
+  can execute.
+- Structural reorganization of the project to grow as a single Python base:
+  - removed Rust layer (`Cargo.toml`, `Cargo.lock`, `core/`, `cli/` Rust, `tests/` Rust) which was no longer used,
+  - renamed package `icc_entrada` → `iccraw` aligned with repo and project name,
+  - code organized in subpackages by domain: `core/`, `raw/`, `chart/`, `profile/`,
+  - `__version__` centralized in `iccraw/version.py` and exposed by `__init__.py`,
+  - CLI/GUI entry points renamed to `iccraw` and `iccraw-ui`,
+  - `python -m iccraw` operational via `__main__.py`,
+  - unified tests in `tests/` (previously `tests_py/`) with updated imports,
+  - removed duplicate docs from root (canonical in `docs/`), absolute paths Linux sureplaced by relatives in README.### Added- Debian beta package `0.1.0~beta1` with installation in `/opt/iccraw`,
+  launchers `/usr/bin/iccraw` and `/usr/bin/iccraw-ui`, and external dependencies
+  declared for `dcraw`, ArgyllCMS, LittleCMS and `exiftool`.
+- `packaging/debian/build_deb.sh` reproducible script to build the `.deb`
+  from the work tree.
+- Strict validation of `demosaic_algorithm` for `dcraw` backend; a recipe
+  with unsupported algorithm fails before processing.
+- Integration of LittleCMS (`tificc`) as external CMM for ICC conversion to
   sRGB.
-- Metadatos de modo de gestion de color en manifiestos de lote.
-- Tests P0 para demosaicing no soportado, `audit_linear_tiff` realmente lineal y
-  exportacion ICC/CMM.
-- Tests P0 que demuestran que `validate-profile` usa el ICC real aunque exista
-  un sidecar con matriz incorrecta.
-- Tests P1 para deteccion fallback de baja confianza y muestreo controlado por
-  parametros de receta.
-- Tests P1 para rechazo de referencias de carta incompletas/incompatibles.
-- Tests P1 para exportacion CGATS/CTI3 de muestras.
-- El reporte QA de sesion incluye peores parches y outliers DeltaE2000 por
-  parche para diagnosticar desviaciones cromaticas localizadas.
-- El QA de sesion incorpora diagnostico de captura por carta: luminancia de
-  parches, bajo nivel, dispersion densitometrica de la fila neutra y gradiente
-  estimado de iluminacion.
-- Los perfiles de sesion declaran estado operacional `draft`, `validated`,
-  `rejected` o `expired`, con vigencia opcional desde CLI.
-- `auto-profile-batch` no aplica a lote perfiles de sesion `rejected` o
+- Color management mode metadata in batch manifests.
+- P0 tests for demosaicing not supported, `audit_linear_tiff` really linear and
+  ICC/CMM export.
+- P0 tests that demonstrate that `validate-profile` uses the real ICC even if it exists
+  a sidecar with wrong matrix.
+- P1 tests for low confidence fallback detection and controlled sampling
+  recipe parameters.
+- P1 tests for rejection of incomplete/incompatible letter references.
+- P1 tests for CGATS/CTI3 export of samples.
+- Session QA report includes worst DeltaE2000 patches and outliers by
+  patch to diagnose localized chromatic deviations.
+- The session QA incorporates capture diagnosis per card: luminance of
+  patches, low level, densitometric dispersion of the neutral row and gradient
+  lighting estimate.
+- Session profiles declare operational status `draft`, `validated`,
+  `rejected` or `expired`, with optional validity from CLI.
+- `auto-profile-batch` does not apply to batch `rejected` or session profiles
   `expired`.
-- Nuevo comparador de reportes QA entre sesiones (`compare-qa-reports`) con
-  resumen de estados, DeltaE, outliers, checks nuevos/resueltos y acceso desde
-  la GUI.
-- Nuevo diagnostico de herramientas externas (`check-tools`) con salida JSON y
-  acceso desde GUI para comprobar `dcraw`, ArgyllCMS, LittleCMS y `exiftool`.
-- Plantilla de mantenimiento continuo del changelog y política de actualización.
-- Módulo `preview` para carga de imagen/RAW en previsualización, ajustes técnicos y análisis lineal.
-- GUI nueva basada en Qt/PySide6 (`app-ui`, `app-ui-qt`) con:
-  - previsualización técnica con perfil ICC,
-  - ajustes de nitidez y reducción de ruido,
-  - ejecución de flujo automático carta -> perfil -> lote.
-- Dependencia opcional `gui` en `pyproject.toml`.
+- New comparator of QA reports between sessions (`compare-qa-reports`) with
+  status summary, DeltaE, outliers, new/resolved checks and access from
+  the GUI.
+- New diagnostic of external tools (`check-tools`) with JSON output and
+  Access from GUI to check `dcraw`, ArgyllCMS, LittleCMS and `exiftool`.
+- Continuous changelog maintenance template and update policy.
+- `preview` module for image/RAW loading in preview, technical adjustments and linear analysis.
+- New GUI based on Qt/PySide6 (`app-ui`, `app-ui-qt`) with:
+  - technical preview with ICC profile,
+  - sharpness and noise reduction adjustments,
+  - auto flow executionmatic letter -> profile -> lot.
+- Optional dependency `gui` on `pyproject.toml`.
 - Script `scripts/run_ui_qt.sh`.
-- Navegador visual de directorios y miniaturas RAW/imagen integrado en GUI para selección de archivos clave.
-- Acción GUI para revelar archivo seleccionado a TIFF 16-bit con perfil ICC opcional.
-- Ajustes de ruido separados en luminancia y color.
-- Menu superior en GUI con accesos a configuracion y operaciones (`Archivo`, `Configuracion`, `Perfil ICC`, `Vista`, `Ayuda`).
-- Soporte de exploracion multiunidad en GUI para navegar el arbol completo del sistema de archivos.
-- Panel de configuracion RAW ampliado (demosaic, WB, black/white level, tone curve, espacios, sampling, profiling mode).
-- Panel de configuracion de perfil ICC ampliado (tipo `-a`, calidad `-q`, args extra `colprof`, formato `.icc/.icm`).
-- Optimizacion de carga y previsualizacion RAW/DNG:
-  - modo rapido con miniatura embebida o decodificacion `dcraw -h`,
-  - downscale configurable de preview para reducir latencia en archivos grandes,
-  - cache de previews por archivo+recipe para recargas inmediatas.
-- Nueva función de backend `auto_generate_profile_from_charts` para generar perfil ICC sin ejecutar batch.
-- Reorganización funcional en 3 pestañas principales:
-  - Generación Perfil ICC,
-  - Revelado RAW,
-  - Monitoreo Flujo.
-- Revelado por lotes integrado en pestaña de Revelado RAW (selección o directorio completo).
-- Nuevo módulo `session` para gestión persistente de sesiones con creación de estructura de directorios:
+- Visual directory and RAW/image thumbnail browser integrated into GUI for key file selection.
+- GUI action to reveal selected file to 16-bit TIFF with optional ICC profile.
+- Separate noise adjustments in luminance and color.
+- Top menu in GUI with access to configuration and operations (`Archivo`, `Configuracion`, `Perfil ICC`, `Vista`, `Ayuda`).
+- Multi-drive browsing support in GUI to navigate the entire file system tree.
+- Expanded RAW configuration panel (demosaic, WB, black/white level, tone curve, spaces, sampling, profiling mode).
+- Extended ICC profile configuration panel (type `-a`, quality `-q`, extra args `colprof`, format `.icc/.icm`).
+- RAW/DNG loading and preview optimization:
+  - fast mode with embedded miniature or `dcraw -h` decoding,
+  - configurable preview downscale to reduce latency in large files,
+  - Preview cache per file+recipe for immediate reloads.
+- New backend function `auto_generate_profile_from_charts` to generate ICC profile without executing batch.
+- Functional reorganization in 3 main tabs:
+  - ICC Profile Generation,
+  - RAW development,
+  - Flow Monitoring.
+- Batch development integrated into the RAW Development tab (selection or complete directory).
+- New module `session` for persistent session management with directory structure creation:
   - `charts/`, `raw/`, `profiles/`, `exports/`, `config/`, `work/`.
-- Nueva pestaña `1. Sesión` para crear/abrir/guardar sesión con metadatos de iluminación y toma.
-- Nueva pestaña `3. Cola de Revelado` con cola de archivos, estado por imagen y ejecución de lote desde cola.
-- Persistencia de estado por sesión en `config/session.json`:
-  - rutas operativas,
-  - configuración de revelado/perfil,
-  - perfil activo,
-  - cola de revelado.
-- Test unitario `tests_py/test_session.py` para estructura, carga y normalización de sesión.
-
-### Changed
-
-- Se reemplaza completamente la GUI anterior (tkinter) por implementación Qt.
-- `apply_profile_matrix` pasa a API pública en `icc_entrada.export` para reutilización en previsualización.
-- Documentación y roadmap actualizados para reflejar GUI Qt y política legal AGPL + dependencias.
-- Rediseño de GUI a layout de 3 paneles (explorador, visor principal, panel de control) priorizando espacio de imagen y flujo práctico de producción.
-- Reorganizacion de GUI para flujo de trabajo tipo revelador RAW (navegacion, seleccion visual y maximo espacio para imagen).
-- Renombrada pestaña de ajustes visuales de `Vista` a `Nitidez`.
-- El flujo de perfilado y el flujo de revelado por lotes se separan explícitamente para mayor claridad operativa.
-- La previsualización aplica perfil ICC desactivado por defecto para evitar dominantes cuando el perfil no corresponde al set cámara+iluminación+recipe activo.
-- La ventana Qt guarda/restaura tamaño y distribución de paneles para mejorar trabajo en pantallas de distinto tamaño.
-- Reorganización de pestañas principales para flujo centrado en sesión:
+- New tab `1. Sesión` to create/open/save session with lighting and shooting metadata.
+- New tab `3. Cola de Revelado` with file queue, status per image and batch execution from queue.
+- Per-session state persistence in `config/session.json`:
+  - operational routes,
+  - development/profile settings,
+  - active profile,
+  - development queue.
+- `tests_py/test_session.py` unit test for structure, loading and session normalization.### Changed- The previous GUI (tkinter) is completely replaced by a Qt implementation.
+- `apply_profile_matrix` moved to public API in `icc_entrada.export` for reuse in preview.
+- Documentation and roadmap updated to reflect Qt GUI and AGPL legal policy + dependencies.
+- Redesign of GUI to a 3-panel layout (browser, main viewer, control panel) prioritizing image space and practical production flow.
+- GUI reorganization for RAW developer type workflow (navigation, visual selection and maximum image space).
+- Renamed visual settings tab from `Vista` to `Nitidez`.
+- The profiling stream and the batch development stream are explicitly separated for operational clarity.
+- The preview applies ICC profile deactivated by default to avoid dominants when the profile does not correspond to the active camera+lighting+recipe set.
+- The Qt window saves/restores size and layout of panels to improve work on screens of different sizes.
+- Reorganization of main tabs for session-centric flow:
   - `Sesión`,
   - `Revelado y Perfil ICC`,
   - `Cola de Revelado`.
-- La GUI de trabajo se reorganiza en dos fases operativas:
-  - `1. Calibrar sesión`: capturas de carta -> perfil de revelado + ICC,
-  - `2. Aplicar sesión`: RAW/TIFF objetivo -> TIFF con receta calibrada + ICC.
-- El ajuste manual visible queda limitado a nitidez; exposición, densidad,
-  balance de blancos y base colorimétrica proceden de la carta.
-- El procesamiento por lote en GUI ahora tolera errores por archivo y devuelve resumen `OK/errores` sin abortar todo el lote.
-- `auto_generate_profile_from_charts` acepta una lista explícita de capturas de
-  carta para que la GUI pueda usar una selección de miniaturas en vez de todo
-  un directorio.
-- La pestaña de calibración de sesión oculta rutas internas de artefactos y
-  botones redundantes; el perfil generado se activa automáticamente junto con
-  su receta calibrada.
-- `Generar perfil de sesión` infiere las cartas desde la selección de miniaturas
-  o desde el archivo cargado antes de recurrir a la carpeta, evitando búsquedas
-  accidentales en directorios genéricos como `$HOME`.
-- Las detecciones manuales guardadas desde la GUI quedan asociadas al RAW de
-  carta y se reutilizan durante la generación del perfil de sesión.
-- `batch-develop` separa los TIFF lineales de auditoría en `_linear_audit/`
-  para que no se confundan con los TIFF finales de inspección o entrega.
-- El flujo automático puede reservar capturas de carta para validación hold-out,
-  generar `qa_session_report.json` y clasificar la sesión como `validated`,
-  `rejected` o `not_validated`.
+- The working GUI is reorganized into two operational phases:
+  - `1. Calibrar sesión`: card captures -> development profile + ICC,
+  - `2. Aplicar sesión`: Target RAW/TIFF -> TIFF with calibrated recipe + ICC.
+- Visible manual adjustment is limited to sharpness; exposure, density,
+  White balance and colorimetric base come from the chart.
+- Batch processing in GUI now tolerates per-file errors and returns `OK/errores` summary without aborting the entire batch.
+- `auto_generate_profile_from_charts` accepts an explicit list of captures
+  letter so that the GUI can use a selection of thumbnails instead of everything
+  a directory.
+- Session calibration tab hides internal artifact paths and
+  redundant buttons; The generated profile is automatically activated along with
+  your calibrated recipe.
+- `Generar perfil de sesión` infers cards from miniature selection
+  or from the uploaded file before resorting to the folder, avoiding searches
+  accidentals in generic directories like `$HOME`.
+- Manual detections saved from the GUI are associated with the RAW of
+  letter and reuseized during session profile generation.
+- `batch-develop` separates audit linear TIFFs into `_linear_audit/`
+  so that they are not confused with the final inspection or delivery TIFFs.
+- Automatic flow can reserve letter captures for hold-out validation,
+  generate `qa_session_report.json` and classify the session as `validated`,
+  `rejected` or `not_validated`.### Docs
 
-### Docs
-
-- README ampliado con objetivo del proyecto, alcance, límites y metodología
-  aplicada al flujo RAW -> carta -> perfil de revelado -> ICC -> lote.
-- Nuevo documento `docs/OPERATIVE_REVIEW_PLAN.md` con hallazgos tecnicos,
-  criterios de aceptacion y plan profesional por fases para convertir el
-  prototipo en pipeline operativo y auditable.
-- `ROADMAP.md`, `ISSUES.md`, `COLOR_PIPELINE.md` y `README.md` enlazados al
-  plan operativo y actualizados con prioridades P0-P3.
-- Política legal ampliada para:
-  - compatibilidad AGPL con objetivo comunitario no comercial,
-  - notas de licencia de ArgyllCMS, dcraw y PySide6,
-  - obligaciones de redistribución y trazabilidad.
-- Nuevo documento `docs/THIRD_PARTY_LICENSES.md` con inventario operativo de licencias de terceros.
-- Advertencia explícita en README y manual: el estado actual es de desarrollo y la aplicación aún no se considera plenamente funcional/validada para producción científica o forense.
+- Extended README with project objective, scope, limits and methodology
+  applied to RAW flow -> letter -> development profile -> ICC -> batch.
+- New document `docs/OPERATIVE_REVIEW_PLAN.md` with technical findings,
+  acceptance criteria and professional phased plan to convert the
+  prototype in operational and auditable pipeline.
+- `ROADMAP.md`, `ISSUES.md`, `COLOR_PIPELINE.md` and `README.md` linked to
+  operational plan and updated with P0-P3 priorities.
+- Expanded legal policy for:
+  - AGPL compatibility with non-commercial community objective,
+  - ArgyllCMS, dcraw and PySide6 license notes,
+  - redistribution and traceability obligations.
+- New document `docs/THIRD_PARTY_LICENSES.md` with operational inventory of third-party licenses.
+- Explicit warning in README and manual: current status is development and the application is not yet considered fully functional/validated for scientific or forensic production.
 
 ### Fixed
 
-- `audit_linear_tiff` se escribe antes de compensacion de exposicion y curvas de
-  salida, conservando el estado lineal desarrollado.
-- Corrección de previsualización RAW rápida:
-  - salida de `dcraw` para preview en espacio sRGB (`-o 1`) en lugar de cámara nativa sin conversión,
-  - normalización de miniatura embebida a lineal para evitar doble corrección gamma.
-- Salvaguarda en preview con perfil ICC:
-  - si falta sidecar `.profile.json` o se detecta clipping/dominante extrema, la vista cae a modo sin perfil con aviso en log.
-- La receta calibrada generada se carga inmediatamente en la GUI; los revelados
-  posteriores ya no pueden quedarse usando los controles base por accidente.
-- La previsualización rápida basada en la matriz lateral adapta correctamente
-  de D50 a sRGB/D65 para evitar dominantes amarillas o verdosas espurias.
+- `audit_linear_tiff` is written before exposure compensation and curves
+  output, preserving the developed linear state.
+- Quick RAW preview fix:
+  - output `dcraw` for preview in sRGB space (`-o 1`) instead of native camera without conversion,
+  - Embedded miniature to linear normalization to avoid double gamma correction.
+- Safeguard in preview with ICC profile:
+  - if sidecar `.profile.json` is missing or extreme clipping/dominance is detected, the view falls to profileless mode with a warning in the log.
+- The generated calibrated recipe is immediately loaded into the GUI; the revealed
+  later users can no longer be left using the base controls by accident.
+- Quick preview based on lateral matrix adapts correctly
+  from D50 to sRGB/D65 to avoid spurious yellow or greenish casts.
 
 ## [0.1.0] - 2026-04-23
 
-### Added
-
-- Estructura inicial del proyecto modular (`core`, `src`, `cli`, `docs`, `tests`).
-- CLI funcional para flujo técnico: `raw-info`, `develop`, `detect-chart`, `sample-chart`, `build-profile`, `validate-profile`, `batch-develop`.
-- GUI ligera en `tkinter` para operar el flujo completo sin línea de comandos.
-- Flujo automático extremo a extremo (`auto-profile-batch`) para carta -> perfil ICC -> lote TIFF 16-bit.
-- Script de verificación de herramientas externas: `scripts/check_tools.sh`.
-- Manual de usuario en español.
-- Documento técnico de integración `dcraw + ArgyllCMS`.
-- Documento de cumplimiento legal y política de licencias.
+### Added- Initial structure of the modular project (`core`, `src`, `cli`, `docs`, `tests`).
+- Functional CLI for technical flow: `raw-info`, `develop`, `detect-chart`, `sample-chart`, `build-profile`, `validate-profile`, `batch-develop`.
+- Lightweight GUI in `tkinter` to operate the entire flow without command line.
+- Automatic end-to-end flow (`auto-profile-batch`) for letter -> ICC profile -> 16-bit TIFF batch.
+- External tools verification script: `scripts/check_tools.sh`.
+- User manual in Spanish.
+- Integration technical document `dcraw + ArgyllCMS`.
+- Legal compliance document and licensing policy.
 
 ### Changed
 
-- Interfaz gráfica traducida completamente al español.
-- Motor de revelado RAW fijado a `dcraw` como backend único soportado.
-- Motor de perfil ICC fijado a ArgyllCMS (`colprof`) como backend único soportado.
-- Metadatos de licencia del proyecto actualizados a `AGPL-3.0-or-later`.
-- Gobernanza declarada para mantenimiento comunitario por la Asociación Española de Imagen Científica y Forense.
+- Graphic interface completely translated into Spanish.
+- RAW development engine set to `dcraw` as the only supported backend.
+- ICC profile engine fixed to ArgyllCMS (`colprof`) as the only supported backend.
+- Updated project license metadata to `AGPL-3.0-or-later`.
+- Governance declared for community maintenance by the Spanish Association of Scientific and Forensic Image.
 
 ### Fixed
 
-- Formato `.ti3` para `colprof` ajustado (`DEVICE_CLASS`/`COLOR_REP` y orden de campos) para compatibilidad real con ArgyllCMS.
-- Detección y registro de versión `dcraw` en contexto de ejecución mejorada.
+- Adjusted `.ti3` format for `colprof` (`DEVICE_CLASS`/`COLOR_REP` and field order) for real compatibility with ArgyllCMS.
+- Improved detection and registration of `dcraw` version in execution context.
 
 ### Docs
 
-- Arquitectura, roadmap, decisiones y manual alineados con:
-  - pipeline estricto `dcraw + ArgyllCMS`,
-  - requisitos de reproducibilidad,
-  - cumplimiento legal AGPL para distribución y uso en red.
+- Architecture, roadmap, decisions and manual aligned with:
+  - strict pipeline `dcraw + ArgyllCMS`,
+  - reproducibility requirements,
+  - AGPL legal compliance for distribution and network use.

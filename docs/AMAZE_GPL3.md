@@ -1,37 +1,36 @@
-# Soporte AMaZE y demosaic packs GPL
+_Spanish version: [AMAZE_GPL3.es.md](AMAZE_GPL3.es.md)_
 
-## Decisión de licencia
+# Support AMaZE and GPL demosaic packs
 
-NexoRAW se distribuye bajo `AGPL-3.0-or-later`. Esta licencia es compatible con
-la condición GPL3+ exigida por el demosaic pack GPL3 de LibRaw, que incluye el
-algoritmo AMaZE.
+## License decision
 
-La integración de AMaZE debe mantener estas reglas:
+NexoRAW is distributed under `AGPL-3.0-or-later`. This license is compatible with
+the GPL3+ condition required by the LibRaw GPL3 demosaic pack, which includes the
+AMaZE algorithm.
 
-1. conservar `LICENSE` y los avisos de copyright del proyecto,
-2. conservar avisos/licencias de `rawpy-demosaic`, LibRaw y los demosaic packs,
-3. distribuir el código fuente correspondiente junto al binario o mediante una
-   URL pública equivalente,
-4. documentar en cada release qué build de `rawpy`/LibRaw se ha usado,
-5. no presentar AMaZE como disponible si `rawpy.flags["DEMOSAIC_PACK_GPL3"]`
-   no es `True`.
+The AMaZE integration must maintain these rules:
 
-## Backend recomendado
+1. retain `LICENSE` and the project's copyright notices,
+2. retain notices/licenses of `rawpy-demosaic`, LibRaw and the demosaic packs,
+3. distribute the corresponding source code together with the binary or through a
+   Equivalent public URL,
+4. document in each release which build of `rawpy`/LibRaw has been used,
+5. do not present AMaZE as available if `rawpy.flags["DEMOSAIC_PACK_GPL3"]`
+   It is not `True`.
 
-El camino preferente es usar `rawpy-demosaic`, un fork GPL3 de `rawpy` que
-incluye los packs GPL2/GPL3 de LibRaw y exporta el mismo módulo Python
+## Recommended backend
+
+The preferred path is to use `rawpy-demosaic`, a GPL3 fork of `rawpy` that
+includes the GPL2/GPL3 LibRaw packages and exports the same Python module
 `rawpy`.
 
-Instalación cuando exista wheel compatible publicada en el indice configurado
-de `pip`:
-
+Installation when there is a compatible wheel published in the configured index
+from `pip`:
 ```bash
 python scripts/install_amaze_backend.py --pypi
 python scripts/check_amaze_support.py
 ```
-
-Construccion de una wheel Linux desde fuente Git fijada:
-
+Building a Linux wheel from pinned Git source:
 ```bash
 python scripts/build_rawpy_demosaic_wheel.py \
   --python .venv/bin/python \
@@ -41,138 +40,111 @@ python scripts/build_rawpy_demosaic_wheel.py \
 .venv/bin/python scripts/install_amaze_backend.py --wheel tmp/wheels/rawpy_demosaic-*.whl
 .venv/bin/python scripts/check_amaze_support.py
 ```
-
-Con una wheel propia:
-
+With your own wheel:
 ```bash
 python scripts/install_amaze_backend.py --wheel /ruta/rawpy_demosaic-*.whl
 python scripts/check_amaze_support.py
 ```
-
-El comando debe informar:
-
+The command should report:
 ```json
 {
   "amaze_supported": true
 }
 ```
-
 ## Windows
 
-Si PyPI no ofrece wheel compatible con la versión de Python usada para el
-instalador Windows, hay que construir una wheel propia de `rawpy-demosaic` o de
-`rawpy` enlazada con LibRaw compilado con:
-
+If PyPI does not offer wheel compatible with the version of Python used for the
+Windows installer, you have to build your own wheel for `rawpy-demosaic` or
+`rawpy` linked with LibRaw compiled with:
 ```text
 LIBRAW_DEMOSAIC_PACK_GPL2
 LIBRAW_DEMOSAIC_PACK_GPL3
 ```
+The resulting wheel and NexoRAW installer must include license notices
+GPL3/AGPL and a clear way to obtain the corresponding source code.
 
-La wheel resultante y el instalador de NexoRAW deben incluir avisos de licencia
-GPL3/AGPL y una forma clara de obtener el código fuente correspondiente.
-
-NexoRAW incluye un workflow manual de GitHub Actions para construir la wheel
-Windows de `rawpy-demosaic` con MSVC:
-
+NexoRAW includes a manual GitHub Actions workflow to build the wheel
+`rawpy-demosaic` Windows with MSVC:
 ```text
 Build rawpy-demosaic Windows wheel
 ```
-
-El workflow usa por defecto el commit legacy `8b17075` de
-`rawpy-demosaic`, que enlaza LibRaw 0.18.7 con los demosaic packs GPL2/GPL3.
-Este punto es deliberado: los wheels estandar recientes de `rawpy` no incluyen
-`DEMOSAIC_PACK_GPL3=True`, y la build moderna de `rawpy-demosaic` no expone
-AMaZE como pack GPL3 en Windows en este flujo. Las releases que redistribuyan
-AMaZE deben conservar el commit exacto, los submodulos y el hash SHA256 de la
+The workflow uses by default the commit legacy `8b17075` of
+`rawpy-demosaic`, which links LibRaw 0.18.7 with the GPL2/GPL3 demosaic packs.
+This point is deliberate: the recent `rawpy` standard wheels do not include
+`DEMOSAIC_PACK_GPL3=True`, and the modern build of `rawpy-demosaic` does not expose
+AMaZE as a GPL3 pack on Windows in this flow. Releases that redistribute
+AMaZE must preserve the exact commit, submodules and SHA256 hash of the
 wheel.
 
-Una vez descargada la wheel:
-
+Once the wheel is downloaded:
 ```powershell
 $wheel = (Get-ChildItem -Recurse .\tmp\wheels -Filter "rawpy_demosaic-*.whl" | Select-Object -First 1).FullName
 .\scripts\install_amaze_backend.ps1 -Wheel $wheel
 .\.venv\Scripts\python.exe -m nexoraw check-amaze
 ```
-
-Para empaquetar Windows con AMaZE:
-
+To package Windows with AMaZE:
 ```powershell
 .\packaging\windows\build_installer.ps1 -RawpyDemosaicWheel $wheel -RequireAmaze
 ```
-
-Si existe wheel compatible en PyPI, el instalador puede resolverla durante la
+If a compatible wheel exists in PyPI, the installer can resolve it during installation.
 build:
-
 ```powershell
 .\packaging\windows\build_installer.ps1 -Amaze -RequireAmaze
 ```
-
 ## Debian/Ubuntu
 
-El paquete `.deb` instala y verifica el backend AMaZE durante la construccion
-por defecto. Desde la raiz del repositorio:
-
+Package `.deb` installs and verifies the AMaZE backend during build
+by default. From the root of the repository:
 ```bash
 NEXORAW_BUILD_AMAZE=1 NEXORAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
 ```
-
-La fuente Git por defecto usada para construir la wheel embebida es:
-
+The default Git source used to build the embedded wheel is:
 ```text
 git+https://github.com/exfab/rawpy-demosaic.git@8b17075
 ```
+It can be replaced by another font plotted with `NEXORAW_RAWPY_DEMOSAIC_SOURCE`
+if that source is installable directly by `pip`, or by a wheel already
+built with `NEXORAW_RAWPY_DEMOSAIC_WHEEL`.
 
-Se puede sustituir por otra fuente trazada con `NEXORAW_RAWPY_DEMOSAIC_SOURCE`
-si esa fuente es instalable directamente por `pip`, o por una wheel ya
-construida con `NEXORAW_RAWPY_DEMOSAIC_WHEEL`.
-
-Con una wheel local:
-
+With a local wheel:
 ```bash
 NEXORAW_REQUIRE_AMAZE=1 \
 NEXORAW_RAWPY_DEMOSAIC_WHEEL=/ruta/rawpy_demosaic-*.whl \
 bash packaging/debian/build_deb.sh
 ```
-
-La build registra `check-amaze.json` y `build-metadata.json` en
-`/usr/share/doc/nexoraw/third_party/rawpy-demosaic/`. La validacion previa a
-release falla si `check-amaze.json` no contiene `amaze_supported: true`.
+The build registers `check-amaze.json` and `build-metadata.json` in
+`/usr/share/doc/nexoraw/third_party/rawpy-demosaic/`. The validation prior to
+release fails if `check-amaze.json` does not contain `amaze_supported: true`.
 
 ## macOS
 
-La ruta soportada en macOS es la instalacion desde codigo. El instalador
-multiplataforma de backend AMaZE es el mismo script Python:
-
+The supported path on macOS is installation from code. The installer
+AMaZE cross-platform backend is the same Python script:
 ```bash
 python scripts/install_amaze_backend.py --pypi
 nexoraw check-amaze
 ```
-
-Si no hay wheel compatible para la version de Python/arquitectura usada, crear
-o descargar una wheel propia:
-
+If there is no compatible wheel for the Python version/architecture used, create
+or download your own wheel:
 ```bash
 python scripts/install_amaze_backend.py --wheel /ruta/rawpy_demosaic-*.whl
 nexoraw check-amaze
 ```
-
-`rawpy-demosaic` exporta el modulo Python `rawpy`, pero su distribucion Python
-se llama `rawpy-demosaic`. Por eso `pip` puede avisar de que no esta instalada
-la distribucion `rawpy>=0.26` aunque la importacion runtime `import rawpy`
-funcione con AMaZE. La comprobacion obligatoria para publicar una build es
+`rawpy-demosaic` exports the Python module `rawpy`, but its Python distribution
+It is called `rawpy-demosaic`. That is why `pip` can warn that it is not installed
+the distribution `rawpy>=0.26` although the runtime import `import rawpy`
+works with AMaZE. The mandatory check to publish a build is
 `nexoraw check-amaze`.
 
-## Comprobación operativa
+## Operational check
 
-NexoRAW no infiere soporte AMaZE por la presencia del enum
-`rawpy.DemosaicAlgorithm.AMAZE`; esa constante puede existir aunque el pack no
-esté compilado. La comprobación válida es:
-
+NexoRAW does not infer AMaZE support due to the presence of the enum
+`rawpy.DemosaicAlgorithm.AMAZE`; that constant can exist even if the pack does not
+is compiled. The valid check is:
 ```python
 import rawpy
 assert rawpy.flags["DEMOSAIC_PACK_GPL3"] is True
 ```
-
-Si la comprobación falla, la GUI degrada las recetas AMaZE a `dcb` para evitar
-bloqueos durante la calibración interactiva. La CLI y el backend fallan con un
-error explícito para preservar reproducibilidad.
+If the check fails, the GUI downgrades AMaZE recipes to `dcb` to avoid
+crashes during interactive calibration. The CLI and backend fail with a
+explicit error to preserve reproducibility.

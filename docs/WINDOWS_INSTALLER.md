@@ -1,157 +1,132 @@
-# Instalador Windows
+_Spanish version: [WINDOWS_INSTALLER.es.md](WINDOWS_INSTALLER.es.md)_
 
-Este documento deja preparado el flujo de construccion y pruebas para generar
-un instalador Windows de NexoRAW.
+# Windows Installer
 
-## Alcance
+This document prepares the construction and testing flow to generate
+a NexoRAW Windows installer.
 
-El instalador Windows empaqueta la aplicacion Python con PyInstaller y genera un
-`.exe` instalable con Inno Setup 6.
+## Scope
 
-El instalador redistribuye la aplicacion Python y empaqueta las herramientas
-externas criticas bajo `{app}\tools\...` para que el pipeline completo funcione
-sin editar el `PATH` del sistema:
+The Windows installer packages the Python application with PyInstaller and generates a
+`.exe` installable with Inno Setup 6.
 
-- ArgyllCMS: `colprof`, `xicclu`/`icclu` y `cctiff`.
+The installer redistributes the Python application and packages the tools
+critical externals under `{app}\tools\...` for the entire pipeline to work
+without editing the system `PATH`:
+
+- ArgyllCMS: `colprof`, `xicclu`/`icclu` and `cctiff`.
 - ExifTool: `exiftool`.
-- `c2pa-python` y su libreria nativa `c2pa_c.dll` para leer e incrustar
-  manifiestos C2PA cuando se exportan TIFFs finales.
+- `c2pa-python` and its native library `c2pa_c.dll` to read and embed
+  C2PA manifests when exporting final TIFFs.
 
-Tambien copia en `{app}\docs\` el manual de usuario, la metodologia RAW/ICC, la
-politica AMaZE, decisiones tecnicas, licencias y notas de release.
+Also copy the user manual, the RAW/ICC methodology, the
+AMaZE policy, technical decisions, licenses and release notes.
 
-El diagnostico se comprueba con:
-
+The diagnosis is verified with:
 ```powershell
 nexoraw check-tools --strict
 nexoraw check-c2pa
 ```
+## Preparation of the development environment
 
-## Preparacion del entorno de desarrollo
-
-Desde la raiz del repositorio:
-
+From the root of the repository:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev,gui,installer,c2pa]"
 ```
-
-Instalar Inno Setup 6 para generar el instalador:
-
+Install Inno Setup 6 to generate the installer:
 ```powershell
 winget install --id JRSoftware.InnoSetup -e
 ```
+## Local tests
 
-## Pruebas locales
-
-Pruebas Python y diagnostico no estricto:
-
+Python tests and non-strict diagnosis:
 ```powershell
 .\scripts\run_checks.ps1
 ```
-
-Pruebas con dependencias externas obligatorias:
-
+Testing with mandatory external dependencies:
 ```powershell
 .\scripts\run_checks.ps1 -StrictExternalTools
 ```
+On computers where `cctiff` is missing, the Python suite may pass with a test
+jumped, but `-StrictExternalTools` should fail. This failure is intentional to
+Avoid publishing a release without a working CMM.
 
-En equipos donde falta `cctiff`, la suite Python puede pasar con una prueba
-saltada, pero `-StrictExternalTools` debe fallar. Ese fallo es intencionado para
-evitar publicar una release sin CMM operativo.
+## Build application without installer
 
-## Build de aplicacion sin instalador
-
-Genera `dist\windows\NexoRAW\` con `nexoraw.exe` e `nexoraw-ui.exe`:
-
+Generate `dist\windows\NexoRAW\` with `nexoraw.exe` and `nexoraw-ui.exe`:
 ```powershell
 .\packaging\windows\build_installer.ps1 -NoInstaller
 ```
+## Installer Build
 
-## Build de instalador
-
-Genera la aplicacion y despues el instalador:
-
+Generate the application and then the installer:
 ```powershell
 .\packaging\windows\build_installer.ps1
 ```
-
-Artefacto esperado:
-
+Expected artifact:
 ```text
 dist\windows\installer\NexoRAW-<version>-Setup.exe
 ```
-
-Para una preparacion de release, ejecutar con herramientas externas estrictas:
-
+For release preparation, execute with strict external tools:
 ```powershell
 .\packaging\windows\build_installer.ps1 -StrictExternalTools
 ```
+The release build requires AMaZE by default. If `check-amaze` does not report
+`DEMOSAIC_PACK_GPL3=True`, the script fails before generating the installer.
 
-La build de release exige AMaZE por defecto. Si `check-amaze` no informa
-`DEMOSAIC_PACK_GPL3=True`, el script falla antes de generar el instalador.
+## Build with AMaZE
 
-## Build con AMaZE
+AMaZE requires a `rawpy` backend linked to LibRaw with
+`DEMOSAIC_PACK_GPL3=True`. The standard `rawpy` wheels do not include it.
 
-AMaZE requiere un backend `rawpy` enlazado a LibRaw con
-`DEMOSAIC_PACK_GPL3=True`. Los wheels estandar de `rawpy` no lo incluyen.
-
-Si PyPI ofrece una wheel compatible de `rawpy-demosaic` para el Python de
-empaquetado, la build la instala automaticamente:
-
+If PyPI offers a `rawpy-demosaic` compatible wheel for Python
+packaged, the build installs it automatically:
 ```powershell
 .\packaging\windows\build_installer.ps1 -Amaze -RequireAmaze
 ```
-
-Si PyPI no ofrece una wheel compatible, usar el workflow manual:
-
+If PyPI does not offer a compatible wheel, use the manual workflow:
 ```text
 Build rawpy-demosaic Windows wheel
 ```
-
-El artefacto descargado puede instalarse en el entorno local con:
-
+The downloaded artifact can be installed locally with:
 ```powershell
 $wheel = (Get-ChildItem -Recurse .\tmp\wheels -Filter "rawpy_demosaic-*.whl" | Select-Object -First 1).FullName
 .\scripts\install_amaze_backend.ps1 -Wheel $wheel
 .\.venv\Scripts\python.exe -m nexoraw check-amaze
 ```
-
-Para publicar un instalador que falle si AMaZE no queda activo:
-
+To publish an installer that fails if AMaZE is not active:
 ```powershell
 .\packaging\windows\build_installer.ps1 `
   -RawpyDemosaicWheel $wheel `
   -RequireAmaze
 ```
-
-El instalador copia metadatos de build y avisos de `rawpy-demosaic` en
+The installer copies build metadata and `rawpy-demosaic` warnings to
 `{app}\docs\third_party\rawpy-demosaic\`.
-El workflow de wheel usa por defecto el commit legacy `8b17075` de
-`rawpy-demosaic`, con LibRaw 0.18.7 y `DEMOSAIC_PACK_GPL3=True`; conservar el
-hash SHA256 de la wheel y los metadatos incluidos en el instalador forma parte
-de la trazabilidad de release.
+The wheel workflow uses by default the commit legacy `8b17075` of
+`rawpy-demosaic`, with LibRaw 0.18.7 and `DEMOSAIC_PACK_GPL3=True`; preserve the
+SHA256 hash of the wheel and the metadata included in the installer is part
+of release traceability.
 
-## Verificacion manual recomendada
+## Manual verification recommended
 
-En una maquina Windows limpia:
+On a clean Windows machine:
 
-1. Instalar el `.exe`.
-2. Abrir `NexoRAW` desde el menu inicio.
-3. Ejecutar `Diagnostico herramientas` desde el grupo de accesos directos.
-4. Confirmar:
+1. Install `.exe`.
+2. Open `NexoRAW` from the start menu.
+3. Run `Diagnostico herramientas` from the shortcut group.
+4. Confirm:
    - `nexoraw --version`,
    - `nexoraw check-tools --strict`,
    - `nexoraw check-c2pa`,
    - `nexoraw check-amaze`,
-   - `nexoraw-ui` arranca,
-   - sliders y curva tonal responden sin bloquear la ventana durante el
-     arrastre,
-   - una prueba de `detect-chart`/`sample-chart` con `testdata` funciona,
-   - una conversion `output_space=srgb` solo se aprueba si `cctiff` existe.
+   - `nexoraw-ui` starts,
+   - sliders and tone curve respond without blocking the window during play
+     drag,
+   - a test of `detect-chart`/`sample-chart` with `testdata` works,
+   - a `output_space=srgb` conversion is only approved if `cctiff` exists.
 
-Benchmark GUI automatizado recomendado antes de publicar:
-
+Recommended automated GUI benchmark before publishing:
 ```powershell
 $env:QT_QPA_PLATFORM="offscreen"
 .\.venv\Scripts\python.exe scripts\benchmark_gui_interaction.py `
@@ -160,22 +135,21 @@ $env:QT_QPA_PLATFORM="offscreen"
   --full-resolution `
   --out .\tmp\gui_benchmark\release_ui.json
 ```
+## Maintenance Notes
 
-## Notas de mantenimiento
-
-- La especificacion PyInstaller esta en `packaging/windows/iccraw.spec`.
-- La plantilla Inno Setup esta en `packaging/windows/iccraw.iss`.
-- El script `build_installer.ps1` instala los extras `dev`, `gui`,
-  `installer` y `c2pa` antes de empaquetar.
-- El instalador copia ArgyllCMS (`bin` y `ref`, incluyendo `sRGB.icm`) y ExifTool en
-  `{app}\tools\...` y la aplicacion los resuelve desde ahi antes
-  de consultar el `PATH` del sistema.
-- Para publicar un instalador con AMaZE, usar `-RequireAmaze`; la build debe
-  informar `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`.
-- Si el usuario no configura un certificado C2PA externo, NexoRAW crea una
-  identidad C2PA local y autoemitida bajo `%USERPROFILE%\.nexoraw\c2pa`.
-  Los lectores C2PA pueden marcarla como `signingCredential.untrusted`; eso es
-  esperado y significa que la firma no pertenece a una lista CAI central, no que
-  falte el vinculo RAW-TIFF de NexoRAW.
-- Los binarios generados quedan en `dist\windows\`; los temporales en
+- The PyInstaller specification is in `packaging/windows/iccraw.spec`.
+- The Inno Setup template is in `packaging/windows/iccraw.iss`.
+- The `build_installer.ps1` script installs the extras `dev`, `gui`,
+  `installer` and `c2pa` before packaging.
+- The installer copies ArgyllCMS (`bin` and `ref`, including `sRGB.icm`) and ExifTool into
+  `{app}\tools\...` and the application resolves them from there before
+  consult system `PATH`.
+- To publish an installer with AMaZE, use `-RequireAmaze`; the build must
+  report `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`.
+- If the user does not configure an external C2PA certificate, NexoRAW creates a
+  Local and self-issued C2PA identity under `%USERPROFILE%\.nexoraw\c2pa`.
+  C2PA readers can mark it as `signingCredential.untrusted`; that is
+  expected and means that the signature does not belong to a central CAI list, not that
+  The NexoRAW RAW-TIFF link is missing.
+- The generated binaries are in `dist\windows\`; the storms in
   `build\windows\`.

@@ -1,391 +1,386 @@
-# Manual de Usuario de NexoRAW
+_Spanish version: [MANUAL_USUARIO.es.md](MANUAL_USUARIO.es.md)_
 
-NexoRAW es una aplicacion gratuita y abierta para revelado RAW/TIFF con
-criterios reproducibles, gestion de color y trazabilidad. Esta pensado para
-fotografia tecnico-cientifica, documental, patrimonial y forense: el RAW
-original no se modifica nunca y cada TIFF final queda vinculado a sus ajustes,
-perfiles, hashes y artefactos de auditoria.
+# NexoRAW User Manual
 
-![Interfaz de calibracion y revelado de NexoRAW](assets/screenshots/nexoraw-calibrar-aplicar.png)
+NexoRAW is a free and open application for RAW/TIFF development with
+reproducible criteria, color management and traceability. It is intended for
+technical-scientific, documentary, heritage and forensic photography: the RAW
+original is never modified and each final TIFF is linked to its settings,
+profiles, hashes and audit artifacts.
 
-## 1. Instalacion y arranque
+![NexoRAW calibration and development interface](assets/screenshots/nexoraw-calibrar-aplicar.png)
 
-NexoRAW se instala mediante los instaladores publicados para cada plataforma.
-El usuario no debe instalar Python, dependencias ni herramientas externas a
-mano. El instalador deja disponibles:
+## 1. Installation and startup
 
-- la aplicacion grafica `NexoRAW`,
-- los comandos `nexoraw` y `nexoraw-ui` para usos avanzados,
-- el icono de aplicacion,
-- los componentes necesarios para revelar, perfilar, firmar y leer metadatos.
+NexoRAW is installed using the installers published for each platform.
+The user should not install Python, dependencies or external tools to
+hand. The installer makes available:
 
-En Linux, macOS y Windows, abre NexoRAW desde el menu de aplicaciones. En Linux
-debe aparecer en la categoria de graficos/fotografia.
+- the graphic application `NexoRAW`,
+- the `nexoraw` and `nexoraw-ui` commands for advanced uses,
+- the application icon,
+- the components necessary to reveal, profile, sign and read metadata.
 
-La documentacion de empaquetado y validacion de instaladores queda fuera de este
-manual de usuario y se mantiene en:
+On Linux, macOS and Windows, open NexoRAW from the applications menu. On Linux
+It should appear in the graphics/photography category.
 
-- [Publicacion de instaladores](RELEASE_INSTALLERS.md)
-- [Paquete Debian](DEBIAN_PACKAGE.md)
-- [Instalador Windows](WINDOWS_INSTALLER.md)
+The packaging and validation documentation for installers is left out of this
+user manual and kept in:
 
-## 2. Conceptos basicos
+- [Installer Publication](RELEASE_INSTALLERS.md)
+- [Debian Package](DEBIAN_PACKAGE.md)
+- [Windows Installer](WINDOWS_INSTALLER.md)
 
-### Sesion
+## 2. Basic concepts
 
-Una sesion es la carpeta de trabajo completa. Contiene RAW originales, ajustes,
-lecturas de carta, perfiles, recetas, derivados, cache y artefactos de
-auditoria.
+### Session
 
-Estructura del proyecto:
+A session is the entire work folder. Contains original RAW, adjustments,
+menu readings, profiles, recipes, derivatives, cache and artifacts
+audit.
 
-- `00_configuraciones/`: estado de sesion, recetas, reportes, perfiles de
-  ajuste, perfiles ICC, cache e intermedios. Tambien guarda datos o lecturas
-  personalizadas de cartas de color cuando existan.
-- `01_ORG/`: originales RAW y capturas de carta. Es el directorio de fuentes.
-- `02_DRV/`: derivados exportados, TIFF finales, previews y manifiestos.
+Project structure:
 
-### Perfil de revelado
+- `00_configuraciones/`: session status, recipes, reports, profiles
+  adjustment, ICC profiles, cache and intermediates. Also saves data or readings
+  customized color charts when they exist.
+- `01_ORG/`: RAW originals and card captures. It is the font directory.
+- `02_DRV/`: exported derivatives, final TIFFs, previews and manifests.
 
-Un perfil de ajuste es una receta parametrica asignada a un RAW concreto:
-balance, exposicion, temperatura, tono, nitidez, ruido y otros criterios que
-pueden copiarse despues a una o varias imagenes.
+### Development profile
 
-Puede nacer de dos formas:
+An adjustment profile is a parametric recipe assigned to a specific RAW:
+balance, exposure, temperature, tone, sharpness, noise and other criteria that
+They can then be copied to one or more images.
 
-- **Perfil avanzado**: nace de una imagen con carta de color. NexoRAW calcula
-  ajustes objetivos desde la carta y crea tambien un ICC de entrada propio de la
-  sesion. El RAW de carta queda marcado en azul.
-- **Perfil basico**: nace de los ajustes hechos por el usuario en los paneles de
-  revelado. El RAW queda marcado en verde.
+It can be born in two ways:
+- **Advanced profile**: born from an image with a color chart. NexoRAW calculates
+  objective adjustments from the chart and also creates an input ICC of the
+  session. The card RAW is marked in blue.
+- **Basic profile**: born from the settings made by the user in the control panels.
+  revealed. The RAW is marked in green.
 
-### Mochila NexoRAW
+### NexoRAW Backpack
 
-La mochila es el archivo `RAW.nexoraw.json` que queda junto al RAW. Guarda los
-ajustes asignados a esa imagen concreta, igual que los sidecars de otros
-reveladores RAW.
+The backpack is the `RAW.nexoraw.json` file that remains next to the RAW. Save the
+settings assigned to that specific image, just like other people's sidecars
+RAW developers.
 
-Las miniaturas indican el tipo de perfil asignado:
+The thumbnails indicate the type of profile assigned:
 
-- banda azul: RAW con perfil avanzado creado desde carta;
-- banda verde: RAW con perfil basico creado desde ajustes manuales.
+- blue band: RAW with advanced profile created from card;
+- green band: RAW with basic profile created from manual settings.
 
-### Metodologia de trabajo en NexoRAW 0.2
+### Working methodology in NexoRAW 0.2
 
-NexoRAW ya no trabaja con la idea de "calibrar una sesion completa" como una
-accion global que se aplica a todo sin distinguir archivos. El criterio de la
-version 0.2 es mas parecido al de los reveladores RAW consolidados: cada imagen
-puede tener un perfil de ajuste asignado, y ese perfil se guarda como edicion
-parametrica junto al RAW.
+NexoRAW no longer works with the idea of "calibrating an entire session" as a
+global action that applies to everything without distinguishing files. The criterion of the
+version 0.2 is more similar to that of the established RAW developers: each image
+can have a setting profile assigned, and that profile is saved as an edit
+parametric next to RAW.
 
-El flujo operativo es:
+The operating flow is:
 
-1. Crear o abrir una sesion de trabajo.
-2. Navegar los originales en `01_ORG/`.
-3. Elegir una imagen representativa.
-4. Ajustarla desde los paneles de la derecha.
-5. Guardar ese ajuste como perfil asignado a la imagen.
-6. Copiar ese perfil desde la miniatura.
-7. Pegar el perfil en otras imagenes tomadas bajo condiciones equivalentes.
-8. Enviar esas imagenes a la cola y exportarlas como TIFF en `02_DRV/`.
+1. Create or open a work session.
+2. Browse the originals at `01_ORG/`.
+3. Choose a representative image.
+4. Adjust it from the right panels.
+5. Save that setting as a profile assigned to the image.
+6. Copy that profile from the thumbnail.
+7. Paste the profile on other images taken under equivalent conditions.
+8. Send those images to the queue and export them as TIFF in `02_DRV/`.
 
-Cuando existe una carta de color, NexoRAW puede automatizar parte de ese ajuste:
-calcula un perfil avanzado desde la carta, genera un ICC de entrada propio de la
-sesion y marca la imagen de carta en azul. Cuando no existe carta, el usuario
-ajusta manualmente la imagen, guarda un perfil basico y la miniatura queda
-marcada en verde.
+When a color chart exists, NexoRAW can automate some of that adjustment:
+calculates an advanced profile from the chart, generates an input ICC of the
+session and mark the card image in blue. When there is no letter, the user
+manually adjust the image, save a basic profile and the thumbnail remains
+marked in green.
 
-La carta es la opcion recomendada porque aporta una referencia objetiva
-densitometrica y colorimetrica. No es obligatoria: la aplicacion tambien permite
-trabajar sin carta con un perfil basico y un ICC generico (`sRGB`, `Adobe RGB
-(1998)` o `ProPhoto RGB`), dejando claro en la trazabilidad que no se ha medido
-un perfil de entrada propio.
+The letter is the recommended option because it provides an objective reference
+densitometry and colorimetry. It is not mandatory: the application also allows
+work without a card with a basic profile and a generic ICC (`sRGB`, 'Adobe RGB
+(1998)` o `ProPhoto RGB`), making it clear in the traceability that it has not been measured
+your own input profile.Color rule:
 
-Regla de color:
+- with card: the master TIFF uses camera/session RGB and embeds the ICC of
+  input generated for that session;
+- without letter: the TIFF uses the generic ICC chosen as the output profile
+  declared;
+- the monitor profile only affects the on-screen display and never
+  modify TIFFs or manifests.
 
-- con carta: el TIFF maestro usa RGB de camara/sesion e incrusta el ICC de
-  entrada generado para esa sesion;
-- sin carta: el TIFF usa el ICC generico elegido como perfil de salida
-  declarado;
-- el perfil del monitor solo afecta a la visualizacion en pantalla y nunca
-  modifica los TIFF ni los manifiestos.
+## 3. Create or open a session
 
-## 3. Crear o abrir una sesion
+![Session Management](assets/screenshots/nexoraw-sesion.png)
 
-![Gestion de sesion](assets/screenshots/nexoraw-sesion.png)
+1. Open NexoRAW.
+2. In `1. Sesion`, choose the root directory of the session.
+3. Type a session name.
+4. Add, if applicable, lighting conditions and shooting notes.
+5. Press `Crear sesion` or `Abrir sesion`.
+6. Place the working RAWs and card captures in `01_ORG/`.
 
-1. Abre NexoRAW.
-2. En `1. Sesion`, elige el directorio raiz de la sesion.
-3. Escribe un nombre de sesion.
-4. Anade, si procede, condiciones de iluminacion y notas de toma.
-5. Pulsa `Crear sesion` o `Abrir sesion`.
-6. Coloca los RAW de trabajo y las capturas de carta en `01_ORG/`.
+This first tab only defines the workplace. Fit profiles
+They are managed later, in `2. Ajustar / Aplicar`, when they are already being reviewed
+images and settings.
 
-Esta primera pestaña solo define el lugar de trabajo. Los perfiles de ajuste
-se gestionan despues, en `2. Ajustar / Aplicar`, cuando ya se estan revisando
-imagenes y ajustes.
+If you open a project root from `Abrir carpeta...`, NexoRAW displays
+directly `01_ORG/` to browse the images. If you are within `01_ORG/`
+and press `Usar carpeta actual`, the application recognizes the root of the project
+complete.
 
-Si abres una raiz de proyecto desde `Abrir carpeta...`, NexoRAW muestra
-directamente `01_ORG/` para navegar las imagenes. Si estas dentro de `01_ORG/`
-y pulsas `Usar carpeta actual`, la aplicacion reconoce la raiz del proyecto
-completo.
-
-Al cambiar de proyecto, NexoRAW limpia la seleccion anterior, la cola visual y
-las rutas persistidas que no pertenecen a la nueva raiz. Las sesiones antiguas
-que todavia tengan carpetas `raw/`, `charts/`, `exports/`, `profiles/`,
-`config/` o `work/` se abren sin conversion destructiva; cuando es posible, una
-ruta heredada como `raw/captura.NEF` se resuelve automaticamente contra
+When changing projects, NexoRAW clears the previous selection, the visual queue and
+the persisted routes that do not belong to the new root. The old sessions
+that still have folders `raw/`, `charts/`, `exports/`, `profiles/`,
+`config/` or `work/` are opened without destructive conversion; when possible, a
+inherited path like `raw/captura.NEF` automatically resolves against
 `01_ORG/captura.NEF`.
 
-## 4. Flujo recomendado: con carta de color
+## 4. Recommended flow: with color chart
 
-Este es el flujo preferente cuando se busca la mayor objetividad colorimetrica.
-La carta permite crear dos artefactos relacionados:
+This is the preferred flow when seeking the greatest colorimetric objectivity.
+The card allows you to create two related artifacts:
 
-- un perfil avanzado de ajuste, asignado a los RAW de carta;
-- un perfil ICC de entrada propio del proyecto.
+- an advanced adjustment profile, assigned to card RAWs;
+- a project-specific input ICC profile.
 
-![Flujo con carta de color](assets/screenshots/nexoraw-flujo-con-carta.png)
+![Flow with color chart](assets/screenshots/nexoraw-flujo-con-carta.png)
 
-Pasos:
+Steps:
+1. Enter `2. Ajustar / Aplicar`.
+2. Navigate to the folder where the letter captures are.
+3. Select one or more letter captures.
+4. Press `Usar seleccion como referencias colorimetricas`.
+5. Check `Gestión de color y calibración` for the JSON reference, the type of
+   letter and ICC format. Adjusts the demosaic and base RAW criteria according to
+   `RAW Global` if necessary.
+6. If automatic detection fails, use `Marcar en visor`, indicate the four
+   corners and save the detection.
+7. Press `Generar perfil avanzado con carta`.
+8. Review the report, overlays and profile status.
 
-1. Entra en `2. Ajustar / Aplicar`.
-2. Navega hasta la carpeta donde estan las capturas de carta.
-3. Selecciona una o varias capturas de carta.
-4. Pulsa `Usar seleccion como referencias colorimetricas`.
-5. Revisa en `Gestión de color y calibración` la referencia JSON, el tipo de
-   carta y el formato ICC. Ajusta los criterios de demosaico y RAW base en
-   `RAW Global` si es necesario.
-6. Si la deteccion automatica falla, usa `Marcar en visor`, indica las cuatro
-   esquinas y guarda la deteccion.
-7. Pulsa `Generar perfil avanzado con carta`.
-8. Revisa el reporte, los overlays y el estado del perfil.
+Result:
 
-Resultado:
+- recipe calibrated in `00_configuraciones/`,
+- advanced profile adjustment in `00_configuraciones/development_profiles/`,
+- ICC project input in `00_configuraciones/profiles/`,
+- profile/QA and cache reports in `00_configuraciones/`.
+- `RAW.nexoraw.json` backpack on the card RAWs used to generate the profile.
 
-- receta calibrada en `00_configuraciones/`,
-- perfil avanzado de ajuste en `00_configuraciones/development_profiles/`,
-- ICC de entrada del proyecto en `00_configuraciones/profiles/`,
-- reportes de perfil/QA y cache en `00_configuraciones/`.
-- mochila `RAW.nexoraw.json` en los RAW de carta usados para generar el perfil.
+When there is a card, the TIFF master preserves camera RGB and embeds the
+Input ICC generated. Does not convert directly to sRGB, Adobe RGB or
+ProPhoto in that master, to avoid double conversions and preserve a
+more auditable artifact.
 
-Cuando hay carta, el TIFF maestro conserva RGB de camara e incrusta el
-ICC de entrada generado. No se convierte directamente a sRGB, Adobe RGB o
-ProPhoto en ese maestro, para evitar dobles conversiones y conservar un
-artefacto mas auditable.
+## 5. Alternative flow: no color chart
 
-## 5. Flujo alternativo: sin carta de color
+This flow is valid when there is no colorimetric reference. It's less
+objective than the flow with a letter, but it allows working in a parametric way and
+traceable.
 
-Este flujo es valido cuando no existe una referencia colorimetrica. Es menos
-objetivo que el flujo con carta, pero permite trabajar de forma parametrica y
-trazable.
+![Flow without color chart](assets/screenshots/nexoraw-flujo-sin-carta.png)
 
-![Flujo sin carta de color](assets/screenshots/nexoraw-flujo-sin-carta.png)
+Steps:
 
-Pasos:
-
-1. Selecciona una imagen representativa de la serie.
-2. Ajusta `Brillo y contraste`, `Color`, `Nitidez` y los parametros de
-   `RAW Global` necesarios.
-3. Abre `Gestión de color y calibración`.
-4. Escribe un nombre para el perfil.
-5. En `Espacio estandar sin carta`, elige el espacio real de salida:
+1. Select a representative image from the series.
+2. Adjust `Brillo y contraste`, `Color`, `Nitidez` and the parameters of
+   `RAW Global` required.
+3. Open `Gestión de color y calibración`.
+4. Enter a name for the profile.
+5. In `Espacio estandar sin carta`, choose the output real estate:
    - `sRGB estandar`,
    - `Adobe RGB (1998) estandar`,
    - `ProPhoto RGB estandar`.
-6. Pulsa `Guardar perfil básico`.
-7. Pulsa `Guardar perfil basico en imagen` para escribir la mochila junto al RAW.
+6. Press `Guardar perfil básico`.
+7. Press `Guardar perfil basico en imagen` to write the backpack next to the RAW.
 
-Resultado:
+Result:
 
-- perfil manual en `00_configuraciones/development_profiles/`,
-- ICC estandar copiado desde el sistema o ArgyllCMS en `00_configuraciones/profiles/standard/`,
-- mochila `RAW.nexoraw.json` con `generic_output_icc`,
-- TIFF final en `02_DRV/` revelado en ese espacio e ICC estandar incrustado.
+- manual profile in `00_configuraciones/development_profiles/`,
+- Standard ICC copied from system or ArgyllCMS in `00_configuraciones/profiles/standard/`,
+- backpack `RAW.nexoraw.json` with `generic_output_icc`,
+- Final TIFF in `02_DRV/` revealed in that space and embedded standard ICC.
 
-Usa este flujo cuando no hay carta. Si mas adelante se incorpora una carta
-valida para esa misma condicion de captura, conviene generar un perfil avanzado
-con carta y usarlo como referencia principal.
+Use this flow when there is no card. If a letter is added later
+valid for that same capture condition, it is advisable to generate an advanced profile
+with letter and use it as the main reference.
 
-## 6. Copiar y pegar perfiles de ajuste entre imagenes
+## 6. Copy and paste adjustment profiles between images
+NexoRAW treats RAW development as parametric editing. The practical way of
+reusing settings is to copy the profile assigned to a thumbnail and paste it into
+others. It can be an advanced letter profile or a basic manual profile.
 
-NexoRAW trata el revelado RAW como edicion parametrica. La forma practica de
-reutilizar ajustes es copiar el perfil asignado a una miniatura y pegarlo en
-otras. Puede ser un perfil avanzado de carta o un perfil basico manual.
+![Backpacks and settings copy](assets/screenshots/nexoraw-mochila-ajustes.png)
 
-![Mochilas y copia de ajustes](assets/screenshots/nexoraw-mochila-ajustes.png)
+Steps:
 
-Pasos:
+1. Select the image that contains the correct profile.
+2. Press `Guardar perfil basico en imagen` if it is a manual setting that has not yet been
+   He has a backpack.
+3. Press `Copiar perfil de ajuste`.
+4. Select one or more destination images.
+5. Press `Pegar perfil de ajuste`.
+6. Check that the target thumbnails retain the color of the profile type:
+   blue for advanced, green for basic.
 
-1. Selecciona la imagen que contiene el perfil correcto.
-2. Pulsa `Guardar perfil basico en imagen` si es un ajuste manual que aun no
-   tiene mochila.
-3. Pulsa `Copiar perfil de ajuste`.
-4. Selecciona una o varias imagenes de destino.
-5. Pulsa `Pegar perfil de ajuste`.
-6. Revisa que las miniaturas de destino conservan el color del tipo de perfil:
-   azul para avanzado, verde para basico.
+You can also use the thumbnail context menu to save, copy or
+glue adjustment profiles.
 
-Tambien puedes usar el menu contextual de la miniatura para guardar, copiar o
-pegar perfiles de ajuste.
+## 7. Export final TIFF and development queue
 
-## 7. Exportar TIFF finales y cola de revelado
+The queue allows you to process a selection or a complete batch without losing which profile
+development corresponds to each file.
 
-La cola permite procesar una seleccion o un lote completo sin perder que perfil
-de revelado corresponde a cada archivo.
+![Development queue](assets/screenshots/nexoraw-cola-revelado.png)
 
-![Cola de revelado](assets/screenshots/nexoraw-cola-revelado.png)
+Steps:
 
-Pasos:
+1. Select one or more images.
+2. Press `Anadir seleccion a cola`.
+3. If applicable, activate a development profile and press `Asignar perfil activo`.
+4. Check the column `Perfil` in the table.
+5. Press `Revelar cola`.
+6. Check the execution monitor and the log.
 
-1. Selecciona una o varias imagenes.
-2. Pulsa `Anadir seleccion a cola`.
-3. Si procede, activa un perfil de revelado y pulsa `Asignar perfil activo`.
-4. Revisa en la tabla la columna `Perfil`.
-5. Pulsa `Revelar cola`.
-6. Revisa el monitor de ejecucion y el log.
-
-Cada TIFF final puede generar:
+Each final TIFF can generate:
 
 - TIFF 16-bit final;
-- TIFF lineal de auditoria en `_linear_audit/`;
+- Linear audit TIFF in `_linear_audit/`;
 - sidecar `*.nexoraw.proof.json`;
-- mochila `RAW.nexoraw.json`;
+- backpack `RAW.nexoraw.json`;
 - `batch_manifest.json`;
-- metadatos C2PA si estan configurados.
+- C2PA metadata if configured.
 
-Si el TIFF de salida ya existe, NexoRAW crea una version nueva:
+If the output TIFF already exists, NexoRAW creates a new version:
 `captura.tiff`, `captura_v002.tiff`, `captura_v003.tiff`, etc.
 
-## 8. Ajustes de imagen
+## 8. Image settings
 
-### Brillo y contraste
+### Brightness and contrast
 
-Incluye brillo, niveles, contraste, curva de medios y curva tonal avanzada.
+Includes Brightness, Levels, Contrast, Mid Curve and Advanced Tone Curve.
 
 ### Color
 
-Incluye iluminante final, temperatura, matiz y cuentagotas neutro. El
-cuentagotas ayuda a estimar una correccion de temperatura/matiz desde una zona
+Includes final illuminant, temperature, tint and neutral dropper. The
+dropper helps estimate a temperature/hue correction from a zone
 neutral.
 
-### Nitidez
+### Sharpness
 
-Incluye nitidez, radio, reduccion de ruido de luminancia/color y correccion de
-aberracion cromatica lateral. Estos ajustes se aplican al preview y al render
-final cuando `Aplicar ajustes basicos y de nitidez` esta activo.
+Includes sharpening, radius, luminance/color noise reduction and image correction.
+lateral chromatic aberration. These settings apply to the preview and render
+end when `Aplicar ajustes basicos y de nitidez` is active.
 
-### Gestión de color y calibración
+### Color management and calibration
+Groups adjustment profiles by file, advanced profile generation with
+letter and the active ICC. In letter flow, the active ICC is the input ICC
+generated for those RAW and must correspond to the same recipe, camera, optics and
+lighting.
 
-Agrupa los perfiles de ajuste por archivo, la generacion de perfil avanzado con
-carta y el ICC activo. En el flujo con carta, el ICC activo es el ICC de entrada
-generado para esos RAW y debe corresponder a la misma receta, camara, optica e
-iluminacion.
+### Global RAW
 
-### RAW Global
+Groups the basic parameters of RAW development: engine, demosaic, image balance
+RAW whites, black levels, base exposure, RAW curve and workspaces.
 
-Agrupa los parametros base del revelado RAW: motor, demosaico, balance de
-blancos RAW, niveles negros, exposicion base, curva RAW y espacios de trabajo.
+## 9. Metadata, Proof and traceability
 
-## 9. Metadatos, Proof y trazabilidad
+The `Metadatos` vertical tab allows you to review the selected file.
 
-La pestaña vertical `Metadatos` permite revisar el archivo seleccionado.
+![Metadata Viewer](assets/screenshots/nexoraw-metadatos.png)
 
-![Visor de metadatos](assets/screenshots/nexoraw-metadatos.png)
+Sample:
 
-Muestra:
-
-- resumen tecnico,
-- EXIF y datos de fabricante,
-- GPS si existe,
-- informacion C2PA,
+- technical summary,
+- EXIF and manufacturer data,
+- GPS if it exists,
+- C2PA information,
 - NexoRAW Proof,
-- JSON completo disponible.
+- Full JSON available.
 
-NexoRAW Proof es la firma autonoma obligatoria del proyecto. Vincula RAW, TIFF,
-receta, perfil, ajustes, hashes y clave publica del firmante. C2PA/CAI es una
-capa interoperable opcional.
+NexoRAW Proof is the mandatory standalone signature for the project. Links RAW, TIFF,
+recipe, profile, settings, hashes and public key of the signer. C2PA/CAI is a
+optional interoperable layer.
 
-## 10. Gestion de color del monitor
+## 10. Monitor Color Management
 
-Las opciones globales estan en `Configuracion > Configuracion global...`.
+The global options are in `Configuracion > Configuracion global...`.
 
-![Configuracion global](assets/screenshots/nexoraw-configuracion-global.png)
+![Global Settings](assets/screenshots/nexoraw-configuracion-global.png)
 
-En `Preview / monitor`, NexoRAW usa por defecto el perfil ICC configurado en el
-sistema operativo:
+In `Preview / monitor`, NexoRAW uses by default the ICC profile configured in the
+operating system:
 
-- ColorSync en macOS,
-- `colord` o `_ICC_PROFILE` en Linux/BSD,
-- WCS/ICM en Windows.
+- ColorSync on macOS,
+- `colord` or `_ICC_PROFILE` on Linux/BSD,
+- WCS/ICM on Windows.
 
-Si el sistema no expone ningun perfil, NexoRAW usa sRGB como fallback. Esta
-gestion solo afecta a la visualizacion en pantalla y miniaturas; no modifica
-TIFFs, hashes, perfiles de sesion ni manifiestos.
+If the system does not expose any profiles, NexoRAW uses sRGB as a fallback. This
+management only affects the screen display and thumbnails; does not modify
+TIFFs, hashes, session profiles or manifests.
 
-## 11. Rendimiento y cache
+## 11. Performance and cache
 
-NexoRAW separa navegacion, preview de trabajo y render final:
+NexoRAW separates navigation, work preview and final render:
 
-- la navegacion usa una tira horizontal de miniaturas con tamaño ajustable;
-- los RAW usan primero su miniatura embebida y, si no existe, un revelado
-  rapido cacheado para no mostrar solo un icono generico;
-- la revision critica puede hacerse con preview de alta calidad;
-- el render final se ejecuta con el pipeline auditado.
+- navigation uses a horizontal strip of thumbnails with adjustable size;
+- RAW files first use their embedded thumbnail and, if it does not exist, a reveal
+  fast caching to not show just a generic icon;
+- critical review can be done with high quality preview;
+- the final render is executed with the audited pipeline.
 
-La sesion guarda cache persistente en `00_configuraciones/cache/`. Si se
-comparte la carpeta completa de sesion con otro usuario, esa cache puede
-acelerar la apertura de la misma estructura de archivos.
+The session saves persistent cache in `00_configuraciones/cache/`. If
+share the entire session folder with another user, that cache can
+speed up the opening of the same file structure.
 
-Buenas practicas:
+Good practices:
+- use automatic preview to navigate; NexoRAW low resolution only during
+  interaction when necessary to maintain fluency;
+- activate compare/precision 1:1 when checking sharpness or color at real pixel;
+- activate `use_cache: true` in work recipes if you are going to repeat settings on
+  the same RAWs and you want to reuse the numerical demosaic;
+- do not regenerate profiles if you only change final settings;
+- save backpacks before copying settings to other images;
+- works within the session structure so that relative paths, cache and
+  sidecars remain transportable.
 
-- usa preview automatica para navegar; NexoRAW baja resolucion solo durante la
-  interaccion cuando es necesario para mantener fluidez;
-- activa comparar/precision 1:1 cuando revises nitidez o color a pixel real;
-- activa `use_cache: true` en recetas de trabajo si vas a repetir ajustes sobre
-  los mismos RAWs y quieres reutilizar el demosaico numerico;
-- no regeneres perfiles si solo cambias ajustes finales;
-- guarda mochilas antes de copiar ajustes a otras imagenes;
-- trabaja dentro de la estructura de sesion para que rutas relativas, cache y
-  sidecars sigan siendo transportables.
+## 12. Common problems
 
-## 12. Problemas frecuentes
+### I don't see AMaZE available
 
-### No veo AMaZE disponible
+AMaZE only appears if the installer includes the corresponding GPL3 backend. Yes
+is not available, NexoRAW uses a supported algorithm like DCB and registers it in
+the recipe.
 
-AMaZE solo aparece si el instalador incluye el backend GPL3 correspondiente. Si
-no esta disponible, NexoRAW usa un algoritmo soportado como DCB y lo registra en
-la receta.
+### Card detection fails
 
-### La deteccion de carta falla
+Use a capture with the complete card, without reflections and with unsaturated patches.
+If automatic detection fails, use `Marcar en visor` and save the four
+corners manually.
 
-Usa una captura con la carta completa, sin reflejos y con parches no saturados.
-Si falla la deteccion automatica, usa `Marcar en visor` y guarda las cuatro
-esquinas manualmente.
+### Profile produces dominant or clipping
 
-### El perfil produce dominante o clipping
+Check that the letter, the JSON reference and the recipe correspond to the same
+capture condition. Check that a derived TIFF has not been used as a letter and
+that the profile is not rejected by QA.
 
-Comprueba que la carta, la referencia JSON y la receta corresponden a la misma
-condicion de captura. Revisa que no se haya usado un TIFF derivado como carta y
-que el perfil no este rechazado por QA.
+### There is no color chart
 
-### No hay carta de color
+Use cardless flow: manual profile + actual output standard RGB space. It is
+functional and traceable, but does not replace the precision of a reference
+real colorimetry.
 
-Usa el flujo sin carta: perfil manual + espacio RGB estandar real de salida. Es
-funcional y trazable, pero no sustituye la precision de una referencia
-colorimetrica real.
+### The image already had a TIFF exported
 
-### La imagen ya tenia un TIFF exportado
-
-NexoRAW no sobrescribe salidas existentes. Crea una nueva version con sufijo
+NexoRAW does not overwrite existing outputs. Create a new version with suffix
 `_v002`, `_v003`, etc.
 
-## 13. Documentacion relacionada
+## 13. Related documentation
 
-- [Metodologia de revelado RAW y gestion ICC](METODOLOGIA_COLOR_RAW.md)
+- [RAW development methodology and ICC management] (METODOLOGIA_COLOR_RAW.md)
 - [NexoRAW Proof](NEXORAW_PROOF.md)
 - [C2PA/CAI](C2PA_CAI.md)
-- [Integracion LibRaw + ArgyllCMS](INTEGRACION_LIBRAW_ARGYLL.md)
-- [Publicacion de instaladores](RELEASE_INSTALLERS.md)
-- [Licencias de terceros](THIRD_PARTY_LICENSES.md)
+- [LibRaw + ArgyllCMS Integration](INTEGRACION_LIBRAW_ARGYLL.md)
+- [Installer Publication](RELEASE_INSTALLERS.md)
+- [Third Party Licenses](THIRD_PARTY_LICENSES.md)
 - [Changelog](../CHANGELOG.md)

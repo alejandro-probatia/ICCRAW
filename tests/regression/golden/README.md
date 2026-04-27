@@ -1,15 +1,16 @@
+_Spanish version: [README.es.md](README.es.md)_
+
 # Golden hashes
 
-Estos casos fijan hashes SHA-256 del TIFF canonico y del TIFF lineal de
-auditoria para detectar cambios accidentales en la salida reproducible.
+These cases set SHA-256 hashes of the canonical TIFF and the linear TIFF of
+audit to detect accidental changes in reproducible output.
 
-Los inputs actuales usan TIFFs sinteticos versionados en `testdata/` para que
-el test sea ligero y no dependa de RAW propietarios pesados. Las recetas tienen
-`use_cache: false` para validar siempre el path de calculo, no un artefacto
-cacheado.
+The current inputs use synthetic TIFFs versioned in `testdata/` so that
+The test is lightweight and does not depend on heavy proprietary RAW. The recipes have
+`use_cache: false` to always validate the calculation path, not an artifact
+searched
 
-Para regenerar hashes tras un cambio intencional de motor numerico:
-
+To regenerate hashes after an intentional change of number engine:
 ```powershell
 python scripts/regenerate_golden_hashes.py --confirm
 ```

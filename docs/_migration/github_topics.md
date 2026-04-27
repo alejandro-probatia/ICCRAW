@@ -1,10 +1,11 @@
-﻿# Topics propuestos para GitHub
+_Spanish version: [github_topics.es.md](github_topics.es.md)_
 
-Aplicar topics mejora descubrimiento en buscadores de GitHub y encaje en
-comunidades de fotografia cientifica, forense y colorimetria.
+# Topics proposed for GitHub
 
-## Comando listo para ejecutar
+Applying topics improves discovery in GitHub search engines and fits into
+scientific, forensic and colorimetry photography communities.
 
+## Command ready to execute
 ```bash
 gh repo edit alejandro-probatia/NexoRAW \
   --add-topic raw-processing \
@@ -23,21 +24,20 @@ gh repo edit alejandro-probatia/NexoRAW \
   --add-topic c2pa \
   --add-topic agpl
 ```
+## Justification per topic
 
-## Justificacion por topic
-
-- `raw-processing`: describe el nucleo tecnico del proyecto.
-- `color-management`: posiciona NexoRAW en gestion de color.
-- `icc-profile`: facilita descubrimiento por comunidades ICC/Argyll.
-- `forensic-photography`: conecta con uso forense documental.
-- `colorimetry`: atrae revisores y usuarios de metrologia del color.
-- `argyllcms`: visibiliza la dependencia critica de perfilado CMM.
-- `libraw`: indexa el backend RAW real usado por el pipeline.
-- `colorchecker`: vincula el flujo de cartas de color operativas.
-- `digital-forensics`: mejora hallazgo por equipos periciales digitales.
-- `reproducible-research`: enfatiza reproducibilidad cientifica verificable.
-- `scientific-imaging`: alinea con fotografia tecnico-cientifica.
-- `cultural-heritage`: habilita descubrimiento en conservacion patrimonial.
-- `conservation`: conecta con laboratorios de conservacion y restauracion.
-- `c2pa`: identifica soporte de manifiestos y procedencia.
-- `agpl`: deja clara la familia de licencia del repositorio.
+- `raw-processing`: describes the technical core of the project.
+- `color-management`: positions NexoRAW in color management.
+- `icc-profile`: facilitates discovery by ICC/Argyll communities.
+- `forensic-photography`: connects with documentary forensic use.
+- `colorimetry`: attracts color metrology reviewers and users.
+- `argyllcms`: makes the critical dependency of CMM profiling visible.
+- `libraw`: indexes the actual RAW backend used by the pipeline.
+- `colorchecker`: Link the flow of operational color cards.
+- `digital-forensics`: improved discovery by digital expert teams.
+- `reproducible-research`: emphasizes verifiable scientific reproducibility.
+- `scientific-imaging`: aligns with technical-scientific photography.
+- `cultural-heritage`: enables discovery in heritage conservation.
+- `conservation`: connects with conservation and restoration laboratories.
+- `c2pa`: identifies manifest support and provenance.
+- `agpl`: Make the license family of the repository clear.

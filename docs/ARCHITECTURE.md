@@ -1,24 +1,25 @@
+_Spanish version: [ARCHITECTURE.es.md](ARCHITECTURE.es.md)_
+
 # Architecture
 
-## Objetivo
+## Objective
 
-Pipeline científico reproducible:
+Reproducible scientific pipeline:
 
 `RAW -> ajuste parametrico por archivo -> mochila -> perfil avanzado con carta o perfil basico manual -> ICC de entrada o ICC generico -> cola -> TIFF 16-bit -> proof/manifiesto`
 
-El flujo con carta mantiene la cadena tecnica completa:
+The letter flow maintains the complete technical chain:
 
 `RAW carta -> develop base -> detect-chart -> sample-chart -> perfil de ajuste avanzado -> receta calibrada -> sample-chart calibrado -> build-profile ICC -> asignar perfil al RAW -> copiar/pegar a RAW equivalentes -> batch-develop`
 
-Gobernanza y licencia:
+Governance and licensing:
 
-- proyecto mantenido por la comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
-- licencia del repositorio: `AGPL-3.0-or-later`.
+- project maintained by the community of the **Spanish Association of Scientific and Forensic Image**.
+- repository license: `AGPL-3.0-or-later`.
 
-## Layout del paquete
+## Package layout
 
-El código vive en `src/iccraw/`, organizado por dominio para permitir crecer sin archivos flat de tamaño desbordante:
-
+The code lives in `src/iccraw/`, organized by domain to allow it to grow without oversized flat files:
 ```text
 src/iccraw/
   __init__.py, __main__.py, version.py
@@ -51,11 +52,9 @@ src/iccraw/
     generic.py                 # perfiles ICC genericos para flujos sin carta
     export.py                  # batch_develop + export ICC/CMM + matriz diagnostica
 ```
+## Project structure
 
-## Estructura de proyecto
-
-Una sesion NexoRAW 0.2 usa tres carpetas principales:
-
+A NexoRAW 0.2 session uses three main folders:
 ```text
 proyecto/
   00_configuraciones/          # session.json, perfiles, ICC, reportes, cache
@@ -63,67 +62,64 @@ proyecto/
   01_ORG/                      # originales RAW y cartas
   02_DRV/                      # TIFF, previews, manifiestos y proof
 ```
+Sessions inherited with `charts/`, `raw/`, `profiles/`, `exports/`,
+`config/` and `work/` are opened for compatibility. GUI resolves old routes
+such as `raw/captura.NEF` versus `01_ORG/captura.NEF` when the file exists.
 
-Las sesiones heredadas con `charts/`, `raw/`, `profiles/`, `exports/`,
-`config/` y `work/` se abren por compatibilidad. La GUI resuelve rutas antiguas
-como `raw/captura.NEF` contra `01_ORG/captura.NEF` cuando existe el archivo.
+## Dependency rules
 
-## Reglas de dependencia
+- `core/` does not matter from the rest of the package.
+- `raw/` and `chart/` depend only on `core/`.
+- `profile/` depends on `core/` and `raw/`.
+- `workflow.py`, `cli.py`, `gui.py` orchestrate — can import from any subpackage, never the other way around.
+- `session.py` and `reporting.py` are standalone.
 
-- `core/` no importa del resto del paquete.
-- `raw/` y `chart/` dependen sólo de `core/`.
-- `profile/` depende de `core/` y `raw/`.
-- `workflow.py`, `cli.py`, `gui.py` orquestan — pueden importar de cualquier subpaquete, nunca al revés.
-- `session.py` y `reporting.py` son standalone.
+## ICC Profile
 
-## Perfil ICC
+- Single motor: `ArgyllCMS (colprof)`.
+- `.profile.json` sidecar with matrix, recipe and metrics is always saved for reproducibility.
+- If there is a letter, the ICC is treated as a session entry profile and is embedded
+  in the master TIFF without converting to generic space.
+- If there is no card, NexoRAW reveals the RAW in a real standard RGB space
+  (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`), copy/embed the standard ICC
+  from the system or ArgyllCMS and declares it as `generic_output_icc`.
 
-- Motor único: `ArgyllCMS (colprof)`.
-- Siempre se guarda sidecar `.profile.json` con matriz, recipe y métricas para reproducibilidad.
-- Si hay carta, el ICC se trata como perfil de entrada de sesion y se incrusta
-  en el TIFF maestro sin convertir a un espacio generico.
-- Si no hay carta, NexoRAW revela el RAW en un espacio RGB estandar real
-  (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`), copia/incrusta el ICC estandar
-  del sistema o de ArgyllCMS y lo declara como `generic_output_icc`.
+## Fit profiles
 
-## Perfiles de ajuste
+- The advanced profile is based on a color chart, is marked in blue and can be
+  carry associated session input ICC.
+- The basic profile comes from manual settings, is marked in green and can use
+  Generic CCI.
+- Both are assigned to specific RAWs via backpacks and can be copied/pasted
+  between miniatures.
 
-- El perfil avanzado nace de carta de color, queda marcado en azul y puede
-  llevar ICC de entrada de sesion asociado.
-- El perfil basico nace de ajustes manuales, queda marcado en verde y puede usar
-  ICC generico.
-- Ambos se asignan a RAW concretos mediante mochilas y se pueden copiar/pegar
-  entre miniaturas.
+## Reproducibility
 
-## Reproducibilidad
+It registers:
 
-Se registra:
-
-- versión software,
-- commit hash (si aplica),
-- recipe exacta,
-- metadatos RAW,
-- detección de carta,
-- muestras por parche,
+- software version,
+- commit hash (if applicable),
+- exact recipe,
+- RAW metadata,
+- letter detection,
+- samples per patch,
 - DeltaE 76/2000,
-- hashes de entradas/salidas,
-- manifiesto de lote.
+- input/output hashes,
+- batch manifest.
 
-## Rendimiento y cache
-
-- `batch-develop` y la fase batch de `auto-profile-batch` paralelizan a nivel
-  de imagen con procesos cuando `workers > 1`. El manifiesto se ordena por el
-  plan de entrada, no por orden de finalizacion.
-- La cache de demosaico RAW es opt-in (`use_cache: true` en receta o control
-  equivalente) y guarda arrays `.npy` en `00_configuraciones/cache/demosaic/`
-  cuando se puede inferir la sesion. El modo canonico de regresion usa
+## Performance and cache- `batch-develop` and the batch phase of `auto-profile-batch` parallelize at the
+  image with processes when `workers > 1`. The manifesto is ordered by
+  entry plan, not in order of completion.
+- The RAW demo cache is opt-in (`use_cache: true` in recipe or control
+  equivalent) and save `.npy` arrays to `00_configuraciones/cache/demosaic/`
+  when the session can be inferred. The canonical regression mode uses
   `use_cache: false`.
-- La clave de cache incluye nombre, tamano, SHA-256 completo del RAW,
-  parametros LibRaw que afectan al demosaico/WB/negro y firma del backend
-  rawpy/LibRaw. Cambiar algoritmo de demosaico invalida la entrada.
-- La cache aplica poda LRU por tamano maximo. Por defecto usa 5 GiB,
-  configurable con `NEXORAW_DEMOSAIC_CACHE_MAX_GB`.
+- The cache key includes name, size, full RAW SHA-256,
+  LibRaw parameters affecting demosaic/WB/black and backend signature
+  rawpy/LibRaw. Changing demosaic algorithm invalidates the entry.
+- The cache applies LRU pruning by maximum size. By default it uses 5 GiB,
+  configurable with `NEXORAW_DEMOSAIC_CACHE_MAX_GB`.
 
-## Principio clave
+## Key principle
 
-El perfil es condicional (cámara + óptica + iluminante + recipe + versión). No se considera universal.
+The profile is conditional (camera + optics + illuminant + recipe + version). It is not considered universal.

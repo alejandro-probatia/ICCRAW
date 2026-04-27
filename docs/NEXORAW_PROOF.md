@@ -1,136 +1,126 @@
+_Spanish version: [NEXORAW_PROOF.es.md](NEXORAW_PROOF.es.md)_
+
 # NexoRAW Proof
 
-NexoRAW Proof es la capa de firma autonoma de NexoRAW. Su objetivo es evitar
-que la validez probatoria dependa exclusivamente de C2PA o de una lista central
-de autoridades admitidas.
+NexoRAW Proof is the self-contained signature layer of NexoRAW. Its objective is to avoid
+that evidentiary validity depends exclusively on C2PA or a central list
+of admitted authorities.
 
-No implementa criptografia propia. Usa criptografia estandar:
+It does not implement its own cryptography. Use standard cryptography:
 
-- SHA-256 para identificar bytes exactos.
-- Ed25519 para firma digital asimetrica.
-- JSON canonico con claves ordenadas para calcular y verificar la firma.
+- SHA-256 to identify exact bytes.
+- Ed25519 for asymmetric digital signature.
+- Canonical JSON with ordered keys to calculate and verify the signature.
 
-## Modelo de confianza
+## Trust model
 
-NexoRAW Proof no decide quien es una autoridad. Firma el manifiesto con la clave
-privada del perito, laboratorio o institucion. La confianza se establece
-publicando y custodiando la clave publica:
+NexoRAW Proof does not decide who is an authority. Sign the manifest with the password
+private of the expert, laboratory or institution. Trust is established
+publishing and storing the public key:
 
-- en un informe pericial;
-- en una web institucional;
-- en un repositorio publico;
-- mediante acta o registro externo;
-- mediante firma cruzada por otra entidad.
+- in an expert report;
+- on an institutional website;
+- in a public repository;
+- by external record or record;
+- through cross-signature by another entity.
 
-Un tercero puede verificar que:
+A third party can verify that:
 
-1. el sidecar fue firmado por la clave privada correspondiente;
-2. la clave publica coincide con la huella declarada;
-3. el RAW aportado coincide con el SHA-256 firmado;
-4. el TIFF final coincide con el SHA-256 firmado;
-5. la receta, perfil ICC y ajustes declarados son los contenidos en el proof.
+1. the sidecar was signed by the corresponding private key;
+2. the public key matches the declared fingerprint;
+3. the contributed RAW matches the signed SHA-256;
+4. the final TIFF matches the signed SHA-256;
+5. The recipe, ICC profile and declared settings are those contained in the proof.
 
-## Relacion con C2PA
+## Relationship with C2PA
 
-C2PA sigue siendo compatible, pero no es obligatorio para que un TIFF de NexoRAW
-tenga trazabilidad criptografica. La politica queda asi:
+C2PA is still supported, but is not required for a NexoRAW TIFF.
+have cryptographic traceability. The policy is like this:
 
-- NexoRAW Proof: capa autonoma obligatoria y generada automaticamente para TIFF final.
-- C2PA: capa interoperable; usa certificado externo si existe o identidad local
-  autoemitida si no existe.
-- `batch_manifest.json`: manifiesto externo de lote, se mantiene.
-- Auditoria lineal, hashes y perfiles ICC: se mantienen.
+- NexoRAW Proof: mandatory and automatically generated autonomous layer for final TIFF.
+- C2PA: interoperable layer; use external certificate if it exists or local identity
+  self-issued if it does not exist.
+- `batch_manifest.json`: external batch manifest, maintained.
+- Linear audit, hashes and ICC profiles: are maintained.
 
-Si C2PA puede incrustarse, NexoRAW lo escribe primero. Despues calcula el hash
-del TIFF ya firmado con C2PA y crea el sidecar NexoRAW Proof. Asi se evita
-firmar bytes que luego cambien. Si el lector C2PA informa
-`signingCredential.untrusted` con la identidad local, se interpreta como
-advertencia de confianza externa, no como perdida del vinculo RAW-TIFF.
+If C2PA can be embedded, NexoRAW writes it first. Then calculate the hash
+from the TIFF already signed with C2PA and creates the NexoRAW Proof sidecar. This is how it is avoided
+sign bytes that later change. If the C2PA reader reports
+`signingCredential.untrusted` with the local identity, is interpreted as
+external trust warning, not as loss of RAW-TIFF link.
 
-## Identidad local
+## Local identity
 
-En uso normal no hace falta ejecutar ningun comando: si no hay variables de
-entorno ni rutas configuradas, NexoRAW crea automaticamente la identidad Proof en
+In normal use it is not necessary to execute any command: if there are no variables
+environment or configured routes, NexoRAW automatically creates the Proof identity in
 `~/.nexoraw/proof`.
 
-Para generar o reemplazar manualmente una identidad:
-
+To manually generate or replace an identity:
 ```bash
 nexoraw proof-keygen \
   --private-key ~/.nexoraw/proof/nexoraw-proof-private.pem \
   --public-key ~/.nexoraw/proof/nexoraw-proof-public.pem
 ```
-
-Para cifrar la clave privada:
-
+To encrypt the private key:
 ```bash
 nexoraw proof-keygen \
   --private-key ~/.nexoraw/proof/nexoraw-proof-private.pem \
   --public-key ~/.nexoraw/proof/nexoraw-proof-public.pem \
   --passphrase "frase larga y privada"
 ```
+The private key should not be uploaded to the repository, sent by mail, or left
+no access control. The public key can be distributed.
 
-La clave privada no debe subirse al repositorio, enviarse por correo ni quedar
-sin control de acceso. La clave publica si puede distribuirse.
-
-## Exportar TIFF con NexoRAW Proof
-
+## Export TIFF with NexoRAW Proof
 ```bash
 nexoraw batch-develop ./raws \
   --recipe recipe_calibrated.yml \
   --profile camera_profile.icc \
   --out ./tiffs
 ```
-
-Tambien puede configurarse por entorno:
-
+It can also be configured by environment:
 ```bash
 export NEXORAW_PROOF_KEY=~/.nexoraw/proof/nexoraw-proof-private.pem
 export NEXORAW_PROOF_PUBLIC_KEY=~/.nexoraw/proof/nexoraw-proof-public.pem
 export NEXORAW_PROOF_SIGNER_NAME="Laboratorio / Perito"
 ```
-
-Cada TIFF final genera un sidecar:
-
+Each final TIFF generates a sidecar:
 ```text
 captura.tiff
 captura.tiff.nexoraw.proof.json
 ```
-
-## Verificar
-
+## Verify
 ```bash
 nexoraw verify-proof captura.tiff.nexoraw.proof.json \
   --tiff captura.tiff \
   --raw captura.NEF \
   --public-key nexoraw-proof-public.pem
 ```
+The check returns `status=ok` only if signature, public key, RAW, TIFF and
+Settings hash match. The settings hash is not the only record: it is used
+as an integrity check on a complete `render_settings` block that remains
+signed within the proof.
 
-La verificacion devuelve `status=ok` solo si firma, clave publica, RAW, TIFF y
-hash de ajustes coinciden. El hash de ajustes no es el unico registro: se usa
-como control de integridad sobre un bloque `render_settings` completo que queda
-firmado dentro del proof.
+## Signed content
 
-## Contenido firmado
+The sidecar includes and signs:
 
-El sidecar incluye y firma:
+- SHA-256 and size of the original RAW.
+- SHA-256 and final TIFF size.
+- base name, extension, MIME and non-probative auxiliary route;
+- available camera metadata;
+- NexoRAW version;
+- RAW backend and demosaicing algorithm;
+- full recipe and recipe hash;
+- used ICC profile and hash;
+- color management mode;
+- complete `render_settings` block: RAW recipe, detail/sharpness adjustments,
+  contrast/render settings, color management, RAW/color flow and color criteria
+  reproducibility;
+- summary of settings for quick reading, keeping the block complete for
+  experimental reproduction;
+- C2PA status if embedded;
+- public key and SHA-256 fingerprint of the signer.
 
-- SHA-256 y tamano del RAW original.
-- SHA-256 y tamano del TIFF final.
-- nombre base, extension, MIME y ruta auxiliar no probatoria;
-- metadatos de camara disponibles;
-- version de NexoRAW;
-- backend RAW y algoritmo de demosaicing;
-- receta completa y hash de receta;
-- perfil ICC usado y hash;
-- modo de gestion de color;
-- bloque `render_settings` completo: receta RAW, ajustes de detalle/nitidez,
-  ajustes de contraste/render, gestion de color, flujo RAW/color y criterios de
-  reproducibilidad;
-- resumen de ajustes para lectura rapida, manteniendo el bloque completo para
-  reproduccion experimental;
-- estado C2PA si se incrusto;
-- clave publica y huella SHA-256 del firmante.
-
-La ruta del RAW o TIFF nunca es el identificador probatorio principal. El
-identificador probatorio son los hashes de los bytes exactos.
+The RAW or TIFF path is never the primary evidentiary identifier. The
+evidentiary identifier are the hashes of the exact bytes.
