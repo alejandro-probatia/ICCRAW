@@ -479,11 +479,16 @@ if QtWidgets is not None:
                 self._histogram = None
                 self.update()
                 return
-            rgb = np.clip(np.asarray(image_linear_rgb, dtype=np.float32), 0.0, 1.0)
+            rgb = np.asarray(image_linear_rgb)
             if rgb.ndim != 3 or rgb.shape[2] < 3:
                 self._histogram = None
                 self.update()
                 return
+            count = int(rgb.shape[0]) * int(rgb.shape[1])
+            if count > VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS:
+                stride = int(np.ceil(np.sqrt(count / float(VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS))))
+                rgb = rgb[::max(1, stride), ::max(1, stride), :3]
+            rgb = np.clip(rgb.astype(np.float32, copy=False), 0.0, 1.0)
             weights = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
             luminance = np.sum(rgb[..., :3] * weights.reshape((1, 1, 3)), axis=2)
             hist, _ = np.histogram(luminance, bins=64, range=(0.0, 1.0))
@@ -685,20 +690,21 @@ if QtWidgets is not None:
             if rgb.ndim != 3 or rgb.shape[2] < 3:
                 self.clear()
                 return
-            rgb = np.ascontiguousarray(rgb[..., :3])
+            count = int(rgb.shape[0]) * int(rgb.shape[1])
+            if count > VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS:
+                stride = int(np.ceil(count / VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS))
+                rgb = rgb[::max(1, stride), ::max(1, stride), :3]
+            else:
+                rgb = rgb[..., :3]
             if rgb.dtype != np.uint8:
                 rgb = np.clip(np.round(rgb.astype(np.float32)), 0, 255).astype(np.uint8)
+            else:
+                rgb = np.ascontiguousarray(rgb)
 
             pixels = rgb.reshape((-1, 3))
             if pixels.size == 0:
                 self.clear()
                 return
-
-            count = int(pixels.shape[0])
-            if count > VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS:
-                stride = int(np.ceil(count / VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS))
-                pixels = pixels[::max(1, stride)]
-                count = int(pixels.shape[0])
 
             hist_r = np.bincount(pixels[:, 0], minlength=256).astype(np.float32)
             hist_g = np.bincount(pixels[:, 1], minlength=256).astype(np.float32)
@@ -1157,6 +1163,7 @@ if QtWidgets is not None:
                 bool,
                 bool,
                 int,
+                bool,
                 bool,
             ] | None = None
             self._interactive_preview_expected_key: str | None = None
@@ -3323,6 +3330,7 @@ if QtWidgets is not None:
                 lateral_ca_red_scale=lateral_ca_red_scale,
                 lateral_ca_blue_scale=lateral_ca_blue_scale,
             )
+            key = f"{key}|shape={tuple(np.asarray(image).shape)}"
             if self._detail_adjustment_cache_key == key and self._detail_adjusted_linear is not None:
                 return self._detail_adjusted_linear
 
@@ -7992,9 +8000,10 @@ if QtWidgets is not None:
                 bool,
                 int,
                 bool,
+                bool,
             ],
         ) -> None:
-            request_key, _source_key, _source_linear, _detail_kwargs, _render_kwargs, _compare_enabled, _bypass, _max_side_limit, _apply_detail = request
+            request_key, _source_key, _source_linear, _detail_kwargs, _render_kwargs, _compare_enabled, _bypass, _max_side_limit, _apply_detail, _include_analysis = request
             self._interactive_preview_expected_key = request_key
             if self._interactive_preview_task_active:
                 if self._interactive_preview_inflight_key == request_key:
@@ -8016,6 +8025,7 @@ if QtWidgets is not None:
                 bool,
                 int,
                 bool,
+                bool,
             ],
         ) -> None:
             (
@@ -8028,6 +8038,7 @@ if QtWidgets is not None:
                 bypass_display_profile,
                 max_side_limit,
                 apply_detail,
+                include_analysis,
             ) = request
 
             def task():
@@ -8051,13 +8062,15 @@ if QtWidgets is not None:
                     detail_adjusted = source
                 adjusted = apply_render_adjustments(detail_adjusted, **render_kwargs)
                 result_srgb = linear_to_srgb_display(adjusted)
+                analysis_text = preview_analysis_text(source, adjusted) if include_analysis else None
                 return (
                     request_key,
                     source_key,
                     np.asarray(result_srgb, dtype=np.float32),
                     bool(compare_enabled),
-                bool(bypass_display_profile),
-            )
+                    bool(bypass_display_profile),
+                    analysis_text,
+                )
 
             thread = TaskThread(task)
             started_at = time.perf_counter()
@@ -8087,6 +8100,7 @@ if QtWidgets is not None:
                         candidate,
                         payload_compare_enabled,
                         payload_bypass_display_profile,
+                        analysis_text,
                     ) = payload
                     applied = False
                     if key != self._interactive_preview_expected_key:
@@ -8104,6 +8118,8 @@ if QtWidgets is not None:
                     )
                     applied = True
                     if applied:
+                        if isinstance(analysis_text, str) and hasattr(self, "preview_analysis"):
+                            self.preview_analysis.setPlainText(analysis_text)
                         elapsed_ms = (time.perf_counter() - started_at) * 1000.0
                         self._interactive_preview_last_ms = float(max(elapsed_ms, 0.0))
                         self._update_interactive_preview_time_label()
@@ -8184,6 +8200,7 @@ if QtWidgets is not None:
                             bypass_display_profile,
                             int(max_side_limit),
                             bool(apply_detail),
+                            False,
                         )
                     )
                     return
@@ -8192,8 +8209,31 @@ if QtWidgets is not None:
                 self._interactive_preview_pending_request = None
                 self._set_interactive_preview_busy(False)
 
-                detail_adjusted = self._detail_adjusted_preview(
+                if self._should_async_final_preview():
+                    self._interactive_preview_request_seq += 1
+                    request_key = f"{source_key}|final|{self._interactive_preview_request_seq}"
+                    self._queue_interactive_preview_request(
+                        (
+                            request_key,
+                            source_key,
+                            self._original_linear,
+                            detail_kwargs,
+                            render_kwargs,
+                            compare_enabled,
+                            False,
+                            int(self._effective_preview_max_side()),
+                            True,
+                            True,
+                        )
+                    )
+                    return
+
+                preview_source = self._interactive_preview_source(
                     self._original_linear,
+                    max_side_limit=int(self._effective_preview_max_side()),
+                )
+                detail_adjusted = self._detail_adjusted_preview(
+                    preview_source,
                     denoise_luma=nl,
                     denoise_color=nc,
                     sharpen_amount=sharpen,
@@ -8245,7 +8285,7 @@ if QtWidgets is not None:
                     bypass_profile=bypass_display_profile,
                 )
                 self._set_result_display_u8(display_u8, compare_enabled=compare_enabled)
-                self.preview_analysis.setPlainText(preview_analysis_text(self._original_linear, adjusted))
+                self.preview_analysis.setPlainText(preview_analysis_text(preview_source, adjusted))
             except Exception as exc:
                 QtWidgets.QMessageBox.warning(self, "Aviso", str(exc))
 
@@ -8257,6 +8297,17 @@ if QtWidgets is not None:
                     self._preview_refresh_timer.start(PREVIEW_REFRESH_THROTTLE_MS)
                 return
             self._preview_refresh_timer.start(PREVIEW_REFRESH_DEBOUNCE_MS)
+
+        def _should_async_final_preview(self) -> bool:
+            if self._original_linear is None:
+                return False
+            if bool(getattr(self, "chk_apply_profile", None) and self.chk_apply_profile.isChecked()):
+                return False
+            try:
+                pixels = int(self._original_linear.shape[0]) * int(self._original_linear.shape[1])
+            except Exception:
+                return False
+            return pixels > 2_000_000
 
         def _looks_broken_profile_preview(self, image_srgb: np.ndarray) -> bool:
             x = np.clip(np.asarray(image_srgb, dtype=np.float32), 0.0, 1.0)

@@ -59,6 +59,7 @@ Una sesion NexoRAW 0.2 usa tres carpetas principales:
 ```text
 proyecto/
   00_configuraciones/          # session.json, perfiles, ICC, reportes, cache
+    cache/                     # cache numerica persistente por sesion
   01_ORG/                      # originales RAW y cartas
   02_DRV/                      # TIFF, previews, manifiestos y proof
 ```
@@ -107,6 +108,21 @@ Se registra:
 - DeltaE 76/2000,
 - hashes de entradas/salidas,
 - manifiesto de lote.
+
+## Rendimiento y cache
+
+- `batch-develop` y la fase batch de `auto-profile-batch` paralelizan a nivel
+  de imagen con procesos cuando `workers > 1`. El manifiesto se ordena por el
+  plan de entrada, no por orden de finalizacion.
+- La cache de demosaico RAW es opt-in (`use_cache: true` en receta o control
+  equivalente) y guarda arrays `.npy` en `00_configuraciones/cache/demosaic/`
+  cuando se puede inferir la sesion. El modo canonico de regresion usa
+  `use_cache: false`.
+- La clave de cache incluye nombre, tamano, SHA-256 completo del RAW,
+  parametros LibRaw que afectan al demosaico/WB/negro y firma del backend
+  rawpy/LibRaw. Cambiar algoritmo de demosaico invalida la entrada.
+- La cache aplica poda LRU por tamano maximo. Por defecto usa 5 GiB,
+  configurable con `NEXORAW_DEMOSAIC_CACHE_MAX_GB`.
 
 ## Principio clave
 

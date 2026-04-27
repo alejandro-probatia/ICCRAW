@@ -6,7 +6,7 @@
 
 Pipeline RAW reproducible y auditable para fotografia cientifica, forense y patrimonial, con perfilado ICC por sesion y trazabilidad abierta AGPL.
 
-![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Version](https://img.shields.io/badge/version-v0.2.1-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Version](https://img.shields.io/badge/version-v0.2.2-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![Captura de la GUI de NexoRAW en el flujo de calibrar y aplicar](docs/assets/screenshots/nexoraw-calibrar-aplicar.png)
 
@@ -34,6 +34,8 @@ Comparativa completa: [docs/COMPARISON.md](docs/COMPARISON.md)
 - [Manual de usuario](docs/MANUAL_USUARIO.md)
 - [Arquitectura](docs/ARCHITECTURE.md)
 - [Pipeline de color](docs/COLOR_PIPELINE.md)
+- [Rendimiento y benchmarks](docs/PERFORMANCE.md)
+- [Reproducibilidad y goldens](docs/REPRODUCIBILITY.md)
 - [Roadmap](docs/ROADMAP.md)
 
 ## Objetivo del proyecto
@@ -186,11 +188,11 @@ nexoraw check-tools --out tools_report.json
 
 ## Paquete Debian
 
-La release `0.2.0` puede construirse como paquete `.deb` instalable:
+La release actual puede construirse como paquete `.deb` instalable:
 
 ```bash
 bash packaging/debian/build_deb.sh
-sudo apt install ./dist/nexoraw_0.2.0_amd64.deb
+sudo apt install ./dist/nexoraw_<version>_amd64.deb
 ```
 
 El paquete instala la aplicacion en `/opt/nexoraw`, crea los lanzadores
@@ -210,6 +212,9 @@ nexoraw raw-info input.raw
 nexoraw metadata input.raw --out metadata.json
 
 nexoraw develop input.raw --recipe recipe.yml --out output.tiff --audit-linear output_linear.tiff
+
+# Cache numerica opt-in de demosaico para repetir ajustes sobre el mismo RAW
+nexoraw develop input.raw --recipe recipe_cache.yml --out output.tiff --cache-dir ./.nexoraw_cache
 
 nexoraw detect-chart chart.tiff --out detection.json --preview overlay.png --chart-type colorchecker24
 
@@ -237,7 +242,9 @@ nexoraw build-profile samples.json --recipe recipe_calibrated.yml --out camera_p
 nexoraw batch-develop ./raws \
   --recipe recipe_calibrated.yml \
   --profile camera_profile.icc \
-  --out ./tiffs
+  --out ./tiffs \
+  --workers 0 \
+  --cache-dir ./00_configuraciones/cache
 ```
 
 Las salidas TIFF no se sobrescriben. Si `output.tiff` o
@@ -326,10 +333,11 @@ En Windows:
 .\scripts\check_tools.ps1 -Strict
 ```
 
-Medicion basica de rendimiento de preview/render:
+Medicion de rendimiento RAW y fluidez GUI:
 
 ```bash
-python scripts/benchmark_pipeline.py input.tiff --recipe recipe.yml --repeat 3 --out benchmark.json
+python scripts/benchmark_raw_pipeline.py ./raws/captura.NEF --out tmp/raw_benchmark/results.json
+QT_QPA_PLATFORM=offscreen python scripts/benchmark_gui_interaction.py --raw ./raws/captura.NEF --out tmp/gui_benchmark/results.json
 ```
 
 ## Interfaz Gráfica Qt
@@ -365,8 +373,8 @@ La interfaz principal se organiza en 3 pestañas:
     carga automáticamente en el visor,
   - tira horizontal de miniaturas con tamaño ajustable, JPEG embebido y fallback
     RAW rápido cacheado,
-  - preview RAW/DNG de alta fidelidad por defecto, con modo rapido opcional
-    para navegacion (miniatura embebida / half-size),
+  - preview RAW/DNG automatica: rapida en navegacion y de maxima calidad en
+    comparar/precision 1:1,
   - gestion ICC de monitor opcional para convertir el preview sRGB al perfil
     de pantalla configurado antes de pintar en Qt,
   - visor con zoom, arrastre de reencuadre, rotación y comparación original/resultado,
@@ -417,15 +425,19 @@ Notas de preview y rendimiento:
   una imagen sRGB para pantalla/PNG. La conversion al perfil ICC del monitor,
   si esta activada, se aplica solo al pintar en pantalla y no modifica
   artefactos, hashes ni manifests.
-- El modo rapido RAW sirve para navegacion; para revision colorimetrica debe
-  usarse el preview de alta fidelidad, que comparte el pipeline de revelado
-  con la exportacion.
+- Durante arrastres de sliders y curva tonal, la preview interactiva se
+  procesa en segundo plano y usa una fuente acotada para no bloquear el hilo
+  Qt. El refresco final pesado tambien queda encolado para imagenes grandes
+  cuando no hay preview ICC activo.
 - Las previsualizaciones base se cachean con clave de archivo, receta y modo de
   preview, con limite de memoria. Las miniaturas se generan a tamano maximo y
   se reescalan desde cache al mover el control de tamano.
 - Cuando el archivo pertenece a una sesión, la cache persistente se guarda bajo
-  `00_configuraciones/work/cache/` con rutas relativas para que una carpeta de
+  `00_configuraciones/cache/` con rutas relativas para que una carpeta de
   proyecto pueda moverse o compartirse con otro usuario.
+- La cache numerica de demosaico (`use_cache: true`) guarda arrays `.npy` de
+  escena lineal y evita repetir LibRaw cuando solo cambian ajustes posteriores
+  al demosaico. La clave incluye SHA-256 completo del RAW y parametros LibRaw.
 
 ## Receta reproducible
 
@@ -476,6 +488,8 @@ construccion, con `scripts/install_amaze_backend.py`, y fallar si
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Color Pipeline](docs/COLOR_PIPELINE.md)
+- [Rendimiento y Benchmarks](docs/PERFORMANCE.md)
+- [Reproducibilidad](docs/REPRODUCIBILITY.md)
 - [Revision operativa y plan de profesionalizacion](docs/OPERATIVE_REVIEW_PLAN.md)
 - [Changelog](CHANGELOG.md)
 - [Manual de Usuario](docs/MANUAL_USUARIO.md)

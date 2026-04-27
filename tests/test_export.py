@@ -217,6 +217,14 @@ def test_resolve_batch_workers_respects_env_override(monkeypatch):
     assert _resolve_batch_workers(3) == 3
 
 
+def test_resolve_batch_workers_accepts_explicit_override(monkeypatch):
+    monkeypatch.setenv("NEXORAW_BATCH_WORKERS", "8")
+
+    assert _resolve_batch_workers(5, workers=1) == 1
+    assert _resolve_batch_workers(5, workers=3) == 3
+    assert _resolve_batch_workers(2, workers=9) == 2
+
+
 def test_resolve_batch_workers_accepts_auto_keywords(monkeypatch):
     monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 8)
     monkeypatch.setattr(export_module, "_available_physical_memory_bytes", lambda: 32 * 1024 * 1024 * 1024)
@@ -236,7 +244,7 @@ def test_resolve_batch_workers_auto_limits_by_memory(monkeypatch):
     monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 16)
     monkeypatch.setattr(export_module, "_available_physical_memory_bytes", lambda: 3 * 1024 * 1024 * 1024)
 
-    # Defaults reserve 1 GiB and estimate ~1.4 GiB per worker.
+    # Defaults reserve 1 GiB and estimate ~2.8 GiB per worker.
     assert _resolve_batch_workers(8) == 1
 
 

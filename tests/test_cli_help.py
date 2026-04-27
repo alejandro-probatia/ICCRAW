@@ -35,3 +35,67 @@ def test_nexoraw_package_alias_exposes_version():
     from nexoraw import __version__ as alias_version
 
     assert alias_version == __version__
+
+
+def test_parser_accepts_batch_worker_controls():
+    parser = build_parser()
+
+    develop = parser.parse_args(
+        [
+            "develop",
+            "capture.nef",
+            "--recipe",
+            "recipe.yml",
+            "--out",
+            "out.tiff",
+            "--cache-dir",
+            "cache",
+        ]
+    )
+    batch = parser.parse_args(
+        [
+            "batch-develop",
+            "raws",
+            "--recipe",
+            "recipe.yml",
+            "--profile",
+            "camera.icc",
+            "--out",
+            "out",
+            "--workers",
+            "2",
+            "--cache-dir",
+            "cache",
+        ]
+    )
+    auto = parser.parse_args(
+        [
+            "auto-profile-batch",
+            "--charts",
+            "charts",
+            "--targets",
+            "targets",
+            "--recipe",
+            "recipe.yml",
+            "--reference",
+            "reference.json",
+            "--profile-out",
+            "camera.icc",
+            "--profile-report",
+            "report.json",
+            "--out",
+            "out",
+            "--workdir",
+            "work",
+            "--workers",
+            "3",
+            "--cache-dir",
+            "cache",
+        ]
+    )
+
+    assert develop.cache_dir == "cache"
+    assert batch.workers == 2
+    assert batch.cache_dir == "cache"
+    assert auto.workers == 3
+    assert auto.cache_dir == "cache"

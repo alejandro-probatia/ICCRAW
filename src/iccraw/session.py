@@ -17,6 +17,7 @@ DEFAULT_SUBDIRECTORIES: dict[str, str] = {
     "charts": "01_ORG",
     "profiles": "00_configuraciones/profiles",
     "work": "00_configuraciones/work",
+    "cache": "00_configuraciones/cache",
 }
 
 
@@ -47,6 +48,14 @@ def ensure_session_structure(root_dir: str | Path) -> dict[str, Path]:
         path.mkdir(parents=True, exist_ok=True)
         directories[key] = path
     return directories
+
+
+def cache_dir(root_dir: str | Path, kind: str | None = None) -> Path:
+    root = _as_path(root_dir)
+    base = root / DEFAULT_SUBDIRECTORIES["cache"]
+    path = base / str(kind).strip() if kind else base
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def _default_session_name(root: Path) -> str:

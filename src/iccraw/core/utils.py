@@ -80,8 +80,12 @@ def _to_float_rgb(arr: np.ndarray) -> np.ndarray:
 
 def write_tiff16(path: Path, image_linear_rgb: np.ndarray, icc_profile: bytes | None = None) -> None:
     ensure_parent(path)
-    clipped = np.clip(image_linear_rgb, 0.0, 1.0)
-    data = np.round(clipped * 65535.0).astype(np.uint16)
+    source = np.asarray(image_linear_rgb, dtype=np.float32)
+    work = np.empty(source.shape, dtype=np.float32)
+    np.clip(source, 0.0, 1.0, out=work)
+    np.multiply(work, 65535.0, out=work)
+    np.rint(work, out=work)
+    data = work.astype(np.uint16, copy=False)
 
     extratags = None
     if icc_profile:

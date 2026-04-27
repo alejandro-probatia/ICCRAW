@@ -2,6 +2,7 @@
 /build/
 /dist/
 .venv/
+.venv*/
 *.egg-info/
 *.deb
 __pycache__/

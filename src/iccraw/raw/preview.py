@@ -761,8 +761,8 @@ def preview_analysis_text(
     *,
     max_pixels: int = 250_000,
 ) -> str:
-    o = _analysis_sample(np.clip(original_linear.astype(np.float32), 0.0, 1.0), max_pixels=max_pixels)
-    a = _analysis_sample(np.clip(adjusted_linear.astype(np.float32), 0.0, 1.0), max_pixels=max_pixels)
+    o = _analysis_sample_float(original_linear, max_pixels=max_pixels)
+    a = _analysis_sample_float(adjusted_linear, max_pixels=max_pixels)
 
     lines: list[str] = []
     lines.append("Resumen de análisis (lineal 0..1)")
@@ -786,6 +786,13 @@ def _analysis_sample(image: np.ndarray, *, max_pixels: int) -> np.ndarray:
         return image
     step = max(1, int(np.ceil(np.sqrt(pixels / float(max_pixels)))))
     return image[::step, ::step]
+
+
+def _analysis_sample_float(image: np.ndarray, *, max_pixels: int) -> np.ndarray:
+    # Sample before dtype conversion/clipping to avoid full-frame copies in the GUI.
+    sampled = _analysis_sample(np.asarray(image), max_pixels=max_pixels)
+    sampled = sampled.astype(np.float32, copy=False)
+    return np.clip(sampled, 0.0, 1.0)
 
 
 def _channel_stats(label: str, image: np.ndarray) -> list[str]:

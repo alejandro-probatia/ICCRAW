@@ -18,6 +18,48 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-04-27
+
+### Added
+
+- `scripts/profile_pipeline.py` para perfilar comandos reales con `cProfile`
+  y, si esta instalado, generar flamegraph con `py-spy`.
+- `scripts/benchmark_raw_pipeline.py` para benchmark multiplataforma de
+  demosaico, cache numerica y escalado por procesos con RAWs reales.
+- `scripts/benchmark_gui_interaction.py` para medir fluidez de sliders y curva
+  tonal en Qt con RAW real o fuente sintetica.
+- Flags `--workers` en `batch-develop` y `auto-profile-batch` para fijar el
+  paralelismo sin depender de variables de entorno.
+- Flag `--cache-dir` en `develop`, `batch-develop` y `auto-profile-batch` para
+  ubicar la cache numerica de demosaico cuando la receta active
+  `use_cache: true`.
+- Cache persistente de demosaico RAW en arrays `.npy`, opt-in por receta,
+  con clave basada en SHA-256 completo del RAW y parametros LibRaw que afectan
+  a la escena lineal.
+- Tests golden de hashes canonicos en `tests/regression/` y script
+  `scripts/regenerate_golden_hashes.py` para regenerarlos de forma explicita.
+
+### Changed
+
+- El analisis de preview e histogramas de GUI muestrea antes de convertir y
+  recortar arrays grandes, reduciendo copias de memoria en imagenes 1:1.
+- `batch-develop` usa multiprocessing real por proceso cuando `workers > 1`;
+  conserva fallback a hilos solo si se inyecta un cliente C2PA no serializable.
+- Los proyectos nuevos disponen de `00_configuraciones/cache/` como ubicacion
+  persistente de cache por sesion.
+- La estimacion automatica de RAM por worker de batch pasa a 2800 MiB para
+  reflejar RAWs de alta resolucion y escritura TIFF real.
+- `write_tiff16` reduce temporales de NumPy usando operaciones `out=`, bajando
+  tiempo y pico de RAM durante la escritura TIFF16.
+- El refresco final de preview tras arrastrar sliders/curva se encola en
+  segundo plano para imagenes grandes cuando no hay preview ICC activo,
+  evitando bloqueos perceptibles del hilo Qt.
+
+### Fixed
+
+- Las llamadas basicas a `exiftool` y `git rev-parse` usadas para metadatos y
+  contexto de ejecucion tienen timeout para evitar bloqueos indefinidos.
+
 ## [0.2.1] - 2026-04-27
 
 ### Added

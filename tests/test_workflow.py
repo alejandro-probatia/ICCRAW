@@ -590,9 +590,11 @@ def test_auto_profile_batch_uses_render_recipe_after_profile_calibration(tmp_pat
         )
 
     captured: dict[str, Recipe] = {}
+    captured_workers: dict[str, int | None] = {}
 
     def fake_batch_develop(raws_dir, recipe, profile_path, out_dir, **_kwargs):
         captured["recipe"] = recipe
+        captured_workers["workers"] = _kwargs.get("workers")
         return BatchManifest(
             recipe_sha256="unit",
             profile_path=str(profile_path),
@@ -636,6 +638,7 @@ def test_auto_profile_batch_uses_render_recipe_after_profile_calibration(tmp_pat
         chart_type="colorchecker24",
         min_confidence=0.0,
         allow_fallback_detection=True,
+        workers=3,
         c2pa_config=_fake_c2pa_config(tmp_path),
         proof_config=_proof_config(tmp_path),
     )
@@ -645,6 +648,7 @@ def test_auto_profile_batch_uses_render_recipe_after_profile_calibration(tmp_pat
     assert captured["recipe"].output_space == "scene_linear_camera_rgb"
     assert captured["recipe"].denoise == "mild"
     assert captured["recipe"].sharpen == "medium"
+    assert captured_workers["workers"] == 3
 
 
 def test_auto_generate_profile_rejects_non_raw_or_tiff_chart_files(tmp_path: Path):

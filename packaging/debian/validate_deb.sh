@@ -2,7 +2,18 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DEB_PATH="${1:-$ROOT/dist/nexoraw_0.2.0_$(dpkg --print-architecture).deb}"
+APP_VERSION="${NEXORAW_APP_VERSION:-$(python3 - "$ROOT" <<'PY'
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+namespace = {}
+exec((root / "src" / "iccraw" / "version.py").read_text(encoding="utf-8"), namespace)
+print(namespace["__version__"])
+PY
+)}"
+DEB_VERSION="${NEXORAW_DEB_VERSION:-$(printf '%s' "$APP_VERSION" | sed -E 's/([0-9.]+)b([0-9]+)/\1~beta\2/')}"
+DEB_PATH="${1:-$ROOT/dist/nexoraw_${DEB_VERSION}_$(dpkg --print-architecture).deb}"
 REQUIRE_AMAZE="${NEXORAW_REQUIRE_AMAZE:-1}"
 
 fail() {

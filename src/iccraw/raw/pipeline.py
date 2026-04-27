@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 from pathlib import Path
+import tempfile
 
 import numpy as np
 
@@ -32,13 +36,24 @@ GPL3_DEMOSAIC_ALGORITHMS = {"amaze"}
 
 
 RAW_SUFFIXES = {".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".rw2", ".orf", ".pef"}
+DEMOSAIC_CACHE_SCHEMA = "nexoraw-demosaic-cache-v2"
+DEMOSAIC_CACHE_MAX_GB_ENV = "NEXORAW_DEMOSAIC_CACHE_MAX_GB"
+LEGACY_DEMOSAIC_CACHE_MAX_GB_ENV = "ICCRAW_DEMOSAIC_CACHE_MAX_GB"
+DEFAULT_DEMOSAIC_CACHE_MAX_GB = 5.0
 
 
-def develop_controlled(input_path: Path, recipe: Recipe, out_tiff: Path, audit_linear_tiff: Path | None = None) -> DevelopResult:
+def develop_controlled(
+    input_path: Path,
+    recipe: Recipe,
+    out_tiff: Path,
+    audit_linear_tiff: Path | None = None,
+    *,
+    cache_dir: Path | None = None,
+) -> DevelopResult:
     metadata = raw_info(input_path) if input_path.suffix.lower() in RAW_SUFFIXES else _fake_metadata(input_path)
     guard = scientific_guard(recipe)
 
-    image = develop_scene_linear_array(input_path, recipe)
+    image = develop_scene_linear_array(input_path, recipe, cache_dir=cache_dir)
 
     audit_path_str: str | None = None
     if audit_linear_tiff is not None:
@@ -62,13 +77,27 @@ def _develop_image(input_path: Path, recipe: Recipe) -> np.ndarray:
     return develop_scene_linear_array(input_path, recipe)
 
 
-def develop_scene_linear_array(input_path: Path, recipe: Recipe, *, half_size: bool = False) -> np.ndarray:
+def develop_scene_linear_array(
+    input_path: Path,
+    recipe: Recipe,
+    *,
+    half_size: bool = False,
+    cache_dir: Path | None = None,
+) -> np.ndarray:
     if input_path.suffix.lower() not in RAW_SUFFIXES:
         return read_image(input_path)
 
     developer = recipe.raw_developer.strip().lower()
     if developer not in {"", "libraw", "rawpy"}:
         raise RuntimeError(f"raw_developer no soportado: {recipe.raw_developer}. Usa 'libraw'.")
+    if bool(getattr(recipe, "use_cache", False)) and not half_size and cache_dir is not None:
+        cached = _read_demosaic_cache(input_path, recipe, cache_dir)
+        if cached is not None:
+            return cached
+        image = develop_with_libraw(input_path, recipe, half_size=half_size)
+        _write_demosaic_cache(input_path, recipe, cache_dir, image)
+        _prune_demosaic_cache(cache_dir)
+        return image
     return develop_with_libraw(input_path, recipe, half_size=half_size)
 
 
@@ -93,8 +122,9 @@ def develop_image_array(
     recipe: Recipe,
     *,
     half_size: bool = False,
+    cache_dir: Path | None = None,
 ) -> np.ndarray:
-    image = develop_scene_linear_array(input_path, recipe, half_size=half_size)
+    image = develop_scene_linear_array(input_path, recipe, half_size=half_size, cache_dir=cache_dir)
     return render_recipe_output_array(image, recipe)
 
 
@@ -240,6 +270,116 @@ def _postprocess_output_to_float(image: np.ndarray) -> np.ndarray:
         maxv = float(np.iinfo(out.dtype).max)
         return np.clip(out.astype(np.float32) / maxv, 0.0, 1.0)
     return np.clip(out.astype(np.float32), 0.0, 1.0)
+
+
+def _demosaic_cache_key(raw_path: Path, recipe: Recipe) -> str:
+    path = Path(raw_path)
+    st = path.stat()
+    h = hashlib.sha256()
+    raw_sha = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            raw_sha.update(chunk)
+    payload = {
+        "schema": DEMOSAIC_CACHE_SCHEMA,
+        "name": path.name,
+        "size": int(st.st_size),
+        "sha256": raw_sha.hexdigest(),
+        "raw_developer": str(recipe.raw_developer),
+        "demosaic_algorithm": str(recipe.demosaic_algorithm),
+        "white_balance_mode": str(recipe.white_balance_mode),
+        "wb_multipliers": [float(v) for v in (recipe.wb_multipliers or [])],
+        "black_level_mode": str(recipe.black_level_mode),
+        "rawpy": str(getattr(rawpy, "__version__", "")) if rawpy is not None else "missing",
+        "libraw": str(getattr(rawpy, "libraw_version", "")) if rawpy is not None else "missing",
+        "flags": rawpy_feature_flags(),
+    }
+    h.update(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    return h.hexdigest()
+
+
+def _demosaic_cache_path(raw_path: Path, recipe: Recipe, cache_root: Path) -> Path:
+    key = _demosaic_cache_key(raw_path, recipe)
+    return Path(cache_root) / "demosaic" / key[:2] / f"{key}.npy"
+
+
+def _read_demosaic_cache(raw_path: Path, recipe: Recipe, cache_root: Path) -> np.ndarray | None:
+    path = _demosaic_cache_path(raw_path, recipe, cache_root)
+    try:
+        if not path.is_file():
+            return None
+        with path.open("rb") as handle:
+            image = np.load(handle, allow_pickle=False)
+        image = np.asarray(image, dtype=np.float32)
+        if image.ndim != 3 or image.shape[-1] < 3:
+            return None
+        try:
+            os.utime(path, None)
+        except OSError:
+            pass
+        return np.ascontiguousarray(image[..., :3])
+    except Exception:
+        return None
+
+
+def _write_demosaic_cache(raw_path: Path, recipe: Recipe, cache_root: Path, image: np.ndarray) -> None:
+    path = _demosaic_cache_path(raw_path, recipe, cache_root)
+    temp_path: Path | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        array = np.ascontiguousarray(np.asarray(image, dtype=np.float32)[..., :3])
+        with tempfile.NamedTemporaryFile(prefix=path.name, suffix=".tmp", dir=path.parent, delete=False) as handle:
+            temp_path = Path(handle.name)
+            np.save(handle, array, allow_pickle=False)
+        os.replace(temp_path, path)
+    except Exception:
+        if temp_path is not None:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+def _demosaic_cache_max_bytes() -> int:
+    raw = os.environ.get(DEMOSAIC_CACHE_MAX_GB_ENV, "").strip() or os.environ.get(
+        LEGACY_DEMOSAIC_CACHE_MAX_GB_ENV, ""
+    ).strip()
+    try:
+        gb = float(raw) if raw else DEFAULT_DEMOSAIC_CACHE_MAX_GB
+    except ValueError:
+        gb = DEFAULT_DEMOSAIC_CACHE_MAX_GB
+    return max(0, int(gb * 1024 * 1024 * 1024))
+
+
+def _prune_demosaic_cache(cache_root: Path) -> None:
+    max_bytes = _demosaic_cache_max_bytes()
+    if max_bytes <= 0:
+        return
+    root = Path(cache_root) / "demosaic"
+    try:
+        files = [p for p in root.glob("*/*.npy") if p.is_file()]
+    except Exception:
+        return
+    entries: list[tuple[float, int, Path]] = []
+    total = 0
+    for path in files:
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        size = int(st.st_size)
+        total += size
+        entries.append((float(st.st_atime), size, path))
+    if total <= max_bytes:
+        return
+    for _atime, size, path in sorted(entries, key=lambda item: item[0]):
+        try:
+            path.unlink()
+            total -= size
+        except OSError:
+            pass
+        if total <= max_bytes:
+            break
 
 
 def _apply_srgb_oetf(x: np.ndarray) -> np.ndarray:

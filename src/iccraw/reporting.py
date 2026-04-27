@@ -76,6 +76,7 @@ def _git_commit() -> str:
             ["git", "rev-parse", "--short", "HEAD"],
             text=True,
             stderr=subprocess.DEVNULL,
+            timeout=5,
         )
         return output.strip()
     except Exception:

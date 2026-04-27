@@ -58,7 +58,7 @@ def _read_exif(path: Path) -> dict:
     if exiftool is None:
         return {}
     try:
-        output = check_output_external([exiftool, "-json", str(path)], text=True)
+        output = check_output_external([exiftool, "-json", str(path)], text=True, timeout=10)
         data = json.loads(output)
         if data and isinstance(data, list):
             return data[0]

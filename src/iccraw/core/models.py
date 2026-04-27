@@ -75,6 +75,7 @@ class Recipe:
     profiling_mode: bool = True
     profile_engine: str = "argyll"
     argyll_colprof_args: list[str] | None = None
+    use_cache: bool = False
 
 
 @dataclass

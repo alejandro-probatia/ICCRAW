@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "generated_by": "scripts/regenerate_golden_hashes.py",
+  "cases": [
+    {
+      "id": "tiff_session_001_linear",
+      "input": "testdata/batch_images/session_001.tiff",
+      "recipe": "testdata/regression/recipes/canonical_linear.yml",
+      "output_sha256": "9e8f73d43e9288713fc17634af77abea82dbb23ed87bc8e203332c22e93a23cc",
+      "audit_sha256": "9e8f73d43e9288713fc17634af77abea82dbb23ed87bc8e203332c22e93a23cc"
+    },
+    {
+      "id": "tiff_session_002_linear",
+      "input": "testdata/batch_images/session_002.tiff",
+      "recipe": "testdata/regression/recipes/canonical_linear.yml",
+      "output_sha256": "9e8f73d43e9288713fc17634af77abea82dbb23ed87bc8e203332c22e93a23cc",
+      "audit_sha256": "9e8f73d43e9288713fc17634af77abea82dbb23ed87bc8e203332c22e93a23cc"
+    }
+  ]
+}

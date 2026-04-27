@@ -65,6 +65,7 @@ def auto_generate_profile_from_charts(
     qa_mean_delta_e2000_max: float = 5.0,
     qa_max_delta_e2000_max: float = 10.0,
     profile_validity_days: int | None = None,
+    cache_dir: Path | None = None,
 ) -> dict[str, Any]:
     requested_recipe = recipe
     profile_recipe, recipe_normalizations = sanitize_recipe_for_profiling(requested_recipe)
@@ -105,6 +106,7 @@ def auto_generate_profile_from_charts(
         pass_name="development_profile_source",
         existing_detections=manual_detection_map,
         existing_detection_note="geometria de carta desde deteccion manual guardada",
+        cache_dir=cache_dir,
     )
     accepted_samples = initial_pass["accepted_samples"]
     skipped: list[dict[str, Any]] = list(initial_pass["skipped"])
@@ -154,6 +156,7 @@ def auto_generate_profile_from_charts(
             sample_dir=work_dir / "samples_calibrated",
             overlay_dir=work_dir / "overlays_calibrated",
             pass_name="icc_profile_source",
+            cache_dir=cache_dir,
         )
         accepted_samples = calibrated_pass["accepted_samples"]
         skipped.extend(calibrated_pass["skipped"])
@@ -187,6 +190,7 @@ def auto_generate_profile_from_charts(
             min_confidence=min_confidence,
             allow_fallback_detection=allow_fallback_detection,
             work_dir=work_dir,
+            cache_dir=cache_dir,
         )
         validation_pass = _collect_chart_samples(
             chart_files=validation_files,
@@ -202,6 +206,7 @@ def auto_generate_profile_from_charts(
             pass_name="icc_validation_source",
             existing_detections=validation_detection_map,
             existing_detection_note="geometria de carta reutilizada desde pasada base de validacion",
+            cache_dir=cache_dir,
         )
         validation_samples = validation_pass["accepted_samples"]
         skipped.extend(validation_pass["skipped"])
@@ -310,6 +315,8 @@ def auto_profile_batch(
     qa_mean_delta_e2000_max: float = 5.0,
     qa_max_delta_e2000_max: float = 10.0,
     profile_validity_days: int | None = None,
+    workers: int | None = None,
+    cache_dir: Path | None = None,
     c2pa_config: C2PASignConfig | None = None,
     proof_config: NexoRawProofConfig | None = None,
 ) -> dict[str, Any]:
@@ -335,6 +342,7 @@ def auto_profile_batch(
         qa_mean_delta_e2000_max=qa_mean_delta_e2000_max,
         qa_max_delta_e2000_max=qa_max_delta_e2000_max,
         profile_validity_days=profile_validity_days,
+        cache_dir=cache_dir,
     )
 
     batch_recipe = recipe
@@ -352,6 +360,8 @@ def auto_profile_batch(
         recipe=batch_recipe,
         profile_path=profile_out,
         out_dir=batch_out_dir,
+        workers=workers,
+        cache_dir=cache_dir,
         c2pa_config=c2pa_config,
         proof_config=proof_config,
     )
@@ -965,6 +975,7 @@ def _collect_chart_samples(
     pass_name: str,
     existing_detections: dict[Path, Any] | None = None,
     existing_detection_note: str = "geometria de carta reutilizada desde pasada de perfil de revelado",
+    cache_dir: Path | None = None,
 ) -> dict[str, Any]:
     for d in (chart_dev_dir, detect_dir, sample_dir, overlay_dir):
         d.mkdir(parents=True, exist_ok=True)
@@ -981,7 +992,7 @@ def _collect_chart_samples(
         sample_path = sample_dir / f"{prefix}.json"
 
         try:
-            image = develop_image_array(chart_file, recipe)
+            image = develop_image_array(chart_file, recipe, cache_dir=cache_dir)
             write_tiff16(developed_tiff, image)
             detection_key = chart_file.expanduser().resolve()
             detection = existing_detections.get(detection_key) if existing_detections else None
@@ -1054,6 +1065,7 @@ def _validation_detection_map(
     min_confidence: float,
     allow_fallback_detection: bool,
     work_dir: Path,
+    cache_dir: Path | None = None,
 ) -> dict[Path, Any] | None:
     detection_map: dict[Path, Any] = {}
     if manual_detection_map:
@@ -1075,6 +1087,7 @@ def _validation_detection_map(
         chart_dev_dir=work_dir / "chart_developed_validation_geometry",
         detect_dir=work_dir / "detections_validation_geometry",
         overlay_dir=work_dir / "overlays_validation_geometry",
+        cache_dir=cache_dir,
     )
     detection_map.update(geometry["detections"])
     return detection_map or None
@@ -1090,6 +1103,7 @@ def _collect_chart_geometries(
     chart_dev_dir: Path,
     detect_dir: Path,
     overlay_dir: Path,
+    cache_dir: Path | None = None,
 ) -> dict[str, Any]:
     for d in (chart_dev_dir, detect_dir, overlay_dir):
         d.mkdir(parents=True, exist_ok=True)
@@ -1105,7 +1119,7 @@ def _collect_chart_geometries(
         detection_key = chart_file.expanduser().resolve()
 
         try:
-            image = develop_image_array(chart_file, recipe)
+            image = develop_image_array(chart_file, recipe, cache_dir=cache_dir)
             write_tiff16(developed_tiff, image)
             detection = detect_chart_from_array(image, chart_type=chart_type)
             write_json(detection_path, detection)

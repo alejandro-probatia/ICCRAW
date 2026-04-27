@@ -79,7 +79,7 @@ Genera la aplicacion y despues el instalador:
 Artefacto esperado:
 
 ```text
-dist\windows\installer\NexoRAW-0.2.0-Setup.exe
+dist\windows\installer\NexoRAW-<version>-Setup.exe
 ```
 
 Para una preparacion de release, ejecutar con herramientas externas estrictas:
@@ -87,6 +87,9 @@ Para una preparacion de release, ejecutar con herramientas externas estrictas:
 ```powershell
 .\packaging\windows\build_installer.ps1 -StrictExternalTools
 ```
+
+La build de release exige AMaZE por defecto. Si `check-amaze` no informa
+`DEMOSAIC_PACK_GPL3=True`, el script falla antes de generar el instalador.
 
 ## Build con AMaZE
 
@@ -140,9 +143,23 @@ En una maquina Windows limpia:
    - `nexoraw --version`,
    - `nexoraw check-tools --strict`,
    - `nexoraw check-c2pa`,
+   - `nexoraw check-amaze`,
    - `nexoraw-ui` arranca,
+   - sliders y curva tonal responden sin bloquear la ventana durante el
+     arrastre,
    - una prueba de `detect-chart`/`sample-chart` con `testdata` funciona,
    - una conversion `output_space=srgb` solo se aprueba si `cctiff` existe.
+
+Benchmark GUI automatizado recomendado antes de publicar:
+
+```powershell
+$env:QT_QPA_PLATFORM="offscreen"
+.\.venv\Scripts\python.exe scripts\benchmark_gui_interaction.py `
+  --raw .\ruta\a\captura.NEF `
+  --algorithm dcb `
+  --full-resolution `
+  --out .\tmp\gui_benchmark\release_ui.json
+```
 
 ## Notas de mantenimiento
 

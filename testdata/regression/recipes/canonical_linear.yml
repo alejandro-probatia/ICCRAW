@@ -1,0 +1,24 @@
+raw_developer: libraw
+demosaic_algorithm: dcb
+black_level_mode: metadata
+white_balance_mode: fixed
+wb_multipliers:
+- 1.0
+- 1.0
+- 1.0
+- 1.0
+exposure_compensation: 0.0
+tone_curve: linear
+output_linear: true
+denoise: off
+sharpen: off
+input_color_assumption: camera_native
+working_space: scene_linear_camera_rgb
+output_space: scene_linear_camera_rgb
+sampling_strategy: trimmed_mean
+sampling_trim_percent: 0.1
+sampling_reject_saturated: true
+profiling_mode: true
+profile_engine: argyll
+argyll_colprof_args: null
+use_cache: false

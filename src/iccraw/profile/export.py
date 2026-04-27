@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import asdict
+import multiprocessing
 from pathlib import Path
 import hashlib
 import json
@@ -35,6 +36,7 @@ from ..provenance.nexoraw_proof import (
     sign_nexoraw_proof,
 )
 from ..raw.pipeline import develop_scene_linear_array, render_recipe_output_array
+from ..session import cache_dir as session_cache_dir
 from ..sidecar import write_raw_sidecar
 from ..version import __version__
 
@@ -47,7 +49,7 @@ LEGACY_BATCH_MEMORY_RESERVE_MB_ENV = "ICCRAW_BATCH_MEMORY_RESERVE_MB"
 BATCH_WORKER_RAM_MB_ENV = "NEXORAW_BATCH_WORKER_RAM_MB"
 LEGACY_BATCH_WORKER_RAM_MB_ENV = "ICCRAW_BATCH_WORKER_RAM_MB"
 DEFAULT_BATCH_MEMORY_RESERVE_MB = 1024
-DEFAULT_BATCH_WORKER_RAM_MB = 1400
+DEFAULT_BATCH_WORKER_RAM_MB = 2800
 
 
 def batch_develop(
@@ -56,6 +58,8 @@ def batch_develop(
     profile_path: Path,
     out_dir: Path,
     *,
+    workers: int | None = None,
+    cache_dir: Path | None = None,
     c2pa_config: C2PASignConfig | None = None,
     proof_config: NexoRawProofConfig | None = None,
 ) -> BatchManifest:
@@ -81,7 +85,13 @@ def batch_develop(
     proof_sign_config = proof_config or proof_config_from_environment()
 
     recipe_sha = hashlib.sha256(json.dumps(asdict(recipe), sort_keys=True).encode("utf-8")).hexdigest()
-    worker_count = _resolve_batch_workers(len(files))
+    worker_count = _resolve_batch_workers(len(files), workers=workers)
+    demosaic_cache_dir = _resolve_demosaic_cache_dir(
+        raws_dir=raws_dir,
+        out_dir=out_dir,
+        configured=cache_dir,
+        recipe=recipe,
+    )
     planned_jobs: list[tuple[int, Path, Path, Path]] = []
     reserved_outputs: set[str] = set()
     reserved_audits: set[str] = set()
@@ -95,68 +105,35 @@ def batch_develop(
         )
         planned_jobs.append((idx, raw, out_final, out_linear))
 
-    entries_slots: list[BatchManifestEntry | None] = [None] * len(planned_jobs)
-
-    def process_one(index: int, raw: Path, out_final: Path, out_linear: Path) -> tuple[int, BatchManifestEntry]:
-        scene_linear = develop_scene_linear_array(raw, recipe)
-        write_tiff16(out_linear, scene_linear)
-        # Render final output from the in-memory array to avoid a second TIFF
-        # quantization/read cycle. The audit TIFF is still written and hashed in
-        # the manifest, preserving the forensic artifact.
-        image = render_recipe_output_array(scene_linear, recipe)
-        write_mode, proof_result = write_signed_profiled_tiff(
+    jobs = [
+        (
+            idx,
+            raw,
             out_final,
-            image,
-            source_raw=raw,
-            recipe=recipe,
-            profile_path=profile_path,
-            c2pa_config=c2pa_config,
-            proof_config=proof_sign_config,
-            render_context={"entrypoint": "batch_develop", "linear_audit_tiff": str(out_linear)},
-        )
-        rendered_profile_path = profile_path_for_render_settings(
+            out_linear,
             recipe,
-            input_profile_path=profile_path,
-            color_management_mode=write_mode,
+            profile_path,
+            c2pa_config,
+            proof_sign_config,
+            color_mode,
+            demosaic_cache_dir,
         )
-        if raw.suffix.lower() in RAW_EXTENSIONS:
-            write_raw_sidecar(
-                raw,
-                recipe=recipe,
-                development_profile=None,
-                detail_adjustments={},
-                render_adjustments={},
-                icc_profile_path=rendered_profile_path,
-                color_management_mode=write_mode,
-                output_tiff=out_final,
-                proof_path=Path(proof_result.proof_path),
-                status="rendered",
-            )
-        entry = BatchManifestEntry(
-            source_raw=str(raw),
-            source_sha256=sha256_file(raw),
-            output_tiff=str(out_final),
-            output_sha256=sha256_file(out_final),
-            profile_path=str(rendered_profile_path or profile_path),
-            color_management_mode=color_mode,
-            output_color_space=recipe.output_space,
-            linear_audit_tiff=str(out_linear),
-            proof_path=proof_result.proof_path,
-            proof_sha256=proof_result.proof_sha256,
-            c2pa_embedded=proof_result.c2pa_embedded,
-        )
-        return index, entry
+        for idx, raw, out_final, out_linear in planned_jobs
+    ]
+    entries_slots: list[BatchManifestEntry | None] = [None] * len(jobs)
 
     if worker_count <= 1:
-        for idx, raw, out_final, out_linear in planned_jobs:
-            position, entry = process_one(idx, raw, out_final, out_linear)
+        for job in jobs:
+            position, entry = _process_batch_develop_job(job)
             entries_slots[position] = entry
     else:
-        with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="nexoraw-batch") as executor:
-            futures = [
-                executor.submit(process_one, idx, raw, out_final, out_linear)
-                for idx, raw, out_final, out_linear in planned_jobs
-            ]
+        multiprocessing.freeze_support()
+        executor_cls = ThreadPoolExecutor if _requires_thread_batch_executor(c2pa_config) else ProcessPoolExecutor
+        executor_kwargs: dict[str, Any] = {"max_workers": worker_count}
+        if executor_cls is ThreadPoolExecutor:
+            executor_kwargs["thread_name_prefix"] = "nexoraw-batch"
+        with executor_cls(**executor_kwargs) as executor:
+            futures = [executor.submit(_process_batch_develop_job, job) for job in jobs]
             for future in as_completed(futures):
                 position, entry = future.result()
                 entries_slots[position] = entry
@@ -173,8 +150,14 @@ def batch_develop(
     )
 
 
-def _resolve_batch_workers(total_items: int) -> int:
+def _resolve_batch_workers(total_items: int, workers: int | None = None) -> int:
     total = max(1, int(total_items))
+    if workers is not None:
+        configured = int(workers)
+        if configured > 0:
+            return max(1, min(total, configured))
+        available_cpus = _available_cpu_count()
+        return _resolve_auto_batch_workers(total, available_cpus)
     available_cpus = _available_cpu_count()
     auto_workers = _resolve_auto_batch_workers(total, available_cpus)
     raw_value = os.environ.get(BATCH_WORKERS_ENV, "").strip() or os.environ.get(
@@ -231,6 +214,121 @@ def _memory_limited_batch_workers(total_items: int) -> int:
         return 1
     workers = max(1, budget_bytes // per_worker_bytes)
     return max(1, min(int(total_items), int(workers)))
+
+
+def _process_batch_develop_job(
+    job: tuple[
+        int,
+        Path,
+        Path,
+        Path,
+        Recipe,
+        Path,
+        C2PASignConfig | None,
+        NexoRawProofConfig,
+        str,
+        Path | None,
+    ],
+) -> tuple[int, BatchManifestEntry]:
+    (
+        index,
+        raw,
+        out_final,
+        out_linear,
+        recipe,
+        profile_path,
+        c2pa_config,
+        proof_sign_config,
+        color_mode,
+        demosaic_cache_dir,
+    ) = job
+    scene_linear = develop_scene_linear_array(raw, recipe, cache_dir=demosaic_cache_dir)
+    write_tiff16(out_linear, scene_linear)
+    # Render final output from the in-memory array to avoid a second TIFF
+    # quantization/read cycle. The audit TIFF is still written and hashed in
+    # the manifest, preserving the forensic artifact.
+    image = render_recipe_output_array(scene_linear, recipe)
+    write_mode, proof_result = write_signed_profiled_tiff(
+        out_final,
+        image,
+        source_raw=raw,
+        recipe=recipe,
+        profile_path=profile_path,
+        c2pa_config=c2pa_config,
+        proof_config=proof_sign_config,
+        render_context={"entrypoint": "batch_develop", "linear_audit_tiff": str(out_linear)},
+    )
+    rendered_profile_path = profile_path_for_render_settings(
+        recipe,
+        input_profile_path=profile_path,
+        color_management_mode=write_mode,
+    )
+    if raw.suffix.lower() in RAW_EXTENSIONS:
+        write_raw_sidecar(
+            raw,
+            recipe=recipe,
+            development_profile=None,
+            detail_adjustments={},
+            render_adjustments={},
+            icc_profile_path=rendered_profile_path,
+            color_management_mode=write_mode,
+            output_tiff=out_final,
+            proof_path=Path(proof_result.proof_path),
+            status="rendered",
+        )
+    entry = BatchManifestEntry(
+        source_raw=str(raw),
+        source_sha256=sha256_file(raw),
+        output_tiff=str(out_final),
+        output_sha256=sha256_file(out_final),
+        profile_path=str(rendered_profile_path or profile_path),
+        color_management_mode=color_mode,
+        output_color_space=recipe.output_space,
+        linear_audit_tiff=str(out_linear),
+        proof_path=proof_result.proof_path,
+        proof_sha256=proof_result.proof_sha256,
+        c2pa_embedded=proof_result.c2pa_embedded,
+    )
+    return index, entry
+
+
+def _requires_thread_batch_executor(c2pa_config: C2PASignConfig | None) -> bool:
+    return bool(c2pa_config is not None and c2pa_config.client is not None)
+
+
+def _resolve_demosaic_cache_dir(
+    *,
+    raws_dir: Path,
+    out_dir: Path,
+    configured: Path | None,
+    recipe: Recipe,
+) -> Path | None:
+    if not bool(getattr(recipe, "use_cache", False)):
+        return None
+    if configured is not None:
+        path = Path(configured).expanduser()
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    inferred = _infer_session_root(raws_dir) or _infer_session_root(out_dir)
+    if inferred is not None:
+        return session_cache_dir(inferred)
+    path = Path.home() / ".nexoraw" / "cache"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _infer_session_root(path: Path) -> Path | None:
+    current = Path(path).expanduser().resolve()
+    if current.is_file():
+        current = current.parent
+    for candidate in [current, *current.parents]:
+        if (candidate / "00_configuraciones").exists() and (
+            (candidate / "01_ORG").exists() or (candidate / "02_DRV").exists()
+        ):
+            return candidate
+        if candidate.name in {"01_ORG", "02_DRV"} and candidate.parent.exists():
+            return candidate.parent
+    return None
 
 
 def _read_positive_env_value(primary: str, legacy: str, *, default: int) -> int:

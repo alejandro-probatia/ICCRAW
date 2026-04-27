@@ -15,15 +15,15 @@ NEXORAW_BUILD_AMAZE=1 NEXORAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
 Validar el paquete antes de instalar o subir:
 
 ```bash
-packaging/debian/validate_deb.sh dist/nexoraw_0.2.0_amd64.deb
-sha256sum dist/nexoraw_0.2.0_amd64.deb > dist/nexoraw_0.2.0_amd64.deb.sha256
+packaging/debian/validate_deb.sh dist/nexoraw_<version>_amd64.deb
+sha256sum dist/nexoraw_<version>_amd64.deb > dist/nexoraw_<version>_amd64.deb.sha256
 ```
 
 Validar en una instalacion real:
 
 ```bash
 sudo apt purge iccraw nexoraw
-sudo apt install ./dist/nexoraw_0.2.0_amd64.deb
+sudo apt install ./dist/nexoraw_<version>_amd64.deb
 scripts/validate_linux_install.sh
 nexoraw --version
 nexoraw check-tools --strict
@@ -66,11 +66,25 @@ deben apuntar a `nexoraw-ui.exe` y usar el icono `nexoraw-icon.ico`.
 ## Releases
 
 1. Ejecutar tests del proyecto.
-2. Actualizar `src/iccraw/version.py`, `CHANGELOG.md`, README y documentacion
+2. Ejecutar benchmarks de rendimiento/GUI cuando se hayan tocado preview,
+   pipeline RAW, cache o paralelismo.
+3. Actualizar `src/iccraw/version.py`, `CHANGELOG.md`, README y documentacion
    de instaladores.
-3. Construir instaladores desde scripts versionados, no manualmente.
-4. Ejecutar las validaciones de cada plataforma.
-5. Generar `.sha256` despues de validar.
-6. Subir solo los artefactos validados.
-7. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
+4. Construir instaladores desde scripts versionados, no manualmente.
+5. Ejecutar las validaciones de cada plataforma.
+6. Generar `.sha256` despues de validar.
+7. Subir solo los artefactos validados.
+8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
+
+## Release 0.2.2
+
+La release 0.2.2 introduce:
+
+- multiprocessing real por proceso en `batch-develop`,
+- cache numerica opt-in de demosaico,
+- tests golden de hashes canonicos,
+- benchmarks reproducibles de RAW y GUI,
+- refresco final de preview en segundo plano para evitar lag al soltar
+  sliders/curva,
+- heuristica de RAM por worker ajustada con RAW Nikon D850 real.

@@ -1,9 +1,9 @@
 # Paquete Debian
 
-La release `0.2.0` se distribuye como paquete Debian binario:
+La release actual puede construirse como paquete Debian binario:
 
-- version de aplicacion Python: `0.2.0`,
-- version Debian: `0.2.0`,
+- version de aplicacion Python: se lee de `src/iccraw/version.py`,
+- version Debian: deriva de la version de aplicacion,
 - arquitectura generada: la de la maquina de build (`dpkg --print-architecture`).
 
 El paquete instala:
@@ -75,7 +75,7 @@ bash packaging/debian/build_deb.sh
 El artefacto queda en:
 
 ```text
-dist/nexoraw_0.2.0_amd64.deb
+dist/nexoraw_<version>_amd64.deb
 ```
 
 El nombre exacto puede variar si se construye en otra arquitectura.
@@ -83,7 +83,7 @@ El nombre exacto puede variar si se construye en otra arquitectura.
 ## Instalacion local
 
 ```bash
-sudo apt install ./dist/nexoraw_0.2.0_amd64.deb
+sudo apt install ./dist/nexoraw_<version>_amd64.deb
 nexoraw --version
 nexoraw check-tools --strict
 nexoraw check-c2pa
@@ -99,8 +99,8 @@ Antes de publicar o entregar una release, esta verificacion es obligatoria:
 .venv/bin/python -m pytest
 bash scripts/check_tools.sh
 bash packaging/debian/build_deb.sh
-packaging/debian/validate_deb.sh dist/nexoraw_0.2.0_amd64.deb
-sudo apt install ./dist/nexoraw_0.2.0_amd64.deb
+packaging/debian/validate_deb.sh dist/nexoraw_<version>_amd64.deb
+sudo apt install ./dist/nexoraw_<version>_amd64.deb
 scripts/validate_linux_install.sh
 ```
 

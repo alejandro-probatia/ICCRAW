@@ -91,6 +91,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     s.add_argument("--recipe", required=True)
     s.add_argument("--out", required=True)
     s.add_argument("--audit-linear", default=None)
+    s.add_argument("--cache-dir", default=None, help="Directorio de cache numerica de demosaico si la receta usa use_cache")
 
     s = sub.add_parser("detect-chart")
     s.add_argument("input")
@@ -135,6 +136,13 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     s.add_argument("--recipe", required=True)
     s.add_argument("--profile", required=True)
     s.add_argument("--out", required=True)
+    s.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Numero de trabajadores para el lote; 1 fuerza serial, 0/omitido usa auto",
+    )
+    s.add_argument("--cache-dir", default=None, help="Directorio de cache numerica de demosaico si la receta usa use_cache")
     s.add_argument("--c2pa-sign", action="store_true", help="Firma C2PA opcional si hay certificado disponible")
     s.add_argument("--no-c2pa", action="store_true", help="No intenta firma C2PA automatica; mantiene NexoRAW Proof")
     s.add_argument("--c2pa-cert", default=None, help="Cadena de certificado PEM para C2PA")
@@ -203,6 +211,13 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
     s.add_argument("--camera", default=None)
     s.add_argument("--lens", default=None)
+    s.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Numero de trabajadores para la fase batch; 1 fuerza serial, 0/omitido usa auto",
+    )
+    s.add_argument("--cache-dir", default=None, help="Directorio de cache numerica de demosaico si la receta usa use_cache")
 
     s = sub.add_parser("compare-qa-reports")
     s.add_argument("reports", nargs="+", help="Reportes qa_session_report.json a comparar")
@@ -260,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
                 recipe,
                 out_path,
                 audit_path,
+                cache_dir=Path(args.cache_dir) if args.cache_dir else None,
             )
             payload = {
                 "run_context": gather_run_context(APP_VERSION),
@@ -380,6 +396,8 @@ def main(argv: list[str] | None = None) -> int:
                 recipe=recipe,
                 profile_path=Path(args.profile),
                 out_dir=Path(args.out),
+                workers=args.workers,
+                cache_dir=Path(args.cache_dir) if args.cache_dir else None,
                 c2pa_config=c2pa_config,
                 proof_config=proof_config,
             )
@@ -440,6 +458,8 @@ def main(argv: list[str] | None = None) -> int:
                 profile_validity_days=args.profile_validity_days,
                 camera_model=args.camera,
                 lens_model=args.lens,
+                workers=args.workers,
+                cache_dir=Path(args.cache_dir) if args.cache_dir else None,
             )
             print(json.dumps(result, indent=2))
             return 0

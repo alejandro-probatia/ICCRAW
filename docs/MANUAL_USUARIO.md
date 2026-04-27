@@ -333,14 +333,17 @@ NexoRAW separa navegacion, preview de trabajo y render final:
 - la revision critica puede hacerse con preview de alta calidad;
 - el render final se ejecuta con el pipeline auditado.
 
-La sesion guarda cache persistente en `00_configuraciones/work/cache/`. Si se
+La sesion guarda cache persistente en `00_configuraciones/cache/`. Si se
 comparte la carpeta completa de sesion con otro usuario, esa cache puede
 acelerar la apertura de la misma estructura de archivos.
 
 Buenas practicas:
 
-- usa preview rapida para navegar;
-- desactivala cuando revises color o marques cartas con precision;
+- usa preview automatica para navegar; NexoRAW baja resolucion solo durante la
+  interaccion cuando es necesario para mantener fluidez;
+- activa comparar/precision 1:1 cuando revises nitidez o color a pixel real;
+- activa `use_cache: true` en recetas de trabajo si vas a repetir ajustes sobre
+  los mismos RAWs y quieres reutilizar el demosaico numerico;
 - no regeneres perfiles si solo cambias ajustes finales;
 - guarda mochilas antes de copiar ajustes a otras imagenes;
 - trabaja dentro de la estructura de sesion para que rutas relativas, cache y

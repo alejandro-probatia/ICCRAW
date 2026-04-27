@@ -12,6 +12,7 @@ from iccraw.raw.pipeline import (
     _build_libraw_postprocess_kwargs,
     _develop_image,
     _parse_int_mode_value,
+    develop_scene_linear_array,
     develop_image_array,
     develop_controlled,
     libraw_demosaic_value,
@@ -124,3 +125,45 @@ def test_develop_image_array_matches_develop_controlled_output(tmp_path: Path):
     assert array_first.dtype == np.float32
     assert array_first.shape == rendered.shape
     assert np.allclose(array_first, rendered, atol=1 / 65535)
+
+
+def test_scene_linear_demosaic_cache_reuses_raw_decode(tmp_path: Path, monkeypatch):
+    raw = tmp_path / "capture.nef"
+    raw.write_bytes(b"fake-raw-cache-input")
+    cache = tmp_path / "cache"
+    calls = {"count": 0}
+
+    def fake_develop_with_libraw(_path, _recipe, *, half_size=False):
+        calls["count"] += 1
+        assert half_size is False
+        return np.full((4, 5, 3), 0.25, dtype=np.float32)
+
+    monkeypatch.setattr(pipeline, "develop_with_libraw", fake_develop_with_libraw)
+    recipe = Recipe(use_cache=True, exposure_compensation=0.0)
+
+    first = develop_scene_linear_array(raw, recipe, cache_dir=cache)
+    second = develop_scene_linear_array(raw, Recipe(use_cache=True, exposure_compensation=1.0), cache_dir=cache)
+
+    assert calls["count"] == 1
+    assert np.allclose(first, second)
+    assert list((cache / "demosaic").glob("*/*.npy"))
+
+
+def test_scene_linear_demosaic_cache_key_includes_demosaic_algorithm(tmp_path: Path, monkeypatch):
+    raw = tmp_path / "capture.nef"
+    raw.write_bytes(b"fake-raw-cache-input")
+    cache = tmp_path / "cache"
+    calls = {"count": 0}
+
+    def fake_develop_with_libraw(_path, recipe, *, half_size=False):
+        calls["count"] += 1
+        value = 0.2 if recipe.demosaic_algorithm == "dcb" else 0.4
+        return np.full((4, 5, 3), value, dtype=np.float32)
+
+    monkeypatch.setattr(pipeline, "develop_with_libraw", fake_develop_with_libraw)
+
+    first = develop_scene_linear_array(raw, Recipe(use_cache=True, demosaic_algorithm="dcb"), cache_dir=cache)
+    second = develop_scene_linear_array(raw, Recipe(use_cache=True, demosaic_algorithm="ahd"), cache_dir=cache)
+
+    assert calls["count"] == 2
+    assert not np.allclose(first, second)

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from iccraw.session import (
     DEFAULT_SUBDIRECTORIES,
+    cache_dir,
     create_session,
     load_session,
     save_session,
@@ -106,3 +107,13 @@ def test_save_session_normalizes_invalid_queue_entries(tmp_path: Path):
     assert len(payload["queue"]) == 1
     assert payload["queue"][0]["source"] == "/tmp/ok.raw"
     assert payload["queue"][0]["status"] == "pending"
+
+
+def test_cache_dir_creates_project_cache_subdirectory(tmp_path: Path):
+    root = tmp_path / "session_cache"
+
+    path = cache_dir(root, "demosaic")
+
+    assert path == (root / "00_configuraciones" / "cache" / "demosaic").resolve()
+    assert path.exists()
+    assert path.is_dir()
