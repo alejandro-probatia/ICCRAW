@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+import hashlib
+import json
 import os
 import shutil
 import struct
@@ -20,6 +22,11 @@ from ..version import __version__
 
 D50_XY = np.asarray(colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D50"], dtype=np.float64)
 D50_XYZ = np.asarray(colour.xy_to_XYZ(D50_XY), dtype=np.float64)
+ARGYLL_CACHE_DIR_ENV = "NEXORAW_ARGYLL_CACHE_DIR"
+LEGACY_ARGYLL_CACHE_DIR_ENV = "ICCRAW_ARGYLL_CACHE_DIR"
+ARGYLL_COLPROF_CACHE_ENV = "NEXORAW_ARGYLL_COLPROF_CACHE"
+LEGACY_ARGYLL_COLPROF_CACHE_ENV = "ICCRAW_ARGYLL_COLPROF_CACHE"
+_COLPROF_CACHE_SCHEMA = "colprof-cache-v1"
 
 
 def build_profile(
@@ -286,20 +293,36 @@ def _build_profile_with_argyll(
     if colprof is None:
         raise RuntimeError("colprof no esta en PATH")
 
+    args = [colprof, "-v", "-D", description]
+    env_args = os.environ.get("ICC_ARGYLL_COLPROF_ARGS", "").strip()
+    if extra_args:
+        args.extend(extra_args)
+    elif env_args:
+        args.extend(env_args.split())
+    else:
+        args.extend(["-qm", "-as"])
+
+    cache_path: Path | None = None
+    if _colprof_cache_enabled():
+        cache_path = _colprof_cache_path(
+            colprof=colprof,
+            args=args,
+            measured_rgb=measured_rgb,
+            reference_lab=reference_lab,
+            patch_ids=patch_ids,
+            description=description,
+        )
+        cached_bytes = _read_colprof_cache(cache_path)
+        if cached_bytes is not None:
+            out_icc.parent.mkdir(parents=True, exist_ok=True)
+            out_icc.write_bytes(cached_bytes)
+            return
+
     with tempfile.TemporaryDirectory(prefix="nexoraw_argyll_") as tmp:
         tmpdir = Path(tmp)
         base = tmpdir / "camera_profile"
         ti3 = base.with_suffix(".ti3")
         _write_ti3(ti3, measured_rgb, reference_lab, patch_ids)
-
-        args = [colprof, "-v", "-D", description]
-        env_args = os.environ.get("ICC_ARGYLL_COLPROF_ARGS", "").strip()
-        if extra_args:
-            args.extend(extra_args)
-        elif env_args:
-            args.extend(env_args.split())
-        else:
-            args.extend(["-qm", "-as"])
 
         args.append(base.stem)
 
@@ -314,6 +337,113 @@ def _build_profile_with_argyll(
             raise RuntimeError("colprof no produjo fichero .icc/.icm")
 
         shutil.copy2(produced, out_icc)
+        if cache_path is not None:
+            _write_colprof_cache(cache_path, produced.read_bytes())
+
+
+def _colprof_cache_enabled() -> bool:
+    return _read_env_bool(ARGYLL_COLPROF_CACHE_ENV, LEGACY_ARGYLL_COLPROF_CACHE_ENV, default=True)
+
+
+def _read_env_bool(primary: str, legacy: str, *, default: bool) -> bool:
+    raw = str(
+        (os.environ.get(primary, "").strip() or os.environ.get(legacy, "").strip())
+    ).strip().lower()
+    if not raw:
+        return bool(default)
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)
+
+
+def _argyll_cache_dir() -> Path:
+    configured = os.environ.get(ARGYLL_CACHE_DIR_ENV, "").strip() or os.environ.get(
+        LEGACY_ARGYLL_CACHE_DIR_ENV, ""
+    ).strip()
+    if configured:
+        return Path(configured).expanduser() / "colprof"
+    return Path.home() / ".nexoraw" / "argyll_cache" / "colprof"
+
+
+def _colprof_cache_path(
+    *,
+    colprof: str,
+    args: list[str],
+    measured_rgb: np.ndarray,
+    reference_lab: np.ndarray,
+    patch_ids: list[str],
+    description: str,
+) -> Path:
+    key = _colprof_cache_key(
+        colprof=colprof,
+        args=args,
+        measured_rgb=measured_rgb,
+        reference_lab=reference_lab,
+        patch_ids=patch_ids,
+        description=description,
+    )
+    return _argyll_cache_dir() / f"{key}.icc"
+
+
+def _colprof_cache_key(
+    *,
+    colprof: str,
+    args: list[str],
+    measured_rgb: np.ndarray,
+    reference_lab: np.ndarray,
+    patch_ids: list[str],
+    description: str,
+) -> str:
+    measured = np.ascontiguousarray(np.asarray(measured_rgb, dtype=np.float64))
+    reference = np.ascontiguousarray(np.asarray(reference_lab, dtype=np.float64))
+    payload = {
+        "schema": _COLPROF_CACHE_SCHEMA,
+        "tool": _colprof_binary_fingerprint(colprof),
+        "args": [str(part) for part in args],
+        "description": str(description),
+        "measured_shape": list(measured.shape),
+        "reference_shape": list(reference.shape),
+        "patch_ids": [str(pid) for pid in patch_ids],
+    }
+    h = hashlib.sha256()
+    h.update(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    h.update(measured.tobytes(order="C"))
+    h.update(reference.tobytes(order="C"))
+    return h.hexdigest()
+
+
+def _colprof_binary_fingerprint(colprof: str) -> str:
+    try:
+        path = Path(colprof).expanduser().resolve()
+        st = path.stat()
+        return f"{path}|{st.st_mtime_ns}|{st.st_size}"
+    except Exception:
+        return str(colprof)
+
+
+def _read_colprof_cache(path: Path) -> bytes | None:
+    try:
+        if not path.exists() or not path.is_file():
+            return None
+        payload = path.read_bytes()
+        if len(payload) < 128:
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+def _write_colprof_cache(path: Path, payload: bytes) -> None:
+    try:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temp = target.with_name(f"{target.name}.tmp")
+        temp.write_bytes(payload)
+        os.replace(temp, target)
+    except Exception:
+        return
 
 
 def _write_ti3(

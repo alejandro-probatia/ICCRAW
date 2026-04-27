@@ -11,7 +11,8 @@ param(
   [string]$RawpyDemosaicWheel = "",
   [string]$RawpyDemosaicSource = "",
   [switch]$Amaze,
-  [switch]$RequireAmaze
+  [switch]$RequireAmaze,
+  [switch]$AllowNoAmaze
 )
 
 $ErrorActionPreference = "Stop"
@@ -260,6 +261,11 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = (Resolve-Path (Join-Path $ScriptDir "..\..")).Path
 
 Set-Location $Root
+
+if (-not $RequireAmaze -and -not $AllowNoAmaze) {
+  $RequireAmaze = $true
+  Write-Host "AMaZE obligatorio por defecto para release. Usa -AllowNoAmaze solo para builds de prueba."
+}
 
 if ([string]::IsNullOrWhiteSpace($Python)) {
   $Python = Join-Path $Root ".venv\Scripts\python.exe"

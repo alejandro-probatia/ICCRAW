@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from pathlib import Path
 import hashlib
@@ -39,6 +40,14 @@ from ..version import __version__
 
 
 D50_XY = np.asarray(colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D50"], dtype=np.float64)
+BATCH_WORKERS_ENV = "NEXORAW_BATCH_WORKERS"
+LEGACY_BATCH_WORKERS_ENV = "ICCRAW_BATCH_WORKERS"
+BATCH_MEMORY_RESERVE_MB_ENV = "NEXORAW_BATCH_MEMORY_RESERVE_MB"
+LEGACY_BATCH_MEMORY_RESERVE_MB_ENV = "ICCRAW_BATCH_MEMORY_RESERVE_MB"
+BATCH_WORKER_RAM_MB_ENV = "NEXORAW_BATCH_WORKER_RAM_MB"
+LEGACY_BATCH_WORKER_RAM_MB_ENV = "ICCRAW_BATCH_WORKER_RAM_MB"
+DEFAULT_BATCH_MEMORY_RESERVE_MB = 1024
+DEFAULT_BATCH_WORKER_RAM_MB = 1400
 
 
 def batch_develop(
@@ -72,12 +81,23 @@ def batch_develop(
     proof_sign_config = proof_config or proof_config_from_environment()
 
     recipe_sha = hashlib.sha256(json.dumps(asdict(recipe), sort_keys=True).encode("utf-8")).hexdigest()
+    worker_count = _resolve_batch_workers(len(files))
+    planned_jobs: list[tuple[int, Path, Path, Path]] = []
+    reserved_outputs: set[str] = set()
+    reserved_audits: set[str] = set()
+    for idx, raw in enumerate(files):
+        out_final, out_linear = _versioned_batch_paths(
+            out_dir,
+            linear_audit_dir,
+            raw.stem,
+            reserved_outputs=reserved_outputs,
+            reserved_audits=reserved_audits,
+        )
+        planned_jobs.append((idx, raw, out_final, out_linear))
 
-    entries: list[BatchManifestEntry] = []
+    entries_slots: list[BatchManifestEntry | None] = [None] * len(planned_jobs)
 
-    for raw in files:
-        out_final, out_linear = _versioned_batch_paths(out_dir, linear_audit_dir, raw.stem)
-
+    def process_one(index: int, raw: Path, out_final: Path, out_linear: Path) -> tuple[int, BatchManifestEntry]:
         scene_linear = develop_scene_linear_array(raw, recipe)
         write_tiff16(out_linear, scene_linear)
         # Render final output from the in-memory array to avoid a second TIFF
@@ -112,22 +132,36 @@ def batch_develop(
                 proof_path=Path(proof_result.proof_path),
                 status="rendered",
             )
-
-        entries.append(
-            BatchManifestEntry(
-                source_raw=str(raw),
-                source_sha256=sha256_file(raw),
-                output_tiff=str(out_final),
-                output_sha256=sha256_file(out_final),
-                profile_path=str(rendered_profile_path or profile_path),
-                color_management_mode=color_mode,
-                output_color_space=recipe.output_space,
-                linear_audit_tiff=str(out_linear),
-                proof_path=proof_result.proof_path,
-                proof_sha256=proof_result.proof_sha256,
-                c2pa_embedded=proof_result.c2pa_embedded,
-            )
+        entry = BatchManifestEntry(
+            source_raw=str(raw),
+            source_sha256=sha256_file(raw),
+            output_tiff=str(out_final),
+            output_sha256=sha256_file(out_final),
+            profile_path=str(rendered_profile_path or profile_path),
+            color_management_mode=color_mode,
+            output_color_space=recipe.output_space,
+            linear_audit_tiff=str(out_linear),
+            proof_path=proof_result.proof_path,
+            proof_sha256=proof_result.proof_sha256,
+            c2pa_embedded=proof_result.c2pa_embedded,
         )
+        return index, entry
+
+    if worker_count <= 1:
+        for idx, raw, out_final, out_linear in planned_jobs:
+            position, entry = process_one(idx, raw, out_final, out_linear)
+            entries_slots[position] = entry
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="nexoraw-batch") as executor:
+            futures = [
+                executor.submit(process_one, idx, raw, out_final, out_linear)
+                for idx, raw, out_final, out_linear in planned_jobs
+            ]
+            for future in as_completed(futures):
+                position, entry = future.result()
+                entries_slots[position] = entry
+
+    entries: list[BatchManifestEntry] = [entry for entry in entries_slots if entry is not None]
 
     return BatchManifest(
         recipe_sha256=recipe_sha,
@@ -139,12 +173,152 @@ def batch_develop(
     )
 
 
-def _versioned_batch_paths(out_dir: Path, linear_audit_dir: Path, stem: str) -> tuple[Path, Path]:
+def _resolve_batch_workers(total_items: int) -> int:
+    total = max(1, int(total_items))
+    available_cpus = _available_cpu_count()
+    auto_workers = _resolve_auto_batch_workers(total, available_cpus)
+    raw_value = os.environ.get(BATCH_WORKERS_ENV, "").strip() or os.environ.get(
+        LEGACY_BATCH_WORKERS_ENV, ""
+    ).strip()
+    if not raw_value:
+        return auto_workers
+    if raw_value.lower() in {"auto", "max", "all"}:
+        return auto_workers
+    try:
+        configured = int(raw_value)
+    except ValueError:
+        return auto_workers
+    if configured <= 0:
+        return auto_workers
+    return max(1, min(total, configured))
+
+
+def _resolve_auto_batch_workers(total_items: int, available_cpus: int) -> int:
+    cpu_bound = max(1, min(total_items, max(1, int(available_cpus))))
+    memory_bound = _memory_limited_batch_workers(total_items)
+    return max(1, min(cpu_bound, memory_bound))
+
+
+def _available_cpu_count() -> int:
+    available_cpus = int(os.cpu_count() or 1)
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            available_cpus = max(1, len(os.sched_getaffinity(0)))
+        except Exception:
+            available_cpus = int(os.cpu_count() or 1)
+    return max(1, available_cpus)
+
+
+def _memory_limited_batch_workers(total_items: int) -> int:
+    available_bytes = _available_physical_memory_bytes()
+    if available_bytes is None or available_bytes <= 0:
+        return max(1, int(total_items))
+
+    reserve_mb = _read_positive_env_value(
+        BATCH_MEMORY_RESERVE_MB_ENV,
+        LEGACY_BATCH_MEMORY_RESERVE_MB_ENV,
+        default=DEFAULT_BATCH_MEMORY_RESERVE_MB,
+    )
+    per_worker_mb = _read_positive_env_value(
+        BATCH_WORKER_RAM_MB_ENV,
+        LEGACY_BATCH_WORKER_RAM_MB_ENV,
+        default=DEFAULT_BATCH_WORKER_RAM_MB,
+    )
+    reserve_bytes = int(reserve_mb) * 1024 * 1024
+    per_worker_bytes = max(1, int(per_worker_mb) * 1024 * 1024)
+    budget_bytes = max(0, int(available_bytes) - reserve_bytes)
+    if budget_bytes <= 0:
+        return 1
+    workers = max(1, budget_bytes // per_worker_bytes)
+    return max(1, min(int(total_items), int(workers)))
+
+
+def _read_positive_env_value(primary: str, legacy: str, *, default: int) -> int:
+    raw = os.environ.get(primary, "").strip() or os.environ.get(legacy, "").strip()
+    if not raw:
+        return int(default)
+    try:
+        value = int(raw)
+    except ValueError:
+        return int(default)
+    if value <= 0:
+        return int(default)
+    return int(value)
+
+
+def _available_physical_memory_bytes() -> int | None:
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", wintypes.DWORD),
+                    ("dwMemoryLoad", wintypes.DWORD),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            status = MEMORYSTATUSEX()
+            status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return int(status.ullAvailPhys)
+        except Exception:
+            return None
+        return None
+
+    # Unix-like systems: prefer sysconf values when available.
+    try:
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
+        avail_pages = int(os.sysconf("SC_AVPHYS_PAGES"))
+        if page_size > 0 and avail_pages > 0:
+            return int(page_size * avail_pages)
+    except Exception:
+        pass
+
+    # Linux fallback.
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("MemAvailable:"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        return int(parts[1]) * 1024
+    except Exception:
+        return None
+    return None
+
+
+def _versioned_batch_paths(
+    out_dir: Path,
+    linear_audit_dir: Path,
+    stem: str,
+    *,
+    reserved_outputs: set[str] | None = None,
+    reserved_audits: set[str] | None = None,
+) -> tuple[Path, Path]:
+    outputs = reserved_outputs if reserved_outputs is not None else set()
+    audits = reserved_audits if reserved_audits is not None else set()
     for index in range(1, 10000):
         version = "" if index == 1 else f"_v{index:03d}"
         out_final = out_dir / f"{stem}{version}.tiff"
         out_linear = linear_audit_dir / f"{stem}{version}.scene_linear.tiff"
-        if not out_final.exists() and not out_linear.exists():
+        key_final = str(out_final)
+        key_linear = str(out_linear)
+        if (
+            not out_final.exists()
+            and not out_linear.exists()
+            and key_final not in outputs
+            and key_linear not in audits
+        ):
+            outputs.add(key_final)
+            audits.add(key_linear)
             return out_final, out_linear
     raise RuntimeError(f"No se pudo generar una version de salida libre para: {stem}")
 

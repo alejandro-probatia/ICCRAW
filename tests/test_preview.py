@@ -232,6 +232,49 @@ def test_load_image_for_preview_downscales_non_raw(tmp_path: Path):
     assert max(loaded.shape[0], loaded.shape[1]) <= 1000
 
 
+def test_load_image_for_preview_hq_uses_half_size_when_preview_is_smaller(tmp_path: Path, monkeypatch):
+    raw_path = tmp_path / "sample.nef"
+    raw_path.write_bytes(b"raw")
+    recipe = Recipe()
+    called: dict[str, bool] = {}
+
+    monkeypatch.setattr(preview_module, "_raw_preview_source_max_side", lambda _path: 6200)
+    monkeypatch.delenv("NEXORAW_PREVIEW_HQ_HALF_SIZE", raising=False)
+
+    def fake_develop(_path, _recipe, *, half_size=False):
+        called["half_size"] = bool(half_size)
+        shape = (3000, 2000, 3) if half_size else (6000, 4000, 3)
+        return np.full(shape, 0.25, dtype=np.float32)
+
+    monkeypatch.setattr(preview_module, "develop_image_array", fake_develop)
+
+    loaded, msg = load_image_for_preview(raw_path, recipe=recipe, fast_raw=False, max_preview_side=2400)
+
+    assert called["half_size"] is True
+    assert "HQ optimizado" in msg
+    assert max(loaded.shape[0], loaded.shape[1]) <= 2400
+
+
+def test_load_image_for_preview_hq_can_disable_half_size_by_env(tmp_path: Path, monkeypatch):
+    raw_path = tmp_path / "sample.nef"
+    raw_path.write_bytes(b"raw")
+    recipe = Recipe()
+    called: dict[str, bool] = {}
+
+    monkeypatch.setattr(preview_module, "_raw_preview_source_max_side", lambda _path: 6200)
+    monkeypatch.setenv("NEXORAW_PREVIEW_HQ_HALF_SIZE", "0")
+
+    def fake_develop(_path, _recipe, *, half_size=False):
+        called["half_size"] = bool(half_size)
+        return np.full((3000, 2000, 3), 0.25, dtype=np.float32)
+
+    monkeypatch.setattr(preview_module, "develop_image_array", fake_develop)
+
+    _loaded, _msg = load_image_for_preview(raw_path, recipe=recipe, fast_raw=False, max_preview_side=2400)
+
+    assert called["half_size"] is False
+
+
 def test_camera_rgb_preview_balance_is_display_only_for_strong_cast():
     image = np.zeros((12, 16, 3), dtype=np.float32)
     image[..., 0] = 0.15

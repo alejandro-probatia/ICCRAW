@@ -83,6 +83,70 @@ def test_argyll_builder_accepts_icm_output(tmp_path: Path, monkeypatch):
     assert out_icc.read_bytes() == b"icm-profile"
 
 
+def test_argyll_builder_colprof_cache_reuses_previous_profile(tmp_path: Path, monkeypatch):
+    colprof_path = tmp_path / "colprof.exe"
+    colprof_path.write_bytes(b"fake-colprof")
+    monkeypatch.setattr(profiling, "external_tool_path", lambda name: str(colprof_path) if name == "colprof" else None)
+    monkeypatch.setenv("NEXORAW_ARGYLL_CACHE_DIR", str(tmp_path / "argyll-cache"))
+    monkeypatch.setenv("NEXORAW_ARGYLL_COLPROF_CACHE", "1")
+
+    calls: list[list[str]] = []
+
+    def fake_run(args, cwd, stdout, stderr, text):
+        calls.append([str(part) for part in args])
+        Path(cwd, "camera_profile.icc").write_bytes(b"cached-profile" * 16)
+        return SimpleNamespace(returncode=0, stdout="Profile done")
+
+    monkeypatch.setattr(profiling, "run_external", fake_run)
+
+    kwargs = dict(
+        measured_rgb=np.asarray([[0.1, 0.2, 0.3]], dtype=np.float64),
+        reference_lab=np.asarray([[50.0, 0.0, 0.0]], dtype=np.float64),
+        patch_ids=["P01"],
+        description="unit",
+        extra_args=["-qm", "-as"],
+    )
+    out_first = tmp_path / "first.icc"
+    out_second = tmp_path / "second.icc"
+
+    profiling._build_profile_with_argyll(out_icc=out_first, **kwargs)
+    profiling._build_profile_with_argyll(out_icc=out_second, **kwargs)
+
+    assert out_first.read_bytes() == b"cached-profile" * 16
+    assert out_second.read_bytes() == b"cached-profile" * 16
+    assert len(calls) == 1
+
+
+def test_argyll_builder_colprof_cache_can_be_disabled(tmp_path: Path, monkeypatch):
+    colprof_path = tmp_path / "colprof.exe"
+    colprof_path.write_bytes(b"fake-colprof")
+    monkeypatch.setattr(profiling, "external_tool_path", lambda name: str(colprof_path) if name == "colprof" else None)
+    monkeypatch.setenv("NEXORAW_ARGYLL_CACHE_DIR", str(tmp_path / "argyll-cache"))
+    monkeypatch.setenv("NEXORAW_ARGYLL_COLPROF_CACHE", "0")
+
+    calls: list[list[str]] = []
+
+    def fake_run(args, cwd, stdout, stderr, text):
+        calls.append([str(part) for part in args])
+        Path(cwd, "camera_profile.icc").write_bytes(b"no-cache-profile")
+        return SimpleNamespace(returncode=0, stdout="Profile done")
+
+    monkeypatch.setattr(profiling, "run_external", fake_run)
+
+    kwargs = dict(
+        measured_rgb=np.asarray([[0.1, 0.2, 0.3]], dtype=np.float64),
+        reference_lab=np.asarray([[50.0, 0.0, 0.0]], dtype=np.float64),
+        patch_ids=["P01"],
+        description="unit",
+        extra_args=["-qm", "-as"],
+    )
+
+    profiling._build_profile_with_argyll(out_icc=tmp_path / "first.icc", **kwargs)
+    profiling._build_profile_with_argyll(out_icc=tmp_path / "second.icc", **kwargs)
+
+    assert len(calls) == 2
+
+
 @pytest.mark.skipif(shutil.which("xicclu") is None, reason="requiere xicclu/ArgyllCMS")
 def test_validate_profile_uses_real_icc_not_sidecar_matrix(tmp_path: Path):
     profile = tmp_path / "srgb.icc"

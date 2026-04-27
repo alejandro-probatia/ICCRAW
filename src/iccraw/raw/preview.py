@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import subprocess
 
 import cv2
@@ -17,6 +18,8 @@ from .pipeline import develop_image_array
 
 
 _PROFILE_PREVIEW_LUT_CACHE: dict[tuple[str, int], np.ndarray] = {}
+PREVIEW_HQ_HALF_SIZE_ENV = "NEXORAW_PREVIEW_HQ_HALF_SIZE"
+LEGACY_PREVIEW_HQ_HALF_SIZE_ENV = "ICCRAW_PREVIEW_HQ_HALF_SIZE"
 
 
 def load_image_for_preview(
@@ -49,9 +52,12 @@ def load_image_for_preview(
         return image, f"RAW previsualizado en modo rapido: {input_path.name}"
 
     # Preview de alta calidad: mismo render que develop_controlled, sin TIFF temporal.
-    image = develop_image_array(input_path, recipe)
+    half_size_hq = _prefer_half_size_high_quality_preview(input_path, max_preview_side=max_preview_side)
+    image = develop_image_array(input_path, recipe, half_size=half_size_hq)
     image = _downscale_for_preview(image, max_preview_side=max_preview_side)
     image = _camera_rgb_display_balance_if_needed(image, recipe)
+    if half_size_hq:
+        return image, f"RAW previsualizado HQ optimizado (half-size): {input_path.name}"
     return image, f"RAW revelado completo para preview de alta calidad: {input_path.name}"
 
 
@@ -61,6 +67,55 @@ def _develop_raw_fast_preview(input_path: Path, recipe: Recipe) -> np.ndarray:
         return embedded
 
     return develop_image_array(input_path, recipe, half_size=True)
+
+
+def _prefer_half_size_high_quality_preview(input_path: Path, *, max_preview_side: int) -> bool:
+    enabled = _env_enabled(PREVIEW_HQ_HALF_SIZE_ENV, LEGACY_PREVIEW_HQ_HALF_SIZE_ENV, default=True)
+    if not enabled:
+        return False
+    if max_preview_side <= 0:
+        return False
+    source_max_side = _raw_preview_source_max_side(input_path)
+    if source_max_side is None:
+        return False
+    # Use half-size only when the decoded side stays at or above the requested
+    # preview side, avoiding quality loss from upscaling.
+    return (source_max_side // 2) >= int(max_preview_side)
+
+
+def _raw_preview_source_max_side(input_path: Path) -> int | None:
+    try:
+        with open_rawpy(input_path) as raw:
+            sizes = getattr(raw, "sizes", None)
+            if sizes is None:
+                return None
+            dims: list[int] = []
+            for attr in ("raw_width", "raw_height", "width", "height", "iwidth", "iheight"):
+                value = getattr(sizes, attr, 0)
+                try:
+                    parsed = int(value)
+                except Exception:
+                    continue
+                if parsed > 0:
+                    dims.append(parsed)
+            if len(dims) < 2:
+                return None
+            return int(max(dims))
+    except Exception:
+        return None
+
+
+def _env_enabled(primary: str, legacy: str, *, default: bool) -> bool:
+    raw = str(
+        (os.environ.get(primary, "").strip() or os.environ.get(legacy, "").strip())
+    ).strip().lower()
+    if not raw:
+        return bool(default)
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    return bool(default)
 
 
 def extract_embedded_preview(input_path: Path) -> np.ndarray | None:

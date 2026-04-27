@@ -5,10 +5,18 @@ import numpy as np
 import pytest
 import tifffile
 
+import iccraw.profile.export as export_module
 from iccraw.core.models import Recipe
 from iccraw.core.external import external_tool_path
 from iccraw.core.utils import read_image
-from iccraw.profile.export import _argyll_reference_profile, batch_develop, color_management_mode, write_profiled_tiff
+from iccraw.profile.export import (
+    _argyll_reference_profile,
+    _resolve_batch_workers,
+    _versioned_batch_paths,
+    batch_develop,
+    color_management_mode,
+    write_profiled_tiff,
+)
 from iccraw.profile.generic import ensure_generic_output_profile
 from iccraw.provenance.c2pa import C2PASignConfig
 from iccraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity, verify_nexoraw_proof
@@ -171,6 +179,77 @@ def test_batch_develop_versions_existing_final_and_audit_outputs(tmp_path: Path)
     assert entry.linear_audit_tiff == str(audit_dir / "capture_01_v002.scene_linear.tiff")
     assert Path(entry.output_tiff).exists()
     assert Path(entry.linear_audit_tiff or "").exists()
+
+
+def test_versioned_batch_paths_avoids_reserved_collisions(tmp_path: Path):
+    out_dir = tmp_path / "out"
+    audit_dir = out_dir / "_linear_audit"
+    out_dir.mkdir()
+    audit_dir.mkdir()
+    reserved_outputs: set[str] = set()
+    reserved_audits: set[str] = set()
+
+    first_final, first_audit = _versioned_batch_paths(
+        out_dir,
+        audit_dir,
+        "capture_01",
+        reserved_outputs=reserved_outputs,
+        reserved_audits=reserved_audits,
+    )
+    second_final, second_audit = _versioned_batch_paths(
+        out_dir,
+        audit_dir,
+        "capture_01",
+        reserved_outputs=reserved_outputs,
+        reserved_audits=reserved_audits,
+    )
+
+    assert first_final == out_dir / "capture_01.tiff"
+    assert first_audit == audit_dir / "capture_01.scene_linear.tiff"
+    assert second_final == out_dir / "capture_01_v002.tiff"
+    assert second_audit == audit_dir / "capture_01_v002.scene_linear.tiff"
+
+
+def test_resolve_batch_workers_respects_env_override(monkeypatch):
+    monkeypatch.setenv("NEXORAW_BATCH_WORKERS", "4")
+
+    assert _resolve_batch_workers(1) == 1
+    assert _resolve_batch_workers(3) == 3
+
+
+def test_resolve_batch_workers_accepts_auto_keywords(monkeypatch):
+    monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 8)
+    monkeypatch.setattr(export_module, "_available_physical_memory_bytes", lambda: 32 * 1024 * 1024 * 1024)
+    monkeypatch.setenv("NEXORAW_BATCH_WORKERS", "auto")
+    assert _resolve_batch_workers(2) == 2
+    monkeypatch.setenv("NEXORAW_BATCH_WORKERS", "max")
+    assert _resolve_batch_workers(2) == 2
+    monkeypatch.setenv("NEXORAW_BATCH_WORKERS", "all")
+    assert _resolve_batch_workers(2) == 2
+
+
+def test_resolve_batch_workers_auto_limits_by_memory(monkeypatch):
+    monkeypatch.delenv("NEXORAW_BATCH_WORKERS", raising=False)
+    monkeypatch.delenv("ICCRAW_BATCH_WORKERS", raising=False)
+    monkeypatch.delenv("NEXORAW_BATCH_MEMORY_RESERVE_MB", raising=False)
+    monkeypatch.delenv("NEXORAW_BATCH_WORKER_RAM_MB", raising=False)
+    monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 16)
+    monkeypatch.setattr(export_module, "_available_physical_memory_bytes", lambda: 3 * 1024 * 1024 * 1024)
+
+    # Defaults reserve 1 GiB and estimate ~1.4 GiB per worker.
+    assert _resolve_batch_workers(8) == 1
+
+
+def test_resolve_batch_workers_auto_honours_memory_env_tuning(monkeypatch):
+    monkeypatch.delenv("NEXORAW_BATCH_WORKERS", raising=False)
+    monkeypatch.delenv("ICCRAW_BATCH_WORKERS", raising=False)
+    monkeypatch.setenv("NEXORAW_BATCH_MEMORY_RESERVE_MB", "512")
+    monkeypatch.setenv("NEXORAW_BATCH_WORKER_RAM_MB", "512")
+    monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 12)
+    monkeypatch.setattr(export_module, "_available_physical_memory_bytes", lambda: 3 * 1024 * 1024 * 1024)
+
+    # 3 GiB available - 512 MiB reserve = 2.5 GiB budget => 5 workers @ 512 MiB.
+    assert _resolve_batch_workers(12) == 5
 
 
 def test_batch_develop_writes_true_linear_audit_before_output_adjustments(tmp_path: Path):

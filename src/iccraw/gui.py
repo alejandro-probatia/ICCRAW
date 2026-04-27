@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from datetime import datetime, timezone
 import hashlib
@@ -8,8 +9,10 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import sys
 import tempfile
+import time
 import traceback
 from typing import Any
 import warnings
@@ -43,7 +46,11 @@ from .display_color import (
     srgb_u8_to_display_u8,
 )
 from .metadata_viewer import inspect_file_metadata, metadata_display_sections, metadata_sections_text
-from .profile.export import profile_path_for_render_settings, write_signed_profiled_tiff
+from .profile.export import (
+    _resolve_batch_workers as resolve_batch_workers,
+    profile_path_for_render_settings,
+    write_signed_profiled_tiff,
+)
 from .profile.generic import ensure_generic_output_profile, generic_output_profile, is_generic_output_space
 from .provenance.c2pa import C2PASignConfig, DEFAULT_TIMESTAMP_URL, auto_c2pa_config
 from .provenance.nexoraw_proof import (
@@ -70,9 +77,11 @@ from .raw.preview import (
     preview_analysis_text,
     tone_curve_lut,
 )
-from .reporting import check_external_tools
+from .reporting import check_amaze_backend, check_external_tools
 from .session import create_session, ensure_session_structure, load_session, save_session, session_file_path
 from .sidecar import load_raw_sidecar, raw_sidecar_path, write_raw_sidecar
+from .update import auto_update, check_latest_release
+from .version import __version__
 from .workflow import auto_generate_profile_from_charts
 
 try:
@@ -97,6 +106,7 @@ LAYOUT_VERSION = 4
 APP_NAME = "NexoRAW"
 ORG_NAME = "NexoRAW"
 APP_ICON_RESOURCE = "icons/nexoraw-icon.png"
+PROJECT_DIRECTOR_NAME = os.environ.get("NEXORAW_PROJECT_DIRECTOR", "Alejandro Probatia").strip() or "Alejandro Probatia"
 DEFAULT_THUMBNAIL_SIZE = 132
 MIN_THUMBNAIL_SIZE = 72
 MAX_THUMBNAIL_SIZE = 220
@@ -107,14 +117,27 @@ PREVIEW_DISK_CACHE_MAX_BYTES = 2 * 1024 * 1024 * 1024
 THUMBNAIL_CACHE_MAX_ENTRIES = 512
 THUMBNAIL_DISK_CACHE_MAX_ENTRIES = 4096
 THUMBNAIL_DISK_CACHE_MAX_BYTES = 512 * 1024 * 1024
+THUMBNAIL_DISK_PRUNE_INTERVAL_WRITES = 512
 THUMBNAIL_BATCH_SIZE = 48
 THUMBNAIL_PREFETCH_MARGIN_PAGES = 2
 PREVIEW_REFRESH_DEBOUNCE_MS = 120
-PREVIEW_REFRESH_THROTTLE_MS = 45
+PREVIEW_REFRESH_THROTTLE_MS = 65
+PREVIEW_AUTO_BASE_MAX_SIDE = 2600
 PREVIEW_INTERACTIVE_MAX_SIDE = 1200
+PREVIEW_INTERACTIVE_DRAG_MAX_SIDE = 720
+PREVIEW_INTERACTIVE_TONAL_MAX_SIDE = 560
+PREVIEW_PRECISION_MIN_MAX_SIDE = 6000
+PREVIEW_PROFILE_CACHE_MAX_ENTRIES = 8
+PREVIEW_PROFILE_APPLY_MAX_SIDE = 1400
+PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC_ENV = "NEXORAW_PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC"
+LEGACY_PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC_ENV = "ICCRAW_PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC"
 IMAGE_PANEL_BACKGROUND = "#2b2b2b"
 IMAGE_PANEL_BORDER = "#5a5a5a"
 IMAGE_PANEL_TEXT = "#e6e6e6"
+VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS = 320000
+VIEWER_HISTOGRAM_SHADOW_CLIP_U8 = 1
+VIEWER_HISTOGRAM_HIGHLIGHT_CLIP_U8 = 254
+VIEWER_HISTOGRAM_CLIP_ALERT_RATIO = 5e-4
 LEGACY_PROJECT_DIR_RENAMES = {
     "charts": Path("01_ORG"),
     "raw": Path("01_ORG"),
@@ -142,6 +165,19 @@ def _app_icon() -> QtGui.QIcon:
     if path is None:
         return QtGui.QIcon()
     return QtGui.QIcon(str(path))
+
+
+def _env_flag(primary: str, legacy: str, *, default: bool) -> bool:
+    raw = str(
+        (os.environ.get(primary, "").strip() or os.environ.get(legacy, "").strip())
+    ).strip().lower()
+    if not raw:
+        return bool(default)
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)
 
 DEMOSAIC_OPTIONS = [
     ("DCB (LibRaw, alta calidad)", "dcb"),
@@ -599,16 +635,237 @@ if QtWidgets is not None:
             return best_idx
 
 
+    class RGBHistogramWidget(QtWidgets.QWidget):
+        def __init__(self) -> None:
+            super().__init__()
+            self._hist_r: np.ndarray | None = None
+            self._hist_g: np.ndarray | None = None
+            self._hist_b: np.ndarray | None = None
+            self._clip_shadow = np.zeros(3, dtype=np.float32)
+            self._clip_highlight = np.zeros(3, dtype=np.float32)
+            self._clip_markers_enabled = True
+            self.setMinimumHeight(130)
+            self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+
+        def sizeHint(self) -> QtCore.QSize:  # noqa: N802
+            return QtCore.QSize(340, 150)
+
+        def clear(self) -> None:
+            self._hist_r = None
+            self._hist_g = None
+            self._hist_b = None
+            self._clip_shadow = np.zeros(3, dtype=np.float32)
+            self._clip_highlight = np.zeros(3, dtype=np.float32)
+            self.setToolTip("")
+            self.update()
+
+        def set_clip_markers_enabled(self, enabled: bool) -> None:
+            self._clip_markers_enabled = bool(enabled)
+            self.update()
+
+        def clip_metrics(self) -> dict[str, float]:
+            return {
+                "shadow_r": float(self._clip_shadow[0]),
+                "shadow_g": float(self._clip_shadow[1]),
+                "shadow_b": float(self._clip_shadow[2]),
+                "highlight_r": float(self._clip_highlight[0]),
+                "highlight_g": float(self._clip_highlight[1]),
+                "highlight_b": float(self._clip_highlight[2]),
+                "shadow_any": float(np.max(self._clip_shadow)),
+                "highlight_any": float(np.max(self._clip_highlight)),
+            }
+
+        def set_image_u8(self, image_rgb_u8: np.ndarray | None) -> None:
+            if image_rgb_u8 is None:
+                self.clear()
+                return
+            rgb = np.asarray(image_rgb_u8)
+            if rgb.ndim == 2:
+                rgb = np.repeat(rgb[..., None], 3, axis=2)
+            if rgb.ndim != 3 or rgb.shape[2] < 3:
+                self.clear()
+                return
+            rgb = np.ascontiguousarray(rgb[..., :3])
+            if rgb.dtype != np.uint8:
+                rgb = np.clip(np.round(rgb.astype(np.float32)), 0, 255).astype(np.uint8)
+
+            pixels = rgb.reshape((-1, 3))
+            if pixels.size == 0:
+                self.clear()
+                return
+
+            count = int(pixels.shape[0])
+            if count > VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS:
+                stride = int(np.ceil(count / VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS))
+                pixels = pixels[::max(1, stride)]
+                count = int(pixels.shape[0])
+
+            hist_r = np.bincount(pixels[:, 0], minlength=256).astype(np.float32)
+            hist_g = np.bincount(pixels[:, 1], minlength=256).astype(np.float32)
+            hist_b = np.bincount(pixels[:, 2], minlength=256).astype(np.float32)
+            maxv = float(max(np.max(hist_r), np.max(hist_g), np.max(hist_b), 1.0))
+            self._hist_r = hist_r / maxv
+            self._hist_g = hist_g / maxv
+            self._hist_b = hist_b / maxv
+
+            self._clip_shadow = np.mean(
+                pixels <= int(VIEWER_HISTOGRAM_SHADOW_CLIP_U8), axis=0
+            ).astype(np.float32)
+            self._clip_highlight = np.mean(
+                pixels >= int(VIEWER_HISTOGRAM_HIGHLIGHT_CLIP_U8), axis=0
+            ).astype(np.float32)
+
+            metrics = self.clip_metrics()
+            self.setToolTip(
+                "Clipping sombras: "
+                f"R {metrics['shadow_r'] * 100.0:.2f}%  "
+                f"G {metrics['shadow_g'] * 100.0:.2f}%  "
+                f"B {metrics['shadow_b'] * 100.0:.2f}%\n"
+                "Clipping luces: "
+                f"R {metrics['highlight_r'] * 100.0:.2f}%  "
+                f"G {metrics['highlight_g'] * 100.0:.2f}%  "
+                f"B {metrics['highlight_b'] * 100.0:.2f}%"
+            )
+            self.update()
+
+        def paintEvent(self, _event) -> None:  # noqa: N802
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            painter.fillRect(self.rect(), QtGui.QColor("#1c1f24"))
+
+            plot_rect = self.rect().adjusted(8, 8, -8, -24)
+            if plot_rect.width() <= 4 or plot_rect.height() <= 4:
+                return
+
+            bg_grad = QtGui.QLinearGradient(plot_rect.topLeft(), plot_rect.bottomLeft())
+            bg_grad.setColorAt(0.0, QtGui.QColor("#2b2f35"))
+            bg_grad.setColorAt(1.0, QtGui.QColor("#1d2025"))
+            painter.fillRect(plot_rect, bg_grad)
+
+            painter.setPen(QtGui.QPen(QtGui.QColor("#3b4048"), 1))
+            for idx in range(1, 4):
+                x = plot_rect.left() + (plot_rect.width() * idx / 4.0)
+                painter.drawLine(QtCore.QPointF(x, plot_rect.top()), QtCore.QPointF(x, plot_rect.bottom()))
+            for idx in range(1, 3):
+                y = plot_rect.top() + (plot_rect.height() * idx / 3.0)
+                painter.drawLine(QtCore.QPointF(plot_rect.left(), y), QtCore.QPointF(plot_rect.right(), y))
+
+            self._draw_hist_channel(painter, plot_rect, self._hist_r, QtGui.QColor(248, 113, 113, 170), QtGui.QColor(248, 113, 113, 245))
+            self._draw_hist_channel(painter, plot_rect, self._hist_g, QtGui.QColor(134, 239, 172, 150), QtGui.QColor(134, 239, 172, 245))
+            self._draw_hist_channel(painter, plot_rect, self._hist_b, QtGui.QColor(96, 165, 250, 150), QtGui.QColor(96, 165, 250, 245))
+
+            painter.setPen(QtGui.QPen(QtGui.QColor("#4b515b"), 1))
+            painter.setBrush(QtCore.Qt.NoBrush)
+            painter.drawRect(plot_rect)
+
+            metrics = self.clip_metrics()
+            self._draw_clip_marker(
+                painter,
+                left_side=True,
+                active=bool(metrics["shadow_any"] > VIEWER_HISTOGRAM_CLIP_ALERT_RATIO),
+                color=QtGui.QColor("#60a5fa"),
+            )
+            self._draw_clip_marker(
+                painter,
+                left_side=False,
+                active=bool(metrics["highlight_any"] > VIEWER_HISTOGRAM_CLIP_ALERT_RATIO),
+                color=QtGui.QColor("#f87171"),
+            )
+
+            painter.setPen(QtGui.QColor("#aeb5bf"))
+            painter.drawText(
+                self.rect().adjusted(8, 0, -8, -4),
+                QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom,
+                f"S {metrics['shadow_any'] * 100.0:.2f}%",
+            )
+            painter.drawText(
+                self.rect().adjusted(8, 0, -8, -4),
+                QtCore.Qt.AlignRight | QtCore.Qt.AlignBottom,
+                f"L {metrics['highlight_any'] * 100.0:.2f}%",
+            )
+
+        def _draw_hist_channel(
+            self,
+            painter: QtGui.QPainter,
+            rect: QtCore.QRect,
+            hist: np.ndarray | None,
+            fill_color: QtGui.QColor,
+            line_color: QtGui.QColor,
+        ) -> None:
+            if hist is None or hist.size == 0:
+                return
+            n = int(hist.size)
+            if n <= 1:
+                return
+            path = QtGui.QPainterPath()
+            path.moveTo(rect.left(), rect.bottom())
+            for idx, value in enumerate(hist):
+                x = rect.left() + rect.width() * (idx / float(n - 1))
+                y = rect.bottom() - rect.height() * float(np.clip(value, 0.0, 1.0))
+                path.lineTo(float(x), float(y))
+            path.lineTo(rect.right(), rect.bottom())
+            path.closeSubpath()
+            painter.fillPath(path, fill_color)
+
+            line_path = QtGui.QPainterPath()
+            for idx, value in enumerate(hist):
+                x = rect.left() + rect.width() * (idx / float(n - 1))
+                y = rect.bottom() - rect.height() * float(np.clip(value, 0.0, 1.0))
+                if idx == 0:
+                    line_path.moveTo(float(x), float(y))
+                else:
+                    line_path.lineTo(float(x), float(y))
+            painter.setPen(QtGui.QPen(line_color, 1.15))
+            painter.drawPath(line_path)
+
+        def _draw_clip_marker(
+            self,
+            painter: QtGui.QPainter,
+            *,
+            left_side: bool,
+            active: bool,
+            color: QtGui.QColor,
+        ) -> None:
+            size = 12
+            margin = 3
+            if left_side:
+                x = margin
+            else:
+                x = max(margin, self.width() - margin - size)
+            y = margin
+            points = QtGui.QPolygonF(
+                [
+                    QtCore.QPointF(x, y + size),
+                    QtCore.QPointF(x + size * 0.5, y),
+                    QtCore.QPointF(x + size, y + size),
+                ]
+            )
+            marker_on = bool(self._clip_markers_enabled and active)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#0f1115"), 1))
+            painter.setBrush(QtGui.QBrush(color if marker_on else QtGui.QColor("#323842")))
+            painter.drawPolygon(points)
+
+
     class ImagePanel(QtWidgets.QLabel):
         imageClicked = QtCore.Signal(float, float)
 
-        def __init__(self, title: str) -> None:
+        def __init__(
+            self,
+            title: str,
+            *,
+            framed: bool = True,
+            background: str = IMAGE_PANEL_BACKGROUND,
+        ) -> None:
             super().__init__()
             self._base_pixmap: QtGui.QPixmap | None = None
             self._image_size: tuple[int, int] | None = None
             self._overlay_points: list[tuple[float, float]] = []
             self._view_zoom = 1.0
             self._view_rotation = 0
+            self._framed = bool(framed)
+            self._background = str(background or IMAGE_PANEL_BACKGROUND)
+            self._clip_overlay_pixmap: QtGui.QPixmap | None = None
+            self._clip_overlay_enabled = False
             self._pan = QtCore.QPointF(0.0, 0.0)
             self._drag_start: QtCore.QPointF | None = None
             self._drag_last: QtCore.QPointF | None = None
@@ -617,10 +874,11 @@ if QtWidgets is not None:
             self.setMinimumSize(220, 160)
             self.setMouseTracking(True)
             self.setText(title)
+            border_style = f"1px solid {IMAGE_PANEL_BORDER}" if self._framed else "1px solid transparent"
             self.setStyleSheet(
                 "QLabel {"
-                f"border: 1px solid {IMAGE_PANEL_BORDER};"
-                f"background-color: {IMAGE_PANEL_BACKGROUND};"
+                f"border: {border_style};"
+                f"background-color: {self._background};"
                 f"color: {IMAGE_PANEL_TEXT};"
                 "font-size: 13px;"
                 "}"
@@ -642,10 +900,43 @@ if QtWidgets is not None:
             self._image_size = (w, h)
             qimg = QtGui.QImage(u8.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
             self._base_pixmap = QtGui.QPixmap.fromImage(qimg)
+            self._clip_overlay_pixmap = None
             self._refresh_scaled_pixmap()
 
         def set_overlay_points(self, points: list[tuple[float, float]]) -> None:
             self._overlay_points = list(points)
+            self._refresh_scaled_pixmap()
+
+        def set_clip_overlay_enabled(self, enabled: bool) -> None:
+            self._clip_overlay_enabled = bool(enabled)
+            self._refresh_scaled_pixmap()
+
+        def clear_clip_overlay(self) -> None:
+            self._clip_overlay_pixmap = None
+            self._refresh_scaled_pixmap()
+
+        def set_clip_overlay_classes(self, classes_u8: np.ndarray | None) -> None:
+            if classes_u8 is None:
+                self._clip_overlay_pixmap = None
+                self._refresh_scaled_pixmap()
+                return
+            classes = np.ascontiguousarray(np.asarray(classes_u8, dtype=np.uint8))
+            if classes.ndim != 2:
+                self._clip_overlay_pixmap = None
+                self._refresh_scaled_pixmap()
+                return
+            h, w = int(classes.shape[0]), int(classes.shape[1])
+            if h <= 0 or w <= 0:
+                self._clip_overlay_pixmap = None
+                self._refresh_scaled_pixmap()
+                return
+            qimg = QtGui.QImage(classes.data, w, h, w, QtGui.QImage.Format_Indexed8).copy()
+            qimg.setColorCount(4)
+            qimg.setColor(0, QtGui.qRgba(0, 0, 0, 0))
+            qimg.setColor(1, QtGui.qRgba(44, 156, 255, 110))
+            qimg.setColor(2, QtGui.qRgba(255, 68, 68, 120))
+            qimg.setColor(3, QtGui.qRgba(196, 65, 255, 140))
+            self._clip_overlay_pixmap = QtGui.QPixmap.fromImage(qimg)
             self._refresh_scaled_pixmap()
 
         def set_view_transform(self, *, zoom: float, rotation: int) -> None:
@@ -714,8 +1005,10 @@ if QtWidgets is not None:
             pixmap, rect, scale, transform, bounds = geometry
             painter = QtGui.QPainter(self)
             painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform)
-            painter.fillRect(self.rect(), QtGui.QColor(IMAGE_PANEL_BACKGROUND))
+            painter.fillRect(self.rect(), QtGui.QColor(self._background))
             painter.drawPixmap(rect, pixmap, QtCore.QRectF(pixmap.rect()))
+            if self._clip_overlay_enabled and self._clip_overlay_pixmap is not None:
+                painter.drawPixmap(rect, self._clip_overlay_pixmap, QtCore.QRectF(self._clip_overlay_pixmap.rect()))
 
             if self._overlay_points and self._image_size is not None:
                 painter.setRenderHint(QtGui.QPainter.Antialiasing)
@@ -734,9 +1027,10 @@ if QtWidgets is not None:
                     painter.drawEllipse(point, 6, 6)
                     painter.drawText(point + QtCore.QPointF(8, -8), str(idx))
 
-            painter.setBrush(QtCore.Qt.NoBrush)
-            painter.setPen(QtGui.QPen(QtGui.QColor("#4b5563"), 1))
-            painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
+            if self._framed:
+                painter.setBrush(QtCore.Qt.NoBrush)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#4b5563"), 1))
+                painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
             painter.end()
 
         def _refresh_scaled_pixmap(self) -> None:
@@ -827,14 +1121,47 @@ if QtWidgets is not None:
             self._threads: list[TaskThread] = []
             self._thumb_cache: dict[str, QtGui.QIcon] = {}
             self._image_thumb_cache: dict[str, QtGui.QIcon] = {}
+            self._file_items_by_key: dict[str, QtWidgets.QListWidgetItem] = {}
             self._thumbnail_generation = 0
             self._metadata_generation = 0
+            self._thumbnail_disk_writes_since_prune = 0
             self._pending_thumbnail_paths: list[Path] = []
             self._thumbnail_scan_index = 0
             self._thumbnail_task_active = False
+            self._metadata_task_active = False
+            self._metadata_pending_request: tuple[Path, bool] | None = None
             self._queued_metadata_include_c2pa = True
+            self._preview_load_task_active = False
+            self._preview_load_inflight_key: str | None = None
+            self._preview_load_pending_request: tuple[Path, Recipe, bool, int, str] | None = None
+            self._loaded_preview_base_signature: str | None = None
+            self._loaded_preview_fast_raw: bool | None = None
+            self._loaded_preview_source_max_side: int = 0
             self._preview_cache: dict[str, np.ndarray] = {}
             self._preview_cache_order: list[str] = []
+            self._profile_preview_cache: dict[str, np.ndarray] = {}
+            self._profile_preview_cache_order: list[str] = []
+            self._profile_preview_task_active = False
+            self._profile_preview_inflight_key: str | None = None
+            self._profile_preview_pending_request: tuple[str, Path, np.ndarray, tuple[int, int]] | None = None
+            self._profile_preview_expected_key: str | None = None
+            self._profile_preview_error_key: str | None = None
+            self._interactive_preview_task_active = False
+            self._interactive_preview_inflight_key: str | None = None
+            self._interactive_preview_pending_request: tuple[
+                str,
+                str | None,
+                np.ndarray,
+                dict[str, float],
+                dict[str, Any],
+                bool,
+                bool,
+                int,
+                bool,
+            ] | None = None
+            self._interactive_preview_expected_key: str | None = None
+            self._interactive_preview_last_ms: float | None = None
+            self._interactive_preview_request_seq = 0
             self._display_color_error_key: str | None = None
             self._manual_chart_marking = False
             self._manual_chart_points: list[tuple[float, float]] = []
@@ -854,6 +1181,7 @@ if QtWidgets is not None:
             self._development_settings_clipboard: dict[str, Any] | None = None
             self._selected_chart_files: list[Path] = []
             self._manual_chart_detections: dict[str, dict[str, Any]] = {}
+            self._update_check_last: dict[str, Any] | None = None
 
             self._original_linear: np.ndarray | None = None
             self._adjusted_linear: np.ndarray | None = None
@@ -864,6 +1192,14 @@ if QtWidgets is not None:
             self._detail_adjustment_cache_key: str | None = None
             self._original_srgb_cache: np.ndarray | None = None
             self._original_srgb_cache_key: str | None = None
+            self._original_display_u8_cache: np.ndarray | None = None
+            self._original_display_u8_cache_key: str | None = None
+            self._original_compare_panel_key: str | None = None
+            self._interactive_bypass_display_icc = _env_flag(
+                PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC_ENV,
+                LEGACY_PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC_ENV,
+                default=True,
+            )
             self._viewer_zoom = 1.0
             self._viewer_rotation = 0
             self._selection_load_timer = QtCore.QTimer(self)
@@ -883,6 +1219,7 @@ if QtWidgets is not None:
             self._session_root_update_timer.timeout.connect(self._on_session_root_edited)
 
             self._build_ui()
+            self._setup_interactive_preview_status_widgets()
             self._build_menu_bar()
             self._init_fs_model()
             self._refresh_storage_roots()
@@ -980,6 +1317,7 @@ if QtWidgets is not None:
 
             menu_help = mb.addMenu("Ayuda")
             menu_help.addAction(self._action("Diagnóstico herramientas...", self._menu_check_tools))
+            menu_help.addAction(self._action("Buscar actualizaciones...", self._menu_check_updates))
             menu_help.addAction(self._action(f"Acerca de {APP_NAME}", self._menu_about))
 
         def _go_to_nitidez_tab(self) -> None:
@@ -1545,6 +1883,62 @@ if QtWidgets is not None:
             zoom_grid.addWidget(self._button("Girar der.", self._viewer_rotate_right), 1, 2)
             zoom_grid.addWidget(self._button("Encajar", self._viewer_fit), 2, 0, 1, 3)
             layout.addLayout(zoom_grid)
+
+            histogram_box = QtWidgets.QGroupBox("Histograma RGB")
+            histogram_layout = QtWidgets.QVBoxLayout(histogram_box)
+            histogram_layout.setContentsMargins(6, 6, 6, 6)
+            histogram_layout.setSpacing(4)
+            self.viewer_histogram = RGBHistogramWidget()
+            histogram_layout.addWidget(self.viewer_histogram, 1)
+            self.check_histogram_clip_witness = QtWidgets.QCheckBox(
+                "Testigos de clipping en sombras/luces"
+            )
+            self.check_histogram_clip_witness.setChecked(
+                self._settings_bool("view/histogram_clip_witness", True)
+            )
+            self.check_histogram_clip_witness.toggled.connect(self._on_histogram_clip_witness_toggled)
+            histogram_layout.addWidget(self.check_histogram_clip_witness)
+            self.check_image_clip_overlay = QtWidgets.QCheckBox(
+                "Overlay clipping en imagen (azul sombras / rojo luces)"
+            )
+            self.check_image_clip_overlay.setChecked(
+                self._settings_bool("view/image_clip_overlay", True)
+            )
+            self.check_image_clip_overlay.toggled.connect(self._on_image_clip_overlay_toggled)
+            histogram_layout.addWidget(self.check_image_clip_overlay)
+            clip_row = QtWidgets.QHBoxLayout()
+            clip_row.setContentsMargins(0, 0, 0, 0)
+            self.histogram_shadow_label = QtWidgets.QLabel("Sombras: --")
+            self.histogram_shadow_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+            self.histogram_highlight_label = QtWidgets.QLabel("Luces: --")
+            self.histogram_highlight_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+            clip_row.addWidget(self.histogram_shadow_label, 1)
+            clip_row.addWidget(self.histogram_highlight_label, 1)
+            histogram_layout.addLayout(clip_row)
+            self.viewer_histogram.set_clip_markers_enabled(
+                bool(self.check_histogram_clip_witness.isChecked())
+            )
+            for panel_name in ("image_result_single", "image_result_compare", "image_original_compare"):
+                if hasattr(self, panel_name):
+                    getattr(self, panel_name).set_clip_overlay_enabled(
+                        bool(self.check_image_clip_overlay.isChecked())
+                    )
+            layout.addWidget(histogram_box, 0)
+
+            cache_row = QtWidgets.QHBoxLayout()
+            cache_row.addWidget(
+                self._button(
+                    "Precache carpeta",
+                    lambda: self._on_precache_visible_previews(full_resolution=False),
+                )
+            )
+            cache_row.addWidget(
+                self._button(
+                    "Precache 1:1",
+                    lambda: self._on_precache_visible_previews(full_resolution=True),
+                )
+            )
+            layout.addLayout(cache_row)
             layout.addStretch(1)
             return panel
 
@@ -1620,7 +2014,7 @@ if QtWidgets is not None:
             pane = QtWidgets.QWidget()
             layout = QtWidgets.QVBoxLayout(pane)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(6)
+            layout.setSpacing(4)
 
             toolbar = QtWidgets.QHBoxLayout()
             toolbar.setContentsMargins(4, 0, 4, 0)
@@ -1645,8 +2039,8 @@ if QtWidgets is not None:
             self.file_list.setWrapping(False)
             self.file_list.setResizeMode(QtWidgets.QListView.Adjust)
             self.file_list.setMovement(QtWidgets.QListView.Static)
-            self.file_list.setSpacing(8)
-            self.file_list.setWordWrap(True)
+            self.file_list.setSpacing(2)
+            self.file_list.setWordWrap(False)
             self.file_list.setUniformItemSizes(True)
             self.file_list.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
             self.file_list.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
@@ -1654,6 +2048,23 @@ if QtWidgets is not None:
             self.file_list.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
             self.file_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
             self.file_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+            self.file_list.setStyleSheet(
+                "QListWidget {"
+                "background-color: #1b1f24;"
+                "border: 1px solid #343a40;"
+                "padding: 2px;"
+                "}"
+                "QListWidget::item {"
+                "background-color: #171a1e;"
+                "border: 1px solid #2c3238;"
+                "margin: 0px;"
+                "padding: 0px;"
+                "}"
+                "QListWidget::item:selected {"
+                "border: 2px solid #d1d5db;"
+                "background-color: #1f252b;"
+                "}"
+            )
             self.file_list.itemSelectionChanged.connect(self._on_file_selection_changed)
             self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
             self.file_list.customContextMenuRequested.connect(self._show_file_list_context_menu)
@@ -1683,8 +2094,15 @@ if QtWidgets is not None:
 
         def _apply_thumbnail_size(self, size: int) -> None:
             size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
-            self.file_list.setIconSize(QtCore.QSize(size, size))
-            self.file_list.setGridSize(QtCore.QSize(size + 74, size + 46))
+            thumb_h = size
+            thumb_w = int(round(size * 1.55))
+            self.file_list.setIconSize(QtCore.QSize(thumb_w, thumb_h))
+            grid_size = QtCore.QSize(thumb_w + 4, thumb_h + 4)
+            self.file_list.setGridSize(grid_size)
+            for row in range(self.file_list.count()):
+                item = self.file_list.item(row)
+                if item is not None and item.flags() != QtCore.Qt.NoItemFlags:
+                    item.setSizeHint(grid_size)
             if hasattr(self, "thumbnail_size_label"):
                 self.thumbnail_size_label.setText(f"{size}px")
 
@@ -1712,16 +2130,53 @@ if QtWidgets is not None:
             single_layout.addWidget(self.image_result_single, 1)
             self.viewer_stack.addWidget(single_page)
 
-            self.image_original_compare = ImagePanel("Original")
-            self.image_result_compare = ImagePanel("Resultado")
+            self.image_original_compare = ImagePanel("", framed=False, background="#15181d")
+            self.image_result_compare = ImagePanel("", framed=False, background="#15181d")
             self.image_result_compare.imageClicked.connect(self._on_result_image_click)
             self.compare_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
             self.compare_splitter.setChildrenCollapsible(True)
-            self.compare_splitter.setHandleWidth(8)
+            self.compare_splitter.setHandleWidth(3)
+            self.compare_splitter.setStyleSheet(
+                "QSplitter::handle:horizontal {"
+                "background-color: #0f1115;"
+                "border-left: 1px solid #2f353d;"
+                "border-right: 1px solid #2f353d;"
+                "}"
+            )
             self.compare_splitter.addWidget(self.image_original_compare)
             self.compare_splitter.addWidget(self.image_result_compare)
             self.compare_splitter.setSizes([560, 560])
-            self.viewer_stack.addWidget(self.compare_splitter)
+            compare_page = QtWidgets.QWidget()
+            compare_layout = QtWidgets.QVBoxLayout(compare_page)
+            compare_layout.setContentsMargins(0, 0, 0, 0)
+            compare_layout.setSpacing(0)
+            compare_header = QtWidgets.QWidget()
+            compare_header.setStyleSheet("background-color: #15181d;")
+            compare_header_layout = QtWidgets.QHBoxLayout(compare_header)
+            compare_header_layout.setContentsMargins(0, 2, 0, 2)
+            compare_header_layout.setSpacing(0)
+            compare_header_layout.addStretch(1)
+            before_label = QtWidgets.QLabel("Antes")
+            after_label = QtWidgets.QLabel("Despues")
+            for label in (before_label, after_label):
+                label.setAlignment(QtCore.Qt.AlignCenter)
+                label.setMinimumWidth(72)
+                label.setStyleSheet(
+                    "QLabel {"
+                    "background-color: #7a7d82;"
+                    "color: #f8fafc;"
+                    "font-size: 11px;"
+                    "font-weight: 600;"
+                    "padding: 1px 8px;"
+                    "border: 1px solid #8f9399;"
+                    "}"
+                )
+            compare_header_layout.addWidget(before_label, 0, QtCore.Qt.AlignHCenter)
+            compare_header_layout.addWidget(after_label, 0, QtCore.Qt.AlignHCenter)
+            compare_header_layout.addStretch(1)
+            compare_layout.addWidget(compare_header, 0)
+            compare_layout.addWidget(self.compare_splitter, 1)
+            self.viewer_stack.addWidget(compare_page)
             self.viewer_stack.setCurrentIndex(0)
 
             self.viewer_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
@@ -1956,25 +2411,39 @@ if QtWidgets is not None:
             grid.addWidget(self.label_ca_blue, 10, 0, 1, 3)
             grid.addWidget(self.slider_ca_blue, 11, 0, 1, 3)
 
+            self.check_precision_detail_preview = QtWidgets.QCheckBox(
+                "Modo precision 1:1 para nitidez (mas lento)"
+            )
+            self.check_precision_detail_preview.setToolTip(
+                "Aplica ajustes de nitidez/ruido/CA sobre fuente a resolucion real durante el arrastre."
+            )
+            self.check_precision_detail_preview.setChecked(
+                self._settings_bool("preview/precision_detail_1to1", False)
+            )
+            self.check_precision_detail_preview.toggled.connect(
+                self._on_precision_detail_preview_toggled
+            )
+            grid.addWidget(self.check_precision_detail_preview, 12, 0, 1, 3)
+
             recipe_filter_note = QtWidgets.QLabel(
                 "Modo receta de denoise y sharpen para el revelado final. "
                 "Se aplica al lote y al preview, no a la generación de perfil ICC."
             )
             recipe_filter_note.setWordWrap(True)
             recipe_filter_note.setStyleSheet("font-size: 12px; color: #6b7280; padding-top: 6px;")
-            grid.addWidget(recipe_filter_note, 12, 0, 1, 3)
+            grid.addWidget(recipe_filter_note, 13, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Denoise modo receta"), 13, 0)
+            grid.addWidget(QtWidgets.QLabel("Denoise modo receta"), 14, 0)
             self.combo_recipe_denoise = QtWidgets.QComboBox()
             self.combo_recipe_denoise.addItems(FILTER_MODE_OPTIONS)
-            grid.addWidget(self.combo_recipe_denoise, 13, 1, 1, 2)
+            grid.addWidget(self.combo_recipe_denoise, 14, 1, 1, 2)
 
-            grid.addWidget(QtWidgets.QLabel("Sharpen modo receta"), 14, 0)
+            grid.addWidget(QtWidgets.QLabel("Sharpen modo receta"), 15, 0)
             self.combo_recipe_sharpen = QtWidgets.QComboBox()
             self.combo_recipe_sharpen.addItems(FILTER_MODE_OPTIONS)
-            grid.addWidget(self.combo_recipe_sharpen, 14, 1, 1, 2)
+            grid.addWidget(self.combo_recipe_sharpen, 15, 1, 1, 2)
 
-            grid.addWidget(self._button("Restablecer nitidez", self._reset_adjustments), 15, 0, 1, 3)
+            grid.addWidget(self._button("Restablecer nitidez", self._reset_adjustments), 16, 0, 1, 3)
             return tab
 
         def _build_tab_raw_config(self, title: str | None = None) -> QtWidgets.QWidget:
@@ -2280,28 +2749,27 @@ if QtWidgets is not None:
             note.setStyleSheet("font-size: 12px; color: #6b7280; padding-bottom: 6px;")
             grid.addWidget(note, 0, 0, 1, 3)
 
-            self.check_fast_raw_preview = QtWidgets.QCheckBox(
-                "Modo preview RAW automatico (rapida fuera de comparar, maxima calidad en comparar)"
+            preview_policy = QtWidgets.QLabel(
+                "Politica fija: preview RAW automatica (rapida en navegacion, maxima calidad en comparar)."
             )
-            self.check_fast_raw_preview.setChecked(True)
-            self.check_fast_raw_preview.setEnabled(False)
-            self.check_fast_raw_preview.setToolTip(
-                "Comportamiento fijo en la GUI: vista rapida para navegacion y maxima calidad "
-                "cuando activas comparar original/resultado o marcado manual."
-            )
-            grid.addWidget(self.check_fast_raw_preview, 1, 0, 1, 3)
+            preview_policy.setWordWrap(True)
+            preview_policy.setStyleSheet("font-size: 12px; color: #9ca3af;")
+            grid.addWidget(preview_policy, 1, 0, 1, 3)
 
-            grid.addWidget(QtWidgets.QLabel("Lado maximo preview (px)"), 2, 0)
+            grid.addWidget(QtWidgets.QLabel("Resolucion de preview"), 2, 0)
+            self.preview_resolution_policy_label = QtWidgets.QLabel(
+                "Automatica: usa fuente completa cuando es necesario (1:1 / precision / comparar)."
+            )
+            self.preview_resolution_policy_label.setWordWrap(True)
+            self.preview_resolution_policy_label.setStyleSheet("font-size: 12px; color: #9ca3af;")
+            grid.addWidget(self.preview_resolution_policy_label, 2, 1, 1, 2)
+
+            # Legacy backing value kept for session compatibility; no longer user-editable.
             self.spin_preview_max_side = QtWidgets.QSpinBox()
             self.spin_preview_max_side.setRange(900, 6000)
             self.spin_preview_max_side.setSingleStep(100)
-            try:
-                preview_max_side = int(self._settings.value("preview/max_side") or 2600)
-            except Exception:
-                preview_max_side = 2600
-            self.spin_preview_max_side.setValue(preview_max_side)
-            self.spin_preview_max_side.valueChanged.connect(lambda _value: self._save_preview_monitor_settings())
-            grid.addWidget(self.spin_preview_max_side, 2, 1, 1, 2)
+            self.spin_preview_max_side.setValue(int(PREVIEW_AUTO_BASE_MAX_SIDE))
+            self.spin_preview_max_side.hide()
 
             self.check_display_color_management = QtWidgets.QCheckBox("Gestion ICC del monitor del sistema")
             self.check_display_color_management.setToolTip(
@@ -2326,11 +2794,23 @@ if QtWidgets is not None:
             self._ensure_display_profile_if_enabled()
             self._update_display_profile_status()
 
-            self.path_preview_png = QtWidgets.QLineEdit(str(self._settings.value("preview/png_path") or "/tmp/nexoraw_preview.png"))
+            self.path_preview_png = QtWidgets.QLineEdit(str(self._session_default_outputs()["preview"]))
+            self.path_preview_png.hide()
             self.path_preview_png.editingFinished.connect(self._save_preview_monitor_settings)
-            self._add_path_row(grid, 6, "Guardar preview PNG", self.path_preview_png, file_mode=False, save_mode=True, dir_mode=False)
 
-            grid.setRowStretch(7, 1)
+            self.preview_png_policy_label = QtWidgets.QLabel(
+                "Exportacion PNG: se elige destino con 'Guardar preview PNG' (Guardar como...)."
+            )
+            self.preview_png_policy_label.setWordWrap(True)
+            self.preview_png_policy_label.setStyleSheet("font-size: 12px; color: #9ca3af;")
+            grid.addWidget(self.preview_png_policy_label, 6, 0, 1, 3)
+
+            cache_row = QtWidgets.QHBoxLayout()
+            cache_row.addWidget(self._button("Limpiar cache", self._on_clear_preview_caches))
+            cache_row.addStretch(1)
+            grid.addLayout(cache_row, 7, 0, 1, 3)
+
+            grid.setRowStretch(8, 1)
             return tab
 
         def _migrate_display_color_settings(self) -> None:
@@ -2352,12 +2832,116 @@ if QtWidgets is not None:
             self.global_settings_dialog.activateWindow()
 
         def _save_preview_monitor_settings(self) -> None:
-            if not hasattr(self, "check_fast_raw_preview"):
+            if not hasattr(self, "path_preview_png"):
                 return
             self._settings.setValue("preview/fast_raw_preview", True)
-            self._settings.setValue("preview/max_side", int(self.spin_preview_max_side.value()))
-            self._settings.setValue("preview/png_path", self.path_preview_png.text().strip())
+            self._settings.setValue("preview/max_side", int(PREVIEW_AUTO_BASE_MAX_SIDE))
+            if hasattr(self, "check_precision_detail_preview"):
+                self._settings.setValue(
+                    "preview/precision_detail_1to1",
+                    bool(self.check_precision_detail_preview.isChecked()),
+                )
+            self._settings.remove("preview/png_path")
             self._settings.sync()
+
+        def _cache_dirs_for_cleanup(self) -> list[Path]:
+            dirs: list[Path] = [
+                self._user_disk_cache_dir("previews"),
+                self._user_disk_cache_dir("thumbnails"),
+            ]
+            if self._active_session_root is not None:
+                work_cache = self._session_paths_from_root(self._active_session_root)["work"] / "cache"
+                dirs.extend(
+                    [
+                        work_cache / "previews",
+                        work_cache / "thumbnails",
+                    ]
+                )
+            unique: list[Path] = []
+            seen: set[str] = set()
+            for d in dirs:
+                key = str(d.resolve(strict=False))
+                if key in seen:
+                    continue
+                seen.add(key)
+                unique.append(d)
+            return unique
+
+        def _on_clear_preview_caches(self) -> None:
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                "Limpiar cache",
+                (
+                    "Se eliminaran caches de previews y miniaturas (sesion y usuario).\n"
+                    "Se regeneraran cuando sea necesario.\n\n"
+                    "¿Continuar?"
+                ),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes,
+            )
+            if reply != QtWidgets.QMessageBox.Yes:
+                return
+
+            removed_files = 0
+            removed_dirs = 0
+            errors: list[str] = []
+            for cache_dir in self._cache_dirs_for_cleanup():
+                if not cache_dir.exists():
+                    continue
+                try:
+                    removed_files += sum(1 for p in cache_dir.rglob("*") if p.is_file())
+                except Exception:
+                    pass
+                try:
+                    shutil.rmtree(cache_dir)
+                    removed_dirs += 1
+                except Exception as exc:
+                    errors.append(f"{cache_dir}: {exc}")
+
+            self._thumb_cache.clear()
+            self._image_thumb_cache.clear()
+            self._thumbnail_disk_writes_since_prune = 0
+            self._invalidate_preview_cache()
+            self._save_preview_monitor_settings()
+
+            if hasattr(self, "file_list"):
+                self._queue_thumbnail_generation(self._file_list_paths(), delay_ms=0)
+            if self._selected_file is not None:
+                self._on_load_selected(show_message=False)
+
+            self._set_status(f"Cache limpiada: {removed_dirs} carpetas, {removed_files} archivos.")
+            self._log_preview(f"Cache limpiada ({removed_dirs} carpetas, {removed_files} archivos).")
+            if errors:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Cache parcialmente limpiada",
+                    "\n".join(errors[:6]),
+                )
+
+        def _precision_detail_preview_enabled(self) -> bool:
+            checkbox = getattr(self, "check_precision_detail_preview", None)
+            return bool(checkbox is not None and checkbox.isChecked())
+
+        def _effective_preview_max_side(self) -> int:
+            if self._precision_detail_preview_enabled():
+                return 0
+            if self._preview_requires_max_quality():
+                return 0
+            return int(PREVIEW_AUTO_BASE_MAX_SIDE)
+
+        def _on_precision_detail_preview_toggled(self, enabled: bool) -> None:
+            self._save_preview_monitor_settings()
+            if self._original_linear is not None:
+                self._schedule_preview_refresh()
+            if not bool(enabled):
+                return
+            if self._original_linear is None or self._selected_file is None:
+                return
+            if self._selected_file.suffix.lower() not in RAW_EXTENSIONS:
+                return
+            # Force a reload at full source resolution when enabling precision mode.
+            self._last_loaded_preview_key = None
+            self._on_load_selected(show_message=False)
 
         def _save_global_settings(self) -> None:
             self._save_signature_settings()
@@ -2757,11 +3341,36 @@ if QtWidgets is not None:
             self._original_srgb_cache_key = source_key
             return srgb
 
+        def _display_profile_stamp(self) -> str:
+            profile_path = self._active_display_profile_path()
+            if profile_path is None:
+                return "none"
+            try:
+                resolved = profile_path.expanduser().resolve()
+                st = resolved.stat()
+                return f"{resolved}|{st.st_mtime_ns}|{st.st_size}"
+            except OSError:
+                return str(profile_path)
+
+        def _original_display_u8_preview(self, *, bypass_profile: bool) -> np.ndarray:
+            source_key = self._last_loaded_preview_key or str(id(self._original_linear))
+            key = f"{source_key}|{self._display_profile_stamp()}|bypass={int(bool(bypass_profile))}"
+            if self._original_display_u8_cache_key == key and self._original_display_u8_cache is not None:
+                return self._original_display_u8_cache
+            srgb = self._original_srgb_preview()
+            u8 = self._display_u8_for_screen(srgb, bypass_profile=bypass_profile)
+            self._original_display_u8_cache = u8
+            self._original_display_u8_cache_key = key
+            return u8
+
         def _clear_adjustment_caches(self) -> None:
             self._detail_adjusted_linear = None
             self._detail_adjustment_cache_key = None
             self._original_srgb_cache = None
             self._original_srgb_cache_key = None
+            self._original_display_u8_cache = None
+            self._original_display_u8_cache_key = None
+            self._original_compare_panel_key = None
 
         def _add_path_row(
             self,
@@ -2850,6 +3459,9 @@ if QtWidgets is not None:
             self._settings.setValue("display/monitor_profile", self.path_display_profile.text().strip())
             self._display_color_error_key = None
             self._image_thumb_cache.clear()
+            self._original_display_u8_cache = None
+            self._original_display_u8_cache_key = None
+            self._original_compare_panel_key = None
             self._update_display_profile_status()
             if self._preview_srgb is not None and self._original_linear is not None:
                 self._refresh_preview()
@@ -2866,7 +3478,9 @@ if QtWidgets is not None:
                 return None
             return Path(text).expanduser()
 
-        def _display_u8_for_screen(self, image_srgb: np.ndarray) -> np.ndarray:
+        def _display_u8_for_screen(self, image_srgb: np.ndarray, *, bypass_profile: bool = False) -> np.ndarray:
+            if bypass_profile:
+                return srgb_to_display_u8(image_srgb, None)
             profile_path = self._active_display_profile_path()
             try:
                 return srgb_to_display_u8(image_srgb, profile_path)
@@ -2885,8 +3499,48 @@ if QtWidgets is not None:
             except Exception:
                 return srgb_u8_to_display_u8(rgb_u8, None)
 
-        def _set_preview_panel_image(self, panel: ImagePanel, image_srgb: np.ndarray) -> None:
-            panel.set_rgb_u8_image(self._display_u8_for_screen(image_srgb))
+        def _set_preview_panel_image(
+            self,
+            panel: ImagePanel,
+            image_srgb: np.ndarray,
+            *,
+            bypass_profile: bool = False,
+        ) -> None:
+            panel.set_rgb_u8_image(self._display_u8_for_screen(image_srgb, bypass_profile=bypass_profile))
+
+        def _compare_view_active(self) -> bool:
+            return bool(
+                hasattr(self, "viewer_stack")
+                and hasattr(self, "chk_compare")
+                and self.chk_compare.isChecked()
+                and int(self.viewer_stack.currentIndex()) == 1
+            )
+
+        def _set_result_display_u8(self, display_u8: np.ndarray, *, compare_enabled: bool) -> None:
+            if bool(compare_enabled and self._compare_view_active()):
+                self.image_result_compare.set_rgb_u8_image(display_u8)
+                self._apply_clip_overlay_to_panel(self.image_result_compare, display_u8)
+            else:
+                self.image_result_single.set_rgb_u8_image(display_u8)
+                self._apply_clip_overlay_to_panel(self.image_result_single, display_u8)
+            self._update_viewer_histogram(display_u8)
+
+        def _ensure_original_compare_panel(self, *, bypass_profile: bool) -> None:
+            if self._original_linear is None:
+                return
+            source_key = self._last_loaded_preview_key or str(id(self._original_linear))
+            key = f"{source_key}|{self._display_profile_stamp()}|bp={int(bool(bypass_profile))}"
+            if self._original_compare_panel_key == key:
+                if bool(hasattr(self, "check_image_clip_overlay") and self.check_image_clip_overlay.isChecked()):
+                    self._apply_clip_overlay_to_panel(
+                        self.image_original_compare,
+                        self._original_display_u8_preview(bypass_profile=bypass_profile),
+                    )
+                return
+            original_display_u8 = self._original_display_u8_preview(bypass_profile=bypass_profile)
+            self.image_original_compare.set_rgb_u8_image(original_display_u8)
+            self._apply_clip_overlay_to_panel(self.image_original_compare, original_display_u8)
+            self._original_compare_panel_key = key
 
         def _update_display_profile_status(self, *, error: str | None = None) -> None:
             if not hasattr(self, "display_profile_status"):
@@ -4102,7 +4756,7 @@ if QtWidgets is not None:
                 "active_development_profile_id": self._active_development_profile_id,
                 "batch_input_dir": self.batch_input_dir.text().strip(),
                 "batch_output_dir": self.batch_out_dir.text().strip(),
-                "preview_png_path": self.path_preview_png.text().strip(),
+                "preview_png_path": str(self._session_default_outputs()["preview"]),
                 "preview_apply_profile": bool(self.chk_apply_profile.isChecked()) and active_profile_valid,
                 "batch_embed_profile": True,
                 "batch_apply_adjustments": bool(self.batch_apply_adjustments.isChecked()),
@@ -4253,9 +4907,7 @@ if QtWidgets is not None:
             self.batch_out_dir.setText(
                 str(self._session_output_path_or_default(state.get("batch_output_dir"), defaults["tiff_dir"]))
             )
-            self.path_preview_png.setText(
-                str(self._session_output_path_or_default(state.get("preview_png_path"), defaults["preview"]))
-            )
+            self.path_preview_png.setText(str(defaults["preview"]))
             recipe_path = state.get("recipe_path")
             recipe_default = defaults["calibrated_recipe"] if defaults["calibrated_recipe"].exists() else defaults["recipe"]
             self.path_recipe.setText(str(self._session_state_path_or_default(recipe_path, recipe_default)))
@@ -4287,7 +4939,6 @@ if QtWidgets is not None:
             self.chk_apply_profile.setChecked(preview_apply_profile and bool(self.path_profile_active.text().strip()))
             self.batch_embed_profile.setChecked(True)
             self.batch_apply_adjustments.setChecked(bool(state.get("batch_apply_adjustments", self.batch_apply_adjustments.isChecked())))
-            self.check_fast_raw_preview.setChecked(True)
 
             try:
                 self.spin_preview_max_side.setValue(int(state.get("preview_max_side", self.spin_preview_max_side.value())))
@@ -4787,11 +5438,17 @@ if QtWidgets is not None:
         def _populate_file_list(self, folder: Path) -> None:
             self._selection_load_timer.stop()
             self.file_list.clear()
+            self._file_items_by_key.clear()
+            self._preview_load_pending_request = None
+            self._profile_preview_pending_request = None
+            self._profile_preview_expected_key = None
+            self._metadata_pending_request = None
             self._selected_file = None
             self._clear_manual_chart_points_for_file_change()
             self._last_loaded_preview_key = None
             self.selected_file_label.setText("Sin archivo seleccionado")
             self._clear_metadata_view()
+            self._clear_viewer_histogram()
 
             max_items = 500
             shown: list[Path] = []
@@ -4811,12 +5468,15 @@ if QtWidgets is not None:
             shown.sort(key=lambda p: p.name.lower())
 
             for p in shown:
-                item = QtWidgets.QListWidgetItem(p.name)
+                item = QtWidgets.QListWidgetItem("")
                 item.setData(QtCore.Qt.UserRole, str(p))
+                item.setData(QtCore.Qt.UserRole + 1, p.name)
                 item.setTextAlignment(QtCore.Qt.AlignHCenter)
                 item.setToolTip(self._file_item_tooltip(p))
                 item.setIcon(self._display_icon_for_path(p, self._icon_for_file(p)))
+                item.setSizeHint(self.file_list.gridSize())
                 self.file_list.addItem(item)
+                self._file_items_by_key[self._normalized_path_key(p)] = item
 
             if truncated:
                 i = QtWidgets.QListWidgetItem("... mas archivos no mostrados")
@@ -4892,12 +5552,27 @@ if QtWidgets is not None:
                     payload_generation, payload_size, thumbnails = payload
                     if payload_generation != self._thumbnail_generation:
                         return
+                    touched_cache_dirs: set[Path] = set()
+                    target_icon_size = self.file_list.iconSize()
                     for raw_path, key, rgb_u8 in thumbnails:
-                        icon = self._icon_from_thumbnail_array(rgb_u8)
+                        icon = self._icon_from_thumbnail_array(rgb_u8, target_size=target_icon_size)
                         self._image_thumb_cache[key] = icon
                         path = Path(raw_path)
-                        self._write_thumbnail_to_disk_cache(key, rgb_u8, path=path)
+                        cache_dir = self._write_thumbnail_to_disk_cache(key, rgb_u8, path=path, prune=False)
+                        if cache_dir is not None:
+                            touched_cache_dirs.add(cache_dir)
                         self._set_item_icon_for_path(path, icon)
+                    if touched_cache_dirs:
+                        self._thumbnail_disk_writes_since_prune += len(thumbnails)
+                        if self._thumbnail_disk_writes_since_prune >= THUMBNAIL_DISK_PRUNE_INTERVAL_WRITES:
+                            for cache_dir in touched_cache_dirs:
+                                self._prune_disk_cache(
+                                    cache_dir,
+                                    pattern="*.png",
+                                    max_entries=THUMBNAIL_DISK_CACHE_MAX_ENTRIES,
+                                    max_bytes=THUMBNAIL_DISK_CACHE_MAX_BYTES,
+                                )
+                            self._thumbnail_disk_writes_since_prune = 0
                     self._prune_thumbnail_cache()
                     self._apply_cached_thumbnails(self._file_list_paths(), int(payload_size))
                     if self._should_prefetch_more_thumbnails():
@@ -5010,7 +5685,14 @@ if QtWidgets is not None:
                 return QtGui.QIcon(pixmap)
             return None
 
-        def _write_thumbnail_to_disk_cache(self, key: str, rgb_u8: np.ndarray, *, path: Path | None = None) -> None:
+        def _write_thumbnail_to_disk_cache(
+            self,
+            key: str,
+            rgb_u8: np.ndarray,
+            *,
+            path: Path | None = None,
+            prune: bool = True,
+        ) -> Path | None:
             try:
                 cache_dir = self._thumbnail_disk_cache_dir(path)
                 cache_path = self._thumbnail_disk_cache_path(key, base_dir=cache_dir)
@@ -5021,14 +5703,16 @@ if QtWidgets is not None:
                 if image.shape[-1] > 3:
                     image = image[..., :3]
                 Image.fromarray(np.ascontiguousarray(image)).save(cache_path, format="PNG")
-                self._prune_disk_cache(
-                    cache_dir,
-                    pattern="*.png",
-                    max_entries=THUMBNAIL_DISK_CACHE_MAX_ENTRIES,
-                    max_bytes=THUMBNAIL_DISK_CACHE_MAX_BYTES,
-                )
+                if prune:
+                    self._prune_disk_cache(
+                        cache_dir,
+                        pattern="*.png",
+                        max_entries=THUMBNAIL_DISK_CACHE_MAX_ENTRIES,
+                        max_bytes=THUMBNAIL_DISK_CACHE_MAX_BYTES,
+                    )
+                return cache_dir
             except Exception:
-                return
+                return None
 
         def _prune_disk_cache(self, cache_dir: Path, *, pattern: str, max_entries: int, max_bytes: int) -> None:
             try:
@@ -5062,11 +5746,12 @@ if QtWidgets is not None:
                 self._image_thumb_cache.pop(key, None)
 
         def _set_item_icon_for_path(self, path: Path, icon: QtGui.QIcon) -> None:
-            target = str(path)
-            for row in range(self.file_list.count()):
-                item = self.file_list.item(row)
-                if item.data(QtCore.Qt.UserRole) == target:
-                    item.setIcon(self._display_icon_for_path(path, icon))
+            key = self._normalized_path_key(path)
+            item = self._file_items_by_key.get(key)
+            if item is not None and self.file_list.row(item) >= 0:
+                item.setIcon(self._display_icon_for_path(path, icon))
+                return
+            self._file_items_by_key.pop(key, None)
 
         def _refresh_color_reference_thumbnail_markers(self) -> None:
             if not hasattr(self, "file_list"):
@@ -5234,8 +5919,12 @@ if QtWidgets is not None:
             return None
 
         def _update_file_item_path(self, item: QtWidgets.QListWidgetItem, path: Path) -> None:
+            old_raw_path = item.data(QtCore.Qt.UserRole)
+            if old_raw_path:
+                self._file_items_by_key.pop(self._normalized_path_key(Path(str(old_raw_path))), None)
             item.setData(QtCore.Qt.UserRole, str(path))
             item.setToolTip(self._file_item_tooltip(path))
+            self._file_items_by_key[self._normalized_path_key(path)] = item
             icon_size = int(self.file_list.iconSize().width() or DEFAULT_THUMBNAIL_SIZE)
             icon = self._cached_thumbnail_icon(self._thumbnail_cache_key(path, icon_size), path=path)
             if icon is None:
@@ -5243,6 +5932,7 @@ if QtWidgets is not None:
             item.setIcon(self._display_icon_for_path(path, icon))
 
         def _remove_stale_file_item(self, item: QtWidgets.QListWidgetItem, path: Path) -> None:
+            self._file_items_by_key.pop(self._normalized_path_key(path), None)
             row = self.file_list.row(item)
             if row >= 0:
                 self.file_list.takeItem(row)
@@ -5372,8 +6062,34 @@ if QtWidgets is not None:
                 rgb_f = cv2.resize(rgb_f, (nw, nh), interpolation=cv2.INTER_AREA)
             return np.ascontiguousarray(np.clip(np.round(rgb_f * 255.0), 0, 255).astype(np.uint8))
 
-        def _icon_from_thumbnail_array(self, rgb_u8: np.ndarray) -> QtGui.QIcon:
+        def _icon_from_thumbnail_array(
+            self,
+            rgb_u8: np.ndarray,
+            *,
+            target_size: QtCore.QSize | None = None,
+        ) -> QtGui.QIcon:
             rgb_u8 = self._thumbnail_u8_for_screen(rgb_u8)
+            if target_size is not None:
+                target_w = max(1, int(target_size.width()))
+                target_h = max(1, int(target_size.height()))
+                src_h, src_w = int(rgb_u8.shape[0]), int(rgb_u8.shape[1])
+                if src_h > 0 and src_w > 0:
+                    src_aspect = float(src_w) / float(src_h)
+                    target_aspect = float(target_w) / float(target_h)
+                    if src_aspect > target_aspect:
+                        crop_w = max(1, int(round(src_h * target_aspect)))
+                        x0 = max(0, (src_w - crop_w) // 2)
+                        rgb_u8 = rgb_u8[:, x0 : x0 + crop_w]
+                    else:
+                        crop_h = max(1, int(round(src_w / target_aspect)))
+                        y0 = max(0, (src_h - crop_h) // 2)
+                        rgb_u8 = rgb_u8[y0 : y0 + crop_h, :]
+                interpolation = (
+                    cv2.INTER_AREA
+                    if int(rgb_u8.shape[1]) >= target_w and int(rgb_u8.shape[0]) >= target_h
+                    else cv2.INTER_LINEAR
+                )
+                rgb_u8 = cv2.resize(rgb_u8, (target_w, target_h), interpolation=interpolation)
             rgb_u8 = np.ascontiguousarray(rgb_u8.astype(np.uint8))
             h, w = int(rgb_u8.shape[0]), int(rgb_u8.shape[1])
             qimg = QtGui.QImage(rgb_u8.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
@@ -5399,6 +6115,7 @@ if QtWidgets is not None:
                 self._selection_load_timer.stop()
                 self._metadata_timer.stop()
                 self._clear_metadata_view()
+                self._clear_viewer_histogram()
                 return
             raw_path = item.data(QtCore.Qt.UserRole)
             if not raw_path:
@@ -5407,6 +6124,7 @@ if QtWidgets is not None:
                 self._selection_load_timer.stop()
                 self._metadata_timer.stop()
                 self._clear_metadata_view()
+                self._clear_viewer_histogram()
                 return
             stale_path = Path(str(raw_path))
             selected = self._resolve_existing_browsable_path(stale_path)
@@ -5462,24 +6180,38 @@ if QtWidgets is not None:
             if self._selected_file is None:
                 self._clear_metadata_view()
                 return
-            self._metadata_generation += 1
             selected = self._selected_file
-            generation = self._metadata_generation
             if hasattr(self, "metadata_file_label"):
                 self.metadata_file_label.setText(f"Metadatos: {selected}")
             if hasattr(self, "metadata_summary"):
                 self._metadata_tree_message(self.metadata_summary, "Leyendo metadatos...")
+            if self._metadata_task_active:
+                self._metadata_pending_request = (selected, bool(include_c2pa))
+                return
+            self._start_metadata_refresh_task(selected, bool(include_c2pa))
+
+        def _start_metadata_refresh_task(self, selected: Path, include_c2pa: bool) -> None:
+            self._metadata_generation += 1
+            generation = self._metadata_generation
 
             def task():
                 return generation, selected, inspect_file_metadata(selected, include_c2pa=include_c2pa)
 
             thread = TaskThread(task)
+            self._metadata_task_active = True
             self._threads.append(thread)
 
             def cleanup() -> None:
+                self._metadata_task_active = False
                 if thread in self._threads:
                     self._threads.remove(thread)
                 thread.deleteLater()
+                pending = self._metadata_pending_request
+                self._metadata_pending_request = None
+                if pending is not None:
+                    _pending_path, pending_c2pa = pending
+                    if self._selected_file is not None:
+                        self._start_metadata_refresh_task(self._selected_file, pending_c2pa)
 
             def ok(payload) -> None:
                 try:
@@ -5610,13 +6342,249 @@ if QtWidgets is not None:
             self.chk_compare.setChecked(checked)
             self._toggle_compare(checked)
 
-        def _menu_about(self) -> None:
-            QtWidgets.QMessageBox.information(
-                self,
-                f"Acerca de {APP_NAME}",
-                f"{APP_NAME}\n\nRevelado RAW tecnico y perfilado ICC reproducible.\n"
-                "Backend: LibRaw/rawpy + ArgyllCMS.\nGUI: Qt/PySide6.",
+        def _menu_check_updates(self) -> None:
+            self._start_update_check(
+                on_success=self._on_manual_update_check_success,
+                on_error=self._on_manual_update_check_error,
             )
+
+        def _on_manual_update_check_success(self, payload: dict[str, Any]) -> None:
+            self._update_check_last = payload
+            status_text = self._update_status_summary(payload)
+            if payload.get("error"):
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Actualizaciones",
+                    status_text,
+                )
+                return
+            QtWidgets.QMessageBox.information(self, "Actualizaciones", status_text)
+
+        def _on_manual_update_check_error(self, message: str) -> None:
+            QtWidgets.QMessageBox.warning(self, "Actualizaciones", message)
+
+        def _menu_about(self) -> None:
+            dialog = QtWidgets.QDialog(self)
+            dialog.setWindowTitle(f"Acerca de {APP_NAME}")
+            dialog.setModal(True)
+            dialog.resize(640, 360)
+
+            layout = QtWidgets.QVBoxLayout(dialog)
+            layout.setContentsMargins(12, 12, 12, 12)
+            layout.setSpacing(10)
+
+            title = QtWidgets.QLabel(APP_NAME)
+            title.setStyleSheet("font-size: 22px; font-weight: 700;")
+            layout.addWidget(title)
+
+            subtitle = QtWidgets.QLabel(
+                "Revelado RAW tecnico, trazable y reproducible para entornos cientificos."
+            )
+            subtitle.setWordWrap(True)
+            subtitle.setStyleSheet("font-size: 12px; color: #4b5563;")
+            layout.addWidget(subtitle)
+
+            grid = QtWidgets.QGridLayout()
+            grid.setHorizontalSpacing(10)
+            grid.setVerticalSpacing(6)
+
+            def add_row(row: int, label: str, value: str) -> QtWidgets.QLabel:
+                k = QtWidgets.QLabel(label)
+                k.setStyleSheet("font-weight: 600; color: #374151;")
+                v = QtWidgets.QLabel(value)
+                v.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+                v.setWordWrap(True)
+                grid.addWidget(k, row, 0)
+                grid.addWidget(v, row, 1)
+                return v
+
+            add_row(0, "Director del proyecto:", PROJECT_DIRECTOR_NAME)
+            add_row(1, "Version en ejecucion:", __version__)
+            add_row(2, "Backend:", "LibRaw/rawpy + ArgyllCMS")
+            amaze_info = self._amaze_status_summary()
+            add_row(3, "Soporte AMaZE:", amaze_info)
+            latest_label = add_row(4, "Estado de version:", "Sin comprobar")
+
+            layout.addLayout(grid)
+
+            status_note = QtWidgets.QLabel(
+                "La comprobacion usa GitHub Releases; la actualizacion automatica descarga y ejecuta el instalador."
+            )
+            status_note.setWordWrap(True)
+            status_note.setStyleSheet("font-size: 12px; color: #6b7280;")
+            layout.addWidget(status_note)
+
+            button_row = QtWidgets.QHBoxLayout()
+            btn_check = QtWidgets.QPushButton("Comprobar ultima version")
+            btn_update = QtWidgets.QPushButton("Actualizar automaticamente")
+            btn_release = QtWidgets.QPushButton("Abrir releases")
+            btn_close = QtWidgets.QPushButton("Cerrar")
+            btn_update.setEnabled(False)
+            button_row.addWidget(btn_check)
+            button_row.addWidget(btn_update)
+            button_row.addStretch(1)
+            button_row.addWidget(btn_release)
+            button_row.addWidget(btn_close)
+            layout.addLayout(button_row)
+
+            state: dict[str, Any] = {"payload": self._update_check_last}
+
+            def refresh_about_payload(payload: dict[str, Any] | None) -> None:
+                p = payload or {}
+                latest_label.setText(self._update_status_summary(p))
+                latest_label.setStyleSheet("color: #dc2626;" if p.get("error") else "color: #1f2937;")
+                can_auto = bool(p.get("update_available") and p.get("asset_url"))
+                btn_update.setEnabled(can_auto)
+
+            def open_release_page() -> None:
+                payload = state.get("payload") or {}
+                url = str(payload.get("release_url") or f"https://github.com/{os.environ.get('NEXORAW_RELEASE_REPOSITORY', 'alejandro-probatia/NexoRAW')}/releases")
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+
+            def run_check() -> None:
+                btn_check.setEnabled(False)
+                latest_label.setText("Comprobando version mas reciente...")
+
+                def ok(payload: dict[str, Any]) -> None:
+                    state["payload"] = payload
+                    self._update_check_last = payload
+                    refresh_about_payload(payload)
+                    btn_check.setEnabled(True)
+
+                def fail(message: str) -> None:
+                    btn_check.setEnabled(True)
+                    fallback = {"error": message}
+                    state["payload"] = fallback
+                    refresh_about_payload(fallback)
+
+                self._start_update_check(on_success=ok, on_error=fail)
+
+            def run_auto_update() -> None:
+                payload = state.get("payload")
+                if not isinstance(payload, dict):
+                    QtWidgets.QMessageBox.information(dialog, "Actualizacion", "Primero comprueba la ultima version.")
+                    return
+                if payload.get("error"):
+                    QtWidgets.QMessageBox.warning(dialog, "Actualizacion", str(payload.get("error")))
+                    return
+                if not payload.get("update_available"):
+                    QtWidgets.QMessageBox.information(dialog, "Actualizacion", "Ya estas en la ultima version.")
+                    return
+                if not payload.get("asset_url"):
+                    QtWidgets.QMessageBox.information(
+                        dialog,
+                        "Actualizacion",
+                        "No hay instalador automatico para esta plataforma en la release detectada.",
+                    )
+                    return
+                answer = QtWidgets.QMessageBox.question(
+                    dialog,
+                    "Actualizar automaticamente",
+                    "Se descargara el instalador mas reciente y se ejecutara en modo silencioso.\n"
+                    "Deseas continuar?",
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                    QtWidgets.QMessageBox.No,
+                )
+                if answer != QtWidgets.QMessageBox.Yes:
+                    return
+
+                btn_update.setEnabled(False)
+                btn_check.setEnabled(False)
+                latest_label.setText("Descargando e iniciando actualizacion...")
+
+                def task() -> dict[str, Any]:
+                    fresh_check = check_latest_release()
+                    check_payload = asdict(fresh_check)
+                    if fresh_check.error:
+                        raise RuntimeError(str(fresh_check.error))
+                    if not fresh_check.update_available:
+                        raise RuntimeError("No hay una version mas reciente disponible.")
+                    installer = auto_update(check=fresh_check, silent=True)
+                    return {"installer_path": str(installer), "check": check_payload}
+
+                def ok(result: dict[str, Any]) -> None:
+                    installer_path = str(result.get("installer_path") or "")
+                    latest_label.setText("Instalador lanzado correctamente.")
+                    QtWidgets.QMessageBox.information(
+                        dialog,
+                        "Actualizacion iniciada",
+                        "Se ha iniciado el instalador de actualizacion:\n"
+                        f"{installer_path}\n\n"
+                        "Cierra NexoRAW cuando el instalador lo solicite.",
+                    )
+                    btn_check.setEnabled(True)
+                    btn_update.setEnabled(True)
+
+                def fail(message: str) -> None:
+                    latest_label.setText("No se pudo iniciar la actualizacion automatica.")
+                    QtWidgets.QMessageBox.warning(dialog, "Actualizacion", message)
+                    btn_check.setEnabled(True)
+                    btn_update.setEnabled(True)
+
+                self._run_lightweight_task(task, on_success=ok, on_error=fail)
+
+            btn_check.clicked.connect(run_check)
+            btn_update.clicked.connect(run_auto_update)
+            btn_release.clicked.connect(open_release_page)
+            btn_close.clicked.connect(dialog.accept)
+
+            refresh_about_payload(state.get("payload"))
+            dialog.exec()
+
+        def _update_status_summary(self, payload: dict[str, Any]) -> str:
+            if not payload:
+                return "Sin comprobar"
+            error = payload.get("error")
+            if error:
+                return f"No se pudo comprobar la version: {error}"
+            latest = str(payload.get("latest_version") or "desconocida")
+            current = str(payload.get("current_version") or __version__)
+            if bool(payload.get("update_available")):
+                return f"Actualizacion disponible: {latest} (actual: {current})"
+            if payload.get("is_latest") is True:
+                return f"Estas en la ultima version: {current}"
+            return f"Version actual: {current}. Ultima detectada: {latest}"
+
+        def _amaze_status_summary(self) -> str:
+            try:
+                payload = check_amaze_backend()
+            except Exception as exc:
+                return f"No disponible ({exc})"
+            supported = bool(payload.get("amaze_supported"))
+            rawpy_name = str(payload.get("rawpy_demosaic_distribution") or payload.get("rawpy_distribution") or "rawpy")
+            return "Activo" if supported else f"No activo ({rawpy_name})"
+
+        def _start_update_check(self, *, on_success, on_error) -> None:
+            def task() -> dict[str, Any]:
+                return asdict(check_latest_release())
+
+            self._run_lightweight_task(task, on_success=on_success, on_error=on_error)
+
+        def _run_lightweight_task(self, task, *, on_success, on_error) -> None:
+            thread = TaskThread(task)
+            self._threads.append(thread)
+
+            def cleanup() -> None:
+                if thread in self._threads:
+                    self._threads.remove(thread)
+                thread.deleteLater()
+
+            def ok(payload) -> None:
+                try:
+                    on_success(payload)
+                finally:
+                    cleanup()
+
+            def fail(trace: str) -> None:
+                try:
+                    message = trace.strip().splitlines()[-1] if trace.strip() else "Error"
+                    on_error(message)
+                finally:
+                    cleanup()
+
+            thread.succeeded.connect(ok)
+            thread.failed.connect(fail)
+            thread.start()
 
         def _menu_check_tools(self) -> None:
             result = check_external_tools()
@@ -6130,6 +7098,95 @@ if QtWidgets is not None:
             self._viewer_rotation = (self._viewer_rotation + 90) % 360
             self._sync_viewer_transform()
 
+        def _on_histogram_clip_witness_toggled(self, checked: bool) -> None:
+            self._settings.setValue("view/histogram_clip_witness", bool(checked))
+            if hasattr(self, "viewer_histogram"):
+                self.viewer_histogram.set_clip_markers_enabled(bool(checked))
+                self._apply_histogram_clip_metrics(self.viewer_histogram.clip_metrics())
+
+        def _on_image_clip_overlay_toggled(self, checked: bool) -> None:
+            self._settings.setValue("view/image_clip_overlay", bool(checked))
+            for panel_name in ("image_result_single", "image_result_compare", "image_original_compare"):
+                if hasattr(self, panel_name):
+                    panel = getattr(self, panel_name)
+                    panel.set_clip_overlay_enabled(bool(checked))
+                    if not checked:
+                        panel.clear_clip_overlay()
+            if checked and self._preview_srgb is not None:
+                compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
+                display_u8 = self._display_u8_for_screen(
+                    self._preview_srgb,
+                    bypass_profile=False,
+                )
+                self._set_result_display_u8(display_u8, compare_enabled=compare_enabled)
+                if compare_enabled:
+                    self._ensure_original_compare_panel(bypass_profile=False)
+
+        @staticmethod
+        def _clip_overlay_classes(display_u8: np.ndarray | None) -> np.ndarray | None:
+            if display_u8 is None:
+                return None
+            rgb = np.asarray(display_u8)
+            if rgb.ndim != 3 or rgb.shape[2] < 3:
+                return None
+            rgb_u8 = np.ascontiguousarray(rgb[..., :3].astype(np.uint8))
+            shadow_mask = np.all(rgb_u8 <= int(VIEWER_HISTOGRAM_SHADOW_CLIP_U8), axis=2)
+            highlight_mask = np.any(rgb_u8 >= int(VIEWER_HISTOGRAM_HIGHLIGHT_CLIP_U8), axis=2)
+            classes = np.zeros(rgb_u8.shape[:2], dtype=np.uint8)
+            classes[shadow_mask] = 1
+            classes[highlight_mask] = 2
+            classes[np.logical_and(shadow_mask, highlight_mask)] = 3
+            return classes
+
+        def _apply_clip_overlay_to_panel(self, panel: ImagePanel, display_u8: np.ndarray | None) -> None:
+            enabled = bool(hasattr(self, "check_image_clip_overlay") and self.check_image_clip_overlay.isChecked())
+            panel.set_clip_overlay_enabled(enabled)
+            if not enabled:
+                panel.clear_clip_overlay()
+                return
+            panel.set_clip_overlay_classes(self._clip_overlay_classes(display_u8))
+
+        def _clear_clip_overlay_panels(self) -> None:
+            for panel_name in ("image_result_single", "image_result_compare", "image_original_compare"):
+                if hasattr(self, panel_name):
+                    getattr(self, panel_name).clear_clip_overlay()
+
+        def _update_viewer_histogram(self, display_u8: np.ndarray | None) -> None:
+            if not hasattr(self, "viewer_histogram"):
+                return
+            self.viewer_histogram.set_image_u8(display_u8)
+            self._apply_histogram_clip_metrics(self.viewer_histogram.clip_metrics())
+
+        def _clear_viewer_histogram(self) -> None:
+            if hasattr(self, "viewer_histogram"):
+                self.viewer_histogram.clear()
+            self._clear_clip_overlay_panels()
+            self._apply_histogram_clip_metrics(None)
+
+        def _apply_histogram_clip_metrics(self, metrics: dict[str, float] | None) -> None:
+            if not hasattr(self, "histogram_shadow_label") or not hasattr(self, "histogram_highlight_label"):
+                return
+            if metrics is None:
+                self.histogram_shadow_label.setText("Sombras: --")
+                self.histogram_highlight_label.setText("Luces: --")
+                self.histogram_shadow_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+                self.histogram_highlight_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+                return
+
+            shadow_pct = float(metrics.get("shadow_any", 0.0)) * 100.0
+            highlight_pct = float(metrics.get("highlight_any", 0.0)) * 100.0
+            self.histogram_shadow_label.setText(f"Sombras: {shadow_pct:.2f}%")
+            self.histogram_highlight_label.setText(f"Luces: {highlight_pct:.2f}%")
+            alert_pct = float(VIEWER_HISTOGRAM_CLIP_ALERT_RATIO) * 100.0
+            shadow_alert = shadow_pct > alert_pct
+            highlight_alert = highlight_pct > alert_pct
+            self.histogram_shadow_label.setStyleSheet(
+                "font-size: 12px; color: #60a5fa;" if shadow_alert else "font-size: 12px; color: #94a3b8;"
+            )
+            self.histogram_highlight_label.setStyleSheet(
+                "font-size: 12px; color: #f87171;" if highlight_alert else "font-size: 12px; color: #94a3b8;"
+            )
+
         def _build_effective_recipe(self) -> Recipe:
             recipe = Recipe()
             path_text = self.path_recipe.text().strip()
@@ -6214,22 +7271,9 @@ if QtWidgets is not None:
                 self.profile_out_path_edit.setText(str(p))
             return p
 
-        def _preview_cache_key(
-            self,
-            *,
-            selected: Path,
-            recipe: Recipe,
-            fast_raw: bool,
-            max_preview_side: int,
-        ) -> str:
-            try:
-                st = selected.stat()
-                stamp = f"{st.st_mtime_ns}:{st.st_size}"
-            except Exception:
-                stamp = "nostat"
-
+        def _preview_recipe_signature(self, recipe: Recipe) -> str:
             wb = ",".join(f"{float(v):.6g}" for v in recipe.wb_multipliers)
-            recipe_sig = "|".join(
+            return "|".join(
                 [
                     recipe.raw_developer,
                     recipe.demosaic_algorithm,
@@ -6242,7 +7286,34 @@ if QtWidgets is not None:
                     wb,
                 ]
             )
-            return f"{self._cache_path_identity(selected)}|{stamp}|preview-v2|{int(fast_raw)}|{max_preview_side}|{recipe_sig}"
+
+        def _preview_base_signature(
+            self,
+            *,
+            selected: Path,
+            recipe: Recipe,
+        ) -> str:
+            try:
+                st = selected.stat()
+                stamp = f"{st.st_mtime_ns}:{st.st_size}"
+            except Exception:
+                stamp = "nostat"
+            recipe_sig = self._preview_recipe_signature(recipe)
+            return f"{self._cache_path_identity(selected)}|{stamp}|preview-v4|{recipe_sig}"
+
+        def _preview_cache_key(
+            self,
+            *,
+            selected: Path,
+            recipe: Recipe,
+            fast_raw: bool,
+            max_preview_side: int,
+        ) -> str:
+            base_sig = self._preview_base_signature(
+                selected=selected,
+                recipe=recipe,
+            )
+            return f"{base_sig}|fr={int(bool(fast_raw))}|ms={int(max_preview_side)}"
 
         def _cache_preview_memory(self, key: str, image: np.ndarray) -> None:
             if key in self._preview_cache:
@@ -6326,8 +7397,21 @@ if QtWidgets is not None:
             self._preview_cache.clear()
             self._preview_cache_order.clear()
             self._last_loaded_preview_key = None
+            self._loaded_preview_base_signature = None
+            self._loaded_preview_fast_raw = None
+            self._loaded_preview_source_max_side = 0
             self._tone_curve_histogram_key = None
+            self._preview_load_pending_request = None
+            self._profile_preview_pending_request = None
+            self._profile_preview_expected_key = None
+            self._profile_preview_error_key = None
+            self._interactive_preview_pending_request = None
+            self._interactive_preview_expected_key = None
+            self._interactive_preview_request_seq = 0
+            self._profile_preview_cache.clear()
+            self._profile_preview_cache_order.clear()
             self._clear_adjustment_caches()
+            self._set_interactive_preview_busy(False)
 
         def _load_selected_from_timer(self) -> None:
             if self._selected_file is None:
@@ -6336,6 +7420,7 @@ if QtWidgets is not None:
 
         def _on_load_selected(self, _checked: bool = False, *, show_message: bool = True) -> None:
             if self._selected_file is None:
+                self._clear_viewer_histogram()
                 if show_message:
                     QtWidgets.QMessageBox.information(self, "Info", "Selecciona primero un archivo.")
                 return
@@ -6350,6 +7435,7 @@ if QtWidgets is not None:
                 self._clear_manual_chart_points_for_file_change()
                 self.selected_file_label.setText("Sin archivo seleccionado")
                 self._clear_metadata_view()
+                self._clear_viewer_histogram()
                 self._set_status(f"Archivo no encontrado: {original_selected}")
                 if show_message:
                     QtWidgets.QMessageBox.information(self, "Info", f"No existe el archivo:\n{original_selected}")
@@ -6361,15 +7447,35 @@ if QtWidgets is not None:
             max_quality_preview = self._preview_requires_max_quality()
             is_raw = selected.suffix.lower() in RAW_EXTENSIONS
             fast_raw = bool(is_raw and not max_quality_preview)
-            if is_raw and fast_raw:
+            if is_raw:
+                # Preview policy: always use the most responsive demosaic path.
+                # Final render keeps the recipe-selected algorithm (e.g. AMaZE).
                 recipe.demosaic_algorithm = self._balanced_preview_demosaic()
-            max_preview_side = int(self.spin_preview_max_side.value())
+            max_preview_side = self._effective_preview_max_side()
+            base_signature = self._preview_base_signature(
+                selected=selected,
+                recipe=recipe,
+            )
             cache_key = self._preview_cache_key(
                 selected=selected,
                 recipe=recipe,
                 fast_raw=fast_raw,
                 max_preview_side=max_preview_side,
             )
+
+            if self._original_linear is not None and self._loaded_preview_base_signature == base_signature:
+                current_side = int(max(self._original_linear.shape[0], self._original_linear.shape[1]))
+                loaded_fast_raw = bool(self._loaded_preview_fast_raw)
+                # Never downgrade quality/source size implicitly while staying on
+                # the same file + processing recipe.
+                if (not loaded_fast_raw and fast_raw) or current_side >= int(max_preview_side):
+                    if self._manual_chart_marking_after_reload:
+                        self._manual_chart_marking_after_reload = False
+                        self._begin_manual_chart_marking()
+                    if cache_key == self._last_loaded_preview_key:
+                        return
+                    self._refresh_preview()
+                    return
 
             if cache_key == self._last_loaded_preview_key and self._original_linear is not None:
                 if self._manual_chart_marking_after_reload:
@@ -6382,6 +7488,9 @@ if QtWidgets is not None:
                 self._original_linear = cached.copy()
                 self._adjusted_linear = self._original_linear.copy()
                 self._last_loaded_preview_key = cache_key
+                self._loaded_preview_base_signature = base_signature
+                self._loaded_preview_fast_raw = bool(fast_raw)
+                self._loaded_preview_source_max_side = int(max(self._original_linear.shape[0], self._original_linear.shape[1]))
                 self._clear_adjustment_caches()
                 self._refresh_preview()
                 self._log_preview(f"Preview cargada desde cache: {selected.name}")
@@ -6391,30 +7500,185 @@ if QtWidgets is not None:
                     self._begin_manual_chart_marking()
                 return
 
+            recipe_request = Recipe(**asdict(recipe))
+            self._queue_preview_load_request((selected, recipe_request, fast_raw, max_preview_side, cache_key))
+
+        def _queue_preview_load_request(
+            self,
+            request: tuple[Path, Recipe, bool, int, str],
+        ) -> None:
+            selected, _recipe, _fast_raw, _max_preview_side, cache_key = request
+            if self._preview_load_task_active:
+                if self._preview_load_inflight_key == cache_key:
+                    return
+                self._preview_load_pending_request = request
+                return
+            self._preview_load_pending_request = None
+            self._start_preview_load_task(request)
+            self._set_status(f"Cargando preview: {selected.name}")
+
+        def _start_preview_load_task(
+            self,
+            request: tuple[Path, Recipe, bool, int, str],
+        ) -> None:
+            selected, recipe, fast_raw, max_preview_side, cache_key = request
+
             def task():
-                return load_image_for_preview(
+                image_linear, msg = load_image_for_preview(
                     selected,
                     recipe=recipe,
                     fast_raw=fast_raw,
                     max_preview_side=max_preview_side,
                 )
+                return selected, cache_key, image_linear, msg
+
+            thread = TaskThread(task)
+            self._preview_load_task_active = True
+            self._preview_load_inflight_key = cache_key
+            self._threads.append(thread)
+
+            def cleanup() -> None:
+                self._preview_load_task_active = False
+                self._preview_load_inflight_key = None
+                if thread in self._threads:
+                    self._threads.remove(thread)
+                thread.deleteLater()
+                pending = self._preview_load_pending_request
+                self._preview_load_pending_request = None
+                if pending is not None:
+                    self._start_preview_load_task(pending)
+
+            def ok(payload) -> None:
+                try:
+                    loaded_selected, loaded_key, image_linear, msg = payload
+                    if self._selected_file != loaded_selected:
+                        return
+                    self._original_linear = np.asarray(image_linear, dtype=np.float32)
+                    self._adjusted_linear = self._original_linear.copy()
+                    self._last_loaded_preview_key = loaded_key
+                    self._loaded_preview_base_signature = self._preview_base_signature(
+                        selected=selected,
+                        recipe=recipe,
+                    )
+                    self._loaded_preview_fast_raw = bool(fast_raw)
+                    self._loaded_preview_source_max_side = int(
+                        max(self._original_linear.shape[0], self._original_linear.shape[1])
+                    )
+                    self._clear_adjustment_caches()
+                    self._cache_preview_image(loaded_key, self._original_linear, selected=loaded_selected)
+                    self._refresh_preview()
+                    self._log_preview(msg)
+                    self._set_status(f"Preview cargada: {loaded_selected.name}")
+                    if self._manual_chart_marking_after_reload:
+                        self._manual_chart_marking_after_reload = False
+                        self._begin_manual_chart_marking()
+                finally:
+                    cleanup()
+
+            def fail(trace: str) -> None:
+                try:
+                    self._log_preview(trace[-1200:])
+                    if self._selected_file == selected:
+                        self._set_status(f"Error de preview: {selected.name}")
+                finally:
+                    cleanup()
+
+            thread.succeeded.connect(ok)
+            thread.failed.connect(fail)
+            thread.start()
+
+        def _on_precache_visible_previews(self, *, full_resolution: bool) -> None:
+            files = [p for p in self._file_list_paths() if p.suffix.lower() in RAW_EXTENSIONS]
+            if not files:
+                QtWidgets.QMessageBox.information(self, "Info", "No hay RAW visibles para precache.")
+                return
+            mode_label = "1:1" if full_resolution else "normal"
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                "Precache de previews",
+                (
+                    f"Se van a precalcular {len(files)} previews RAW en modo {mode_label}.\n\n"
+                    "Este proceso puede tardar, pero mejora la respuesta posterior.\n"
+                    "¿Continuar?"
+                ),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes,
+            )
+            if reply != QtWidgets.QMessageBox.Yes:
+                return
+            self._start_precache_visible_previews(files, full_resolution=full_resolution)
+
+        def _start_precache_visible_previews(self, files: list[Path], *, full_resolution: bool) -> None:
+            recipe_base = self._build_effective_recipe()
+            recipe_base_payload = asdict(recipe_base)
+            max_quality_preview = bool(full_resolution or self._preview_requires_max_quality())
+            max_preview_side = 0 if full_resolution else int(PREVIEW_AUTO_BASE_MAX_SIDE)
+            mode_label = "1:1" if full_resolution else "normal"
+
+            def task():
+                built = 0
+                skipped = 0
+                errors: list[dict[str, str]] = []
+                for src in files:
+                    try:
+                        recipe = Recipe(**recipe_base_payload)
+                        is_raw = src.suffix.lower() in RAW_EXTENSIONS
+                        fast_raw = bool(is_raw and not max_quality_preview)
+                        if is_raw:
+                            recipe.demosaic_algorithm = self._balanced_preview_demosaic()
+                        cache_key = self._preview_cache_key(
+                            selected=src,
+                            recipe=recipe,
+                            fast_raw=fast_raw,
+                            max_preview_side=max_preview_side,
+                        )
+                        if self._read_preview_from_disk_cache(cache_key, selected=src) is not None:
+                            skipped += 1
+                            continue
+                        image_linear, _msg = load_image_for_preview(
+                            src,
+                            recipe=recipe,
+                            fast_raw=fast_raw,
+                            max_preview_side=max_preview_side,
+                        )
+                        self._write_preview_to_disk_cache(
+                            cache_key,
+                            np.asarray(image_linear, dtype=np.float32),
+                            selected=src,
+                        )
+                        built += 1
+                    except Exception as exc:
+                        errors.append({"source": str(src), "error": str(exc)})
+                return {
+                    "mode": mode_label,
+                    "total": len(files),
+                    "built": built,
+                    "skipped": skipped,
+                    "errors": errors,
+                }
 
             def on_success(payload) -> None:
-                if self._selected_file != selected:
-                    return
-                image_linear, msg = payload
-                self._original_linear = np.asarray(image_linear, dtype=np.float32)
-                self._adjusted_linear = self._original_linear.copy()
-                self._last_loaded_preview_key = cache_key
-                self._clear_adjustment_caches()
-                self._cache_preview_image(cache_key, self._original_linear, selected=selected)
-                self._refresh_preview()
-                self._log_preview(msg)
-                if self._manual_chart_marking_after_reload:
-                    self._manual_chart_marking_after_reload = False
-                    self._begin_manual_chart_marking()
+                total = int(payload.get("total", 0))
+                built = int(payload.get("built", 0))
+                skipped = int(payload.get("skipped", 0))
+                errors = payload.get("errors", [])
+                self._log_preview(
+                    f"Precache {payload.get('mode', 'normal')}: "
+                    f"{built} generadas, {skipped} ya en cache, {len(errors)} errores (total {total})."
+                )
+                self._set_status(
+                    f"Precache {payload.get('mode', 'normal')} completada: "
+                    f"{built} nuevas, {skipped} reutilizadas."
+                )
+                if full_resolution and self._selected_file is not None:
+                    self._last_loaded_preview_key = None
+                    self._on_load_selected(show_message=False)
 
-            self._start_background_task("Carga de imagen para preview", task, on_success)
+            self._start_background_task(
+                f"Precache previews RAW ({mode_label})",
+                task,
+                on_success,
+            )
 
         def _on_slider_change(self) -> None:
             if self._original_linear is not None:
@@ -6462,13 +7726,20 @@ if QtWidgets is not None:
                     return True
             return False
 
-        def _interactive_preview_source(self, image: np.ndarray) -> np.ndarray:
+        def _interactive_preview_source(
+            self,
+            image: np.ndarray,
+            *,
+            max_side_limit: int = PREVIEW_INTERACTIVE_MAX_SIDE,
+        ) -> np.ndarray:
             rgb = np.asarray(image, dtype=np.float32)
+            if max_side_limit <= 0:
+                return rgb
             h, w = int(rgb.shape[0]), int(rgb.shape[1])
             max_side = max(h, w)
-            if max_side <= PREVIEW_INTERACTIVE_MAX_SIDE:
+            if max_side <= int(max_side_limit):
                 return rgb
-            scale = float(PREVIEW_INTERACTIVE_MAX_SIDE) / float(max_side)
+            scale = float(max_side_limit) / float(max_side)
             nw = max(1, int(round(w * scale)))
             nh = max(1, int(round(h * scale)))
             return np.clip(
@@ -6476,6 +7747,340 @@ if QtWidgets is not None:
                 0.0,
                 1.0,
             ).astype(np.float32)
+
+        def _profile_preview_profile_stamp(self, profile_path: Path) -> str:
+            try:
+                resolved = profile_path.expanduser().resolve()
+                st = resolved.stat()
+                return f"{resolved}|{st.st_mtime_ns}|{st.st_size}"
+            except OSError:
+                return str(profile_path)
+
+        def _preview_profile_settings_signature(self) -> str:
+            detail_state = self._detail_adjustment_state()
+            render_state = self._render_adjustment_state()
+            tone_points = render_state.get("tone_curve_points") or []
+            tone_sig = ",".join(
+                f"{float(x):.4f}:{float(y):.4f}"
+                for x, y in normalize_tone_curve_points(
+                    [
+                        (p[0], p[1])
+                        for p in tone_points
+                        if isinstance(p, (list, tuple)) and len(p) >= 2
+                    ]
+                )
+            )
+            source_key = self._last_loaded_preview_key or str(id(self._original_linear))
+            return "|".join(
+                [
+                    source_key,
+                    f"sh={int(detail_state.get('sharpen', 0))}",
+                    f"sr={int(detail_state.get('radius', 10))}",
+                    f"nl={int(detail_state.get('noise_luma', 0))}",
+                    f"nc={int(detail_state.get('noise_color', 0))}",
+                    f"cr={int(detail_state.get('ca_red', 0))}",
+                    f"cb={int(detail_state.get('ca_blue', 0))}",
+                    f"tk={int(render_state.get('temperature_kelvin', 5003))}",
+                    f"ti={float(render_state.get('tint', 0.0)):.3f}",
+                    f"be={float(render_state.get('brightness_ev', 0.0)):.3f}",
+                    f"bp={float(render_state.get('black_point', 0.0)):.4f}",
+                    f"wp={float(render_state.get('white_point', 1.0)):.4f}",
+                    f"ct={float(render_state.get('contrast', 0.0)):.3f}",
+                    f"mt={float(render_state.get('midtone', 1.0)):.3f}",
+                    f"te={int(bool(render_state.get('tone_curve_enabled', False)))}",
+                    f"tb={float(render_state.get('tone_curve_black_point', 0.0)):.4f}",
+                    f"tw={float(render_state.get('tone_curve_white_point', 1.0)):.4f}",
+                    f"tp={tone_sig}",
+                ]
+            )
+
+        def _profile_preview_request_key(self, profile_path: Path) -> str:
+            max_side_limit = self._profile_preview_max_side_limit()
+            return "|".join(
+                [
+                    self._preview_profile_settings_signature(),
+                    self._profile_preview_profile_stamp(profile_path),
+                    f"pm={int(max_side_limit)}",
+                ]
+            )
+
+        def _profile_preview_max_side_limit(self) -> int:
+            if self._precision_detail_preview_enabled() or float(self._viewer_zoom) >= 1.0:
+                return 0
+            return int(PREVIEW_PROFILE_APPLY_MAX_SIDE)
+
+        def _cached_profile_preview_image(self, key: str) -> np.ndarray | None:
+            image = self._profile_preview_cache.get(key)
+            if image is None:
+                return None
+            self._profile_preview_cache_order = [k for k in self._profile_preview_cache_order if k != key]
+            self._profile_preview_cache_order.append(key)
+            return image
+
+        def _cache_profile_preview_image(self, key: str, image: np.ndarray) -> None:
+            if key in self._profile_preview_cache:
+                self._profile_preview_cache.pop(key, None)
+                self._profile_preview_cache_order = [k for k in self._profile_preview_cache_order if k != key]
+            self._profile_preview_cache[key] = np.asarray(image, dtype=np.float32).copy()
+            self._profile_preview_cache_order.append(key)
+            while len(self._profile_preview_cache_order) > PREVIEW_PROFILE_CACHE_MAX_ENTRIES:
+                old = self._profile_preview_cache_order.pop(0)
+                self._profile_preview_cache.pop(old, None)
+
+        def _profile_preview_source_for_async(
+            self,
+            image: np.ndarray,
+            *,
+            max_side_limit: int,
+        ) -> tuple[np.ndarray, bool]:
+            rgb = np.asarray(image, dtype=np.float32)
+            if int(max_side_limit) <= 0:
+                return rgb, False
+            h, w = int(rgb.shape[0]), int(rgb.shape[1])
+            max_side = max(h, w)
+            if max_side <= int(max_side_limit):
+                return rgb, False
+            scale = float(max_side_limit) / float(max_side)
+            nw = max(1, int(round(w * scale)))
+            nh = max(1, int(round(h * scale)))
+            resized = cv2.resize(rgb, (nw, nh), interpolation=cv2.INTER_AREA)
+            return np.clip(resized, 0.0, 1.0).astype(np.float32), True
+
+        def _queue_profile_preview_request(
+            self,
+            request_key: str,
+            profile_path: Path,
+            image_linear: np.ndarray,
+            target_shape: tuple[int, int],
+        ) -> None:
+            image_copy = np.asarray(image_linear, dtype=np.float32).copy()
+            if self._profile_preview_task_active:
+                if self._profile_preview_inflight_key == request_key:
+                    return
+                self._profile_preview_pending_request = (
+                    request_key,
+                    profile_path,
+                    image_copy,
+                    target_shape,
+                )
+                return
+            self._start_profile_preview_task(
+                (
+                    request_key,
+                    profile_path,
+                    image_copy,
+                    target_shape,
+                )
+            )
+
+        def _start_profile_preview_task(
+            self,
+            request: tuple[str, Path, np.ndarray, tuple[int, int]],
+        ) -> None:
+            request_key, profile_path, image_linear, target_shape = request
+            max_side_limit = self._profile_preview_max_side_limit()
+
+            def task():
+                source, downscaled = self._profile_preview_source_for_async(
+                    image_linear,
+                    max_side_limit=max_side_limit,
+                )
+                candidate = apply_profile_preview(source, profile_path)
+                if downscaled:
+                    target_h, target_w = target_shape
+                    candidate = cv2.resize(
+                        np.asarray(candidate, dtype=np.float32),
+                        (max(1, int(target_w)), max(1, int(target_h))),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
+                return request_key, np.asarray(candidate, dtype=np.float32)
+
+            thread = TaskThread(task)
+            self._profile_preview_task_active = True
+            self._profile_preview_inflight_key = request_key
+            self._threads.append(thread)
+
+            def cleanup() -> None:
+                self._profile_preview_task_active = False
+                self._profile_preview_inflight_key = None
+                if thread in self._threads:
+                    self._threads.remove(thread)
+                thread.deleteLater()
+                pending = self._profile_preview_pending_request
+                self._profile_preview_pending_request = None
+                if pending is not None:
+                    self._start_profile_preview_task(pending)
+
+            def ok(payload) -> None:
+                try:
+                    key, candidate = payload
+                    if self._looks_broken_profile_preview(candidate):
+                        self._log_preview(
+                            "Aviso: preview del perfil ICC parece no fiable "
+                            "(dominante/clipping extremo). Se muestra vista sin perfil."
+                        )
+                        return
+                    self._cache_profile_preview_image(key, candidate)
+                    if key != self._profile_preview_expected_key:
+                        return
+                    self._preview_srgb = np.asarray(candidate, dtype=np.float32)
+                    display_u8 = self._display_u8_for_screen(self._preview_srgb, bypass_profile=False)
+                    self._set_result_display_u8(display_u8, compare_enabled=bool(self.chk_compare.isChecked()))
+                finally:
+                    cleanup()
+
+            def fail(trace: str) -> None:
+                try:
+                    key = f"{request_key}|{trace.strip().splitlines()[-1] if trace.strip() else 'error'}"
+                    if self._profile_preview_error_key != key:
+                        self._profile_preview_error_key = key
+                        self._log_preview(
+                            f"Aviso: no se pudo aplicar preview ICC con ArgyllCMS: "
+                            f"{trace.strip().splitlines()[-1] if trace.strip() else 'error'}"
+                        )
+                finally:
+                    cleanup()
+
+            thread.succeeded.connect(ok)
+            thread.failed.connect(fail)
+            thread.start()
+
+        def _queue_interactive_preview_request(
+            self,
+            request: tuple[
+                str,
+                str | None,
+                np.ndarray,
+                dict[str, float],
+                dict[str, Any],
+                bool,
+                bool,
+                int,
+                bool,
+            ],
+        ) -> None:
+            request_key, _source_key, _source_linear, _detail_kwargs, _render_kwargs, _compare_enabled, _bypass, _max_side_limit, _apply_detail = request
+            self._interactive_preview_expected_key = request_key
+            if self._interactive_preview_task_active:
+                if self._interactive_preview_inflight_key == request_key:
+                    return
+                self._interactive_preview_pending_request = request
+                return
+            self._interactive_preview_pending_request = None
+            self._start_interactive_preview_task(request)
+
+        def _start_interactive_preview_task(
+            self,
+            request: tuple[
+                str,
+                str | None,
+                np.ndarray,
+                dict[str, float],
+                dict[str, Any],
+                bool,
+                bool,
+                int,
+                bool,
+            ],
+        ) -> None:
+            (
+                request_key,
+                source_key,
+                source_linear,
+                detail_kwargs,
+                render_kwargs,
+                compare_enabled,
+                bypass_display_profile,
+                max_side_limit,
+                apply_detail,
+            ) = request
+
+            def task():
+                source = self._interactive_preview_source(
+                    np.asarray(source_linear, dtype=np.float32),
+                    max_side_limit=int(max_side_limit),
+                )
+                if apply_detail:
+                    detail_adjusted = apply_adjustments(
+                        source,
+                        denoise_luminance=float(detail_kwargs.get("denoise_luminance", 0.0)),
+                        denoise_color=float(detail_kwargs.get("denoise_color", 0.0)),
+                        sharpen_amount=float(detail_kwargs.get("sharpen_amount", 0.0)),
+                        sharpen_radius=float(detail_kwargs.get("sharpen_radius", 1.0)),
+                        lateral_ca_red_scale=float(detail_kwargs.get("lateral_ca_red_scale", 1.0)),
+                        lateral_ca_blue_scale=float(detail_kwargs.get("lateral_ca_blue_scale", 1.0)),
+                    )
+                else:
+                    # During tonal curve/slider drag prioritize responsiveness and
+                    # defer detail operators to the final non-interactive refresh.
+                    detail_adjusted = source
+                adjusted = apply_render_adjustments(detail_adjusted, **render_kwargs)
+                result_srgb = linear_to_srgb_display(adjusted)
+                return (
+                    request_key,
+                    source_key,
+                    np.asarray(result_srgb, dtype=np.float32),
+                    bool(compare_enabled),
+                bool(bypass_display_profile),
+            )
+
+            thread = TaskThread(task)
+            started_at = time.perf_counter()
+            self._interactive_preview_task_active = True
+            self._interactive_preview_inflight_key = request_key
+            self._set_interactive_preview_busy(True)
+            self._threads.append(thread)
+
+            def cleanup() -> None:
+                self._interactive_preview_task_active = False
+                self._interactive_preview_inflight_key = None
+                if thread in self._threads:
+                    self._threads.remove(thread)
+                thread.deleteLater()
+                pending = self._interactive_preview_pending_request
+                self._interactive_preview_pending_request = None
+                if pending is not None:
+                    self._start_interactive_preview_task(pending)
+                    return
+                self._set_interactive_preview_busy(False)
+
+            def ok(payload) -> None:
+                try:
+                    (
+                        key,
+                        payload_source_key,
+                        candidate,
+                        payload_compare_enabled,
+                        payload_bypass_display_profile,
+                    ) = payload
+                    applied = False
+                    if key != self._interactive_preview_expected_key:
+                        return
+                    if payload_source_key is not None and payload_source_key != self._last_loaded_preview_key:
+                        return
+                    self._preview_srgb = np.asarray(candidate, dtype=np.float32)
+                    display_u8 = self._display_u8_for_screen(
+                        self._preview_srgb,
+                        bypass_profile=bool(payload_bypass_display_profile),
+                    )
+                    self._set_result_display_u8(
+                        display_u8,
+                        compare_enabled=bool(payload_compare_enabled and self.chk_compare.isChecked()),
+                    )
+                    applied = True
+                    if applied:
+                        elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+                        self._interactive_preview_last_ms = float(max(elapsed_ms, 0.0))
+                        self._update_interactive_preview_time_label()
+                finally:
+                    cleanup()
+
+            def fail(_trace: str) -> None:
+                cleanup()
+
+            thread.succeeded.connect(ok)
+            thread.failed.connect(fail)
+            thread.start()
 
         def _reset_adjustments(self) -> None:
             self.slider_sharpen.setValue(0)
@@ -6494,62 +8099,78 @@ if QtWidgets is not None:
             try:
                 interactive = self._is_preview_interaction_active()
                 detail_interactive = interactive and self._is_detail_interaction_active()
+                bypass_display_profile = bool(interactive and self._interactive_bypass_display_icc)
                 nl = self.slider_noise_luma.value() / 100.0
                 nc = self.slider_noise_color.value() / 100.0
                 sharpen = self.slider_sharpen.value() / 100.0
                 radius = self.slider_radius.value() / 10.0
                 ca_red, ca_blue = self._ca_scale_factors()
+                detail_kwargs: dict[str, float] = {
+                    "denoise_luminance": float(nl),
+                    "denoise_color": float(nc),
+                    "sharpen_amount": float(sharpen),
+                    "sharpen_radius": float(radius),
+                    "lateral_ca_red_scale": float(ca_red),
+                    "lateral_ca_blue_scale": float(ca_blue),
+                }
+                render_kwargs = self._render_adjustment_kwargs()
                 histogram_key = self._last_loaded_preview_key or str(id(self._original_linear))
                 if not interactive and self._tone_curve_histogram_key != histogram_key:
                     self.tone_curve_editor.set_histogram_from_image(self._original_linear)
                     self._tone_curve_histogram_key = histogram_key
 
-                source_linear = self._interactive_preview_source(self._original_linear) if interactive else self._original_linear
-                if detail_interactive:
-                    detail_adjusted = apply_adjustments(
-                        source_linear,
-                        denoise_luminance=nl,
-                        denoise_color=nc,
-                        sharpen_amount=sharpen,
-                        sharpen_radius=radius,
-                        lateral_ca_red_scale=ca_red,
-                        lateral_ca_blue_scale=ca_blue,
-                    )
-                elif interactive:
-                    # During tonal/tone-curve interaction reuse cached detail pass and
-                    # only render a lighter downscaled frame to keep UI responsive.
-                    detail_adjusted = self._detail_adjusted_preview(
-                        self._original_linear,
-                        denoise_luma=nl,
-                        denoise_color=nc,
-                        sharpen_amount=sharpen,
-                        sharpen_radius=radius,
-                        lateral_ca_red_scale=ca_red,
-                        lateral_ca_blue_scale=ca_blue,
-                    )
-                    detail_adjusted = self._interactive_preview_source(detail_adjusted)
-                else:
-                    detail_adjusted = self._detail_adjusted_preview(
-                        self._original_linear,
-                        denoise_luma=nl,
-                        denoise_color=nc,
-                        sharpen_amount=sharpen,
-                        sharpen_radius=radius,
-                        lateral_ca_red_scale=ca_red,
-                        lateral_ca_blue_scale=ca_blue,
-                    )
-                adjusted = apply_render_adjustments(detail_adjusted, **self._render_adjustment_kwargs())
-                if not interactive:
-                    self._adjusted_linear = adjusted
-
                 compare_enabled = bool(self.chk_compare.isChecked())
                 if compare_enabled:
-                    self._set_preview_panel_image(self.image_original_compare, self._original_srgb_preview())
+                    self._ensure_original_compare_panel(bypass_profile=bypass_display_profile)
 
+                source_key = self._last_loaded_preview_key or str(id(self._original_linear))
+                if interactive:
+                    apply_detail = bool(detail_interactive)
+                    if apply_detail and self._precision_detail_preview_enabled():
+                        max_side_limit = 0
+                    else:
+                        max_side_limit = (
+                            PREVIEW_INTERACTIVE_DRAG_MAX_SIDE
+                            if apply_detail
+                            else PREVIEW_INTERACTIVE_TONAL_MAX_SIDE
+                        )
+                    self._interactive_preview_request_seq += 1
+                    request_key = f"{source_key}|interactive|{self._interactive_preview_request_seq}"
+                    self._profile_preview_expected_key = None
+                    self._profile_preview_pending_request = None
+                    self._queue_interactive_preview_request(
+                        (
+                            request_key,
+                            source_key,
+                            self._original_linear,
+                            detail_kwargs,
+                            render_kwargs,
+                            compare_enabled,
+                            bypass_display_profile,
+                            int(max_side_limit),
+                            bool(apply_detail),
+                        )
+                    )
+                    return
+
+                self._interactive_preview_expected_key = None
+                self._interactive_preview_pending_request = None
+                self._set_interactive_preview_busy(False)
+
+                detail_adjusted = self._detail_adjusted_preview(
+                    self._original_linear,
+                    denoise_luma=nl,
+                    denoise_color=nc,
+                    sharpen_amount=sharpen,
+                    sharpen_radius=radius,
+                    lateral_ca_red_scale=ca_red,
+                    lateral_ca_blue_scale=ca_blue,
+                )
+                adjusted = apply_render_adjustments(detail_adjusted, **render_kwargs)
+                self._adjusted_linear = adjusted
                 result_srgb = linear_to_srgb_display(adjusted)
                 should_apply_profile = (
-                    (not interactive)
-                    and self.chk_apply_profile.isChecked()
+                    self.chk_apply_profile.isChecked()
                     and self.path_profile_active.text().strip() != ""
                 )
                 if should_apply_profile:
@@ -6561,30 +8182,35 @@ if QtWidgets is not None:
                         )
                         self.path_profile_active.clear()
                         self.chk_apply_profile.setChecked(False)
+                        self._profile_preview_expected_key = None
                     elif p.exists():
-                        try:
-                            candidate = apply_profile_preview(adjusted, p)
-                        except Exception as exc:
-                            self._log_preview(f"Aviso: no se pudo aplicar preview ICC con ArgyllCMS: {exc}")
-                            candidate = None
-                        if candidate is not None and self._looks_broken_profile_preview(candidate):
-                            self._log_preview(
-                                "Aviso: preview del perfil ICC parece no fiable "
-                                "(dominante/clipping extremo). Se muestra vista sin perfil."
+                        request_key = self._profile_preview_request_key(p)
+                        self._profile_preview_expected_key = request_key
+                        cached_profile = self._cached_profile_preview_image(request_key)
+                        if cached_profile is not None:
+                            result_srgb = cached_profile
+                        else:
+                            self._queue_profile_preview_request(
+                                request_key,
+                                p,
+                                adjusted,
+                                (int(adjusted.shape[0]), int(adjusted.shape[1])),
                             )
-                        elif candidate is not None:
-                            result_srgb = candidate
                     else:
+                        self._profile_preview_expected_key = None
                         self._log_preview(
                             f"Aviso: perfil activo no encontrado ({p}). Se muestra vista sin perfil."
                         )
+                else:
+                    self._profile_preview_expected_key = None
 
                 self._preview_srgb = np.asarray(result_srgb, dtype=np.float32)
-                self._set_preview_panel_image(self.image_result_single, self._preview_srgb)
-                if compare_enabled:
-                    self._set_preview_panel_image(self.image_result_compare, self._preview_srgb)
-                if not interactive:
-                    self.preview_analysis.setPlainText(preview_analysis_text(self._original_linear, adjusted))
+                display_u8 = self._display_u8_for_screen(
+                    self._preview_srgb,
+                    bypass_profile=bypass_display_profile,
+                )
+                self._set_result_display_u8(display_u8, compare_enabled=compare_enabled)
+                self.preview_analysis.setPlainText(preview_analysis_text(self._original_linear, adjusted))
             except Exception as exc:
                 QtWidgets.QMessageBox.warning(self, "Aviso", str(exc))
 
@@ -6617,7 +8243,18 @@ if QtWidgets is not None:
                 QtWidgets.QMessageBox.information(self, "Info", "No hay preview para guardar.")
                 return
             self._ensure_session_output_controls()
-            out = Path(self.path_preview_png.text().strip())
+            default_out = str(self._session_default_outputs()["preview"])
+            out_text, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self,
+                "Guardar preview PNG",
+                default_out,
+                "PNG (*.png)",
+            )
+            if not out_text:
+                return
+            out = Path(out_text)
+            if out.suffix.lower() != ".png":
+                out = out.with_suffix(".png")
             out.parent.mkdir(parents=True, exist_ok=True)
             bgr = np.clip(np.round(self._preview_srgb[..., ::-1] * 255.0), 0, 255).astype(np.uint8)
             ok = cv2.imwrite(str(out), bgr)
@@ -7375,6 +9012,28 @@ if QtWidgets is not None:
                 return
             self._start_batch_develop(files, "Lote desde directorio")
 
+        def _batch_worker_count(self, total_items: int) -> int:
+            return resolve_batch_workers(total_items)
+
+        @staticmethod
+        def _versioned_output_path_with_reservations(
+            requested_path: Path,
+            reserved_paths: set[str],
+        ) -> Path:
+            requested = Path(requested_path)
+            candidate = requested
+            candidate_key = str(candidate)
+            if not candidate.exists() and candidate_key not in reserved_paths:
+                reserved_paths.add(candidate_key)
+                return candidate
+            for index in range(2, 10000):
+                candidate = requested.with_name(f"{requested.stem}_v{index:03d}{requested.suffix}")
+                candidate_key = str(candidate)
+                if not candidate.exists() and candidate_key not in reserved_paths:
+                    reserved_paths.add(candidate_key)
+                    return candidate
+            raise RuntimeError(f"No se pudo generar salida versionada para {requested.name}")
+
         def _process_batch_files(
             self,
             *,
@@ -7403,6 +9062,7 @@ if QtWidgets is not None:
 
             if profile_path is not None and not profile_path.exists():
                 raise RuntimeError(f"No existe perfil ICC activo: {profile_path}")
+
             detail_adjustments = {
                 "applied": bool(apply_adjust),
                 "denoise_luminance": denoise_luma if apply_adjust else 0.0,
@@ -7423,7 +9083,38 @@ if QtWidgets is not None:
             }
             sidecar_render_state = sidecar_render_adjustments or render_adjustments
 
-            for src in files:
+            generic_profile_dir = (
+                self._session_paths_from_root(self._active_session_root)["profiles"] / "generic"
+                if self._active_session_root is not None
+                else None
+            )
+            session_name = ""
+            metadata_payload = (
+                self._active_session_payload.get("metadata", {})
+                if isinstance(self._active_session_payload, dict)
+                else {}
+            )
+            if isinstance(metadata_payload, dict):
+                session_name = str(metadata_payload.get("name") or "")
+            if not session_name and self._active_session_root is not None:
+                session_name = self._active_session_root.name
+
+            planned: list[tuple[int, Path, Path, Path]] = []
+            reserved_outputs: set[str] = set()
+            for idx, src in enumerate(files):
+                requested_out_path = out_dir / f"{src.stem}.tiff"
+                out_path = self._versioned_output_path_with_reservations(requested_out_path, reserved_outputs)
+                planned.append((idx, src, requested_out_path, out_path))
+
+            output_slots: list[dict[str, str] | None] = [None] * len(planned)
+            error_slots: list[dict[str, str] | None] = [None] * len(planned)
+
+            def process_one(
+                index: int,
+                src: Path,
+                requested_out_path: Path,
+                out_path: Path,
+            ) -> tuple[int, dict[str, str] | None, dict[str, str] | None]:
                 try:
                     if src.suffix.lower() in RAW_EXTENSIONS:
                         image = develop_image_array(src, recipe)
@@ -7442,8 +9133,6 @@ if QtWidgets is not None:
                             render_adjustments=render_adjustments,
                         )
 
-                    requested_out_path = out_dir / f"{src.stem}.tiff"
-                    out_path = versioned_output_path(requested_out_path)
                     mode, proof_result = write_signed_profiled_tiff(
                         out_path,
                         image,
@@ -7455,36 +9144,61 @@ if QtWidgets is not None:
                         detail_adjustments=detail_adjustments,
                         render_adjustments=c2pa_render_adjustments,
                         render_context={"entrypoint": "gui_batch_develop", "apply_adjustments": bool(apply_adjust)},
-                        generic_profile_dir=self._session_generic_profile_dir(),
+                        generic_profile_dir=generic_profile_dir,
                     )
-                    rendered_profile_path = self._render_profile_path_for_recipe(
+                    rendered_profile_path = profile_path_for_render_settings(
                         recipe,
                         input_profile_path=profile_path if use_profile else None,
                         color_management_mode=mode,
+                        generic_profile_dir=generic_profile_dir,
                     )
+
                     output = {"source": str(src), "output": str(out_path), "proof": proof_result.proof_path}
                     if development_profile:
                         output["development_profile_id"] = str(development_profile.get("id") or "")
                         output["development_profile_name"] = str(development_profile.get("name") or "")
-                    sidecar = self._write_raw_settings_sidecar(
-                        src,
-                        recipe=recipe,
-                        development_profile=development_profile,
-                        detail_adjustments=sidecar_detail_state,
-                        render_adjustments=sidecar_render_state,
-                        profile_path=rendered_profile_path,
-                        color_management_mode=mode,
-                        output_tiff=out_path,
-                        proof_path=Path(proof_result.proof_path),
-                        status="rendered",
-                    )
-                    if sidecar is not None:
-                        output["raw_sidecar"] = str(sidecar)
                     if out_path != requested_out_path:
                         output["requested_output"] = str(requested_out_path)
-                    outputs.append(output)
+
+                    if src.suffix.lower() in RAW_EXTENSIONS:
+                        sidecar_path = write_raw_sidecar(
+                            src,
+                            recipe=recipe,
+                            development_profile=development_profile,
+                            detail_adjustments=sidecar_detail_state,
+                            render_adjustments=sidecar_render_state,
+                            icc_profile_path=rendered_profile_path,
+                            color_management_mode=mode,
+                            session_root=self._active_session_root,
+                            session_name=session_name,
+                            output_tiff=out_path,
+                            proof_path=Path(proof_result.proof_path),
+                            status="rendered",
+                        )
+                        output["raw_sidecar"] = str(sidecar_path)
+                    return index, output, None
                 except Exception as exc:
-                    errors.append({"source": str(src), "error": str(exc)})
+                    return index, None, {"source": str(src), "error": str(exc)}
+
+            worker_count = self._batch_worker_count(len(planned))
+            if worker_count <= 1:
+                for idx, src, requested_out_path, out_path in planned:
+                    i, output, error = process_one(idx, src, requested_out_path, out_path)
+                    output_slots[i] = output
+                    error_slots[i] = error
+            else:
+                with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="nexoraw-batch") as executor:
+                    futures = [
+                        executor.submit(process_one, idx, src, requested_out_path, out_path)
+                        for idx, src, requested_out_path, out_path in planned
+                    ]
+                    for future in as_completed(futures):
+                        i, output, error = future.result()
+                        output_slots[i] = output
+                        error_slots[i] = error
+
+            outputs.extend([output for output in output_slots if output is not None])
+            errors.extend([error for error in error_slots if error is not None])
 
             return {
                 "input_files": len(files),
@@ -7492,6 +9206,7 @@ if QtWidgets is not None:
                 "outputs": outputs,
                 "errors": errors,
                 "development_profile": development_profile or {},
+                "workers": worker_count,
             }
 
         def _start_batch_develop(self, files: list[Path], task_label: str) -> None:
@@ -7654,6 +9369,42 @@ if QtWidgets is not None:
             self.global_status_label.setText("Listo")
             self.global_progress.setRange(0, 1)
             self.global_progress.setValue(0)
+
+        def _setup_interactive_preview_status_widgets(self) -> None:
+            self._interactive_preview_spinner = QtWidgets.QProgressBar()
+            self._interactive_preview_spinner.setTextVisible(False)
+            self._interactive_preview_spinner.setRange(0, 1)
+            self._interactive_preview_spinner.setValue(0)
+            self._interactive_preview_spinner.setFixedWidth(84)
+            self._interactive_preview_spinner.setMaximumHeight(9)
+            self._interactive_preview_time_label = QtWidgets.QLabel("Ultimo ajuste: -- ms")
+            self._interactive_preview_time_label.setStyleSheet("color: #4b5563;")
+            status = self.statusBar()
+            status.addPermanentWidget(self._interactive_preview_spinner)
+            status.addPermanentWidget(self._interactive_preview_time_label)
+
+        def _set_interactive_preview_busy(self, busy: bool) -> None:
+            spinner = getattr(self, "_interactive_preview_spinner", None)
+            if spinner is not None:
+                if busy:
+                    spinner.setRange(0, 0)
+                else:
+                    spinner.setRange(0, 1)
+                    spinner.setValue(0)
+            label = getattr(self, "_interactive_preview_time_label", None)
+            if label is not None and bool(busy):
+                label.setText("Ajustando...")
+            elif label is not None:
+                self._update_interactive_preview_time_label()
+
+        def _update_interactive_preview_time_label(self) -> None:
+            label = getattr(self, "_interactive_preview_time_label", None)
+            if label is None:
+                return
+            if self._interactive_preview_last_ms is None:
+                label.setText("Ultimo ajuste: -- ms")
+                return
+            label.setText(f"Ultimo ajuste: {int(round(self._interactive_preview_last_ms))} ms")
 
         def _set_status(self, text: str) -> None:
             self.statusBar().showMessage(text, 8000)

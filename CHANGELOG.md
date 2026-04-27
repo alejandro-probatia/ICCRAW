@@ -18,6 +18,30 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-27
+
+### Added
+
+- GUI `Ayuda > Acerca de` ampliada con:
+  - director del proyecto configurable (`NEXORAW_PROJECT_DIRECTOR`),
+  - version en ejecucion,
+  - estado operativo de AMaZE,
+  - comprobacion de ultima version publicada en GitHub Releases,
+  - actualizacion automatica que descarga y lanza el instalador de release.
+- Nuevo modulo `iccraw.update` para consulta de releases, comparacion de
+  versiones, descarga de assets y ejecucion de instaladores por plataforma.
+- Histograma RGB en la pestaña `Visor` con lectura de clipping en sombras y
+  luces y testigos visuales.
+- Overlay de clipping en la imagen de preview (azul sombras, rojo luces,
+  magenta cuando coinciden), activable desde `Visor`.
+- Tests unitarios para el sistema de actualizacion (`tests/test_update.py`).
+
+### Changed
+
+- El script Windows `packaging/windows/build_installer.ps1` exige AMaZE por
+  defecto para builds de release (escape explicito: `-AllowNoAmaze` para builds
+  de prueba).
+
 ## [0.2.0] - 2026-04-26
 
 ### Added
