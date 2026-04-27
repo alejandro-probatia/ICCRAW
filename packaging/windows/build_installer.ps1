@@ -153,7 +153,12 @@ function Copy-ExternalTools {
 }
 
 function Install-AmazeBackend {
-  if ([string]::IsNullOrWhiteSpace($RawpyDemosaicWheel) -and [string]::IsNullOrWhiteSpace($RawpyDemosaicSource) -and -not $Amaze) {
+  if (
+    [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel) `
+    -and [string]::IsNullOrWhiteSpace($RawpyDemosaicSource) `
+    -and -not $Amaze `
+    -and -not $RequireAmaze
+  ) {
     return
   }
 
@@ -183,7 +188,12 @@ function Test-AmazeBackend {
 function Copy-RawpyDemosaicLegal {
   param([string]$AppBuildDir)
 
-  if (-not $RequireAmaze -and -not $Amaze -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel) -and [string]::IsNullOrWhiteSpace($RawpyDemosaicSource)) {
+  if (
+    -not $RequireAmaze `
+    -and -not $Amaze `
+    -and [string]::IsNullOrWhiteSpace($RawpyDemosaicWheel) `
+    -and [string]::IsNullOrWhiteSpace($RawpyDemosaicSource)
+  ) {
     return
   }
 
