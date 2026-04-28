@@ -2647,6 +2647,10 @@ if QtWidgets is not None:
 
             self.global_settings_tabs = QtWidgets.QTabWidget()
             self.global_settings_tabs.addTab(
+                self._settings_scroll_area(self._build_general_settings_panel()),
+                self.tr("General"),
+            )
+            self.global_settings_tabs.addTab(
                 self._settings_scroll_area(self._build_signature_settings_panel()),
                 self.tr("Firma / C2PA"),
             )
@@ -2667,6 +2671,61 @@ if QtWidgets is not None:
             scroll.setWidgetResizable(True)
             scroll.setWidget(widget)
             return scroll
+
+        def _build_general_settings_panel(self) -> QtWidgets.QWidget:
+            from .i18n import AUTO_LANG, detect_system_language
+
+            tab = QtWidgets.QWidget()
+            layout = QtWidgets.QVBoxLayout(tab)
+
+            lang_box = QtWidgets.QGroupBox(self.tr("Idioma"))
+            lang_grid = QtWidgets.QGridLayout(lang_box)
+
+            lang_grid.addWidget(QtWidgets.QLabel(self.tr("Idioma de la interfaz")), 0, 0)
+            self.combo_app_language = QtWidgets.QComboBox()
+            detected = detect_system_language()
+            self.combo_app_language.addItem(
+                self.tr("Sistema") + f" (Auto: {detected})", AUTO_LANG
+            )
+            self.combo_app_language.addItem(self.tr("Español"), "es")
+            self.combo_app_language.addItem("English", "en")
+
+            current_pref = str(self._settings.value("app/language", AUTO_LANG) or AUTO_LANG).strip().lower()
+            idx = self.combo_app_language.findData(current_pref)
+            self.combo_app_language.setCurrentIndex(idx if idx >= 0 else 0)
+            self.combo_app_language.currentIndexChanged.connect(self._on_app_language_changed)
+            lang_grid.addWidget(self.combo_app_language, 0, 1)
+
+            lang_note = QtWidgets.QLabel(
+                self.tr(
+                    "El cambio de idioma se aplica al reiniciar NexoRAW. No se cierra automáticamente "
+                    "para no perder cambios sin guardar de la sesión actual."
+                )
+            )
+            lang_note.setWordWrap(True)
+            lang_note.setStyleSheet("font-size: 12px; color: #6b7280; padding-top: 4px;")
+            lang_grid.addWidget(lang_note, 1, 0, 1, 2)
+
+            layout.addWidget(lang_box)
+            layout.addStretch(1)
+            return tab
+
+        def _on_app_language_changed(self, _index: int) -> None:
+            from .i18n import AUTO_LANG
+
+            value = self.combo_app_language.currentData()
+            if not isinstance(value, str) or not value:
+                value = AUTO_LANG
+            previous = str(self._settings.value("app/language", AUTO_LANG) or AUTO_LANG).strip().lower()
+            if value == previous:
+                return
+            self._settings.setValue("app/language", value)
+            self._settings.sync()
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("Idioma actualizado"),
+                self.tr("Reinicia NexoRAW para aplicar el nuevo idioma."),
+            )
 
         def _build_signature_settings_panel(self) -> QtWidgets.QWidget:
             tab = QtWidgets.QWidget()
@@ -9546,10 +9605,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # Cargar traductor antes de crear la ventana, para que todos los widgets
     # reciban las cadenas traducidas desde el primer paint.
-    from .i18n import install_translator
+    from .i18n import AUTO_LANG, install_translator, resolve_language
     _lang_settings = _make_app_settings()
-    _lang = str(_lang_settings.value("app/language", "es") or "es").strip()
-    install_translator(app, _lang)
+    # Default "auto": instalaciones nuevas siguen al idioma del SO. No migramos
+    # usuarios existentes con "es" guardado: respetan la elección previa.
+    _lang_pref = str(_lang_settings.value("app/language", AUTO_LANG) or AUTO_LANG).strip()
+    install_translator(app, resolve_language(_lang_pref))
 
     win = NexoRawMainWindow()
     win.show()

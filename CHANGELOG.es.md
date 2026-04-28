@@ -18,6 +18,26 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-04-28
+
+### Added
+
+- Selector de idioma de la interfaz en `Configuracion global -> General`, con
+  opciones `Sistema (Auto: es/en)`, `Espanol` e `English`. Persiste en
+  `QSettings` bajo `app/language`.
+- Auto-deteccion del idioma del sistema operativo en instalaciones nuevas: si
+  el SO esta en espanol arranca en espanol, en cualquier otro idioma arranca
+  en ingles. No se migra a usuarios existentes con `app/language=es` ya
+  guardado para respetar la eleccion previa.
+- Helpers `iccraw.i18n.detect_system_language` y `iccraw.i18n.resolve_language`
+  con tests unitarios en `tests/test_i18n.py`.
+
+### Changed
+
+- El cambio de idioma desde la configuracion no reinicia automaticamente la
+  aplicacion: muestra un aviso y se aplica al proximo arranque, evitando
+  perdida de estado de sesion no guardado.
+
 ## [0.2.3] - 2026-04-27
 
 ### Changed

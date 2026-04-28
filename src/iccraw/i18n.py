@@ -48,8 +48,35 @@ SUPPORTED_LANGUAGES: dict[str, str] = {
     "en": "English",
 }
 
+# Valor especial para QSettings "app/language": sigue al idioma del SO.
+AUTO_LANG = "auto"
+
 _active_translator: "QtCore.QTranslator | None" = None
 _active_lang: str = "es"
+
+
+def detect_system_language() -> str:
+    """Devuelve "es" si el SO está en español, "en" en cualquier otro caso."""
+    if QtCore is None:
+        return "es"
+    try:
+        name = QtCore.QLocale.system().name() or ""
+    except Exception:
+        return "es"
+    return "es" if name.lower().startswith("es") else "en"
+
+
+def resolve_language(setting_value: str | None) -> str:
+    """Convierte el valor guardado en QSettings al idioma efectivo a instalar.
+
+    - "" / None / "auto" → detección por SO.
+    - "es" / "en" → respeta la elección manual.
+    - Cualquier otro valor desconocido → fallback a auto.
+    """
+    raw = (setting_value or "").strip().lower()
+    if raw in SUPPORTED_LANGUAGES:
+        return raw
+    return detect_system_language()
 
 
 def install_translator(
