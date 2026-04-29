@@ -18,6 +18,15 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-29
+
+### Changed
+
+- Sustituida la identidad grafica anterior por un nuevo logo e icono ProbRAW
+  basados en una marca `P`, geometria RAW y parches de calibracion de color.
+- Regenerados los assets SVG, PNG e ICO usados en README, aplicacion,
+  instaladores Linux/Windows y paquete distribuible.
+
 ## [0.3.0] - 2026-04-29
 
 ### Changed

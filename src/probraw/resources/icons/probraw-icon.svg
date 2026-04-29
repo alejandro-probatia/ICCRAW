@@ -1,24 +1,42 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="20 20 440 440" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
   <title id="title">ProbRAW icon</title>
-  <desc id="desc">Hexagonal ProbRAW imagotype for application menus and operating system launchers.</desc>
+  <desc id="desc">Application icon for ProbRAW, combining a technical P mark, RAW file geometry and color calibration patches.</desc>
   <defs>
-    <linearGradient id="navyGradient" x1="64" y1="74" x2="356" y2="392" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#07335f"/>
-      <stop offset="1" stop-color="#021c42"/>
+    <linearGradient id="plateGradient" x1="86" y1="58" x2="418" y2="454" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#163451"/>
+      <stop offset="0.58" stop-color="#0d1e32"/>
+      <stop offset="1" stop-color="#07101b"/>
     </linearGradient>
-    <linearGradient id="tealGradient" x1="302" y1="90" x2="430" y2="424" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#18bfd1"/>
-      <stop offset="1" stop-color="#07919d"/>
+    <linearGradient id="foldGradient" x1="310" y1="64" x2="420" y2="166" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#19c7d4"/>
+      <stop offset="1" stop-color="#078fa0"/>
+    </linearGradient>
+    <linearGradient id="rawAccent" x1="142" y1="414" x2="370" y2="414" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d84a3a"/>
+      <stop offset="0.24" stop-color="#f29f25"/>
+      <stop offset="0.45" stop-color="#f2db4b"/>
+      <stop offset="0.64" stop-color="#39b96b"/>
+      <stop offset="0.82" stop-color="#19a8d8"/>
+      <stop offset="1" stop-color="#7a5cff"/>
     </linearGradient>
   </defs>
 
-  <path d="M 80 332 V 159 L 258 56 L 379 126" fill="none" stroke="url(#navyGradient)" stroke-width="48" stroke-linecap="square" stroke-linejoin="miter"/>
-  <path d="M 353 172 L 405 205 V 393 L 224 497 L 91 420" fill="none" stroke="url(#tealGradient)" stroke-width="48" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M96 54h226l94 94v310H96Z" fill="url(#plateGradient)"/>
+  <path d="M322 54v94h94Z" fill="url(#foldGradient)"/>
+  <path d="M96 54h226l94 94v310H96Z" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="10" stroke-linejoin="round"/>
 
-  <path d="M 142 210 H 203 L 314 316 V 210 H 378 V 402 H 320 L 207 293 V 402 H 142 Z" fill="url(#navyGradient)"/>
+  <path fill="#f8fbff" fill-rule="evenodd" d="M146 126h128c72 0 118 45 118 109 0 68-50 110-122 110h-58v38h-66Zm66 62v96h58c38 0 60-18 60-48 0-29-22-48-60-48Z"/>
 
-  <path d="M 292 227 L 361 142" fill="none" stroke="url(#tealGradient)" stroke-width="35" stroke-linecap="square"/>
-  <circle cx="374" cy="124" r="44" fill="#ffffff" stroke="url(#tealGradient)" stroke-width="26"/>
+  <circle cx="270" cy="236" r="26" fill="none" stroke="#18c7d1" stroke-width="8"/>
+  <path d="M270 204v64M238 236h64" fill="none" stroke="#18c7d1" stroke-width="6" stroke-linecap="round"/>
 
+  <rect x="140" y="400" width="232" height="32" rx="5" fill="url(#rawAccent)"/>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.52" stroke-width="3">
+    <path d="M178 400v32"/>
+    <path d="M217 400v32"/>
+    <path d="M256 400v32"/>
+    <path d="M295 400v32"/>
+    <path d="M334 400v32"/>
+  </g>
 </svg>

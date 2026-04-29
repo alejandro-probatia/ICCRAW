@@ -72,6 +72,23 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.1
+
+Release 0.3.1 updates the ProbRAW visual identity:
+
+- new ProbRAW logo and icon with no leftovers from the previous brand,
+- regenerated SVG, PNG and ICO assets for README, the application and
+  installers,
+- distribution artifacts published under `probraw_*` / `probraw-*` names.
+
+Expected artifacts:
+
+- `probraw_0.3.1_amd64.deb`
+- `probraw_0.3.1_amd64.deb.sha256`
+- `probraw-0.3.1.tar.gz`
+- `probraw-0.3.1-py3-none-any.whl`
+- `probraw_0.3.1_python_artifacts.sha256`
+
 ## Release 0.3.0
 
 Release 0.3.0 introduces:

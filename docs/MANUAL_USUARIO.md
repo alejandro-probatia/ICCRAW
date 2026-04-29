@@ -10,7 +10,7 @@ settings, profiles, hashes and audit artifacts.
 
 ![ProbRAW: main development and profiling interface](assets/screenshots/probraw-portada.png)
 
-This manual covers the complete ProbRAW 0.3.0 workflow: session creation, color
+This manual covers the complete ProbRAW 0.3.1 workflow: session creation, color
 chart profiling, manual work without a chart, settings copy/paste, render queue,
 TIFF export, metadata, Proof, C2PA, 3D gamut diagnostics, chart reference
 management, global settings and the meaning of every visible option in the

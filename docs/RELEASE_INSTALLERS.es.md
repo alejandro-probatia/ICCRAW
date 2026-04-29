@@ -78,6 +78,23 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.1
+
+La release 0.3.1 actualiza la identidad visual de ProbRAW:
+
+- nuevo logo e icono ProbRAW sin restos de la marca anterior,
+- assets SVG, PNG e ICO regenerados para README, aplicacion e instaladores,
+- artefactos de distribucion publicados con los nombres `probraw_*` /
+  `probraw-*`.
+
+Artefactos esperados:
+
+- `probraw_0.3.1_amd64.deb`
+- `probraw_0.3.1_amd64.deb.sha256`
+- `probraw-0.3.1.tar.gz`
+- `probraw-0.3.1-py3-none-any.whl`
+- `probraw_0.3.1_python_artifacts.sha256`
+
 ## Release 0.3.0
 
 La release 0.3.0 introduce:

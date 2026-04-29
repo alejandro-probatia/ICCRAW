@@ -1,43 +1,58 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
   <title id="title">ProbRAW</title>
-  <desc id="desc">Vector logo for the ProbRAW scientific RAW workflow application.</desc>
+  <desc id="desc">Vector logo for ProbRAW, a scientific RAW profiling workflow led by Probatia Forensics SL with AEICF collaboration.</desc>
   <defs>
-    <linearGradient id="navyGradient" x1="20" y1="52" x2="258" y2="296" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#07335f"/>
-      <stop offset="1" stop-color="#021c42"/>
+    <linearGradient id="plateGradient" x1="86" y1="58" x2="418" y2="454" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#163451"/>
+      <stop offset="0.58" stop-color="#0d1e32"/>
+      <stop offset="1" stop-color="#07101b"/>
     </linearGradient>
-    <linearGradient id="tealGradient" x1="210" y1="62" x2="294" y2="300" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#18bfd1"/>
-      <stop offset="1" stop-color="#07919d"/>
+    <linearGradient id="foldGradient" x1="310" y1="64" x2="420" y2="166" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#19c7d4"/>
+      <stop offset="1" stop-color="#078fa0"/>
     </linearGradient>
-    <linearGradient id="rawGradient" x1="802" y1="120" x2="1160" y2="246" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#12b8c9"/>
-      <stop offset="1" stop-color="#078d9a"/>
+    <linearGradient id="rawAccent" x1="142" y1="414" x2="370" y2="414" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d84a3a"/>
+      <stop offset="0.24" stop-color="#f29f25"/>
+      <stop offset="0.45" stop-color="#f2db4b"/>
+      <stop offset="0.64" stop-color="#39b96b"/>
+      <stop offset="0.82" stop-color="#19a8d8"/>
+      <stop offset="1" stop-color="#7a5cff"/>
+    </linearGradient>
+    <linearGradient id="wordRaw" x1="722" y1="112" x2="1042" y2="226" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0aa6b7"/>
+      <stop offset="0.58" stop-color="#14b96f"/>
+      <stop offset="1" stop-color="#f29f25"/>
     </linearGradient>
     <style>
-      .navy-fill { fill: url(#navyGradient); }
-      .navy-stroke { stroke: url(#navyGradient); }
-      .teal-stroke { stroke: url(#tealGradient); }
-      .teal-fill { fill: url(#tealGradient); }
-      .wordmark-navy { fill: #052653; }
-      .wordmark-raw { fill: url(#rawGradient); }
+      .word-prob { fill: #172033; }
+      .word-raw { fill: url(#wordRaw); }
+      .tagline { fill: #5d6979; }
     </style>
   </defs>
 
-  <g transform="translate(28 28)">
-    <path class="navy-stroke" d="M 27 199 V 88 L 141 22 L 218 66" fill="none" stroke-width="28" stroke-linecap="square" stroke-linejoin="miter"/>
-    <path class="teal-stroke" d="M 244 99 L 274 118 V 245 L 158 312 L 73 263" fill="none" stroke-width="28" stroke-linecap="square" stroke-linejoin="miter"/>
+  <g transform="translate(34 36) scale(0.56)">
+    <path d="M96 54h226l94 94v310H96Z" fill="url(#plateGradient)"/>
+    <path d="M322 54v94h94Z" fill="url(#foldGradient)"/>
+    <path d="M96 54h226l94 94v310H96Z" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="10" stroke-linejoin="round"/>
 
-    <path class="navy-fill" d="M 69 121 H 110 L 190 199 V 121 H 233 V 245 H 194 L 112 166 V 245 H 69 Z"/>
+    <path fill="#f8fbff" fill-rule="evenodd" d="M146 126h128c72 0 118 45 118 109 0 68-50 110-122 110h-58v38h-66Zm66 62v96h58c38 0 60-18 60-48 0-29-22-48-60-48Z"/>
 
-    <path class="teal-stroke" d="M 203 132 L 247 78" fill="none" stroke-width="19" stroke-linecap="square"/>
-    <circle cx="253" cy="69" r="25" fill="#ffffff" class="teal-stroke" stroke-width="15"/>
+    <circle cx="270" cy="236" r="26" fill="none" stroke="#18c7d1" stroke-width="8"/>
+    <path d="M270 204v64M238 236h64" fill="none" stroke="#18c7d1" stroke-width="6" stroke-linecap="round"/>
 
-    <path class="navy-stroke" d="M 70 252 L 37 286" fill="none" stroke-width="14" stroke-linecap="round"/>
-    <circle cx="31" cy="292" r="23" fill="#ffffff" class="navy-stroke" stroke-width="12"/>
+    <rect x="140" y="400" width="232" height="32" rx="5" fill="url(#rawAccent)"/>
+    <g fill="none" stroke="#ffffff" stroke-opacity="0.52" stroke-width="3">
+      <path d="M178 400v32"/>
+      <path d="M217 400v32"/>
+      <path d="M256 400v32"/>
+      <path d="M295 400v32"/>
+      <path d="M334 400v32"/>
+    </g>
   </g>
 
-  <text x="382" y="220" class="wordmark-navy" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="142" font-weight="300" letter-spacing="0">Nexo</text>
-  <text x="794" y="220" class="wordmark-raw" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="142" font-weight="800" letter-spacing="0">RAW</text>
+  <text x="365" y="206" class="word-prob" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="136" font-weight="600" letter-spacing="0">Prob</text>
+  <text x="684" y="206" class="word-raw" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="136" font-weight="800" letter-spacing="0">RAW</text>
+  <text x="370" y="260" class="tagline" font-family="Segoe UI, Arial, Helvetica, sans-serif" font-size="31" font-weight="500" letter-spacing="0">Probatia Forensics SL + AEICF</text>
 </svg>
