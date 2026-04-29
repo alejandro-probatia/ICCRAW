@@ -72,6 +72,22 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.2
+
+Release 0.3.2 fixes the application icon in Linux menus:
+
+- the `.desktop` entry uses `Icon=/usr/share/pixmaps/probraw.png` as an
+  absolute path to avoid hicolor theme lookup/cache failures,
+- package and installation validations check that real menu icon.
+
+Expected artifacts:
+
+- `probraw_0.3.2_amd64.deb`
+- `probraw_0.3.2_amd64.deb.sha256`
+- `probraw-0.3.2.tar.gz`
+- `probraw-0.3.2-py3-none-any.whl`
+- `probraw_0.3.2_python_artifacts.sha256`
+
 ## Release 0.3.1
 
 Release 0.3.1 updates the ProbRAW visual identity:

@@ -100,7 +100,7 @@ require_file "$EXTRACT_ROOT/usr/share/doc/probraw/COLOR_PIPELINE.md"
 desktop="$EXTRACT_ROOT/usr/share/applications/probraw.desktop"
 grep -Fxq "Name=ProbRAW" "$desktop" || fail "desktop Name no es ProbRAW"
 grep -Fxq "Exec=probraw-ui" "$desktop" || fail "desktop Exec no usa probraw-ui"
-grep -Fxq "Icon=probraw" "$desktop" || fail "desktop Icon no usa probraw"
+grep -Fxq "Icon=/usr/share/pixmaps/probraw.png" "$desktop" || fail "desktop Icon no usa fallback pixmap absoluto"
 grep -Eq '^Categories=.*Graphics.*Photography.*;$' "$desktop" || fail "desktop Categories no incluye Graphics y Photography"
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate "$desktop"

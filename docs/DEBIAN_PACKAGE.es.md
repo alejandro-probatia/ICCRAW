@@ -111,8 +111,8 @@ estos puntos:
 - `Package: probraw`, `Replaces: iccraw` y `Conflicts: iccraw`,
 - ausencia de `/usr/bin/iccraw`, `/usr/bin/iccraw-ui` y scripts internos
   `/opt/probraw/venv/bin/iccraw*`,
-- entrada de escritorio `Name=ProbRAW`, `Exec=probraw-ui`, `Icon=probraw` y
-  categoria `Graphics;Photography;`,
+- entrada de escritorio `Name=ProbRAW`, `Exec=probraw-ui`,
+  `Icon=/usr/share/pixmaps/probraw.png` y categoria `Graphics;Photography;`,
 - iconos `probraw.png` reales en hicolor `16/32/48/64/128/256/512`, icono SVG
   y fallback `/usr/share/pixmaps/probraw.png`,
 - manual de usuario y metodologia incluidos en `/usr/share/doc/probraw/`,

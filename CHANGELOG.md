@@ -20,6 +20,15 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-04-29
+
+### Fixed
+
+- The Linux desktop entry now uses the absolute pixmap
+  `/usr/share/pixmaps/probraw.png` so Cinnamon and other menus show the ProbRAW
+  icon even when they do not refresh the hicolor theme lookup correctly.
+- Updated package and installation validations to check the real menu icon.
+
 ## [0.3.1] - 2026-04-29
 
 ### Changed

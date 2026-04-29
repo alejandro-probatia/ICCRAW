@@ -18,6 +18,16 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-04-29
+
+### Fixed
+
+- La entrada de escritorio Linux usa ahora el pixmap absoluto
+  `/usr/share/pixmaps/probraw.png` para que Cinnamon y otros menus muestren el
+  icono de ProbRAW aunque no refresquen correctamente el tema hicolor.
+- Actualizadas las validaciones de instalacion y paquete para comprobar el icono
+  real del menu.
+
 ## [0.3.1] - 2026-04-29
 
 ### Changed

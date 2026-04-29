@@ -34,7 +34,7 @@ desktop=/usr/share/applications/probraw.desktop
 [[ -f "$desktop" ]] || fail "falta $desktop"
 grep -Fxq "Name=ProbRAW" "$desktop" || fail "desktop Name no es ProbRAW"
 grep -Fxq "Exec=probraw-ui" "$desktop" || fail "desktop Exec no usa probraw-ui"
-grep -Fxq "Icon=probraw" "$desktop" || fail "desktop Icon no usa probraw"
+grep -Fxq "Icon=/usr/share/pixmaps/probraw.png" "$desktop" || fail "desktop Icon no usa fallback pixmap absoluto"
 grep -Eq '^Categories=.*Graphics.*Photography.*;$' "$desktop" || fail "desktop Categories no incluye Graphics y Photography"
 
 for size in 16 32 48 64 128 256 512; do

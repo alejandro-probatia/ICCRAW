@@ -78,6 +78,22 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.2
+
+La release 0.3.2 corrige el icono de la aplicacion en menus Linux:
+
+- la entrada `.desktop` usa `Icon=/usr/share/pixmaps/probraw.png` como ruta
+  absoluta para evitar fallos de cache/resolucion del tema hicolor,
+- las validaciones del paquete y de instalacion comprueban ese icono real.
+
+Artefactos esperados:
+
+- `probraw_0.3.2_amd64.deb`
+- `probraw_0.3.2_amd64.deb.sha256`
+- `probraw-0.3.2.tar.gz`
+- `probraw-0.3.2-py3-none-any.whl`
+- `probraw_0.3.2_python_artifacts.sha256`
+
 ## Release 0.3.1
 
 La release 0.3.1 actualiza la identidad visual de ProbRAW:
