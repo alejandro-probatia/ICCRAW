@@ -55,7 +55,7 @@ conservative fallback. The normal CLI route uses processes.
 
 Control variables:
 
-- `NEXORAW_BATCH_WORKERS` or `ICCRAW_BATCH_WORKERS`: workers by default.
+- `NEXORAW_BATCH_WORKERS`: default workers.
 - `NEXORAW_BATCH_MEMORY_RESERVE_MB`: Free RAM reserved before calculating
   automatic workers.
 - `NEXORAW_BATCH_WORKER_RAM_MB`: estimated budget per worker.

@@ -17,7 +17,7 @@ C2PA de laboratorio.
 2. NexoRAW no incrusta C2PA en RAW propietarios originales (`CR2`, `CR3`,
    `NEF`, `ARW`, `RAF`, `RW2`, `ORF`, `PEF`).
 3. Para RAW propietarios, el vinculo probatorio se declara en el TIFF final con
-   una asercion C2PA firmada: `org.probatia.iccraw.raw-link.v1`.
+   una asercion C2PA firmada: `org.probatia.nexoraw.raw-link.v1`.
 4. El identificador probatorio del RAW es el SHA-256 de sus bytes exactos.
    Nombre de archivo y ruta son solo metadatos auxiliares.
 5. El SHA-256 del TIFF firmado se calcula despues de incrustar C2PA y se guarda
@@ -112,7 +112,7 @@ nombre final y se firma el sidecar NexoRAW Proof con el hash exacto de ese TIFF.
 
 ## Asercion RAW -> TIFF
 
-La asercion `org.probatia.iccraw.raw-link.v1` registra:
+La asercion `org.probatia.nexoraw.raw-link.v1` registra:
 
 - SHA-256, tamano, nombre base, extension y MIME estimado del RAW.
 - Ruta del RAW como localizador auxiliar no probatorio.
@@ -136,6 +136,11 @@ La asercion `org.probatia.iccraw.raw-link.v1` registra:
 - Hash de manifiesto tecnico externo si se proporciona y ya existe.
 - Identificador de sesion opcional.
 - Fecha/hora UTC de generacion.
+
+NexoRAW 0.2.5 y versiones posteriores generan etiquetas
+`org.probatia.nexoraw.*`. El verificador sigue aceptando etiquetas heredadas
+`org.probatia.iccraw.*` de salidas beta anteriores para que esos TIFF antiguos
+continuen siendo auditables.
 
 ## Verificacion
 

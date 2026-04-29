@@ -20,6 +20,20 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-04-29
+
+### Changed
+
+- Reorganized the codebase around the canonical `nexoraw` package and removed
+  the old internal `iccraw` implementation namespace.
+- Split the GUI into smaller UI/window modules to make session, preview,
+  profile and batch workflows easier to maintain.
+- Updated tests, scripts, installers and active documentation to use the
+  `nexoraw` package and launcher names consistently.
+- New C2PA outputs now use `org.probatia.nexoraw.*` assertion/action labels;
+  verification keeps compatibility with earlier beta `org.probatia.iccraw.*`
+  manifests.
+
 ## [0.2.4] - 2026-04-28
 
 ### Added
@@ -31,7 +45,7 @@ To maintain full traceability, each change must:
   if the OS is in Spanish the app starts in Spanish, in any other language it
   starts in English. Existing users with `app/language=es` already stored are
   not migrated, preserving their previous choice.
-- Helpers `iccraw.i18n.detect_system_language` and `iccraw.i18n.resolve_language`
+- Helpers `nexoraw.i18n.detect_system_language` and `nexoraw.i18n.resolve_language`
   with unit tests in `tests/test_i18n.py`.
 
 ### Changed
@@ -108,7 +122,7 @@ Profile`
   - AMaZE operational status,
   - checking the latest version published in GitHub Releases,
   - automatic update that downloads and launches the release installer.
-- New module `iccraw.update` for querying releases, comparing
+- New module `nexoraw.update` for querying releases, comparing
   versions, downloading assets and executing installers by platform.
 - RGB histogram in the `Visor` tab with clipping reading in shadows and
   lights and visual witnesses.
@@ -170,9 +184,11 @@ Profile`
 
 ## [0.1.0-beta.5] - 2026-04-25
 
-### Changed- The visible name of the project becomes NexoRAW. Entry points are added
-  `nexoraw`/`nexoraw-ui` and `iccraw`/`iccraw-ui` are kept as aliases
-  inherited so as not to break existing scripts.
+### Changed
+
+- The visible name of the project becomes NexoRAW. Entry points
+  `nexoraw`/`nexoraw-ui` are added, with temporary legacy aliases for existing
+  beta scripts. Those aliases are removed in 0.2.5.
 - Unified CMM in ArgyllCMS: LittleCMS (`tificc`) is replaced by
   `cctiff`/`xicclu` for output ICC conversion, validation and preview of
   profile. The dependencies `liblcms2-utils` and `Pillow.ImageCms` disappear from the
@@ -281,7 +297,7 @@ Profile`
 
 ### Fixed
 
-- ColorChecker 2005 D50 reference is packaged inside `iccraw` and used
+- ColorChecker 2005 D50 reference is packaged inside `nexoraw` and used
   as a fallback when the GUI/CLI is run from a `.deb` installation without the
   tree `testdata/` of the repository.
 
@@ -319,7 +335,12 @@ Profile`
   - CLI/GUI entry points renamed to `iccraw` and `iccraw-ui`,
   - `python -m iccraw` operational via `__main__.py`,
   - unified tests in `tests/` (previously `tests_py/`) with updated imports,
-  - removed duplicate docs from root (canonical in `docs/`), absolute paths Linux sureplaced by relatives in README.### Added- Debian beta package `0.1.0~beta1` with installation in `/opt/iccraw`,
+  - removed duplicate docs from root (canonical in `docs/`), absolute Linux
+    paths replaced by relative paths in README.
+
+### Added
+
+- Debian beta package `0.1.0~beta1` with installation in `/opt/iccraw`,
   launchers `/usr/bin/iccraw` and `/usr/bin/iccraw-ui`, and external dependencies
   declared for `dcraw`, ArgyllCMS, LittleCMS and `exiftool`.
 - `packaging/debian/build_deb.sh` reproducible script to build the `.deb`

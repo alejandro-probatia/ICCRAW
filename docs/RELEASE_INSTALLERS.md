@@ -71,6 +71,26 @@ they should point to `nexoraw-ui.exe` and use the `nexoraw-icon.ico` icon.
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.2.5
+
+Release 0.2.5 introduces:
+
+- canonical Python package layout under `src/nexoraw`,
+- removal of the old internal compatibility namespace,
+- GUI split into smaller modules by workflow area,
+- updated Linux and Windows packaging names,
+- C2PA assertion/action labels generated as `org.probatia.nexoraw.*` while
+  keeping verification compatibility with earlier beta manifests.
+
+## Release 0.2.4
+
+Release 0.2.4 introduces:
+
+- interface language selector with system-language auto-detection,
+- persisted language preference through Qt settings,
+- safer language switching that applies on the next launch instead of
+  restarting the app automatically.
+
 ## Release 0.2.3
 
 Release 0.2.3 introduces:

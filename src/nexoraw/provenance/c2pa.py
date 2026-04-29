@@ -17,9 +17,10 @@ from ..raw.metadata import raw_info
 from ..version import __version__
 
 
-RAW_LINK_ASSERTION_LABEL = "org.probatia.iccraw.raw-link.v1"
+RAW_LINK_ASSERTION_LABEL = "org.probatia.nexoraw.raw-link.v1"
+LEGACY_RAW_LINK_ASSERTION_LABEL = "org.probatia.iccraw.raw-link.v1"
 RENDER_SETTINGS_SCHEMA = "org.probatia.nexoraw.render-settings.v1"
-NEXORAW_RENDER_ACTION = "org.probatia.iccraw.rendered"
+NEXORAW_RENDER_ACTION = "org.probatia.nexoraw.rendered"
 TIFF_MIME = "image/tiff"
 DEFAULT_TIMESTAMP_URL = "http://timestamp.digicert.com"
 
@@ -741,8 +742,14 @@ def extract_raw_link_assertion(manifest_store: dict[str, Any]) -> dict[str, Any]
                 parsed_data = json.loads(data)
             except json.JSONDecodeError:
                 parsed_data = data
-        if label in {RAW_LINK_ASSERTION_LABEL, "org.probatia.iccraw.raw-link"} or (
-            isinstance(parsed_data, dict) and parsed_data.get("schema") == RAW_LINK_ASSERTION_LABEL
+        raw_link_labels = {
+            RAW_LINK_ASSERTION_LABEL,
+            "org.probatia.nexoraw.raw-link",
+            LEGACY_RAW_LINK_ASSERTION_LABEL,
+            "org.probatia.iccraw.raw-link",
+        }
+        if label in raw_link_labels or (
+            isinstance(parsed_data, dict) and parsed_data.get("schema") in raw_link_labels
         ):
             if isinstance(data, dict):
                 return data

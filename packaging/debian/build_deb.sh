@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
-APP_VERSION="${NEXORAW_APP_VERSION:-${ICCRAW_APP_VERSION:-$("$PYTHON" - "$ROOT" <<'PY'
+APP_VERSION="${NEXORAW_APP_VERSION:-$("$PYTHON" - "$ROOT" <<'PY'
 import sys
 from pathlib import Path
 
@@ -12,16 +12,16 @@ namespace = {}
 exec((root / "src" / "nexoraw" / "version.py").read_text(encoding="utf-8"), namespace)
 print(namespace["__version__"])
 PY
-)}}"
-DEB_VERSION="${NEXORAW_DEB_VERSION:-${ICCRAW_DEB_VERSION:-$(printf '%s' "$APP_VERSION" | sed -E 's/([0-9.]+)b([0-9]+)/\1~beta\2/')}}"
-ARCH="${NEXORAW_DEB_ARCH:-${ICCRAW_DEB_ARCH:-$(dpkg --print-architecture)}}"
-BUILD_AMAZE="${NEXORAW_BUILD_AMAZE:-${ICCRAW_BUILD_AMAZE:-1}}"
-REQUIRE_AMAZE="${NEXORAW_REQUIRE_AMAZE:-${ICCRAW_REQUIRE_AMAZE:-$BUILD_AMAZE}}"
-RAWPY_DEMOSAIC_WHEEL="${NEXORAW_RAWPY_DEMOSAIC_WHEEL:-${ICCRAW_RAWPY_DEMOSAIC_WHEEL:-}}"
-RAWPY_DEMOSAIC_REPO="${NEXORAW_RAWPY_DEMOSAIC_REPO:-${ICCRAW_RAWPY_DEMOSAIC_REPO:-https://github.com/exfab/rawpy-demosaic.git}}"
-RAWPY_DEMOSAIC_REF="${NEXORAW_RAWPY_DEMOSAIC_REF:-${ICCRAW_RAWPY_DEMOSAIC_REF:-8b17075}}"
-RAWPY_DEMOSAIC_SOURCE="${NEXORAW_RAWPY_DEMOSAIC_SOURCE:-${ICCRAW_RAWPY_DEMOSAIC_SOURCE:-git+https://github.com/exfab/rawpy-demosaic.git@8b17075}}"
-RAWPY_DEMOSAIC_PACKAGE="${NEXORAW_RAWPY_DEMOSAIC_PACKAGE:-${ICCRAW_RAWPY_DEMOSAIC_PACKAGE:-rawpy-demosaic}}"
+)}"
+DEB_VERSION="${NEXORAW_DEB_VERSION:-$(printf '%s' "$APP_VERSION" | sed -E 's/([0-9.]+)b([0-9]+)/\1~beta\2/')}"
+ARCH="${NEXORAW_DEB_ARCH:-$(dpkg --print-architecture)}"
+BUILD_AMAZE="${NEXORAW_BUILD_AMAZE:-1}"
+REQUIRE_AMAZE="${NEXORAW_REQUIRE_AMAZE:-$BUILD_AMAZE}"
+RAWPY_DEMOSAIC_WHEEL="${NEXORAW_RAWPY_DEMOSAIC_WHEEL:-}"
+RAWPY_DEMOSAIC_REPO="${NEXORAW_RAWPY_DEMOSAIC_REPO:-https://github.com/exfab/rawpy-demosaic.git}"
+RAWPY_DEMOSAIC_REF="${NEXORAW_RAWPY_DEMOSAIC_REF:-8b17075}"
+RAWPY_DEMOSAIC_SOURCE="${NEXORAW_RAWPY_DEMOSAIC_SOURCE:-git+https://github.com/exfab/rawpy-demosaic.git@8b17075}"
+RAWPY_DEMOSAIC_PACKAGE="${NEXORAW_RAWPY_DEMOSAIC_PACKAGE:-rawpy-demosaic}"
 PKG_NAME="nexoraw"
 BUILD_ROOT="$ROOT/build/deb/${PKG_NAME}_${DEB_VERSION}_${ARCH}"
 DIST_DIR="$ROOT/dist"

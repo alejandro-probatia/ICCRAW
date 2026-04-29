@@ -77,6 +77,26 @@ deben apuntar a `nexoraw-ui.exe` y usar el icono `nexoraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.2.5
+
+La release 0.2.5 introduce:
+
+- estructura canonica del paquete Python bajo `src/nexoraw`,
+- retirada del antiguo namespace interno de compatibilidad,
+- division de la GUI en modulos mas pequenos por area de flujo,
+- nombres de empaquetado Linux y Windows actualizados,
+- etiquetas C2PA de asercion/accion generadas como `org.probatia.nexoraw.*`,
+  manteniendo compatibilidad de verificacion con manifiestos beta anteriores.
+
+## Release 0.2.4
+
+La release 0.2.4 introduce:
+
+- selector de idioma de interfaz con autodeteccion del idioma del sistema,
+- preferencia de idioma persistida mediante Qt settings,
+- cambio de idioma mas seguro: se aplica al proximo arranque en lugar de
+  reiniciar automaticamente la aplicacion.
+
 ## Release 0.2.3
 
 La release 0.2.3 introduce:

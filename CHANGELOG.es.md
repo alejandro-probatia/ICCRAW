@@ -18,6 +18,20 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-04-29
+
+### Changed
+
+- Reorganizada la base de codigo alrededor del paquete canonico `nexoraw` y
+  retirada la antigua implementacion interna bajo el namespace `iccraw`.
+- Dividida la interfaz en modulos UI/window mas pequenos para facilitar el
+  mantenimiento de sesiones, preview, perfiles y cola de revelado.
+- Actualizados tests, scripts, instaladores y documentacion activa para usar de
+  forma consistente el paquete y los lanzadores `nexoraw`.
+- Las nuevas salidas C2PA usan etiquetas de asercion/accion
+  `org.probatia.nexoraw.*`; la verificacion mantiene compatibilidad con
+  manifiestos beta anteriores `org.probatia.iccraw.*`.
+
 ## [0.2.4] - 2026-04-28
 
 ### Added
@@ -29,7 +43,7 @@ Para mantener trazabilidad completa, cada cambio debe:
   el SO esta en espanol arranca en espanol, en cualquier otro idioma arranca
   en ingles. No se migra a usuarios existentes con `app/language=es` ya
   guardado para respetar la eleccion previa.
-- Helpers `iccraw.i18n.detect_system_language` y `iccraw.i18n.resolve_language`
+- Helpers `nexoraw.i18n.detect_system_language` y `nexoraw.i18n.resolve_language`
   con tests unitarios en `tests/test_i18n.py`.
 
 ### Changed
@@ -109,7 +123,7 @@ Para mantener trazabilidad completa, cada cambio debe:
   - estado operativo de AMaZE,
   - comprobacion de ultima version publicada en GitHub Releases,
   - actualizacion automatica que descarga y lanza el instalador de release.
-- Nuevo modulo `iccraw.update` para consulta de releases, comparacion de
+- Nuevo modulo `nexoraw.update` para consulta de releases, comparacion de
   versiones, descarga de assets y ejecucion de instaladores por plataforma.
 - Histograma RGB en la pestaña `Visor` con lectura de clipping en sombras y
   luces y testigos visuales.
@@ -176,8 +190,8 @@ Para mantener trazabilidad completa, cada cambio debe:
 ### Changed
 
 - El nombre visible del proyecto pasa a ser NexoRAW. Se añaden entry points
-  `nexoraw`/`nexoraw-ui` y se mantienen `iccraw`/`iccraw-ui` como alias
-  heredados para no romper scripts existentes.
+  `nexoraw`/`nexoraw-ui`, con alias heredados temporales para scripts beta
+  existentes. Esos alias se retiran en 0.2.5.
 - CMM unificado en ArgyllCMS: se sustituye LittleCMS (`tificc`) por
   `cctiff`/`xicclu` para conversion ICC de salida, validacion y preview de
   perfil. Desaparecen las dependencias `liblcms2-utils` y `Pillow.ImageCms` del
@@ -292,7 +306,7 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Fixed
 
-- La referencia ColorChecker 2005 D50 se empaqueta dentro de `iccraw` y se usa
+- La referencia ColorChecker 2005 D50 se empaqueta dentro de `nexoraw` y se usa
   como fallback cuando la GUI/CLI se ejecuta desde una instalacion `.deb` sin el
   arbol `testdata/` del repositorio.
 

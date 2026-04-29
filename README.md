@@ -8,7 +8,7 @@ _Spanish version: [README.es.md](README.es.md)_
 
 Reproducible and auditable RAW pipeline for scientific, forensic and heritage photography, with per-session ICC profiling and open AGPL traceability.
 
-![AGPL-3.0-or-later License](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Version](https://img.shields.io/badge/version-v0.2.3-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![AGPL-3.0-or-later License](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Version](https://img.shields.io/badge/version-v0.2.5-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![Shot of NexoRAW GUI in calibrate and apply flow](docs/assets/screenshots/nexoraw-calibrar-aplicar.png)
 
