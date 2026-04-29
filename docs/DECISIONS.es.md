@@ -224,12 +224,10 @@ Referencias:
 
 - RawTherapee Color Management:
   https://rawpedia.rawtherapee.com/Color_Management
-- RawTherapee How to create DCP color profiles:
-  https://rawpedia.rawtherapee.com/How_to_create_DCP_color_profiles
 - RawTherapee ICC Profile Creator:
   https://rawpedia.rawtherapee.com/ICC_Profile_Creator
 - Metodologia interna:
-  [Metodologia de revelado RAW y gestion ICC](METODOLOGIA_COLOR_RAW.md)
+  [Metodología de revelado RAW y gestión ICC](METODOLOGIA_COLOR_RAW.es.md)
 
 ## DEC-0011: Sidecars mochila por RAW
 

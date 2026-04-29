@@ -5,7 +5,7 @@ _Spanish version: [ISSUES.es.md](ISSUES.es.md)_
 This backlog summarizes the implementation plan. The technical justification and
 Complete acceptance criteria are in:
 
-- [Operational review and professionalization plan] (OPERATIVE_REVIEW_PLAN.md)
+- [Operational review and professionalization plan](OPERATIVE_REVIEW_PLAN.md)
 
 This document is the canonical planning source. GitHub issues
 They are its operational reflection and must link to the corresponding sections.

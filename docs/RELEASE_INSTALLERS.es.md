@@ -86,7 +86,9 @@ La release 0.2.5 introduce:
 - division de la GUI en modulos mas pequenos por area de flujo,
 - nombres de empaquetado Linux y Windows actualizados,
 - etiquetas C2PA de asercion/accion generadas como `org.probatia.nexoraw.*`,
-  manteniendo compatibilidad de verificacion con manifiestos beta anteriores.
+  manteniendo compatibilidad de verificacion con manifiestos beta anteriores,
+- documentacion bilingüe actualizada y roadmap DCP+ICC archivado a favor del
+  flujo activo centrado en ICC.
 
 ## Release 0.2.4
 

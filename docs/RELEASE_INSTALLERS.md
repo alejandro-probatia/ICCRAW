@@ -80,7 +80,9 @@ Release 0.2.5 introduces:
 - GUI split into smaller modules by workflow area,
 - updated Linux and Windows packaging names,
 - C2PA assertion/action labels generated as `org.probatia.nexoraw.*` while
-  keeping verification compatibility with earlier beta manifests.
+  keeping verification compatibility with earlier beta manifests,
+- refreshed bilingual documentation and archived DCP+ICC planning in favor of the
+  active ICC-centered workflow.
 
 ## Release 0.2.4
 

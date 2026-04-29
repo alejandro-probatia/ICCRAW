@@ -1,94 +1,101 @@
-_Spanish version: [COLOR_PIPELINE.es.md](COLOR_PIPELINE.es.md)_
+_Versión en español: [COLOR_PIPELINE.es.md](COLOR_PIPELINE.es.md)_
 
 # Color Pipeline
 
-## Operational status
+## Operational Status
 
-The current design correctly defines the intent of the pipeline, but the
-Implementation still requires closing the critical findings documented in:
+NexoRAW 0.2.5 implements the main ICC workflow and the session-based GUI. The
+application is suitable for controlled testing and release validation, but it
+should not yet be presented as a certified scientific or forensic production
+system.
 
-- [Operational review and professionalization plan] (OPERATIVE_REVIEW_PLAN.md)
+The complete methodology is described in
+[RAW development methodology and ICC management](METODOLOGIA_COLOR_RAW.md).
 
-Until the P0 is completed, the pipeline must be considered suitable for prototyping and
-controlled tests, not for scientific/forensic production.
+## Design Principle
 
-## Scientific mode (profiling_mode)
+The pipeline separates:
 
-Objective: neutrality and reproducibility, not aesthetics.
+1. reproducible RAW development;
+2. parametric development profile;
+3. input ICC profile when a chart exists;
+4. standard ICC profile when no chart exists;
+5. CMM conversion for derivatives;
+6. monitor ICC for display only;
+7. audit through backpacks, manifests, Proof and optional C2PA.
+
+DCP is not part of the active 0.2 pipeline.
+
+## Scientific Mode (`profiling_mode`)
+
+Objective: neutrality and reproducibility, not creative appearance.
 
 Rules:
 
-1. no creative sharpen,
-2. no aggressive denoise,
-3. no artistic tonal curves,
-4. Fixed or explicit WB,
-5. linear output for profiling.
+1. no creative sharpening during chart measurement;
+2. no aggressive denoise during chart measurement;
+3. no artistic tone curves;
+4. fixed or explicit white balance;
+5. linear output for profiling;
+6. chart geometry reusable between passes.
 
 ## Phases
 
-1. `raw-info`: technical metadata.
-2. `develop`: Linear controlled base development with LibRaw/rawpy for RAW inputs.
-3. `detect-chart`: homography + patches.
-4. `sample-chart`: Robust patch measurement.
-5. `build-develop-profile`: neutrality and density from neutral card row.
-6. Calibrated recipe: WB fixed, EV limited by highlight preservation,
-   linear output and without creative processes.
+1. `raw-info`: read technical metadata.
+2. `develop`: controlled base development with LibRaw/rawpy.
+3. `detect-chart`: chart detection, homography and patches.
+4. `sample-chart`: robust per-patch measurement.
+5. `build-develop-profile`: neutrality, density and EV from the neutral row.
+6. Calibrated recipe: fixed WB, EV limited by highlight preservation, linear
+   output and no creative processing.
 7. Second chart measurement with the same geometry and calibrated recipe.
-8. `build-profile`: ArgyllCMS (`colprof`) as a single ICC profile engine.
-9. `validate-profile`: DeltaE 76/2000 of the real ICC.
-10. `batch-develop`: calibrated recipe + session input ICC over RAW batch.
+8. `build-profile`: ArgyllCMS (`colprof`) generates the input ICC.
+9. `validate-profile`: DeltaE 76/2000 validation of the real ICC.
+10. `batch-develop`: batch rendering with assigned development profile and ICC.
 
-The complete methodology is described in
-[RAW development methodology and ICC management] (METODOLOGIA_COLOR_RAW.md).
+## Critical Invariants
 
-## Critical invariants1. [x] The executed recipe must match the declared recipe; are not allowed
-   silent mappings of algorithms or parameters.
-2. [x] The linear audit TIFF must be written before any tonal curve or
-   output conversion.
-3. [x] ICC management must separate:
-   - input profile assignment,
-   - conversion via CMM to output profile.
-4. [x] Validation should check the actual generated ICC, not just artifacts
-   auxiliary numbers.
-5. [x] The card detection fallback should not automatically produce profiles
-   without confirmation or explicit way.
-6. [x] The chart geometry detected in the base pass is reused in the
-   calibrated pass; it does not depend on the already corrected rendering.
-7. [x] The ICC profile should not compensate exposure/base density if the chart
-   allows you to build a calibrated recipe beforehand.
-8. [x] If there is a session card and ICC profile, the master TIFF preserves linear RGB
-   of camera/session and embeds that ICC. The standard output profiles remain
-   for derivatives or non-charter flows; in the chartless flow the RAW is revealed in
-   sRGB/Adobe RGB/ProPhoto RGB real, standard ICC is copied to
-   `00_configuraciones/profiles/standard/` and is declared as `generic_output_icc`.
-9. [x] Screen display uses a display-only conversion:
-   from the working sRGB preview to the ICC profile of the configured monitor
-   on the system, with sRGB only as a fallback if there is no detectable profile.
+1. The executed recipe must match the declared recipe.
+2. The linear audit TIFF must be written before tone curves or output
+   conversions.
+3. ICC management separates input profile assignment from output profile
+   conversion.
+4. Validation checks the real generated ICC, not only auxiliary matrices.
+5. Chart detection fallback must not generate profiles automatically without an
+   explicit mode or review.
+6. Chart geometry from the base pass can be reused in the calibrated pass.
+7. The ICC must not compensate basic exposure/density if the chart allows a
+   calibrated recipe to be built first.
+8. With a chart, the master TIFF preserves linear camera/session RGB and embeds
+   the input ICC.
+9. Without a chart, the RAW is developed into real sRGB/Adobe RGB/ProPhoto RGB,
+   a standard ICC is embedded and the output is declared `generic_output_icc`.
+10. On-screen display uses a display-only conversion to the configured monitor
+    ICC profile.
 
-## Monitor color management
+## Monitor Color Management
 
-The monitor ICC profile does not participate in development, master TIFF, or
-the export. It only corrects the visual representation of previews and thumbnails.
+The monitor ICC profile does not participate in development, master TIFF or
+export. It only corrects the visual representation of previews and thumbnails.
 
-Detection policy:
+Detection:
 
-- Windows: output profile associated with the screen context using
-  `GetICMProfileW`.
-- macOS: ColorSync space on the main display using
-  `CGDisplayCopyColorSpace` and ICC data of `CGColorSpace`.
-- Linux/BSD: display profile managed by `colord`/`colormgr`; if it is not
-  available, fallback to `_ICC_PROFILE` from X11 when it exists.User can manually replace the monitor ICC from Settings
-global > Preview / monitor. If the profile disappears or cannot be opened, NexoRAW
-It records it in the log and shows the preview in sRGB so as not to block the work.
+- Windows: WCS/ICM.
+- macOS: ColorSync.
+- Linux/BSD: `colord`, `colormgr` or `_ICC_PROFILE`.
 
-## Profile validity
+If the profile disappears or cannot be opened, NexoRAW logs the problem and uses
+sRGB as the visual fallback.
+
+## Profile Validity
 
 The profile depends on:
 
-- camera,
-- optics,
-- illuminant,
-- recipe,
-- software version.
+- camera;
+- lens;
+- illuminant;
+- recipe;
+- software version;
+- relevant RAW pipeline configuration.
 
 Changing those factors can degrade or invalidate colorimetric validity.

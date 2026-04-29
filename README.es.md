@@ -1,511 +1,217 @@
+_English version: [README.md](README.md)_
+
 <p align="center">
   <img src="assets/nexoraw-logo.svg" alt="Logo de NexoRAW" width="560">
 </p>
 
 # NexoRAW
 
-Pipeline RAW reproducible y auditable para fotografia cientifica, forense y patrimonial, con perfilado ICC por sesion y trazabilidad abierta AGPL.
+Revelado RAW/TIFF reproducible y auditable para fotografía científica, forense y
+patrimonial, con perfilado ICC por sesión, ajustes paramétricos por archivo y
+trazabilidad abierta AGPL.
 
-![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Version](https://img.shields.io/badge/version-v0.2.3-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.2.5-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
-![Captura de la GUI de NexoRAW en el flujo de calibrar y aplicar](docs/assets/screenshots/nexoraw-calibrar-aplicar.png)
+![Interfaz principal de NexoRAW](docs/assets/screenshots/nexoraw-portada.png)
 
-## Quickstart en 60 segundos
+## Qué Es NexoRAW
 
-```bash
-git clone https://github.com/alejandro-probatia/NexoRAW.git && cd NexoRAW
-python3 -m venv .venv && . .venv/bin/activate && pip install -e .
-bash examples/demo_session/run_demo.sh
+NexoRAW no es un editor creativo generalista. Su objetivo es más estrecho: hacer
+que el revelado RAW sea explicable, repetible y revisable cuando importan la
+precisión colorimétrica, la procedencia y la auditoría.
+
+El flujo actual está centrado de forma deliberada en ICC:
+
+- con una carta de color válida, NexoRAW crea un perfil de ajuste calibrado y un
+  perfil ICC de entrada propio de la sesión;
+- sin carta, NexoRAW usa un perfil de ajuste manual y un ICC estándar real de
+  salida (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`);
+- la gestión ICC del monitor afecta solo a la previsualización en pantalla;
+- el soporte DCP no es un objetivo activo de implementación en la línea 0.2.
+
+## Estado Actual
+
+NexoRAW 0.2.5 es adecuado para pruebas controladas, revisión metodológica y
+validación de candidata a release. Todavía no es un sistema certificado para
+producción científica o forense.
+
+La última validación de empaquetado pasó con:
+
+```text
+203 passed, 1 warning
 ```
 
-## Comparativa rapida
+## Documentación
 
-| Punto decisivo | NexoRAW | Alternativas creativas/comerciales |
-| --- | --- | --- |
-| Revelado reproducible + sidecars JSON con hashes | ✅ | ⚠️ parcial / ❌ |
-| Doble pasada carta -> receta calibrada -> ICC | ✅ | ❌ |
-| Validacion colorimetrica con holdout + estado operacional del perfil | ✅ | ⚠️ parcial / ❌ |
-| Foco principal | Trazabilidad cientifica/forense por sesion | Revelado creativo, flujo comercial o colorimetria aislada |
+- [Manual de usuario](docs/MANUAL_USUARIO.es.md)
+- [Metodología RAW e ICC](docs/METODOLOGIA_COLOR_RAW.es.md)
+- [Pipeline de color](docs/COLOR_PIPELINE.es.md)
+- [Arquitectura](docs/ARCHITECTURE.es.md)
+- [Roadmap](docs/ROADMAP.es.md)
+- [Rendimiento](docs/PERFORMANCE.es.md)
+- [Reproducibilidad](docs/REPRODUCIBILITY.es.md)
+- [NexoRAW Proof](docs/NEXORAW_PROOF.es.md)
+- [C2PA/CAI](docs/C2PA_CAI.es.md)
+- [Integración LibRaw + ArgyllCMS](docs/INTEGRACION_LIBRAW_ARGYLL.es.md)
+- [Paquete Debian](docs/DEBIAN_PACKAGE.es.md)
+- [Instalación en macOS](docs/MACOS_INSTALL.es.md)
+- [Instalador Windows](docs/WINDOWS_INSTALLER.es.md)
+- [Cumplimiento legal](docs/LEGAL_COMPLIANCE.es.md)
+- [Licencias de terceros](docs/THIRD_PARTY_LICENSES.es.md)
+- [Changelog](CHANGELOG.md)
 
-Comparativa completa: [docs/COMPARISON.md](docs/COMPARISON.md)
+## Arranque Rápido Desde Código
 
-## Documentacion completa
-
-- [Manual de usuario](docs/MANUAL_USUARIO.md)
-- [Arquitectura](docs/ARCHITECTURE.md)
-- [Pipeline de color](docs/COLOR_PIPELINE.md)
-- [Rendimiento y benchmarks](docs/PERFORMANCE.md)
-- [Reproducibilidad y goldens](docs/REPRODUCIBILITY.md)
-- [Roadmap](docs/ROADMAP.md)
-
-## Objetivo del proyecto
-
-El objetivo principal es construir una herramienta comunitaria que permita
-trabajar con imágenes RAW bajo criterios de reproducibilidad, control
-colorimétrico y trazabilidad. NexoRAW no busca ser un editor generalista ni una
-alternativa creativa a Lightroom, Darktable o RawTherapee. Su foco es más
-estrecho:
-
-- revelar RAW con parámetros explícitos y compatibles con auditoría,
-- generar perfiles avanzados de ajuste a partir de capturas de carta bajo un
-  iluminante concreto,
-- generar una receta de revelado científica antes de construir el ICC,
-- producir perfiles ICC específicos para cámara, óptica, iluminante y receta,
-- aplicar ese paquete de sesión a imágenes objetivo sin mezclar decisiones
-  estéticas con decisiones de medición,
-- documentar comandos, versiones, rutas, estados de QA y artefactos generados,
-- mantener un uso verificable y compatible con las licencias de sus
-  dependencias directas e indirectas.
-
-El caso de uso natural es un entorno donde importa poder justificar cómo se
-obtuvo una imagen: fotografía científica, conservación y patrimonio,
-laboratorio, documentación técnica, inspección, reproducción de obra, análisis
-forense o proyectos comunitarios que necesiten una cadena de procesado abierta.
-
-## Metodología aplicada
-
-La metodología de NexoRAW parte de una idea simple: un perfil ICC de cámara no
-debe esconder problemas básicos de captura o revelado. Antes de perfilar, el
-sistema intenta fijar una base técnica coherente: balance de blancos,
-exposición/densidad y salida lineal. El perfil ICC queda reservado para describir
-la respuesta colorimétrica restante de la cámara en esa sesión.
-
-El flujo metodológico es:
-
-1. **Contrato RAW explícito**: la receta declara motor RAW, demosaicing, balance
-   de blancos, niveles, curva tonal y espacio de trabajo. Si un parámetro no se
-   puede ejecutar con el backend activo, el proceso debe fallar en vez de
-   sustituirlo silenciosamente.
-2. **Captura de carta**: una o varias imágenes de carta de color documentan las
-   condiciones reales de iluminación, cámara, óptica y exposición de la sesión.
-3. **Detección y muestreo**: la carta se detecta geométricamente y cada parche se
-   mide con estrategias robustas, evitando saturación y reduciendo el impacto de
-   ruido, bordes o muestras contaminadas.
-4. **Perfil de revelado científico**: la fila neutra de la carta se usa para
-   derivar correcciones de balance, densidad y exposición. Esta fase genera una
-   receta calibrada que sigue siendo reproducible y legible.
-5. **Segunda medición calibrada**: la carta se mide de nuevo con la receta ya
-   calibrada, reutilizando la geometría cuando corresponde para no depender de
-   cambios de renderizado.
-6. **Perfil ICC de sesión**: ArgyllCMS genera el perfil ICC a partir de muestras
-   medidas y referencias normalizadas. El perfil describe la sesión; no es
-   universal.
-7. **Validación colorimétrica**: cuando hay muestras independientes, el ICC real
-   se valida con CMM/ArgyllCMS y se informa DeltaE 76/2000, outliers y estado
-   operacional (`draft`, `validated`, `rejected`, `expired`).
-8. **Aplicación controlada**: las imágenes objetivo se revelan con la receta
-   calibrada y el modo de gestión de color declarado: asignar perfil de entrada
-   de cámara o convertir a un espacio de salida mediante CMM.
-9. **Trazabilidad**: cada ejecución produce artefactos revisables: JSON,
-   manifiestos, reportes QA, rutas, versiones de herramientas externas y estado
-   de perfil.
-
-Principios de diseño:
-
-- **Reproducibilidad antes que apariencia**: el modo científico evita curvas
-  creativas, automatismos opacos y ajustes manuales no documentados.
-- **Separación de responsabilidades**: la receta corrige revelado base; el ICC
-  describe color; el CMM convierte entre perfiles; la GUI solo orquesta esos
-  módulos.
-- **Fallo temprano**: una receta incompatible, una carta no fiable o una
-  herramienta externa ausente deben producir un error claro.
-- **Auditoría continua**: los resultados no se consideran solo imágenes finales,
-  sino también evidencia técnica que debe poder revisarse.
-- **Validez contextual**: un perfil solo es válido para condiciones comparables
-  de cámara, óptica, iluminante, receta y versión del software.
-
-## Alcance y límites
-
-NexoRAW trabaja por sesiones. Una sesión agrupa capturas de carta, RAW objetivo,
-mochilas, recetas, perfiles, exportaciones, reportes y artefactos de trabajo. Esto evita
-tratar el perfil ICC como una propiedad permanente de la cámara: el perfil se
-entiende como una descripción operativa de una configuración concreta.
-
-NexoRAW no pretende:
-
-- mejorar fotografías con criterios estéticos,
-- reemplazar un laboratorio de validación colorimétrica,
-- garantizar validez forense por sí solo,
-- generar un perfil universal para cualquier luz o escena,
-- ocultar dependencias críticas como LibRaw/rawpy, ArgyllCMS o ExifTool.
-
-La meta de la release 0.2 es ofrecer una base instalable y verificable para
-pruebas controladas, discusión técnica y ampliación comunitaria.
-
-Mantenimiento comunitario:
-
-- Iniciativa de **Probatia Forensics SL**, mantenida como proyecto abierto,
-  gratuito y colaborativo.
-- Comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
-
-## Estado actual (importante)
-
-NexoRAW esta en fase activa de desarrollo. Aunque ya hay CLI, GUI e instalador
-Linux operativos para pruebas, la aplicacion **todavia no esta validada para
-produccion cientifica/forense**.
-
-Usar por ahora como entorno de prototipado, evaluacion tecnica y pruebas controladas.
-
-## Stack actual
-
-- Lenguaje: **Python** (única toolchain del proyecto).
-- Revelado RAW: **LibRaw** mediante `rawpy`, con DCB por defecto y soporte
-  AMaZE cuando el entorno use `rawpy-demosaic`/LibRaw con GPL3.
-- Metadatos RAW enriquecidos: `rawpy` (LibRaw) + `exiftool`.
-- Detección geométrica: `OpenCV`.
-- Colorimetría y DeltaE: `colour-science`.
-- Export TIFF 16-bit: `tifffile`.
-- Motor de perfil ICC: **ArgyllCMS (`colprof`)**.
-- CMM ICC de salida y preview de perfil: **ArgyllCMS (`cctiff`/`xicclu`)**.
-- GUI (opcional): **Qt for Python (`PySide6`)**.
-
-## Instalación
-
-Para usuarios finales, NexoRAW se distribuye mediante instaladores. El usuario
-no debe instalar Python ni dependencias manualmente: el instalador deja la GUI,
-CLI, icono, herramientas externas y backend RAW listos para uso.
-
-Para desarrollo desde código:
+Los usuarios finales deberían preferir los instaladores publicados. Para
+desarrollo:
 
 ```bash
+git clone https://github.com/alejandro-probatia/NexoRAW.git
+cd NexoRAW
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -e .
-# Opcional (interfaz grafica Qt):
-# pip install -e .[gui]
+pip install -e .[gui]
+nexoraw check-tools --out tools_report.json
+nexoraw-ui
 ```
 
-Opcional pero recomendado para perfilado con ArgyllCMS y conversion ICC real:
+Herramientas externas opcionales para flujos completos de perfilado/exportación:
 
 ```bash
 # Debian/Ubuntu
 sudo apt-get install argyll exiftool
+
 # macOS/Homebrew
 brew install argyll-cms exiftool
-bash scripts/check_tools.sh
-nexoraw check-tools --out tools_report.json
 ```
 
 ## Paquete Debian
 
-La release actual puede construirse como paquete `.deb` instalable:
+Construcción e instalación local:
 
 ```bash
 bash packaging/debian/build_deb.sh
 sudo apt install ./dist/nexoraw_<version>_amd64.deb
 ```
 
-El paquete instala la aplicacion en `/opt/nexoraw`, crea los lanzadores
-`nexoraw`/`nexoraw-ui` y declara las dependencias externas del pipeline. Ver
-[Paquete Debian](docs/DEBIAN_PACKAGE.md).
+El paquete Debian instala NexoRAW en `/opt/nexoraw` y expone solo los lanzadores
+canónicos:
 
-## CLI
+- `nexoraw`
+- `nexoraw-ui`
 
-El entry point nuevo es `nexoraw` (también invocable como `python -m nexoraw`).
-Los instaladores publicados solo exponen los lanzadores `nexoraw` y
-`nexoraw-ui`; las rutas internas `iccraw` se conservan como compatibilidad de
-código durante la transición del nombre del proyecto:
+Los lanzadores heredados `iccraw` y los scripts internos de compatibilidad ya no
+se instalan en 0.2.5. Si existe una beta antigua instalada, conviene retirarla
+antes de probar el paquete actual.
+
+## Flujo GUI
+
+La aplicación gráfica se organiza en tres pestañas:
+
+| Pestaña | Función |
+| --- | --- |
+| `1. Sesión` | Crear/abrir un proyecto y guardar notas de captura. |
+| `2. Ajustar / Aplicar` | Navegar RAW, previsualizar, ajustar, perfilar, copiar ajustes y preparar exportaciones. |
+| `3. Cola de Revelado` | Revelar lotes conservando el perfil asignado a cada archivo. |
+
+Carpetas de sesión:
+
+```text
+00_configuraciones/   estado, recetas, perfiles, ICC, reportes y caché
+01_ORG/               RAW/DNG/TIFF originales y capturas de carta
+02_DRV/               TIFF derivados, manifiestos y salidas finales
+```
+
+La lista completa de controles y flujos está en el
+[Manual de usuario](docs/MANUAL_USUARIO.es.md).
+
+## Ejemplos CLI
+
+Inspeccionar herramientas y metadatos RAW:
 
 ```bash
+nexoraw check-tools --strict --out tools_report.json
 nexoraw raw-info input.raw
-
 nexoraw metadata input.raw --out metadata.json
+```
 
-nexoraw develop input.raw --recipe recipe.yml --out output.tiff --audit-linear output_linear.tiff
+Revelar un RAW con receta:
 
-# Cache numerica opt-in de demosaico para repetir ajustes sobre el mismo RAW
-nexoraw develop input.raw --recipe recipe_cache.yml --out output.tiff --cache-dir ./.nexoraw_cache
+```bash
+nexoraw develop input.raw \
+  --recipe recipe.yml \
+  --out output.tiff \
+  --audit-linear output_linear.tiff
+```
 
-nexoraw detect-chart chart.tiff --out detection.json --preview overlay.png --chart-type colorchecker24
+Crear un perfil con carta:
 
-# Si la deteccion automatica falla, marcar cuatro esquinas de la carta:
+```bash
 nexoraw detect-chart chart.tiff \
   --out detection.json \
   --preview overlay.png \
-  --chart-type colorchecker24 \
-  --manual-corners 2193,1717 3045,1686 3070,2256 2211,2288
+  --chart-type colorchecker24
 
-nexoraw sample-chart chart.tiff --detection detection.json --reference target.json --out samples.json
-
-# Referencia ColorChecker 24 operativa incluida:
-# testdata/references/colorchecker24_colorchecker2005_d50.json
+nexoraw sample-chart chart.tiff \
+  --detection detection.json \
+  --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
+  --out samples.json
 
 nexoraw build-develop-profile samples.json \
   --recipe recipe.yml \
   --out development_profile.json \
   --calibrated-recipe recipe_calibrated.yml
 
-nexoraw export-cgats samples.json --out samples.ti3
+nexoraw build-profile samples.json \
+  --recipe recipe_calibrated.yml \
+  --out camera_profile.icc \
+  --report profile_report.json
+```
 
-nexoraw build-profile samples.json --recipe recipe_calibrated.yml --out camera_profile.icc --report report.json
+Revelado por lote:
 
-nexoraw batch-develop ./raws \
+```bash
+nexoraw batch-develop ./01_ORG \
   --recipe recipe_calibrated.yml \
   --profile camera_profile.icc \
-  --out ./tiffs \
+  --out ./02_DRV \
   --workers 0 \
   --cache-dir ./00_configuraciones/cache
 ```
 
-Para una sesion sin carta colorimetrica, la receta puede usar `output_space:
-srgb`, `adobe_rgb` o `prophoto_rgb` y `output_linear: false`. En ese caso
-`--profile` es opcional: NexoRAW revela el RAW en ese espacio RGB estandar con
-LibRaw, copia un ICC real del sistema o de ArgyllCMS y lo incrusta en el TIFF.
-
-Las salidas TIFF no se sobrescriben. Si `output.tiff` o
-`./tiffs/captura.tiff` ya existen, NexoRAW conserva el archivo anterior y
-escribe la nueva version como `output_v002.tiff`, `captura_v002.tiff`,
-`captura_v003.tiff`, etc. En `batch-develop`, el TIFF de auditoria lineal en
-`_linear_audit/` usa el mismo numero de version que el TIFF final.
+Verificar procedencia:
 
 ```bash
-# Firma autonoma NexoRAW Proof y C2PA
-pip install -e .
-pip install -e .[c2pa]
+nexoraw verify-proof ./02_DRV/captura.tiff.nexoraw.proof.json \
+  --tiff ./02_DRV/captura.tiff \
+  --raw ./01_ORG/captura.NEF
 
-# Diagnostico de instalacion
-nexoraw check-c2pa
-
-# Exportacion: si no hay claves configuradas, NexoRAW crea identidad local.
-nexoraw batch-develop ./raws \
-  --recipe recipe_calibrated.yml \
-  --profile camera_profile.icc \
-  --out ./tiffs
-
-# Opcional: credenciales externas si el laboratorio ya las tiene.
-# set NEXORAW_C2PA_CERT=G:\ruta\chain.pem
-# set NEXORAW_C2PA_KEY=G:\ruta\signing.key
+nexoraw verify-c2pa ./02_DRV/captura.tiff \
+  --raw ./01_ORG/captura.NEF \
+  --manifest ./02_DRV/batch_manifest.json
 ```
 
-NexoRAW Proof se genera automaticamente como firma autonoma del proyecto. C2PA
-tambien se intenta incrustar automaticamente si `c2pa-python` esta disponible:
-primero usa credenciales externas configuradas y, si no existen, crea una
-identidad local autoemitida en `~/.nexoraw/c2pa`. Los lectores C2PA pueden
-mostrar `signingCredential.untrusted` con esa identidad local; es una advertencia
-de confianza CAI, no una ausencia del vinculo RAW-TIFF. El sidecar
-`.nexoraw.proof.json` vincula TIFF y RAW mediante SHA-256 e incluye receta,
-perfil ICC, ajustes de nitidez, correccion basica/curvas, gestion de color,
-clave publica del firmante y contexto de exportacion.
+## Principios de Color y Trazabilidad
 
-```bash
-nexoraw verify-proof ./tiffs/captura.tiff.nexoraw.proof.json --tiff ./tiffs/captura.tiff --raw ./raws/captura.NEF
-nexoraw verify-c2pa ./tiffs/captura.tiff --raw ./raws/captura.NEF --manifest ./tiffs/batch_manifest.json
+- Un perfil ICC de sesión es contextual, no universal.
+- Un perfil solo es válido para condiciones comparables de cámara, óptica,
+  iluminante, receta RAW y versión de software.
+- Los flujos con carta separan decisiones de medición y decisiones visuales.
+- Las salidas TIFF no se sobrescriben; NexoRAW crea `_v002`, `_v003`, etc.
+- NexoRAW Proof vincula RAW, TIFF, receta, ICC, ajustes y hashes.
+- C2PA/CAI está disponible como capa interoperable de procedencia cuando se
+  configura.
 
-nexoraw validate-profile samples.json --profile camera_profile.icc --out validation.json
-
-# Flujo completo automático de sesión:
-# 1) develop de capturas de carta
-# 2) detección automática de carta
-# 3) muestreo y agregación multi-captura
-# 4) perfil de revelado: neutralidad + densidad/exposicion desde carta
-# 5) segunda medicion con receta calibrada
-# 6) build-profile ICC
-# 7) aplicacion posterior a imagenes objetivo con receta calibrada + ICC
-nexoraw auto-profile-batch \
-  --charts ./charts_raw \
-  --targets ./raws \
-  --recipe recipe.yml \
-  --reference target.json \
-  --development-profile-out development_profile.json \
-  --calibrated-recipe-out recipe_calibrated.yml \
-  --profile-out camera_profile.icc \
-  --profile-report profile_report.json \
-  --validation-report qa_session_report.json \
-  --validation-holdout-count 1 \
-  --profile-validity-days 30 \
-  --out ./tiffs \
-  --workdir ./work_auto
-```
-
-```bash
-nexoraw compare-qa-reports session_a/qa_session_report.json session_b/qa_session_report.json \
-  --out qa_comparison.json
-
-nexoraw check-tools --strict --out tools_report.json
-```
-
-## Verificación
-
-```bash
-bash scripts/run_checks.sh
-nexoraw check-tools --strict --out tools_report.json
-```
-
-En Windows:
-
-```powershell
-.\scripts\run_checks.ps1
-.\scripts\check_tools.ps1 -Strict
-```
-
-Medicion de rendimiento RAW y fluidez GUI:
-
-```bash
-python scripts/benchmark_raw_pipeline.py ./raws/captura.NEF --out tmp/raw_benchmark/results.json
-QT_QPA_PLATFORM=offscreen python scripts/benchmark_gui_interaction.py --raw ./raws/captura.NEF --out tmp/gui_benchmark/results.json
-```
-
-## Interfaz Gráfica Qt
-
-La aplicación incluye una GUI basada en **Qt/PySide6** optimizada para flujo de revelado técnico:
-
-```bash
-nexoraw-ui
-```
-
-O directamente:
-
-```bash
-bash scripts/run_ui.sh
-```
-
-Diseño de trabajo:
-
-La interfaz principal se organiza en 3 pestañas:
-
-- `1. Sesión`:
-  - crear o abrir sesión de trabajo,
-  - guardar metadatos de iluminación y toma,
-  - definir un directorio raíz y crear automáticamente estructura persistente:
-    - `00_configuraciones/`, `01_ORG/`, `02_DRV/`,
-  - persistir estado, perfiles, cache y cola en
-    `00_configuraciones/session.json`.
-- `2. Ajustar / Aplicar`:
-  - explorador visual completo del sistema (unidades + árbol + miniaturas),
-  - selección de raíz de proyecto con apertura automática de `01_ORG/` para
-    navegar originales,
-  - selección directa desde miniaturas: al elegir un RAW/TIFF compatible se
-    carga automáticamente en el visor,
-  - tira horizontal de miniaturas con tamaño ajustable, JPEG embebido y fallback
-    RAW rápido cacheado,
-  - preview RAW/DNG automatica: rapida en navegacion y de maxima calidad en
-    comparar/precision 1:1,
-  - gestion ICC de monitor opcional para convertir el preview sRGB al perfil
-    de pantalla configurado antes de pintar en Qt,
-  - visor con zoom, arrastre de reencuadre, rotación y comparación original/resultado,
-  - panel lateral por secciones verticales: `Brillo y contraste`, `Color`,
-    `Nitidez`, `Gestión de color y calibración` y `RAW Global`,
-  - `Configuracion -> Configuracion global`: identidad NexoRAW Proof, C2PA
-    opcional, modo de preview y gestion ICC del monitor,
-  - `Generar perfil avanzado con carta`: selección de capturas de carta,
-    ajuste de criterios RAW globales y generación conjunta de perfil de ajuste
-    avanzado + ICC de entrada,
-  - `Guardar perfil basico en imagen`: escritura de mochila para perfiles
-    manuales sin carta,
-  - `Copiar perfil de ajuste` / `Pegar perfil de ajuste`: reutilización de
-    ajustes entre miniaturas,
-  - `Corrección básica`: iluminante final, temperatura, matiz, brillo, niveles,
-    contraste y curva de medios,
-  - `Nitidez`: ruido de luminancia, ruido cromático, nitidez y corrección de
-    aberración cromática lateral,
-  - `Aplicar sesión`: exportación de RAW seleccionados o carpetas con la receta calibrada y el ICC de sesión.
-- `3. Cola de Revelado`:
-  - cola de imágenes para revelar (añadir/quitar/limpiar),
-  - ejecución de cola con estado por archivo (pendiente/ok/error),
-  - monitoreo de tareas y log técnico centralizado del pipeline.
-
-La cabecera muestra una barra de progreso global para cargas, generación de
-perfil y revelado por lote, de modo que las tareas largas siempre dejan un
-estado visible.
-
-Menú superior:
-
-- `Archivo`, `Configuracion`, `Perfil ICC`, `Vista`, `Ayuda`.
-- Acceso rápido a carga/guardado de receta, perfil activo y acciones de revelado.
-- `Vista` incluye pantalla completa (`F11`) y restablecer distribución de paneles.
-
-Compatibilidad prevista de GUI:
-
-- Linux, macOS y Windows (Qt/PySide6, selector de raíces/unidades por plataforma).
-
-La GUI usa los mismos módulos de la CLI y escribe los mismos artefactos JSON/TIFF/ICC, manteniendo trazabilidad.
-Además, conserva tamaño/estado de ventana y splitters entre sesiones.
-Las salidas de sesión se normalizan dentro del directorio raíz: perfiles en
-`00_configuraciones/`, originales en `01_ORG/` y TIFF/preview/manifiestos en
-`02_DRV/`.
-
-Notas de preview y rendimiento:
-
-- El visor mantiene internamente el preview en RGB lineal `float32` y genera
-  una imagen sRGB para pantalla/PNG. La conversion al perfil ICC del monitor,
-  si esta activada, se aplica solo al pintar en pantalla y no modifica
-  artefactos, hashes ni manifests.
-- Durante arrastres de sliders y curva tonal, la preview interactiva se
-  procesa en segundo plano y usa una fuente acotada para no bloquear el hilo
-  Qt. El refresco final pesado tambien queda encolado para imagenes grandes
-  cuando no hay preview ICC activo.
-- Las previsualizaciones base se cachean con clave de archivo, receta y modo de
-  preview, con limite de memoria. Las miniaturas se generan a tamano maximo y
-  se reescalan desde cache al mover el control de tamano.
-- Cuando el archivo pertenece a una sesión, la cache persistente se guarda bajo
-  `00_configuraciones/cache/` con rutas relativas para que una carpeta de
-  proyecto pueda moverse o compartirse con otro usuario.
-- La cache numerica de demosaico (`use_cache: true`) guarda arrays `.npy` de
-  escena lineal y evita repetir LibRaw cuando solo cambian ajustes posteriores
-  al demosaico. La clave incluye SHA-256 completo del RAW y parametros LibRaw.
-
-## Receta reproducible
-
-Ver ejemplo en [testdata/recipes/scientific_recipe.yml](testdata/recipes/scientific_recipe.yml).
-
-Campos clave:
-
-- `demosaic_algorithm`
-- `raw_developer` (`libraw`)
-- `black_level_mode`
-- `white_balance_mode`
-- `wb_multipliers`
-- `output_linear`
-- `tone_curve`
-- `profiling_mode`
-- `profile_engine` (`argyll`, único motor soportado)
-
-Con el backend actual LibRaw/rawpy, `demosaic_algorithm` acepta valores como
-`dcb`, `dht`, `ahd`, `vng`, `ppg`, `linear` y, si la build de LibRaw/rawpy lo
-incluye, `amaze`. `dcb` es el valor por defecto instalable; AMaZE requiere
-`rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`, normalmente mediante
-`rawpy-demosaic` o una build propia de LibRaw con el demosaic pack GPL3.
-Las builds que deban incluir AMaZE deben instalar ese backend durante la
-construccion, con `scripts/install_amaze_backend.py`, y fallar si
-`nexoraw check-amaze` no confirma `DEMOSAIC_PACK_GPL3=True`.
-
-## Reproducibilidad y límites
-
-- El perfil ICC **no es universal**.
-- Válido para condiciones comparables de cámara + óptica + iluminante + recipe.
-- Cambios de demosaicing/WB/tone mapping pueden invalidar la validez colorimétrica.
-
-## Licencia
+## Licencia y Gobernanza
 
 - Licencia del proyecto: `AGPL-3.0-or-later`.
-- Objetivo del proyecto: científico, forense y comunitario sin finalidad comercial.
-- Nota legal importante: la AGPL es una licencia libre y **no** restringe el uso comercial por terceros; el objetivo no comercial se expresa como gobernanza del proyecto, no como cláusula restrictiva.
-- Compromiso del proyecto: NexoRAW debe seguir siendo gratuito, abierto,
-  auditable y respetuoso con las obligaciones legales de sus dependencias,
-  incluidas librerías, herramientas externas y proyectos de terceros.
-- Para despliegues y redistribución, seguir:
-  - [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
-  - [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)
-  - [Soporte AMaZE GPL3](docs/AMAZE_GPL3.md)
+- NexoRAW se mantiene como proyecto comunitario gratuito, abierto y auditable.
+- La AGPL es una licencia libre y no prohíbe el uso comercial por terceros; la
+  orientación no comercial es un objetivo de gobernanza, no una restricción
+  adicional de licencia.
+- La redistribución debe respetar las licencias de dependencias directas e
+  indirectas, incluidas LibRaw/rawpy, rawpy-demosaic, ArgyllCMS, ExifTool,
+  Qt/PySide6 y herramientas C2PA.
 
-## Documentación
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Color Pipeline](docs/COLOR_PIPELINE.md)
-- [Rendimiento y Benchmarks](docs/PERFORMANCE.md)
-- [Reproducibilidad](docs/REPRODUCIBILITY.md)
-- [Revision operativa y plan de profesionalizacion](docs/OPERATIVE_REVIEW_PLAN.md)
-- [Changelog](CHANGELOG.md)
-- [Manual de Usuario](docs/MANUAL_USUARIO.md)
-- [NexoRAW Proof](docs/NEXORAW_PROOF.md)
-- [C2PA/CAI](docs/C2PA_CAI.md)
-- [Integración LibRaw + ArgyllCMS](docs/INTEGRACION_LIBRAW_ARGYLL.md)
-- [Paquete Debian](docs/DEBIAN_PACKAGE.md)
-- [Instalacion en macOS](docs/MACOS_INSTALL.md)
-- [Instalador Windows](docs/WINDOWS_INSTALLER.md)
-- [Cumplimiento Legal y Licencias](docs/LEGAL_COMPLIANCE.md)
-- [Licencias de Terceros](docs/THIRD_PARTY_LICENSES.md)
-- [Decisiones](docs/DECISIONS.md)
-- [Backlog priorizado](docs/ISSUES.md)
-
+Iniciativa de **Probatia Forensics SL**, con la comunidad de la
+**Asociación Española de Imagen Científica y Forense**.

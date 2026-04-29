@@ -1,93 +1,101 @@
+_English version: [ROADMAP.md](ROADMAP.md)_
+
 # Roadmap
 
-Documento rector del plan operativo:
+Este roadmap describe la dirección activa de NexoRAW tras la reorganización
+0.2.5. Prioriza un flujo ICC estable y reproducible frente a añadir capas
+paralelas de perfilado de color.
 
-- [Revision operativa y plan de profesionalizacion](OPERATIVE_REVIEW_PLAN.md)
+## Base Completada
 
-## Fase 0 (completada)
+- Paquete Python modular bajo `src/nexoraw`.
+- Entry points canónicos CLI y GUI: `nexoraw` y `nexoraw-ui`.
+- Paquete Debian con nombre NexoRAW, sin lanzadores heredados `iccraw`.
+- GUI Qt con pestañas de sesión, ajuste/perfilado y cola de revelado.
+- Estructura persistente de sesión:
+  - `00_configuraciones/`
+  - `01_ORG/`
+  - `02_DRV/`
+- Mochilas de ajuste por archivo (`RAW.nexoraw.json`).
+- Perfiles avanzados de ajuste desde carta.
+- Generación de ICC de entrada de sesión con ArgyllCMS.
+- Flujo con ICC estándar de salida para sesiones sin carta.
+- Gestión ICC del monitor limitada al preview.
+- Marcado manual de cuatro esquinas de carta en el visor.
+- NexoRAW Proof y metadatos C2PA opcionales.
+- Suite completa de tests superada para la validación de empaquetado 0.2.5.
 
-- base Python modular,
-- CLI MVP funcional,
-- pipeline reproducible con recipe,
-- tests iniciales,
-- trazabilidad JSON,
-- GUI Qt inicial para previsualización técnica y flujo automático.
-- paquete Linux instalable con nombre NexoRAW, icono y lanzadores propios.
+## Principio Actual
 
-## Fase 1 - Contrato RAW y trazabilidad (P0)
+La línea activa de gestión de color es:
 
-Objetivo: asegurar que lo ejecutado coincide exactamente con lo declarado.
+```text
+RAW -> receta reproducible -> perfil de ajuste -> flujo ICC -> TIFF + proof
+```
 
-- validacion estricta de recetas,
-- eliminacion de mapeos silenciosos de demosaicing,
-- registro de comando efectivo y versiones externas,
-- correccion de `audit_linear_tiff` para que sea realmente lineal,
-- dataset RAW real minimo para regresion.
+El soporte DCP no es un objetivo activo de la serie 0.2. El documento de
+planificación se conserva solo por trazabilidad:
+[Roadmap DCP + ICC archivado](ROADMAP_DCP_ICC.md).
 
-## Fase 2 - Gestion ICC interoperable (P0)
+## Fase 1 - Estabilidad y QA con Uso Real
 
-Objetivo: separar asignacion de perfil de conversion colorimetrica.
+Objetivo: hacer robusto el flujo GUI actual con sesiones RAW reales.
 
-- modos de salida explicitos:
-  - RGB camara con perfil de entrada,
-  - conversion a espacio de salida mediante CMM,
-- integracion de CMM real,
-- sustitucion de matriz lateral como salida principal,
-- validacion externa de perfiles ICC,
-- manifiesto de lote con modo de gestion de color.
+- Probar la aplicación instalada con capturas reales de carta y RAW objetivo.
+- Mejorar interacción de selección de carta, estados de cursor y consistencia de
+  overlays.
+- Endurecer generación de perfiles y revelado por lote de larga duración.
+- Ampliar regresiones sobre marcado manual de carta y procesamiento de cola.
+- Mantener AMaZE visible y verificable en builds empaquetadas.
 
-## Fase 3 - Carta, muestreo y QA de captura (P1)
+## Fase 2 - Documentación y Preparación de Release
 
-Objetivo: impedir que detecciones o muestras defectuosas generen perfiles
-aparentemente validos.
+Objetivo: hacer el proyecto comprensible y reproducible para usuarios externos.
 
-- fallback de carta bloqueante por defecto,
-- deteccion automatica por patron interno de parches ColorChecker24,
-- modo manual asistido para esquinas de carta en CLI y GUI,
-- referencia ColorChecker 2005 D50 para uso operativo,
-- perfil de revelado cientifico derivado de fila neutra: WB, densidad y EV,
-- doble pasada carta -> receta calibrada -> ICC,
-- flujo GUI por archivo: ajustar/aplicar, generar perfil avanzado con carta,
-  guardar perfil basico, copiar/pegar ajustes entre miniaturas,
-- parametros de muestreo completos desde receta,
-- deteccion de saturacion, bajo nivel y estimacion de iluminacion irregular,
-- reportes de outliers por parche en QA de sesion,
-- integracion de detecciones manuales por captura en el flujo batch automatico.
+- Mantener el manual bilingüe actualizado con capturas reales.
+- Alinear README, metodología, pipeline de color y documentación de instaladores.
+- Documentar cada opción de GUI y configuración global.
+- Mantener notas de release y checksums para cada build publicada.
+- Evitar nombres de implementación antiguos, estructuras obsoletas y planes
+  descartados.
 
-## Fase 4 - Validacion colorimetrica (P1)
+## Fase 3 - Profundidad de Validación Colorimétrica
 
-Objetivo: validar el ICC real y la aptitud del perfil para una sesion.
+Objetivo: aumentar la confianza en perfiles generados desde referencias.
 
-- separacion entrenamiento/validacion,
-- validacion con CMM/ArgyllCMS del perfil ICC generado,
-- reporte QA de sesion con estado `validated`, `rejected` o `not_validated`,
-- umbrales DeltaE por disciplina o preset,
-- estados operacionales de perfil: `draft`, `validated`, `rejected`, `expired`,
-- reportes comparables entre sesiones mediante CLI/GUI.
+- Reforzar reportes QA de detección de carta, muestreo y estado de perfil.
+- Mejorar comparación de reportes QA entre sesiones.
+- Añadir umbrales DeltaE por disciplina y advertencias.
+- Mejorar flujos holdout/validación cuando hay varias capturas de carta.
+- Hacer más claros los estados de fallo en GUI y CLI.
 
-## Fase 5 - Reproducibilidad, CI y distribucion (P2)
+## Fase 4 - Rendimiento y Sesiones Grandes
 
-Objetivo: hacer que el comportamiento sea sostenible por la comunidad.
+Objetivo: mantener NexoRAW fluido cuando las sesiones crecen.
 
-- CI con tests unitarios e integracion con herramientas externas,
-- checks de versiones de LibRaw/rawpy, ArgyllCMS y `exiftool` mediante
-  CLI/GUI,
-- paquete Debian reproducible para instalacion local,
-- contenedor o entorno reproducible,
-- benchmarks de determinismo y rendimiento,
-- benchmarks de navegacion RAW, cache persistente de miniaturas y cache
-  opcional de previews completas,
-- auditoria de licencias para releases AGPL.
+- Seguir optimizando cachés persistentes de preview y miniaturas.
+- Medir navegación RAW, preview 1:1 y preview de perfil en hardware
+  representativo.
+- Mejorar cancelación/progreso en tareas largas.
+- Mantener renders finales reproducibles aunque el preview interactivo use
+  fuentes acotadas más rápidas.
 
-## Fase 6 - Ampliacion controlada (P3)
+## Fase 5 - Distribución y Portabilidad
 
-Objetivo: ampliar capacidades sin comprometer trazabilidad.
+Objetivo: hacer repetibles instalación y verificación en varias plataformas.
 
-- sidecars por imagen para separar ajustes globales de sesión y ajustes
-  particulares de captura, con mochilas JSON propias y posible
-  interoperabilidad futura con `.pp3`,
-- soporte IT8 completo,
-- perfiles LUT si el caso de uso lo justifica,
-- comparador automatico de perfiles entre sesiones/iluminantes,
-- C2PA/CAI para cadena de custodia,
-- internacionalizacion GUI (es/en) y presets tecnicos por disciplina.
+- Mantener empaquetado Debian reproducible.
+- Continuar trabajo de instaladores Windows y macOS.
+- Validar detección de herramientas externas en plataformas soportadas.
+- Preservar portabilidad de sesiones y sidecars entre equipos.
+- Mantener avisos legales y licencias de dependencias empaquetadas.
+
+## Investigación Futura
+
+Cualquier ampliación futura debe preservar el flujo científico centrado en ICC:
+
+- soporte IT8 más completo;
+- comparación de perfiles entre iluminantes y sesiones;
+- visualizaciones QA adicionales;
+- manifiestos C2PA más ricos;
+- interoperabilidad externa para intercambio de sidecars.

@@ -222,12 +222,10 @@ References:
 
 - RawTherapee Color Management:
   https://rawpedia.rawtherapee.com/Color_Management
-- RawTherapee How to create DCP color profiles:
-  https://rawpedia.rawtherapee.com/How_to_create_DCP_color_profiles
 - RawTherapee ICC Profile Creator:
   https://rawpedia.rawtherapee.com/ICC_Profile_Creator
 - Internal methodology:
-  [RAW development methodology and ICC management] (METODOLOGIA_COLOR_RAW.md)
+  [RAW development methodology and ICC management](METODOLOGIA_COLOR_RAW.md)
 
 ## DEC-0011: Sidecars backpack by RAW
 

@@ -1,96 +1,102 @@
-# Color Pipeline
+# Pipeline de Color
 
-## Estado operativo
+_English version: [COLOR_PIPELINE.md](COLOR_PIPELINE.md)_
 
-El diseño actual define correctamente la intencion del pipeline, pero la
-implementacion todavia requiere cerrar los hallazgos criticos documentados en:
+## Estado Operativo
 
-- [Revision operativa y plan de profesionalizacion](OPERATIVE_REVIEW_PLAN.md)
+NexoRAW 0.2.5 implementa el flujo ICC principal y la interfaz de trabajo por
+sesión. La aplicación es apta para pruebas controladas y validación de release,
+pero todavía no debe presentarse como sistema certificado de producción
+científica/forense.
 
-Hasta completar los P0, el pipeline debe considerarse apto para prototipado y
-pruebas controladas, no para produccion cientifica/forense.
+La metodología completa se describe en
+[Metodología de revelado RAW y gestión ICC](METODOLOGIA_COLOR_RAW.es.md).
 
-## Modo científico (profiling_mode)
+## Principio de Diseño
 
-Objetivo: neutralidad y reproducibilidad, no estética.
+El pipeline separa:
+
+1. revelado RAW reproducible;
+2. perfil de ajuste paramétrico;
+3. perfil ICC de entrada cuando hay carta;
+4. perfil ICC estándar cuando no hay carta;
+5. conversión CMM para derivados;
+6. ICC de monitor solo para visualización;
+7. auditoría mediante mochilas, manifiestos, Proof y C2PA opcional.
+
+DCP no forma parte del pipeline activo de la serie 0.2.
+
+## Modo Científico (`profiling_mode`)
+
+Objetivo: neutralidad y reproducibilidad, no apariencia creativa.
 
 Reglas:
 
-1. sin sharpen creativo,
-2. sin denoise agresivo,
-3. sin curvas tonales artísticas,
-4. WB fijo o explícito,
-5. salida lineal para perfilado.
+1. sin sharpen creativo durante medición de carta;
+2. sin denoise agresivo durante medición de carta;
+3. sin curvas tonales artísticas;
+4. balance de blancos fijo o explícito;
+5. salida lineal para perfilado;
+6. geometría de carta reutilizable entre pasadas.
 
 ## Fases
 
-1. `raw-info`: metadatos técnicos.
-2. `develop`: revelado base controlado lineal con LibRaw/rawpy para entradas RAW.
-3. `detect-chart`: homografía + parches.
+1. `raw-info`: lectura de metadatos técnicos.
+2. `develop`: revelado base controlado con LibRaw/rawpy.
+3. `detect-chart`: detección de carta, homografía y parches.
 4. `sample-chart`: medición robusta por parche.
-5. `build-develop-profile`: neutralidad y densidad desde fila neutra de carta.
-6. receta calibrada: WB fijo, EV limitado por preservación de altas luces,
+5. `build-develop-profile`: neutralidad, densidad y EV desde la fila neutra.
+6. Receta calibrada: WB fijo, EV limitado por preservación de altas luces,
    salida lineal y sin procesos creativos.
-7. segunda medición de carta con la misma geometría y receta calibrada.
-8. `build-profile`: ArgyllCMS (`colprof`) como motor único de perfil ICC.
-9. `validate-profile`: DeltaE 76/2000 del ICC real.
-10. `batch-develop`: receta calibrada + ICC de entrada de sesion sobre lote RAW.
+7. Segunda medición de carta con la misma geometría y receta calibrada.
+8. `build-profile`: ArgyllCMS (`colprof`) genera el ICC de entrada.
+9. `validate-profile`: validación DeltaE 76/2000 del ICC real.
+10. `batch-develop`: revelado de lote con perfil de ajuste e ICC asignado.
 
-La metodologia completa queda descrita en
-[Metodologia de revelado RAW y gestion ICC](METODOLOGIA_COLOR_RAW.md).
+## Invariantes Críticas
 
-## Invariantes criticas
+1. La receta ejecutada debe coincidir con la receta declarada.
+2. El TIFF de auditoría lineal debe escribirse antes de curvas tonales o
+   conversiones de salida.
+3. La gestión ICC separa asignación de perfil de entrada y conversión a perfil
+   de salida.
+4. La validación comprueba el ICC real generado, no solo matrices auxiliares.
+5. El fallback de detección de carta no genera perfiles automáticamente sin modo
+   explícito o revisión.
+6. La geometría de carta de la pasada base puede reutilizarse en la pasada
+   calibrada.
+7. El ICC no debe compensar exposición/densidad básica si la carta permite
+   construir antes una receta calibrada.
+8. Con carta, el TIFF maestro conserva RGB lineal de cámara/sesión e incrusta el
+   ICC de entrada.
+9. Sin carta, el RAW se revela en sRGB/Adobe RGB/ProPhoto RGB real, se incrusta
+   un ICC estándar y se declara `generic_output_icc`.
+10. La visualización en pantalla usa una conversión exclusiva hacia el perfil ICC
+    del monitor configurado.
 
-1. [x] La receta ejecutada debe coincidir con la receta declarada; no se permiten
-   mapeos silenciosos de algoritmos o parametros.
-2. [x] El TIFF de auditoria lineal debe escribirse antes de cualquier curva tonal o
-   conversion de salida.
-3. [x] La gestion ICC debe separar:
-   - asignacion de perfil de entrada,
-   - conversion mediante CMM a perfil de salida.
-4. [x] La validacion debe comprobar el ICC real generado, no solo artefactos
-   numericos auxiliares.
-5. [x] El fallback de deteccion de carta no debe producir perfiles automaticamente
-   sin confirmacion o modo explicito.
-6. [x] La geometria de carta detectada en la pasada base se reutiliza en la
-   pasada calibrada; no depende del renderizado ya corregido.
-7. [x] El perfil ICC no debe compensar exposición/densidad básica si la carta
-   permite construir antes una receta calibrada.
-8. [x] Si hay carta y perfil ICC de sesion, el TIFF maestro conserva RGB lineal
-   de camara/sesion e incrusta ese ICC. Los perfiles estandar de salida quedan
-   para derivados o flujos sin carta; en el flujo sin carta el RAW se revela en
-   sRGB/Adobe RGB/ProPhoto RGB real, se copia el ICC estandar en
-   `00_configuraciones/profiles/standard/` y se declara como `generic_output_icc`.
-9. [x] La visualizacion en pantalla usa una conversion exclusiva de display:
-   desde la preview sRGB de trabajo hacia el perfil ICC del monitor configurado
-   en el sistema, con sRGB solo como fallback si no hay perfil detectable.
+## Gestión de Color del Monitor
 
-## Gestion de color de monitor
+El perfil ICC de monitor no participa en el revelado, en el TIFF maestro ni en la
+exportación. Solo corrige la representación visual de previews y miniaturas.
 
-El perfil ICC de monitor no participa en el revelado, en el TIFF maestro ni en
-la exportacion. Solo corrige la representacion visual de previews y miniaturas.
+Detección:
 
-Politica de deteccion:
+- Windows: WCS/ICM.
+- macOS: ColorSync.
+- Linux/BSD: `colord`, `colormgr` o `_ICC_PROFILE`.
 
-- Windows: perfil de salida asociado al contexto de pantalla mediante
-  `GetICMProfileW`.
-- macOS: espacio ColorSync del display principal mediante
-  `CGDisplayCopyColorSpace` y datos ICC de `CGColorSpace`.
-- Linux/BSD: perfil de display gestionado por `colord`/`colormgr`; si no esta
-  disponible, fallback a `_ICC_PROFILE` de X11 cuando exista.
+Si el perfil desaparece o no puede abrirse, NexoRAW registra el problema y usa
+sRGB como fallback visual.
 
-El usuario puede sustituir manualmente el ICC de monitor desde Configuracion
-global > Preview / monitor. Si el perfil desaparece o no se puede abrir, NexoRAW
-lo registra en el log y muestra la preview en sRGB para no bloquear el trabajo.
-
-## Validez del perfil
+## Validez del Perfil
 
 El perfil depende de:
 
-- cámara,
-- óptica,
-- iluminante,
-- recipe,
-- versión del software.
+- cámara;
+- óptica;
+- iluminante;
+- receta;
+- versión de software;
+- configuración relevante del pipeline RAW.
 
 Cambiar esos factores puede degradar o invalidar la validez colorimétrica.
