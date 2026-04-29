@@ -217,5 +217,6 @@ probraw verify-c2pa ./02_DRV/capture.tiff \
   including LibRaw/rawpy, rawpy-demosaic, ArgyllCMS, ExifTool, Qt/PySide6 and
   C2PA tooling.
 
-ProbRAW is led by **Probatia Forensics SL** in collaboration with the
-**Asociación Española de Imagen Científica y Forense**.
+ProbRAW is led by [**Probatia Forensics SL**](https://probatia.com) in
+collaboration with the
+[**Asociación Española de Imagen Científica y Forense**](https://imagencientifica.es).

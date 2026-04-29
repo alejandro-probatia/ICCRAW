@@ -74,9 +74,13 @@ Politica de integracion:
 
 ## Gobernanza comunitaria
 
-El mantenimiento del proyecto recae en la comunidad de la:
+El proyecto esta liderado por:
 
-- **Asociacion Espanola de Imagen Cientifica y Forense**.
+- **Probatia Forensics SL**: https://probatia.com
+
+Con colaboracion de:
+
+- **Asociacion Espanola de Imagen Cientifica y Forense**: https://imagencientifica.es
 
 Se recomienda revisiones periodicas de cumplimiento legal y trazabilidad para
 entornos de peritaje y cadena de custodia digital.

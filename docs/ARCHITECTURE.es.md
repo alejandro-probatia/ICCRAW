@@ -12,7 +12,9 @@ El flujo con carta mantiene la cadena tecnica completa:
 
 Gobernanza y licencia:
 
-- proyecto mantenido por la comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
+- proyecto liderado por **Probatia Forensics SL** (https://probatia.com) en
+  colaboracion con la **Asociacion Espanola de Imagen Cientifica y Forense**
+  (https://imagencientifica.es).
 - licencia del repositorio: `AGPL-3.0-or-later`.
 
 ## Layout del paquete

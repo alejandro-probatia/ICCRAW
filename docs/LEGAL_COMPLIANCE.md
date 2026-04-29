@@ -73,11 +73,15 @@ Integration policy:
 6. If wheels/binaries are redistributed from `rawpy`, `rawpy-demosaic` or LibRaw,
    include your license notices.
 
-## Community governance
+## Community Governance
 
-The maintenance of the project falls on the community of:
+The project is led by:
 
-- **Spanish Association of Scientific and Forensic Imaging**.
+- **Probatia Forensics SL**: https://probatia.com
+
+In collaboration with:
+
+- **Spanish Association of Scientific and Forensic Imaging**: https://imagencientifica.es
 
 Periodic reviews of legal compliance and traceability are recommended to
 expertise environments and digital chain of custody.

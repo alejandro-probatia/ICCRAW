@@ -99,8 +99,9 @@ Release 0.3.0 introduces:
   beta packages,
 - migration compatibility for existing `.nexoraw.json`,
   `.nexoraw.proof.json` and beta C2PA/Proof labels,
-- explicit project leadership statement: Probatia Forensics SL in collaboration
-  with the Asociación Española de Imagen Científica y Forense.
+- explicit project leadership statement: Probatia Forensics SL
+  (https://probatia.com) in collaboration with the Asociación Española de Imagen
+  Científica y Forense (https://imagencientifica.es).
 
 ## Release 0.2.6
 

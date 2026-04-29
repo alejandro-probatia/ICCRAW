@@ -50,7 +50,9 @@ Decisión:
 Decisión:
 
 - licencia del repositorio: `AGPL-3.0-or-later`.
-- gobernanza y mantenimiento: comunidad de la **Asociacion Espanola de Imagen Cientifica y Forense**.
+- gobernanza y mantenimiento: proyecto liderado por **Probatia Forensics SL**
+  (https://probatia.com) en colaboracion con la **Asociacion Espanola de Imagen
+  Cientifica y Forense** (https://imagencientifica.es).
 
 Compatibilidad (resumen):
 

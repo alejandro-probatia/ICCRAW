@@ -105,8 +105,9 @@ La release 0.3.0 introduce:
   `nexoraw` e `iccraw`,
 - compatibilidad de migracion para `.nexoraw.json`, `.nexoraw.proof.json` y
   etiquetas beta C2PA/Proof,
-- declaracion explicita del liderazgo de Probatia Forensics SL en colaboracion
-  con la Asociacion Espanola de Imagen Cientifica y Forense.
+- declaracion explicita del liderazgo de Probatia Forensics SL
+  (https://probatia.com) en colaboracion con la Asociacion Espanola de Imagen
+  Cientifica y Forense (https://imagencientifica.es).
 
 ## Release 0.2.6
 

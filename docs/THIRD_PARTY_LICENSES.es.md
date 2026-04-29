@@ -7,7 +7,9 @@ Fecha de revision: 2026-04-25.
 ## 1) ProbRAW (repositorio principal)
 
 - Licencia: `AGPL-3.0-or-later`.
-- Codigo mantenido por la comunidad de la Asociacion Espanola de Imagen Cientifica y Forense.
+- Proyecto liderado por Probatia Forensics SL (https://probatia.com) en
+  colaboracion con la Asociacion Espanola de Imagen Cientifica y Forense
+  (https://imagencientifica.es).
 
 ## 2) ArgyllCMS (`colprof`, `xicclu`, `cctiff`)
 

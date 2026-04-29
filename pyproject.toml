@@ -12,6 +12,7 @@ license = {text = "AGPL-3.0-or-later"}
 authors = [
   {name = "Probatia Forensics SL y Asociacion Espanola de Imagen Cientifica y Forense"}
 ]
+urls = {Repository = "https://github.com/alejandro-probatia/ProbRAW", Probatia = "https://probatia.com", AEICF = "https://imagencientifica.es"}
 classifiers = [
   "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
   "Programming Language :: Python :: 3",

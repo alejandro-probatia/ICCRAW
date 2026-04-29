@@ -39,8 +39,9 @@ To maintain full traceability, each change must:
   and release artifacts to the canonical `probraw` naming.
 - Updated repository, installer and update metadata to point to
   `alejandro-probatia/ProbRAW`.
-- Declared project leadership by Probatia Forensics SL in collaboration with the
-  Asociación Española de Imagen Científica y Forense.
+- Declared project leadership by Probatia Forensics SL
+  (https://probatia.com) in collaboration with the Asociación Española de Imagen
+  Científica y Forense (https://imagencientifica.es).
 
 ### Compatibility
 

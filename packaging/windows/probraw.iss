@@ -18,8 +18,8 @@
 AppId={{F88E3E29-B992-4B88-8BB9-5066D6A77764}
 AppName=ProbRAW
 AppVersion={#AppVersion}
-AppPublisher=Comunidad AEICF
-AppPublisherURL=https://github.com/alejandro-probatia/ProbRAW
+AppPublisher=Probatia Forensics SL
+AppPublisherURL=https://probatia.com
 AppSupportURL=https://github.com/alejandro-probatia/ProbRAW
 AppUpdatesURL=https://github.com/alejandro-probatia/ProbRAW
 DefaultDirName={autopf}\ProbRAW

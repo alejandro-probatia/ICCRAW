@@ -52,7 +52,9 @@ Decision:
 Decision:
 
 - repository license: `AGPL-3.0-or-later`.
-- governance and maintenance: community of the **Spanish Association of Scientific and Forensic Image**.
+- governance and maintenance: project led by **Probatia Forensics SL**
+  (https://probatia.com) in collaboration with the **Spanish Association of
+  Scientific and Forensic Imaging** (https://imagencientifica.es).
 
 Compatibility (summary):
 

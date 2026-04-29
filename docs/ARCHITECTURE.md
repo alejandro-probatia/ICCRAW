@@ -14,7 +14,9 @@ The letter flow maintains the complete technical chain:
 
 Governance and licensing:
 
-- project maintained by the community of the **Spanish Association of Scientific and Forensic Image**.
+- project led by **Probatia Forensics SL** (https://probatia.com) in
+  collaboration with the **Spanish Association of Scientific and Forensic
+  Imaging** (https://imagencientifica.es).
 - repository license: `AGPL-3.0-or-later`.
 
 ## Package layout
