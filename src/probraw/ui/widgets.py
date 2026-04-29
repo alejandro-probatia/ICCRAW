@@ -583,12 +583,17 @@ if QtWidgets is not None:
 
 
     class Gamut3DWidget(QtWidgets.QWidget):
+        DEFAULT_AZIMUTH = -38.0
+        DEFAULT_ELEVATION = 24.0
+        DEFAULT_ZOOM = 1.0
+
         def __init__(self) -> None:
             super().__init__()
             self._series: list[dict[str, Any]] = []
-            self._azimuth = -38.0
-            self._elevation = 24.0
-            self._zoom = 1.0
+            self._series_signature: tuple[Any, ...] | None = None
+            self._azimuth = self.DEFAULT_AZIMUTH
+            self._elevation = self.DEFAULT_ELEVATION
+            self._zoom = self.DEFAULT_ZOOM
             self._drag_start: QtCore.QPoint | None = None
             self.setMinimumHeight(260)
             self.setMouseTracking(True)
@@ -599,8 +604,18 @@ if QtWidgets is not None:
 
         def clear(self) -> None:
             self._series = []
+            self._series_signature = None
+            self.reset_view(update=False)
             self.setToolTip("")
             self.update()
+
+        def reset_view(self, *, update: bool = True) -> None:
+            self._azimuth = self.DEFAULT_AZIMUTH
+            self._elevation = self.DEFAULT_ELEVATION
+            self._zoom = self.DEFAULT_ZOOM
+            self._drag_start = None
+            if update:
+                self.update()
 
         def set_gamut_payload(self, payload: dict[str, Any] | None) -> None:
             if not isinstance(payload, dict):
@@ -642,10 +657,45 @@ if QtWidgets is not None:
                         "rgb": self._coerce_rgb_points(item.get("surface_rgb"), points.shape[0]),
                         "quads": self._coerce_quads(item.get("quads"), points.shape[0]),
                         "role": str(item.get("role") or "wire"),
+                        "source_key": str(item.get("path") or item.get("profile_key") or item.get("label") or ""),
                     }
                 )
+            signature = self._series_payload_signature(normalized)
+            if signature != self._series_signature:
+                self.reset_view(update=False)
+                self._series_signature = signature
             self._series = normalized
             self.update()
+            QtCore.QTimer.singleShot(0, self.update)
+
+        def _series_payload_signature(self, series: list[dict[str, Any]]) -> tuple[Any, ...]:
+            signature: list[tuple[Any, ...]] = []
+            for item in series:
+                points = np.asarray(item.get("points"), dtype=np.float64)
+                if points.ndim != 2 or points.shape[1] < 3 or points.size == 0:
+                    stats = (0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                else:
+                    finite = points[:, :3][np.all(np.isfinite(points[:, :3]), axis=1)]
+                    if finite.size:
+                        minv = np.min(finite, axis=0)
+                        maxv = np.max(finite, axis=0)
+                        stats = (
+                            int(finite.shape[0]),
+                            *[float(round(v, 3)) for v in minv],
+                            *[float(round(v, 3)) for v in maxv],
+                        )
+                    else:
+                        stats = (0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                signature.append(
+                    (
+                        str(item.get("label") or ""),
+                        str(item.get("source_key") or ""),
+                        str(item.get("role") or ""),
+                        str(item.get("color") or ""),
+                        stats,
+                    )
+                )
+            return tuple(signature)
 
         def _coerce_rgb_points(self, value: Any, count: int) -> np.ndarray:
             rgb = np.asarray(value, dtype=np.float64)
@@ -692,6 +742,13 @@ if QtWidgets is not None:
                 event.accept()
                 return
             super().mouseReleaseEvent(event)
+
+        def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+            if event.button() == QtCore.Qt.LeftButton:
+                self.reset_view()
+                event.accept()
+                return
+            super().mouseDoubleClickEvent(event)
 
         def wheelEvent(self, event) -> None:  # noqa: N802
             delta = event.angleDelta().y()

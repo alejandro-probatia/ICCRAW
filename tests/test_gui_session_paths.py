@@ -366,6 +366,57 @@ def test_raw_develop_layout_prioritizes_viewer_area(qapp):
         window.close()
 
 
+def test_gamut_widget_resets_camera_when_payload_changes(qapp):
+    widget = gui_module.Gamut3DWidget()
+    try:
+        series_a = [
+            {
+                "label": "Perfil A",
+                "path": "/tmp/profile-a.icc",
+                "color": "#f8fafc",
+                "role": "wire",
+                "points_lab": gui_module.np.asarray(
+                    [[50.0, 0.0, 0.0], [65.0, 25.0, -18.0]],
+                    dtype=gui_module.np.float64,
+                ),
+                "surface_rgb": gui_module.np.asarray(
+                    [[0.0, 0.0, 0.0], [1.0, 0.4, 0.2]],
+                    dtype=gui_module.np.float64,
+                ),
+                "quads": [],
+            }
+        ]
+        series_b = [
+            {
+                **series_a[0],
+                "label": "Perfil B",
+                "path": "/tmp/profile-b.icc",
+                "points_lab": gui_module.np.asarray(
+                    [[50.0, 0.0, 0.0], [80.0, 60.0, -40.0]],
+                    dtype=gui_module.np.float64,
+                ),
+            }
+        ]
+
+        widget.set_series(series_a)
+        widget._azimuth = 10.0
+        widget._elevation = 76.0
+        widget._zoom = 2.4
+        widget.set_series(series_a)
+
+        assert widget._azimuth == 10.0
+        assert widget._elevation == 76.0
+        assert widget._zoom == 2.4
+
+        widget.set_series(series_b)
+
+        assert widget._azimuth == widget.DEFAULT_AZIMUTH
+        assert widget._elevation == widget.DEFAULT_ELEVATION
+        assert widget._zoom == widget.DEFAULT_ZOOM
+    finally:
+        widget.close()
+
+
 def test_left_vertical_tabs_remain_available_when_sidebar_is_compacted(qapp):
     window = ICCRawMainWindow()
     try:

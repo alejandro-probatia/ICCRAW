@@ -20,6 +20,12 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+### Fixed
+
+- The `Gamut 3D` viewer now resets camera and zoom when the profile pair or Lab
+  mesh changes, avoiding a previous high-elevation view making the gamut look
+  stretched until the application is restarted.
+
 ## [0.3.2] - 2026-04-29
 
 ### Fixed

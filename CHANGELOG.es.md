@@ -18,6 +18,12 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+### Fixed
+
+- El visor `Gamut 3D` reinicia camara y zoom cuando cambian los perfiles o la
+  malla Lab, evitando que una vista anterior con elevacion extrema haga parecer
+  el gamut estirado hasta reiniciar la aplicacion.
+
 ## [0.3.2] - 2026-04-29
 
 ### Fixed
