@@ -1,4 +1,4 @@
-from iccraw.gui import main
+from nexoraw.gui import main
 
 
 if __name__ == "__main__":

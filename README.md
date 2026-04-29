@@ -190,10 +190,9 @@ The package installs the application in `/opt/nexoraw`, creates the launchers
 
 ## CLI
 
-The new entry point is `nexoraw` (also callable as `python -m nexoraw`).
+The entry point is `nexoraw` (also callable as `python -m nexoraw`).
 The published installers only expose the `nexoraw` launchers and
-`nexoraw-ui`; `iccraw` internal paths are preserved for compatibility
-code during project name transition:
+`nexoraw-ui`:
 ```bash
 nexoraw raw-info input.raw
 

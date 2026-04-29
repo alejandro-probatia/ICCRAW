@@ -308,7 +308,7 @@ if (-not $SkipToolCheck) {
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-  $Version = (& $Python -c "from iccraw.version import __version__; print(__version__)").Trim()
+  $Version = (& $Python -c "from nexoraw.version import __version__; print(__version__)").Trim()
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Version)) {
     throw "No se pudo leer la version de NexoRAW"
   }
@@ -320,7 +320,7 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
 
 $BuildRoot = Join-Path $Root "build\windows"
 $PyInstallerWork = Join-Path $BuildRoot "pyinstaller"
-$SpecPath = Join-Path $Root "packaging\windows\iccraw.spec"
+$SpecPath = Join-Path $Root "packaging\windows\nexoraw.spec"
 $AppBuildDir = Join-Path $OutputRoot "NexoRAW"
 $InstallerDir = Join-Path $OutputRoot "installer"
 
@@ -355,7 +355,7 @@ if (-not $NoInstaller) {
   }
 
   New-Item -ItemType Directory -Force -Path $InstallerDir | Out-Null
-  $IssPath = Join-Path $Root "packaging\windows\iccraw.iss"
+  $IssPath = Join-Path $Root "packaging\windows\nexoraw.iss"
   Invoke-Native "Construir instalador Inno Setup" $Iscc @(
     "/Qp",
     "/DRootDir=`"$Root`"",

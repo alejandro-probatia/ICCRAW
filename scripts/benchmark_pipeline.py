@@ -19,10 +19,10 @@ try:
 except Exception:
     pass
 
-from iccraw.core.recipe import load_recipe
-from iccraw.core.utils import sha256_file
-from iccraw.raw.pipeline import develop_controlled, develop_image_array
-from iccraw.raw.preview import apply_adjustments, apply_render_adjustments, linear_to_srgb_display, load_image_for_preview
+from nexoraw.core.recipe import load_recipe
+from nexoraw.core.utils import sha256_file
+from nexoraw.raw.pipeline import develop_controlled, develop_image_array
+from nexoraw.raw.preview import apply_adjustments, apply_render_adjustments, linear_to_srgb_display, load_image_for_preview
 
 
 def _time_call(fn, repeat: int) -> tuple[object, list[float]]:

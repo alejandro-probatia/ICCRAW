@@ -1,13 +1,14 @@
 from pathlib import Path
 import json
 
-from iccraw import metadata_viewer
-from iccraw.metadata_viewer import (
+from nexoraw import metadata_viewer
+from nexoraw.metadata_viewer import (
     inspect_file_metadata,
     metadata_display_sections,
     metadata_sections_text,
     read_exif_gps_metadata,
 )
+from nexoraw.provenance.c2pa import RAW_LINK_ASSERTION_LABEL
 
 
 class FakeCompletedProcess:
@@ -25,7 +26,7 @@ class FakeC2PAClient:
                     "signature_info": {"alg": "Ps256", "common_name": "Test"},
                     "assertions": [
                         {"label": "c2pa.actions.v2", "data": {}},
-                        {"label": "org.probatia.iccraw.raw-link", "data": {"schema": "org.probatia.iccraw.raw-link.v1"}},
+                        {"label": RAW_LINK_ASSERTION_LABEL, "data": {"schema": RAW_LINK_ASSERTION_LABEL}},
                     ],
                 }
             },

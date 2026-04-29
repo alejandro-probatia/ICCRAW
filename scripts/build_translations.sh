@@ -13,14 +13,17 @@ set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCALES_SRC="$REPO_ROOT/locales"
-LOCALES_BIN="$REPO_ROOT/src/iccraw/resources/locales"
+LOCALES_BIN="$REPO_ROOT/src/nexoraw/resources/locales"
 
 # Ficheros Python de los que se extraen cadenas
 PY_SOURCES=(
-    "$REPO_ROOT/src/iccraw/gui.py"
-    "$REPO_ROOT/src/iccraw/cli.py"
-    "$REPO_ROOT/src/iccraw/workflow.py"
-    "$REPO_ROOT/src/iccraw/reporting.py"
+    "$REPO_ROOT/src/nexoraw/gui.py"
+    "$REPO_ROOT/src/nexoraw/gui_config.py"
+    "$REPO_ROOT/src/nexoraw/ui/widgets.py"
+    "$REPO_ROOT/src/nexoraw/ui/window/"*.py
+    "$REPO_ROOT/src/nexoraw/cli.py"
+    "$REPO_ROOT/src/nexoraw/workflow.py"
+    "$REPO_ROOT/src/nexoraw/reporting.py"
 )
 
 # Idiomas gestionados (uno por fichero .ts en locales/)

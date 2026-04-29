@@ -51,7 +51,7 @@ de ejecución (`run_context`).
 
 Archivo clave:
 
-- `src/iccraw/raw/pipeline.py`
+- `src/nexoraw/raw/pipeline.py`
 
 Para entradas RAW, NexoRAW ejecuta `rawpy.imread(...).postprocess(...)` con un
 contrato explícito:
@@ -94,7 +94,7 @@ pueda demostrar `amaze_supported: true` no debe publicarse como build AMaZE.
 
 Archivo clave:
 
-- `src/iccraw/profile/builder.py`
+- `src/nexoraw/profile/builder.py`
 
 Flujo:
 
@@ -122,7 +122,7 @@ Validación:
 
 Archivo clave:
 
-- `src/iccraw/profile/export.py`
+- `src/nexoraw/profile/export.py`
 
 Modos de salida:
 

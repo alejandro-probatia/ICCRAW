@@ -5,11 +5,12 @@ import numpy as np
 import pytest
 import tifffile
 
-from iccraw.core.models import RawMetadata, Recipe
-from iccraw.core.utils import sha256_file
-from iccraw.profile.export import batch_develop, write_signed_profiled_tiff
-from iccraw.provenance.c2pa import (
+from nexoraw.core.models import RawMetadata, Recipe
+from nexoraw.core.utils import sha256_file
+from nexoraw.profile.export import batch_develop, write_signed_profiled_tiff
+from nexoraw.provenance.c2pa import (
     RAW_LINK_ASSERTION_LABEL,
+    NEXORAW_RENDER_ACTION,
     RENDER_SETTINGS_SCHEMA,
     C2PASigningError,
     C2PASignConfig,
@@ -22,7 +23,7 @@ from iccraw.provenance.c2pa import (
     sign_tiff_with_c2pa,
     verify_c2pa_raw_link,
 )
-from iccraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity
+from nexoraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity
 
 
 class FakeC2PAClient:
@@ -173,7 +174,7 @@ def test_c2pa_manifest_contains_actions_and_custom_raw_link(tmp_path: Path):
     assert RAW_LINK_ASSERTION_LABEL in labels
     action_names = manifest["assertions"][0]["data"]["actions"]
     assert action_names[0]["action"] == "c2pa.created"
-    assert action_names[1]["action"] == "org.probatia.iccraw.rendered"
+    assert action_names[1]["action"] == NEXORAW_RENDER_ACTION
 
 
 def test_sign_tiff_with_c2pa_replaces_output_and_hashes_after_signing(tmp_path: Path):
@@ -226,7 +227,7 @@ def test_verify_c2pa_raw_link_checks_raw_and_external_manifest(tmp_path: Path):
         "manifests": {
             "nexoraw:1": {
                 "assertions": [
-                    {"label": "org.probatia.iccraw.raw-link", "data": assertion},
+                    {"label": RAW_LINK_ASSERTION_LABEL, "data": assertion},
                 ],
             }
         },
@@ -354,8 +355,6 @@ def test_c2pa_environment_config_still_reports_missing_credentials(tmp_path: Pat
     for name in (
         "NEXORAW_C2PA_CERT",
         "NEXORAW_C2PA_KEY",
-        "ICCRAW_C2PA_CERT",
-        "ICCRAW_C2PA_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
 

@@ -163,8 +163,8 @@ $env:QT_QPA_PLATFORM="offscreen"
 
 ## Notas de mantenimiento
 
-- La especificacion PyInstaller esta en `packaging/windows/iccraw.spec`.
-- La plantilla Inno Setup esta en `packaging/windows/iccraw.iss`.
+- La especificacion PyInstaller esta en `packaging/windows/nexoraw.spec`.
+- La plantilla Inno Setup esta en `packaging/windows/nexoraw.iss`.
 - El script `build_installer.ps1` instala los extras `dev`, `gui`,
   `installer` y `c2pa` antes de empaquetar.
 - El instalador copia ArgyllCMS (`bin` y `ref`, incluyendo `sRGB.icm`) y ExifTool en

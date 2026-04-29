@@ -1,6 +1,6 @@
 import subprocess
 
-from iccraw.core import external
+from nexoraw.core import external
 
 
 class FakeStartupInfo:
@@ -54,7 +54,6 @@ def test_bundled_tool_dirs_includes_macos_package_manager_paths(monkeypatch, tmp
     monkeypatch.setattr(external.sys, "platform", "darwin", raising=False)
     monkeypatch.setattr(external.sys, "executable", str(tmp_path / "venv" / "bin" / "python"), raising=False)
     monkeypatch.delenv("NEXORAW_TOOL_DIR", raising=False)
-    monkeypatch.delenv("ICCRAW_TOOL_DIR", raising=False)
 
     paths = {str(path) for path in external.bundled_tool_dirs()}
 

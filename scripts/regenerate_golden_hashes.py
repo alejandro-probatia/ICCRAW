@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 import tempfile
 
-from iccraw.core.recipe import load_recipe
-from iccraw.raw.pipeline import develop_controlled
-from iccraw.version import __version__
+from nexoraw.core.recipe import load_recipe
+from nexoraw.raw.pipeline import develop_controlled
+from nexoraw.version import __version__
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

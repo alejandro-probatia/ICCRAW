@@ -9,7 +9,7 @@ from pathlib import Path
 
 root = Path(sys.argv[1])
 namespace = {}
-exec((root / "src" / "iccraw" / "version.py").read_text(encoding="utf-8"), namespace)
+exec((root / "src" / "nexoraw" / "version.py").read_text(encoding="utf-8"), namespace)
 print(namespace["__version__"])
 PY
 )}}"
@@ -117,7 +117,7 @@ import site
 print(site.getsitepackages()[0])
 PY
 )"
-"$VENV_DIR/bin/python" -m compileall -q "$SITE_PACKAGES/iccraw"
+"$VENV_DIR/bin/python" -m compileall -q "$SITE_PACKAGES/nexoraw"
 "$VENV_DIR/bin/python" -m compileall -q "$SITE_PACKAGES/nexoraw"
 rm -f "$VENV_DIR/bin/iccraw" "$VENV_DIR/bin/iccraw-ui"
 
@@ -161,8 +161,8 @@ Keywords=RAW;ICC;color;photography;forensics;
 StartupWMClass=nexoraw
 DESKTOP
 
-install -m 0644 "$ROOT/src/iccraw/resources/icons/nexoraw-icon.svg" "$BUILD_ROOT/usr/share/icons/hicolor/scalable/apps/nexoraw.svg"
-"$VENV_DIR/bin/python" - "$ROOT/src/iccraw/resources/icons/nexoraw-icon.png" "$BUILD_ROOT" <<'PY'
+install -m 0644 "$ROOT/src/nexoraw/resources/icons/nexoraw-icon.svg" "$BUILD_ROOT/usr/share/icons/hicolor/scalable/apps/nexoraw.svg"
+"$VENV_DIR/bin/python" - "$ROOT/src/nexoraw/resources/icons/nexoraw-icon.png" "$BUILD_ROOT" <<'PY'
 from pathlib import Path
 import sys
 

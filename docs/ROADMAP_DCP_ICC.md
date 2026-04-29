@@ -49,20 +49,20 @@ referencias al código. No anticipa funcionalidades futuras.
 
 ### 2.1 Layout y nombres
 
-- El paquete real de implementación es [src/iccraw/](../src/iccraw/).
+- El paquete real de implementación es [src/nexoraw/](../src/nexoraw/).
 - [src/nexoraw/](../src/nexoraw/) es un shim de compatibilidad
   ([src/nexoraw/__init__.py:1-9](../src/nexoraw/__init__.py)) durante el
   rename comercial del proyecto. **El roadmap propone alojar los nuevos
-  módulos en `src/iccraw/color/`** para no introducir un código
+  módulos en `src/nexoraw/color/`** para no introducir un código
   duplicado en `src/nexoraw/`. Si en el futuro se completa el rename,
   basta con re-exportar desde `nexoraw.color`.
 
 ### 2.2 Receta y guard científica
 
 - El modelo de receta es la dataclass `Recipe` en
-  [src/iccraw/core/models.py:59-82](../src/iccraw/core/models.py). Carga
-  YAML/JSON en [src/iccraw/core/recipe.py:11](../src/iccraw/core/recipe.py).
-- `scientific_guard()` ([src/iccraw/core/recipe.py:42-53](../src/iccraw/core/recipe.py))
+  [src/nexoraw/core/models.py:59-82](../src/nexoraw/core/models.py). Carga
+  YAML/JSON en [src/nexoraw/core/recipe.py:11](../src/nexoraw/core/recipe.py).
+- `scientific_guard()` ([src/nexoraw/core/recipe.py:42-53](../src/nexoraw/core/recipe.py))
   bloquea/avisa si en `profiling_mode=true` el usuario activa `denoise`,
   `sharpen`, `tone_curve` no lineal o `output_linear=false`.
 - La receta **no contiene** hoy campos para perfil de entrada de cámara,
@@ -73,7 +73,7 @@ referencias al código. No anticipa funcionalidades futuras.
 ### 2.3 Pipeline RAW → lineal
 
 - Punto de entrada: `develop_controlled()`
-  ([src/iccraw/raw/pipeline.py:62-94](../src/iccraw/raw/pipeline.py)).
+  ([src/nexoraw/raw/pipeline.py:62-94](../src/nexoraw/raw/pipeline.py)).
 - Dos ramas:
   - `develop_scene_linear_array` → LibRaw con `output_color=raw` para
     preservar **camera RGB** (modo perfil de sesión).
@@ -82,25 +82,25 @@ referencias al código. No anticipa funcionalidades futuras.
 - Render final aplica `exposure_compensation` y `tone_curve`
   (linear/srgb/gamma:N) en
   `render_recipe_output_array`
-  ([src/iccraw/raw/pipeline.py:154-167](../src/iccraw/raw/pipeline.py)).
+  ([src/nexoraw/raw/pipeline.py:154-167](../src/nexoraw/raw/pipeline.py)).
 - Demosaicing soportado por `LIBRAW_DEMOSAIC_MAP` (DCB por defecto, AMaZE
   bajo build GPL3).
 
 ### 2.4 Generación y validación de perfil ICC
 
 - ICC se construye con ArgyllCMS `colprof` desde muestras CGATS LAB/RGB
-  ([src/iccraw/profile/builder.py:32-110](../src/iccraw/profile/builder.py)).
+  ([src/nexoraw/profile/builder.py:32-110](../src/nexoraw/profile/builder.py)).
 - Perfiles ICC estándar de salida (sRGB, AdobeRGB, ProPhoto) en
-  [src/iccraw/profile/generic.py](../src/iccraw/profile/generic.py).
+  [src/nexoraw/profile/generic.py](../src/nexoraw/profile/generic.py).
 - Validación ΔE76/ΔE2000 con `xicclu` sobre el ICC real
-  (`validate_profile`, [src/iccraw/profile/builder.py:159-188](../src/iccraw/profile/builder.py)).
+  (`validate_profile`, [src/nexoraw/profile/builder.py:159-188](../src/nexoraw/profile/builder.py)).
 - La matriz `matrix_camera_to_xyz` se conserva como diagnóstico, no
   sustituye al ICC real (documentado en [docs/INTEGRACION_LIBRAW_ARGYLL.md:111-114](INTEGRACION_LIBRAW_ARGYLL.md)).
 
 ### 2.5 Modos de gestión de color (export)
 
 - `color_management_mode()`
-  ([src/iccraw/profile/export.py:439-456](../src/iccraw/profile/export.py))
+  ([src/nexoraw/profile/export.py:439-456](../src/nexoraw/profile/export.py))
   decide entre:
   - `camera_rgb_with_input_icc` (master TIFF de sesión).
   - `converted_srgb` / `converted_adobe_rgb` / `converted_prophoto_rgb`
@@ -109,31 +109,31 @@ referencias al código. No anticipa funcionalidades futuras.
     incrustado).
   - `no_profile` (sin ICC).
 - `write_signed_profiled_tiff()`
-  ([src/iccraw/profile/export.py:527](../src/iccraw/profile/export.py))
+  ([src/nexoraw/profile/export.py:527](../src/nexoraw/profile/export.py))
   encadena export + firma NexoRAW Proof + C2PA opcional.
 
 ### 2.6 Trazabilidad y auditoría
 
 - **Sidecar por RAW** `<file>.nexoraw.json`
-  ([src/iccraw/sidecar.py](../src/iccraw/sidecar.py), schema
+  ([src/nexoraw/sidecar.py](../src/nexoraw/sidecar.py), schema
   `org.probatia.nexoraw.raw-sidecar.v1`): incluye receta, perfil de
   desarrollo, modo de gestión de color, ruta y hash SHA-256 del ICC
   asociado.
-- **NexoRAW Proof** ([src/iccraw/provenance/nexoraw_proof.py](../src/iccraw/provenance/nexoraw_proof.py)):
+- **NexoRAW Proof** ([src/nexoraw/provenance/nexoraw_proof.py](../src/nexoraw/provenance/nexoraw_proof.py)):
   registra `color_management_mode`, `icc_profile_role`,
   `icc_profile_sha256`, `render_settings_sha256`, recipe completa y
   firma Ed25519. Es obligatorio para los TIFF finales.
-- **C2PA opcional** ([src/iccraw/provenance/c2pa.py](../src/iccraw/provenance/c2pa.py)):
+- **C2PA opcional** ([src/nexoraw/provenance/c2pa.py](../src/nexoraw/provenance/c2pa.py)):
   añade `_raw_color_pipeline_trace()` (líneas 407-450) con metadatos
   declarativos del pipeline (engine LibRaw/rawpy, pasos lineales,
   espacio de trabajo, transformación de display y de export).
 - **Manifest de batch** (dataclass `BatchManifest` en
-  [src/iccraw/core/models.py:226](../src/iccraw/core/models.py)):
+  [src/nexoraw/core/models.py:226](../src/nexoraw/core/models.py)):
   `recipe_sha256`, `profile_path`, `color_management_mode`, ICC final.
 
 ### 2.7 Display ICC
 
-- [src/iccraw/display_color.py](../src/iccraw/display_color.py) maneja
+- [src/nexoraw/display_color.py](../src/nexoraw/display_color.py) maneja
   el ICC del monitor exclusivamente para previsualización (Windows,
   macOS, Linux/colord). **El ICC de monitor no participa en revelado,
   master TIFF ni export** (invariante 9 en
@@ -162,7 +162,7 @@ Confirmado por inspección:
 
 ### 2.9 Lo que no debe romperse
 
-- El contrato `raw_developer: libraw` ([src/iccraw/raw/pipeline.py:111-113](../src/iccraw/raw/pipeline.py))
+- El contrato `raw_developer: libraw` ([src/nexoraw/raw/pipeline.py:111-113](../src/nexoraw/raw/pipeline.py))
   y la matriz de demosaicing soportada.
 - Las invariantes 1-9 del pipeline en
   [docs/COLOR_PIPELINE.md:44-66](COLOR_PIPELINE.md), en particular la
@@ -180,13 +180,14 @@ Confirmado por inspección:
 
 ## 3. Arquitectura objetivo
 
-Se proponen módulos nuevos en `src/iccraw/color/` (no en `src/nexoraw/`,
-porque hoy el paquete real es `iccraw`). Cuando el rename a `nexoraw` se
-complete, se añade un shim `src/nexoraw/color/__init__.py` que reexporta.
+Si se retoma este trabajo, los módulos nuevos deberían vivir dentro de
+`src/nexoraw/color/`, alineados con el paquete real actual. No se debe añadir
+un shim antiguo: cualquier ampliación debe integrarse directamente en
+`nexoraw`.
 
 ### 3.1 Módulos
 
-#### `src/iccraw/color/dcp.py`
+#### `src/nexoraw/color/dcp.py`
 
 Responsabilidades:
 
@@ -212,14 +213,14 @@ Responsabilidades:
   En fases iniciales puede estar `NotImplementedError`; debe declararse
   explícitamente que aún no se aplica.
 
-#### `src/iccraw/color/icc.py`
+#### `src/nexoraw/color/icc.py`
 
 Responsabilidades:
 
 - Centralizar lectura/escritura/inspección de ICC ya repartidos por
-  [profile/builder.py](../src/iccraw/profile/builder.py),
-  [profile/export.py](../src/iccraw/profile/export.py) y
-  [profile/generic.py](../src/iccraw/profile/generic.py). No reescribirlos:
+  [profile/builder.py](../src/nexoraw/profile/builder.py),
+  [profile/export.py](../src/nexoraw/profile/export.py) y
+  [profile/generic.py](../src/nexoraw/profile/generic.py). No reescribirlos:
   exponer fachadas estables (`describe(path)`, `sha256(path)`,
   `embed(tiff_bytes, icc_bytes)`) y consolidar la API que usa el resto.
 - Ofrecer `assign_icc(image, icc_path)` y `convert_icc(image, src_icc, dst_icc)`
@@ -230,7 +231,7 @@ Responsabilidades:
   pueda decidir si un fichero es válido como `camera_input`,
   `session`, `output` o `display`.
 
-#### `src/iccraw/color/profile_registry.py`
+#### `src/nexoraw/color/profile_registry.py`
 
 Responsabilidades:
 
@@ -256,7 +257,7 @@ Responsabilidades:
   en una estructura serializable que se incrusta en el sidecar y en
   NexoRAW Proof.
 
-#### `src/iccraw/color/color_pipeline.py`
+#### `src/nexoraw/color/color_pipeline.py`
 
 Responsabilidades:
 
@@ -273,11 +274,11 @@ Responsabilidades:
 - Genera el bloque `color_pipeline_trace` que se embebe en sidecar,
   NexoRAW Proof y C2PA. Sustituye/extiende el actual
   `_raw_color_pipeline_trace()`
-  ([src/iccraw/provenance/c2pa.py:407-450](../src/iccraw/provenance/c2pa.py))
+  ([src/nexoraw/provenance/c2pa.py:407-450](../src/nexoraw/provenance/c2pa.py))
   con los nuevos campos (DCP, política, componentes aplicados/omitidos).
 - No reimplementa lo que ya existe: delega revelado en
-  `iccraw.raw.pipeline`, ICC build/validate en `iccraw.profile.builder`
-  y CMM/export en `iccraw.profile.export`.
+  `nexoraw.raw.pipeline`, ICC build/validate en `nexoraw.profile.builder`
+  y CMM/export en `nexoraw.profile.export`.
 
 ### 3.2 Recipe extensions (declarativas, opcionales, aditivas)
 
@@ -353,7 +354,7 @@ contendría datos calibrados para un monitor específico, no para un
 flujo formal de color. Esto rompería interoperabilidad, validación
 ΔE y trazabilidad. NexoRAW ya documenta esta invariante en
 [docs/COLOR_PIPELINE.md:64-66](COLOR_PIPELINE.md) y la separa en
-[src/iccraw/display_color.py](../src/iccraw/display_color.py); el
+[src/nexoraw/display_color.py](../src/nexoraw/display_color.py); el
 roadmap la mantiene literal.
 
 ---
@@ -437,7 +438,7 @@ romper recetas existentes.
 
 - Añadir `camera_input_profile`, `session_profile`, `output_profile`,
   `display_profile`, `dcp_policy` a `Recipe` y a su normalizador
-  ([src/iccraw/core/recipe.py](../src/iccraw/core/recipe.py)).
+  ([src/nexoraw/core/recipe.py](../src/nexoraw/core/recipe.py)).
 - Si todos los campos nuevos están vacíos, NexoRAW se comporta exactamente
   como hoy.
 - Validar mutuamente excluyentes (no se puede declarar `kind: dcp` con
@@ -454,10 +455,10 @@ Entregable: campos en `Recipe` + tests YAML/JSON + esquemas de error.
 Objetivo: tener un único punto de resolución de perfiles, con hashes y
 warnings.
 
-- Crear [src/iccraw/color/profile_registry.py](../src/iccraw/color/profile_registry.py)
+- Crear [src/nexoraw/color/profile_registry.py](../src/nexoraw/color/profile_registry.py)
   (no existe hoy).
 - Indexar `cameras.yaml` (en
-  `src/iccraw/resources/profiles/cameras.yaml` o similar). Inicialmente
+  `src/nexoraw/resources/profiles/cameras.yaml` o similar). Inicialmente
   vacío; el usuario añade entradas.
 - API mínima: `resolve_camera_input`, `register_profile`,
   `verify_sha256`, `list_profiles_for(make, model)`.
@@ -474,7 +475,7 @@ ningún DCP**.
 Objetivo: poder declarar y verificar un DCP en la receta sin
 aplicarlo todavía.
 
-- Crear [src/iccraw/color/dcp.py](../src/iccraw/color/dcp.py).
+- Crear [src/nexoraw/color/dcp.py](../src/nexoraw/color/dcp.py).
 - Implementar `load(path) -> DcpProfile` mínimo: parsear estructura
   DCP, exponer metadatos (nombre, cámara, iluminantes), calcular
   `unique_id_sha256`.
@@ -565,7 +566,7 @@ incluso con DCP en juego.
     sustituye al ICC en el archivo final.*
   - 11. *El ICC de monitor sigue siendo preview-only.*
 - Auditar `write_profiled_tiff` y `_write_converted_output_tiff_with_argyll`
-  ([src/iccraw/profile/export.py:473-708](../src/iccraw/profile/export.py))
+  ([src/nexoraw/profile/export.py:473-708](../src/nexoraw/profile/export.py))
   para asegurar que la incrustación ICC sigue siendo bytewise idéntica
   con/sin DCP.
 - Tests que verifiquen embedded ICC en TIFF/JPEG/PNG.
@@ -585,7 +586,7 @@ Entregable: tests de invariantes + nota en COLOR_PIPELINE.md.
   - "SHA-256 del DCP no coincide con el registrado"
   - "Modo visual seleccionado: se aplicarán transformaciones perceptuales"
 
-Entregable: ampliación de [src/iccraw/cli.py](../src/iccraw/cli.py) +
+Entregable: ampliación de [src/nexoraw/cli.py](../src/nexoraw/cli.py) +
 tests de invocación + ayuda actualizada.
 
 ### FASE 9 — GUI
@@ -625,7 +626,7 @@ Entregable: `tests/test_dcp_*.py`, `tests/test_color_pipeline.py`,
 - Actualizar [docs/COLOR_PIPELINE.md](COLOR_PIPELINE.md) y su
   versión `.es.md` con el nuevo modelo de cuatro perfiles.
 - Actualizar [docs/ARCHITECTURE.md](ARCHITECTURE.md) con los nuevos
-  módulos `iccraw.color.*`.
+  módulos `nexoraw.color.*`.
 - Añadir ejemplos de receta YAML en `examples/recipes/dcp_*.yml`.
 - Añadir explicación DCP vs ICC reusable como referencia.
 - Documentar advertencias metodológicas (subconjunto del DCP soportado,
@@ -662,15 +663,15 @@ Entregable: informe técnico + dataset (o referencias al dataset).
 
 - Lectura/escritura ICC, embed en TIFF, conversión CMM con Argyll
   `cctiff`/`xicclu`, build con `colprof`. Todo presente
-  ([src/iccraw/profile/builder.py](../src/iccraw/profile/builder.py),
-  [src/iccraw/profile/export.py](../src/iccraw/profile/export.py)).
+  ([src/nexoraw/profile/builder.py](../src/nexoraw/profile/builder.py),
+  [src/nexoraw/profile/export.py](../src/nexoraw/profile/export.py)).
 - Lectura RAW lineal con LibRaw/rawpy
-  ([src/iccraw/raw/pipeline.py](../src/iccraw/raw/pipeline.py)).
+  ([src/nexoraw/raw/pipeline.py](../src/nexoraw/raw/pipeline.py)).
 - Auditoría JSON, sidecar, NexoRAW Proof
-  ([src/iccraw/sidecar.py](../src/iccraw/sidecar.py),
-  [src/iccraw/provenance/nexoraw_proof.py](../src/iccraw/provenance/nexoraw_proof.py)).
+  ([src/nexoraw/sidecar.py](../src/nexoraw/sidecar.py),
+  [src/nexoraw/provenance/nexoraw_proof.py](../src/nexoraw/provenance/nexoraw_proof.py)).
 - Display ICC preview con LittleCMS/ImageCms
-  ([src/iccraw/display_color.py](../src/iccraw/display_color.py)).
+  ([src/nexoraw/display_color.py](../src/nexoraw/display_color.py)).
 
 ### 7.2 Requiere rawpy/LibRaw
 

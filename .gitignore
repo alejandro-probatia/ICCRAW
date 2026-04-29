@@ -11,6 +11,13 @@ __pycache__/
 .DS_Store
 /tmp/
 /config/
+/charts/
+/exports/
+/profiles/
+/raw/
+/work/
+/tests_py/
+/src/icc_entrada/
 *.swp
 *.swo
 .claude/

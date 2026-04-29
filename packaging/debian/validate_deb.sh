@@ -8,7 +8,7 @@ from pathlib import Path
 
 root = Path(sys.argv[1])
 namespace = {}
-exec((root / "src" / "iccraw" / "version.py").read_text(encoding="utf-8"), namespace)
+exec((root / "src" / "nexoraw" / "version.py").read_text(encoding="utf-8"), namespace)
 print(namespace["__version__"])
 PY
 )}"

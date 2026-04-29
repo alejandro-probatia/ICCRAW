@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from iccraw.cli import main as cli_main
-from iccraw.core.models import read_json, write_json
-from iccraw.qa_compare import compare_qa_reports
+from nexoraw.cli import main as cli_main
+from nexoraw.core.models import read_json, write_json
+from nexoraw.qa_compare import compare_qa_reports
 
 
 def test_compare_qa_reports_ranks_and_deltas(tmp_path: Path):

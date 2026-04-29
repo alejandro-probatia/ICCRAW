@@ -62,7 +62,7 @@ they should point to `nexoraw-ui.exe` and use the `nexoraw-icon.ico` icon.
 1. Run project tests.
 2. Run performance/GUI benchmarks when previewed,
    RAW pipeline, cache or parallelism.
-3. Update `src/iccraw/version.py`, `CHANGELOG.md`, README and documentation
+3. Update `src/nexoraw/version.py`, `CHANGELOG.md`, README and documentation
    of installers.
 4. Build installers from versioned scripts, not manually.
 5. Run validations for each platform.

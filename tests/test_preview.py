@@ -6,10 +6,10 @@ import numpy as np
 import tifffile
 import colour
 
-from iccraw.core.models import Recipe
-from iccraw.profile.export import apply_profile_matrix
-import iccraw.raw.preview as preview_module
-from iccraw.raw.preview import (
+from nexoraw.core.models import Recipe
+from nexoraw.profile.export import apply_profile_matrix
+import nexoraw.raw.preview as preview_module
+from nexoraw.raw.preview import (
     _camera_rgb_display_balance_if_needed,
     apply_adjustments,
     apply_lateral_chromatic_aberration,

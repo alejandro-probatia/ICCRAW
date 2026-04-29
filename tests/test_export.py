@@ -5,11 +5,11 @@ import numpy as np
 import pytest
 import tifffile
 
-import iccraw.profile.export as export_module
-from iccraw.core.models import Recipe
-from iccraw.core.external import external_tool_path
-from iccraw.core.utils import read_image
-from iccraw.profile.export import (
+import nexoraw.profile.export as export_module
+from nexoraw.core.models import Recipe
+from nexoraw.core.external import external_tool_path
+from nexoraw.core.utils import read_image
+from nexoraw.profile.export import (
     _argyll_reference_profile,
     _resolve_batch_workers,
     _versioned_batch_paths,
@@ -17,9 +17,9 @@ from iccraw.profile.export import (
     color_management_mode,
     write_profiled_tiff,
 )
-from iccraw.profile.generic import ensure_generic_output_profile
-from iccraw.provenance.c2pa import C2PASignConfig
-from iccraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity, verify_nexoraw_proof
+from nexoraw.profile.generic import ensure_generic_output_profile
+from nexoraw.provenance.c2pa import C2PASignConfig
+from nexoraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity, verify_nexoraw_proof
 
 
 class FakeC2PAClient:
@@ -274,7 +274,6 @@ def test_resolve_batch_workers_accepts_auto_keywords(monkeypatch):
 
 def test_resolve_batch_workers_auto_limits_by_memory(monkeypatch):
     monkeypatch.delenv("NEXORAW_BATCH_WORKERS", raising=False)
-    monkeypatch.delenv("ICCRAW_BATCH_WORKERS", raising=False)
     monkeypatch.delenv("NEXORAW_BATCH_MEMORY_RESERVE_MB", raising=False)
     monkeypatch.delenv("NEXORAW_BATCH_WORKER_RAM_MB", raising=False)
     monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 16)
@@ -286,7 +285,6 @@ def test_resolve_batch_workers_auto_limits_by_memory(monkeypatch):
 
 def test_resolve_batch_workers_auto_honours_memory_env_tuning(monkeypatch):
     monkeypatch.delenv("NEXORAW_BATCH_WORKERS", raising=False)
-    monkeypatch.delenv("ICCRAW_BATCH_WORKERS", raising=False)
     monkeypatch.setenv("NEXORAW_BATCH_MEMORY_RESERVE_MB", "512")
     monkeypatch.setenv("NEXORAW_BATCH_WORKER_RAM_MB", "512")
     monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 12)
@@ -399,7 +397,7 @@ def test_argyll_reference_profile_searches_debian_share_path(tmp_path: Path, mon
     tool.write_text("", encoding="utf-8")
     profile.write_bytes(b"profile")
 
-    import iccraw.profile.export as export_module
+    import nexoraw.profile.export as export_module
 
     monkeypatch.setattr(export_module, "external_tool_path", lambda command: str(tool) if command == "cctiff" else None)
 

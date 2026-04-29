@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 
-from iccraw.core.models import Recipe
-from iccraw.core.utils import sha256_file
-from iccraw.profile.export import batch_develop
-from iccraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity
+from nexoraw.core.models import Recipe
+from nexoraw.core.utils import sha256_file
+from nexoraw.profile.export import batch_develop
+from nexoraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity
 
 
 def _proof_config(tmp_path: Path) -> NexoRawProofConfig:

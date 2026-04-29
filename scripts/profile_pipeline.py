@@ -22,7 +22,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--out-dir", default=".", help="Directorio donde escribir profile.txt/profile.svg")
     parser.add_argument("--top", type=int, default=60, help="Numero de funciones en profile.txt")
     parser.add_argument("--no-py-spy", action="store_true", help="No intenta generar flamegraph con py-spy")
-    parser.add_argument("command", nargs=argparse.REMAINDER, help="Comando y argumentos para iccraw.cli")
+    parser.add_argument("command", nargs=argparse.REMAINDER, help="Comando y argumentos para nexoraw.cli")
     args = parser.parse_args()
     if args.command and args.command[0] == "--":
         args.command = args.command[1:]
@@ -32,7 +32,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def run_with_cprofile(argv: list[str], *, out_dir: Path, top: int) -> Path:
-    from iccraw.cli import main
+    from nexoraw.cli import main
 
     out_dir.mkdir(parents=True, exist_ok=True)
     profile_path = out_dir / "profile.txt"

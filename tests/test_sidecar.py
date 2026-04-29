@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from iccraw.core.models import Recipe
-from iccraw.sidecar import RAW_SIDECAR_SCHEMA, load_raw_sidecar, raw_sidecar_path, write_raw_sidecar
+from nexoraw.core.models import Recipe
+from nexoraw.sidecar import RAW_SIDECAR_SCHEMA, load_raw_sidecar, raw_sidecar_path, write_raw_sidecar
 
 
 def test_write_raw_sidecar_records_recipe_profile_and_output(tmp_path: Path):

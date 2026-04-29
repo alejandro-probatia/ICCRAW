@@ -6,9 +6,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from iccraw.core.models import PatchSample, Recipe, SampleSet, write_json
-from iccraw.profile.builder import build_profile, validate_profile, write_samples_cgats
-import iccraw.profile.builder as profiling
+from nexoraw.core.models import PatchSample, Recipe, SampleSet, write_json
+from nexoraw.profile.builder import build_profile, validate_profile, write_samples_cgats
+import nexoraw.profile.builder as profiling
 
 
 def test_build_profile_generates_icc_and_sidecar(tmp_path: Path, monkeypatch):

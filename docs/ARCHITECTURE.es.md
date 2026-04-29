@@ -17,13 +17,14 @@ Gobernanza y licencia:
 
 ## Layout del paquete
 
-El código vive en `src/iccraw/`, organizado por dominio para permitir crecer sin archivos flat de tamaño desbordante:
+El código vive en `src/nexoraw/`, organizado por dominio para permitir crecer sin archivos flat de tamaño desbordante:
 
 ```text
-src/iccraw/
+src/nexoraw/
   __init__.py, __main__.py, version.py
   cli.py                       # interfaz de línea de comandos
-  gui.py                       # interfaz gráfica Qt/PySide6
+  gui.py                       # ventana principal Qt/PySide6 y orquestación de UI
+  gui_config.py                # constantes visuales, cache y compatibilidad de GUI
   workflow.py                  # orquestación end-to-end
   session.py                   # modelo y persistencia de sesiones
   sidecar.py                   # mochilas RAW.nexoraw.json por imagen
@@ -50,6 +51,30 @@ src/iccraw/
     builder.py                 # build_profile / validate_profile (ArgyllCMS)
     generic.py                 # perfiles ICC genericos para flujos sin carta
     export.py                  # batch_develop + export ICC/CMM + matriz diagnostica
+
+  ui/                          # widgets Qt reutilizables, sin lógica de sesión
+    widgets.py                 # visor de imagen, histograma y curva tonal
+    window/                    # comportamiento de NexoRawMainWindow por dominio
+      layout.py                # menús, pestañas y paneles principales
+      control_panels.py        # pestañas de controles de revelado/exportación
+      settings.py              # diálogo global, idioma, firmas y color monitor
+      display.py               # utilidades visuales, ajustes y color de pantalla
+      session.py               # fachada de sesión
+      session_paths.py         # rutas de proyecto, referencias y salidas
+      session_development.py   # perfiles de ajuste y sidecars RAW
+      session_state.py         # snapshot, activación, creación y guardado
+      session_queue.py         # tabla y proceso de cola
+      browser.py               # explorador, miniaturas, cachés y metadatos
+      preview.py               # fachada de preview
+      preview_menu.py          # acciones de menú, ayuda, QA y recetas
+      preview_recipe.py        # controles de receta, histograma y curva tonal
+      preview_cache.py         # claves y cache de preview
+      preview_load.py          # carga de imagen y precache visible
+      preview_render.py        # preview interactivo, ICC y refresco final
+      preview_export.py        # guardar preview y revelado individual
+      profile.py               # selección de carta, perfilado ICC y marcado manual
+      batch.py                 # revelado por lotes y exportación firmada
+      tasks.py                 # tareas de fondo, monitor y estado global
 ```
 
 ## Estructura de proyecto
@@ -74,6 +99,8 @@ como `raw/captura.NEF` contra `01_ORG/captura.NEF` cuando existe el archivo.
 - `raw/` y `chart/` dependen sólo de `core/`.
 - `profile/` depende de `core/` y `raw/`.
 - `workflow.py`, `cli.py`, `gui.py` orquestan — pueden importar de cualquier subpaquete, nunca al revés.
+- `ui/` sólo contiene widgets y controles reutilizables; no debe conocer rutas de sesión ni ejecutar procesos RAW.
+- `ui/window/` divide la ventana principal en mixins por responsabilidad; cada módulo puede depender del dominio, pero evita crear lógica nueva dentro de `gui.py`.
 - `session.py` y `reporting.py` son standalone.
 
 ## Perfil ICC

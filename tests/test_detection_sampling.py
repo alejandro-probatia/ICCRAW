@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 import tifffile
 
-from iccraw.chart.detection import detect_chart, detect_chart_from_corners
-from iccraw.chart.sampling import ReferenceCatalog, sample_chart
-from iccraw.core.models import ChartDetectionResult, PatchDetection, Point2
+from nexoraw.chart.detection import detect_chart, detect_chart_from_corners
+from nexoraw.chart.sampling import ReferenceCatalog, sample_chart
+from nexoraw.core.models import ChartDetectionResult, PatchDetection, Point2
 
 
 def test_detect_chart_marks_fallback_as_low_confidence(tmp_path: Path):

@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+import os
+from importlib import resources
+from pathlib import Path
+
+from .core.utils import RAW_EXTENSIONS
+
+IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+BROWSABLE_EXTENSIONS = RAW_EXTENSIONS.union(IMAGE_EXTENSIONS)
+PROFILE_CHART_EXTENSIONS = RAW_EXTENSIONS.union({".tif", ".tiff"})
+PROFILE_REFERENCE_FORBIDDEN_DIRS = {
+    "exports": "exportaciones TIFF",
+    "work": "intermedios de trabajo",
+    "profiles": "perfiles ICC",
+    "config": "configuracion",
+}
+
+LAYOUT_VERSION = 4
+APP_NAME = "NexoRAW"
+ORG_NAME = "NexoRAW"
+APP_ICON_RESOURCE = "icons/nexoraw-icon.png"
+PROJECT_DIRECTOR_NAME = (
+    os.environ.get("NEXORAW_PROJECT_DIRECTOR", "Alejandro Probatia").strip()
+    or "Alejandro Probatia"
+)
+
+DEFAULT_THUMBNAIL_SIZE = 132
+MIN_THUMBNAIL_SIZE = 72
+MAX_THUMBNAIL_SIZE = 220
+PREVIEW_CACHE_MAX_ENTRIES = 8
+PREVIEW_CACHE_MAX_BYTES = 384 * 1024 * 1024
+PREVIEW_DISK_CACHE_MAX_ENTRIES = 48
+PREVIEW_DISK_CACHE_MAX_BYTES = 2 * 1024 * 1024 * 1024
+THUMBNAIL_CACHE_MAX_ENTRIES = 512
+THUMBNAIL_DISK_CACHE_MAX_ENTRIES = 4096
+THUMBNAIL_DISK_CACHE_MAX_BYTES = 512 * 1024 * 1024
+THUMBNAIL_DISK_PRUNE_INTERVAL_WRITES = 512
+THUMBNAIL_BATCH_SIZE = 48
+THUMBNAIL_PREFETCH_MARGIN_PAGES = 2
+
+PREVIEW_REFRESH_DEBOUNCE_MS = 120
+PREVIEW_REFRESH_THROTTLE_MS = 65
+PREVIEW_AUTO_BASE_MAX_SIDE = 2600
+PREVIEW_INTERACTIVE_MAX_SIDE = 1200
+PREVIEW_INTERACTIVE_DRAG_MAX_SIDE = 720
+PREVIEW_INTERACTIVE_TONAL_MAX_SIDE = 560
+PREVIEW_PRECISION_MIN_MAX_SIDE = 6000
+PREVIEW_PROFILE_CACHE_MAX_ENTRIES = 8
+PREVIEW_PROFILE_APPLY_MAX_SIDE = 1400
+PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC_ENV = "NEXORAW_PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC"
+
+IMAGE_PANEL_BACKGROUND = "#2b2b2b"
+IMAGE_PANEL_BORDER = "#5a5a5a"
+IMAGE_PANEL_TEXT = "#e6e6e6"
+VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS = 320000
+VIEWER_HISTOGRAM_SHADOW_CLIP_U8 = 1
+VIEWER_HISTOGRAM_HIGHLIGHT_CLIP_U8 = 254
+VIEWER_HISTOGRAM_CLIP_ALERT_RATIO = 5e-4
+
+LEGACY_PROJECT_DIR_RENAMES = {
+    "charts": Path("01_ORG"),
+    "raw": Path("01_ORG"),
+    "exports": Path("02_DRV"),
+    "config": Path("00_configuraciones"),
+    "profiles": Path("00_configuraciones") / "profiles",
+    "work": Path("00_configuraciones") / "work",
+}
+
+SETTINGS_DIR_ENV = "NEXORAW_SETTINGS_DIR"
+
+DEMOSAIC_OPTIONS = [
+    ("DCB (LibRaw, alta calidad)", "dcb"),
+    ("DHT", "dht"),
+    ("AHD", "ahd"),
+    ("AAHD", "aahd"),
+    ("VNG", "vng"),
+    ("PPG", "ppg"),
+    ("Lineal", "linear"),
+    ("AMaZE (GPL3)", "amaze"),
+]
+PREVIEW_BALANCED_DEMOSAIC_ORDER = ("dcb", "ahd", "dht", "aahd", "ppg", "vng", "linear")
+
+ILLUMINANT_OPTIONS = [
+    ("A / tungsteno (2856 K)", 2856, 0),
+    ("D50 (5003 K)", 5003, 0),
+    ("D55 (5503 K)", 5503, 0),
+    ("Flash / D55 (5500 K)", 5500, 0),
+    ("D60 (6000 K)", 6000, 0),
+    ("D65 (6504 K)", 6504, 0),
+    ("D75 (7504 K)", 7504, 0),
+    ("Personalizado", None, None),
+]
+
+WB_MODE_OPTIONS = [
+    ("Fijo (multiplicadores manuales)", "fixed"),
+    ("Desde metadatos de camara", "camera_metadata"),
+]
+
+BLACK_MODE_OPTIONS = [
+    ("Metadata", "metadata"),
+    ("Fijo", "fixed"),
+    ("White level", "white"),
+]
+
+TONE_OPTIONS = [
+    ("Lineal", "linear"),
+    ("sRGB", "srgb"),
+    ("Gamma", "gamma"),
+]
+
+TONE_CURVE_PRESETS: list[tuple[str, str, list[tuple[float, float]]]] = [
+    ("Lineal", "linear", [(0.0, 0.0), (1.0, 1.0)]),
+    (
+        "Contraste suave",
+        "soft_contrast",
+        [(0.0, 0.0), (0.24, 0.18), (0.50, 0.50), (0.76, 0.84), (1.0, 1.0)],
+    ),
+    (
+        "Similar a película",
+        "film_like",
+        [(0.0, 0.0), (0.06, 0.015), (0.22, 0.18), (0.52, 0.66), (0.82, 0.92), (1.0, 1.0)],
+    ),
+    (
+        "Sombras levantadas",
+        "lift_shadows",
+        [(0.0, 0.0), (0.14, 0.20), (0.45, 0.50), (0.78, 0.82), (1.0, 1.0)],
+    ),
+    (
+        "Alto contraste",
+        "high_contrast",
+        [(0.0, 0.0), (0.18, 0.09), (0.50, 0.50), (0.82, 0.93), (1.0, 1.0)],
+    ),
+    ("Personalizada", "custom", [(0.0, 0.0), (1.0, 1.0)]),
+]
+
+SPACE_OPTIONS = [
+    "scene_linear_camera_rgb",
+    "srgb",
+    "adobe_rgb",
+    "prophoto_rgb",
+    "camera_rgb",
+]
+CAMERA_OUTPUT_SPACES = {"scene_linear_camera_rgb", "camera_rgb", "camera"}
+
+SAMPLE_OPTIONS = [
+    "trimmed_mean",
+    "median",
+]
+
+FILTER_MODE_OPTIONS = [
+    "off",
+    "mild",
+    "medium",
+    "strong",
+]
+
+PROFILE_ALGO_OPTIONS = [
+    ("shaper+matrix (-as)", "-as"),
+    ("gamma+matrix (-ag)", "-ag"),
+    ("matrix only (-am)", "-am"),
+    ("Lab cLUT (-al)", "-al"),
+    ("XYZ cLUT (-ax)", "-ax"),
+]
+
+PROFILE_QUALITY_OPTIONS = [
+    ("Low", "l"),
+    ("Medium", "m"),
+    ("High", "h"),
+    ("Ultra", "u"),
+]
+
+PROFILE_FORMAT_OPTIONS = [".icc", ".icm"]
+
+LEGACY_TEMP_OUTPUT_NAMES = {
+    "camera_profile.icc",
+    "camera_profile_gui.icc",
+    "profile_report_gui.json",
+    "nexoraw_profile_work",
+    "development_profile_gui.json",
+    "recipe_calibrated_gui.yml",
+    "nexoraw_preview.png",
+    "nexoraw_batch_tiffs",
+}
+
+
+def _app_icon_path() -> Path | None:
+    try:
+        path = resources.files("nexoraw.resources").joinpath(APP_ICON_RESOURCE)
+    except Exception:
+        return None
+    if not path.is_file():
+        return None
+    return Path(str(path))
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return bool(default)
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)

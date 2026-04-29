@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from iccraw.core.models import Recipe
-from iccraw.core.recipe import load_recipe, scientific_guard
+from nexoraw.core.models import Recipe
+from nexoraw.core.recipe import load_recipe, scientific_guard
 
 
 def test_recipe_default_scientific_safe():

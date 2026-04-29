@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+from ._imports import *  # noqa: F401,F403
+
+
+class TaskStatusMixin:
+    def _start_background_task(self, label: str, task, on_success) -> None:
+        self._set_status(self.tr("Ejecutando:") + f" {label}")
+        task_row = self._monitor_task_start(label)
+        thread = TaskThread(task)
+        self._threads.append(thread)
+
+        def cleanup() -> None:
+            if thread in self._threads:
+                self._threads.remove(thread)
+            thread.deleteLater()
+
+        def ok(payload) -> None:
+            try:
+                on_success(payload)
+                self._set_status(self.tr("Completado:") + f" {label}")
+                self._monitor_task_finish(task_row, self.tr("Completado"), "OK")
+            finally:
+                cleanup()
+
+        def fail(trace: str) -> None:
+            cleanup()
+            self._log_preview(trace[-1200:])
+            self._set_status(self.tr("Error en:") + f" {label}")
+            self._monitor_task_finish(task_row, self.tr("Error"), trace.strip().splitlines()[-1] if trace.strip() else self.tr("Error"))
+            QtWidgets.QMessageBox.critical(self, self.tr("Error"), trace[-4000:])
+
+        thread.succeeded.connect(ok)
+        thread.failed.connect(fail)
+        thread.start()
+
+    def _log_preview(self, text: str) -> None:
+        self.preview_log.appendPlainText(text)
+        self.monitor_log.appendPlainText(text)
+
+    def _monitor_task_start(self, label: str) -> int:
+        self._task_counter += 1
+        self._active_tasks += 1
+
+        row = self.monitor_tasks.rowCount()
+        self.monitor_tasks.insertRow(row)
+        self.monitor_tasks.setItem(row, 0, QtWidgets.QTableWidgetItem(str(self._task_counter)))
+        self.monitor_tasks.setItem(row, 1, QtWidgets.QTableWidgetItem(label))
+        self.monitor_tasks.setItem(row, 2, QtWidgets.QTableWidgetItem("En curso"))
+        self.monitor_tasks.setItem(row, 3, QtWidgets.QTableWidgetItem(""))
+        self.monitor_tasks.scrollToBottom()
+
+        self.monitor_status_label.setText(f"Ejecutando: {label}")
+        self.monitor_progress.setRange(0, 0)
+        if hasattr(self, "global_status_label"):
+            self.global_status_label.setText(f"Ejecutando: {label}")
+            self.global_progress.setRange(0, 0)
+        return row
+
+    def _monitor_task_finish(self, row: int, status: str, detail: str) -> None:
+        self._active_tasks = max(0, self._active_tasks - 1)
+        self.monitor_tasks.setItem(row, 2, QtWidgets.QTableWidgetItem(status))
+        self.monitor_tasks.setItem(row, 3, QtWidgets.QTableWidgetItem(detail))
+        self.monitor_tasks.scrollToBottom()
+
+        if self._active_tasks == 0:
+            self.monitor_progress.setRange(0, 1)
+            self.monitor_progress.setValue(1 if status == "Completado" else 0)
+            self.monitor_status_label.setText(self.tr("Sin tareas en ejecucion"))
+            if hasattr(self, "global_status_label"):
+                self.global_progress.setRange(0, 1)
+                self.global_progress.setValue(1 if status == "Completado" else 0)
+                self.global_status_label.setText(f"{status}: {detail}")
+                QtCore.QTimer.singleShot(1800, self._reset_global_progress_if_idle)
+
+    def _reset_global_progress_if_idle(self) -> None:
+        if self._active_tasks != 0 or not hasattr(self, "global_status_label"):
+            return
+        self.global_status_label.setText(self.tr("Listo"))
+        self.global_progress.setRange(0, 1)
+        self.global_progress.setValue(0)
+
+    def _setup_interactive_preview_status_widgets(self) -> None:
+        self._interactive_preview_spinner = QtWidgets.QProgressBar()
+        self._interactive_preview_spinner.setTextVisible(False)
+        self._interactive_preview_spinner.setRange(0, 1)
+        self._interactive_preview_spinner.setValue(0)
+        self._interactive_preview_spinner.setFixedWidth(84)
+        self._interactive_preview_spinner.setMaximumHeight(9)
+        self._interactive_preview_time_label = QtWidgets.QLabel(self.tr("Ultimo ajuste: -- ms"))
+        self._interactive_preview_time_label.setStyleSheet("color: #4b5563;")
+        status = self.statusBar()
+        status.addPermanentWidget(self._interactive_preview_spinner)
+        status.addPermanentWidget(self._interactive_preview_time_label)
+
+    def _set_interactive_preview_busy(self, busy: bool) -> None:
+        spinner = getattr(self, "_interactive_preview_spinner", None)
+        if spinner is not None:
+            if busy:
+                spinner.setRange(0, 0)
+            else:
+                spinner.setRange(0, 1)
+                spinner.setValue(0)
+        label = getattr(self, "_interactive_preview_time_label", None)
+        if label is not None and bool(busy):
+            label.setText(self.tr("Ajustando..."))
+        elif label is not None:
+            self._update_interactive_preview_time_label()
+
+    def _update_interactive_preview_time_label(self) -> None:
+        label = getattr(self, "_interactive_preview_time_label", None)
+        if label is None:
+            return
+        if self._interactive_preview_last_ms is None:
+            label.setText(self.tr("Ultimo ajuste: -- ms"))
+            return
+        label.setText(self.tr("Ultimo ajuste:") + f" {int(round(self._interactive_preview_last_ms))} ms")
+
+    def _set_status(self, text: str) -> None:
+        self.statusBar().showMessage(text, 8000)

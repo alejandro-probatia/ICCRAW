@@ -23,9 +23,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6 import QtCore, QtWidgets  # noqa: E402
 
-from iccraw.core.models import Recipe  # noqa: E402
-from iccraw.gui import ICCRawMainWindow, normalize_tone_curve_points  # noqa: E402
-from iccraw.raw.pipeline import develop_scene_linear_array  # noqa: E402
+from nexoraw.core.models import Recipe  # noqa: E402
+from nexoraw.gui import ICCRawMainWindow, normalize_tone_curve_points  # noqa: E402
+from nexoraw.raw.pipeline import develop_scene_linear_array  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -230,7 +230,7 @@ def run_tone_curve_drag(
 def main() -> int:
     args = parse_args()
     settings_dir = Path(tempfile.gettempdir()) / "nexoraw_gui_benchmark_settings"
-    os.environ.setdefault("ICCRAW_SETTINGS_DIR", str(settings_dir))
+    os.environ.setdefault("NEXORAW_SETTINGS_DIR", str(settings_dir))
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     image, source_info = load_source(args)

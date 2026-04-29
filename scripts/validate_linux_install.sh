@@ -54,7 +54,7 @@ fi
 
 QT_QPA_PLATFORM=offscreen /opt/nexoraw/venv/bin/python - <<'PY'
 from PySide6 import QtWidgets
-from iccraw.gui import _app_icon, _app_icon_path
+from nexoraw.gui import _app_icon, _app_icon_path
 
 app = QtWidgets.QApplication([])
 icon = _app_icon()

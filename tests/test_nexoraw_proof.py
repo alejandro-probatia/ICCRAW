@@ -2,10 +2,10 @@ from pathlib import Path
 
 import numpy as np
 
-from iccraw.core.models import Recipe
-from iccraw.core.utils import write_tiff16
-from iccraw.provenance.c2pa import build_render_settings
-from iccraw.provenance.nexoraw_proof import (
+from nexoraw.core.models import Recipe
+from nexoraw.core.utils import write_tiff16
+from nexoraw.provenance.c2pa import build_render_settings
+from nexoraw.provenance.nexoraw_proof import (
     NexoRawProofConfig,
     generate_ed25519_identity,
     sign_nexoraw_proof,

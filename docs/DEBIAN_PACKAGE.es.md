@@ -2,7 +2,7 @@
 
 La release actual puede construirse como paquete Debian binario:
 
-- version de aplicacion Python: se lee de `src/iccraw/version.py`,
+- version de aplicacion Python: se lee de `src/nexoraw/version.py`,
 - version Debian: deriva de la version de aplicacion,
 - arquitectura generada: la de la maquina de build (`dpkg --print-architecture`).
 

@@ -1,5 +1,5 @@
-from iccraw.cli import build_parser
-from iccraw.version import __version__
+from nexoraw.cli import build_parser
+from nexoraw.version import __version__
 
 
 def test_parser_has_expected_commands():
@@ -29,12 +29,6 @@ def test_parser_has_version_option(capsys):
 
     captured = capsys.readouterr()
     assert __version__ in captured.out
-
-
-def test_nexoraw_package_alias_exposes_version():
-    from nexoraw import __version__ as alias_version
-
-    assert alias_version == __version__
 
 
 def test_parser_accepts_batch_worker_controls():

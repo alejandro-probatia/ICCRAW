@@ -55,13 +55,13 @@ nexoraw-ui = "nexoraw.gui:main"
 package-dir = {"" = "src"}
 
 [tool.setuptools.dynamic]
-version = {attr = "iccraw.version.__version__"}
+version = {attr = "nexoraw.version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"iccraw.resources" = ["references/*.json", "icons/*.svg", "icons/*.png", "icons/*.ico", "locales/*.qm"]
+"nexoraw.resources" = ["references/*.json", "icons/*.svg", "icons/*.png", "icons/*.ico", "locales/*.qm"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

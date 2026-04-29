@@ -68,7 +68,7 @@ deben apuntar a `nexoraw-ui.exe` y usar el icono `nexoraw-icon.ico`.
 1. Ejecutar tests del proyecto.
 2. Ejecutar benchmarks de rendimiento/GUI cuando se hayan tocado preview,
    pipeline RAW, cache o paralelismo.
-3. Actualizar `src/iccraw/version.py`, `CHANGELOG.md`, README y documentacion
+3. Actualizar `src/nexoraw/version.py`, `CHANGELOG.md`, README y documentacion
    de instaladores.
 4. Construir instaladores desde scripts versionados, no manualmente.
 5. Ejecutar las validaciones de cada plataforma.

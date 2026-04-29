@@ -93,8 +93,8 @@ Situation detected in the initial review:
 
 Local evidence:
 
-- `src/iccraw/profile/export.py`: `batch_develop` and `apply_profile_matrix`.
-- `src/iccraw/profile/builder.py`: calculation of `matrix_camera_to_xyz` and sidecar
+- `src/nexoraw/profile/export.py`: `batch_develop` and `apply_profile_matrix`.
+- `src/nexoraw/profile/builder.py`: calculation of `matrix_camera_to_xyz` and sidecar
   `.profile.json`.
 
 Risk:
@@ -137,7 +137,7 @@ Situation detected in the initial review:
 Local evidence:
 
 - `testdata/recipes/scientific_recipe.yml`: scientific recipe.
-- `src/iccraw/raw/pipeline.py`: `LIBRAW_DEMOSAIC_MAP` validation.
+- `src/nexoraw/raw/pipeline.py`: `LIBRAW_DEMOSAIC_MAP` validation.
 
 Risk:
 
@@ -174,7 +174,7 @@ Situation detected in the initial review:
 
 Local evidence:
 
-- `src/iccraw/raw/pipeline.py`: `develop_controlled`.
+- `src/nexoraw/raw/pipeline.py`: `develop_controlled`.
 
 Risk:
 
@@ -216,8 +216,8 @@ Situation detected in the initial review:
 
 Local evidence:
 
-- `src/iccraw/profile/builder.py`: `validate_profile`.
-- `src/iccraw/profile/builder.py`: `_build_profile_with_argyll`.
+- `src/nexoraw/profile/builder.py`: `validate_profile`.
+- `src/nexoraw/profile/builder.py`: `_build_profile_with_argyll`.
 
 Risk:
 
@@ -265,7 +265,7 @@ Situation detected in the initial review:
 
 Local evidence:
 
-- `src/iccraw/chart/detection.py`: `detect_chart` and `_confidence_score`.
+- `src/nexoraw/chart/detection.py`: `detect_chart` and `_confidence_score`.
 - Observed in smoke test: fallback warning with `confidence_score: 1.0`.
 
 Risk:
@@ -335,8 +335,8 @@ Situation detected in the initial review:
 Local evidence:
 
 - `testdata/recipes/scientific_recipe.yml`: `sampling_strategy` block.
-- `src/iccraw/core/recipe.py`: `_normalize_recipe_payload`.
-- `src/iccraw/chart/sampling.py`: `_sample_patch`.
+- `src/nexoraw/core/recipe.py`: `_normalize_recipe_payload`.
+- `src/nexoraw/chart/sampling.py`: `_sample_patch`.
 
 Risk:
 
@@ -374,8 +374,8 @@ Situation detected in the initial review:
 
 Local evidence:
 
-- `src/iccraw/chart/sampling.py`: `ReferenceCatalog`.
-- `src/iccraw/profile/builder.py`: `D50_XYZ`.
+- `src/nexoraw/chart/sampling.py`: `ReferenceCatalog`.
+- `src/nexoraw/profile/builder.py`: `D50_XYZ`.
 
 Risk:
 

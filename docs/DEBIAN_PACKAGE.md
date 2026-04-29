@@ -4,7 +4,7 @@ _Spanish version: [DEBIAN_PACKAGE.es.md](DEBIAN_PACKAGE.es.md)_
 
 The current release can be built as a binary Debian package:
 
-- Python application version: read from `src/iccraw/version.py`,
+- Python application version: read from `src/nexoraw/version.py`,
 - Debian version: derived from the application version,
 - generated architecture: that of the build machine (`dpkg --print-architecture`).
 

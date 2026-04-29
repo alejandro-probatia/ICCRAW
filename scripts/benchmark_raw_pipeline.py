@@ -24,9 +24,9 @@ from typing import Any, Callable
 
 import numpy as np
 
-from iccraw.core.models import Recipe
-from iccraw.raw.pipeline import develop_scene_linear_array
-from iccraw.version import __version__
+from nexoraw.core.models import Recipe
+from nexoraw.raw.pipeline import develop_scene_linear_array
+from nexoraw.version import __version__
 
 
 def parse_args() -> argparse.Namespace:

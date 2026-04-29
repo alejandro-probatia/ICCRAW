@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import iccraw.profile.generic as generic_module
-from iccraw.profile.generic import find_standard_output_profile
+import nexoraw.profile.generic as generic_module
+from nexoraw.profile.generic import find_standard_output_profile
 
 
 def test_standard_profile_search_prefers_exact_profile_before_compatible(tmp_path: Path, monkeypatch):

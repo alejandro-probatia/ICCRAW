@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from iccraw.core.utils import versioned_output_path
+from nexoraw.core.utils import versioned_output_path
 
 
 def test_versioned_output_path_keeps_first_free_name(tmp_path: Path):

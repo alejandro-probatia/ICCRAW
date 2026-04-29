@@ -47,7 +47,7 @@ execution (`run_context`).
 
 Key file:
 
-- `src/iccraw/raw/pipeline.py`
+- `src/nexoraw/raw/pipeline.py`
 
 For RAW inputs, NexoRAW runs `rawpy.imread(...).postprocess(...)` with a
 explicit contract:
@@ -90,7 +90,7 @@ can demonstrate `amaze_supported: true` should not be published as build AMaZE.
 
 Key file:
 
-- `src/iccraw/profile/builder.py`
+- `src/nexoraw/profile/builder.py`
 
 Flow:
 
@@ -116,7 +116,7 @@ Validation:
 
 Key file:
 
-- `src/iccraw/profile/export.py`
+- `src/nexoraw/profile/export.py`
 
 Output modes:
 

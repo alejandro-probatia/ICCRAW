@@ -4,7 +4,7 @@ from dataclasses import asdict
 import io
 import json
 
-import iccraw.update as update_mod
+import nexoraw.update as update_mod
 
 
 def test_compare_versions_with_revision_suffix() -> None:

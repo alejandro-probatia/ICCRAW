@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -11,24 +12,33 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
-import iccraw.gui as gui_module  # noqa: E402
-from iccraw.core.models import Recipe  # noqa: E402
-from iccraw.gui import ICCRawMainWindow  # noqa: E402
-from iccraw.provenance.c2pa import C2PASignConfig  # noqa: E402
-from iccraw.provenance.nexoraw_proof import NexoRawProofConfig, NexoRawProofResult  # noqa: E402
-from iccraw.raw import pipeline  # noqa: E402
-from iccraw.session import create_session, load_session  # noqa: E402
-from iccraw.sidecar import load_raw_sidecar, raw_sidecar_path  # noqa: E402
+import nexoraw.gui as gui_module  # noqa: E402
+from nexoraw.core.models import Recipe  # noqa: E402
+from nexoraw.gui import ICCRawMainWindow  # noqa: E402
+from nexoraw.provenance.c2pa import C2PASignConfig  # noqa: E402
+from nexoraw.provenance.nexoraw_proof import NexoRawProofConfig, NexoRawProofResult  # noqa: E402
+from nexoraw.raw import pipeline  # noqa: E402
+from nexoraw.session import create_session, load_session  # noqa: E402
+from nexoraw.sidecar import load_raw_sidecar, raw_sidecar_path  # noqa: E402
 
 
 @pytest.fixture
 def qapp(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("ICCRAW_SETTINGS_DIR", str(tmp_path / "qt_settings"))
+    monkeypatch.setenv("NEXORAW_SETTINGS_DIR", str(tmp_path / "qt_settings"))
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     return app
 
 
-def test_activate_session_migrates_legacy_temp_outputs(tmp_path: Path, monkeypatch, qapp):
+def _activate_fake_session_icc(window: ICCRawMainWindow, root: Path) -> Path:
+    profile = root / "00_configuraciones" / "profiles" / "session-input.icc"
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    profile.write_bytes(b"fake icc profile bytes" * 16)
+    window.path_profile_active.setText(str(profile))
+    window.chk_apply_profile.setChecked(True)
+    return profile
+
+
+def test_activate_session_migrates_temp_outputs_to_session_paths(tmp_path: Path, monkeypatch, qapp):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg_config"))
     root = tmp_path / "session_root"
     window = ICCRawMainWindow()
@@ -43,14 +53,14 @@ def test_activate_session_migrates_legacy_temp_outputs(tmp_path: Path, monkeypat
             "profile_charts_dir": str(tmp_path / "stale_pytest_paths" / "charts"),
             "profile_output_path": "/tmp/camera_profile_gui.icc",
             "profile_report_path": "/tmp/profile_report_gui.json",
-            "profile_workdir": "/tmp/iccraw_profile_work",
+            "profile_workdir": "/tmp/nexoraw_profile_work",
             "development_profile_path": "/tmp/development_profile_gui.json",
             "calibrated_recipe_path": "/tmp/recipe_calibrated_gui.yml",
             "recipe_path": str(tmp_path / "stale_pytest_paths" / "config" / "recipe_calibrated.yml"),
             "profile_active_path": "/tmp/camera_profile_gui.icc",
             "batch_input_dir": str(tmp_path / "stale_pytest_paths" / "raw"),
-            "batch_output_dir": "/tmp/iccraw_batch_tiffs",
-            "preview_png_path": "/tmp/iccraw_preview.png",
+            "batch_output_dir": "/tmp/nexoraw_batch_tiffs",
+            "preview_png_path": "/tmp/nexoraw_preview.png",
         },
         "queue": [],
     }
@@ -611,6 +621,7 @@ def test_manual_development_profile_is_saved_relative_to_session(tmp_path: Path,
     window = ICCRawMainWindow()
     try:
         window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
         window.development_profile_name_edit.setText("Luz norte")
         window.spin_exposure.setValue(0.65)
         window.slider_brightness.setValue(12)
@@ -628,6 +639,30 @@ def test_manual_development_profile_is_saved_relative_to_session(tmp_path: Path,
         saved_state = load_session(root)["state"]
         assert saved_state["active_development_profile_id"] == "luz-norte"
         assert saved_state["development_profiles"][0]["id"] == "luz-norte"
+    finally:
+        window.close()
+
+
+def test_manual_camera_rgb_profile_requires_active_icc(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    payload = create_session(root, name="Sesion perfiles")
+    warnings: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "warning",
+        lambda _parent, title, text: warnings.append((title, text)),
+    )
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window.development_profile_name_edit.setText("Sin ICC")
+
+        window._save_current_development_profile()
+
+        assert window._development_profiles == []
+        assert warnings
+        assert "RGB de cámara" in warnings[0][1]
     finally:
         window.close()
 
@@ -667,6 +702,196 @@ def test_manual_development_profile_can_use_generic_icc_without_chart(tmp_path: 
         window.close()
 
 
+def test_output_space_combo_synchronizes_linear_state_and_basic_selector(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window.combo_output_space.setCurrentText("srgb")
+        assert window.development_output_space_combo.currentData() == "srgb"
+        assert not window.check_output_linear.isChecked()
+        assert window.combo_tone_curve.currentData() == "srgb"
+
+        window.combo_output_space.setCurrentText("scene_linear_camera_rgb")
+        assert window.development_output_space_combo.currentData() == "scene_linear_camera_rgb"
+        assert window.check_output_linear.isChecked()
+        assert window.combo_tone_curve.currentData() == "linear"
+
+        window.combo_output_space.setCurrentText("prophoto_rgb")
+        window.check_output_linear.setChecked(True)
+        assert not window.check_output_linear.isChecked()
+        assert window.combo_tone_curve.currentData() == "gamma"
+    finally:
+        window.close()
+
+
+def test_loading_or_using_icc_profile_enables_apply_profile(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    payload = create_session(root, name="Sesion perfiles")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        profile = root / "00_configuraciones" / "profiles" / "loaded.icc"
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_bytes(b"fake profile" * 32)
+        monkeypatch.setattr(
+            QtWidgets.QFileDialog,
+            "getOpenFileName",
+            lambda *_args, **_kwargs: (str(profile), "ICC Profiles (*.icc *.icm)"),
+        )
+
+        window.chk_apply_profile.setChecked(False)
+        window._menu_load_profile()
+
+        assert window.chk_apply_profile.isChecked()
+        assert window._active_session_icc_for_settings() == profile
+
+        generated = Path(window.profile_out_path_edit.text())
+        generated.parent.mkdir(parents=True, exist_ok=True)
+        generated.write_bytes(b"generated profile" * 32)
+        window.chk_apply_profile.setChecked(False)
+        window._use_generated_profile_as_active()
+
+        assert window.chk_apply_profile.isChecked()
+        assert window._active_session_icc_for_settings() == generated
+    finally:
+        window.close()
+
+
+def test_profile_report_with_high_training_error_is_not_activable(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    payload = create_session(root, name="perfil_malo")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        defaults = window._session_default_outputs()
+        profile = defaults["profile_out"]
+        profile.parent.mkdir(parents=True, exist_ok=True)
+        profile.write_bytes(b"fake icc profile bytes" * 16)
+        defaults["profile_report"].write_text(
+            json.dumps(
+                {
+                    "output_icc": str(profile),
+                    "error_summary": {
+                        "mean_delta_e2000": 26.8,
+                        "max_delta_e2000": 46.9,
+                    },
+                    "metadata": {"profile_status": "draft"},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        assert window._profile_status_for_path(profile) == "rejected"
+        assert not window._profile_can_be_active(profile)
+    finally:
+        window.close()
+
+
+def test_manual_chart_points_use_display_coordinate_space(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "chart.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="manual")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._selected_file = raw
+        window._manual_chart_points_source = raw
+        window._original_linear = gui_module.np.zeros((1000, 2000, 3), dtype=gui_module.np.float32)
+        window.image_result_single.set_rgb_u8_image(
+            gui_module.np.zeros((500, 1000, 3), dtype=gui_module.np.uint8)
+        )
+        window._manual_chart_points = [(100.0, 80.0), (900.0, 80.0), (900.0, 420.0), (100.0, 420.0)]
+
+        pending = window._pending_manual_detection_request([raw])
+
+        assert pending is not None
+        assert pending["preview_shape"] == (500, 1000)
+        assert not window._preview_requires_max_quality()
+    finally:
+        window.close()
+
+
+def test_start_manual_chart_marking_is_immediate_and_sets_crosshair(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "chart.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="manual")
+    reload_calls = {"count": 0}
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._selected_file = raw
+        window._original_linear = gui_module.np.zeros((500, 1000, 3), dtype=gui_module.np.float32)
+        window.image_result_single.set_rgb_u8_image(
+            gui_module.np.zeros((500, 1000, 3), dtype=gui_module.np.uint8)
+        )
+        monkeypatch.setattr(window, "_on_load_selected", lambda *args, **kwargs: reload_calls.__setitem__("count", 1))
+
+        window._start_manual_chart_marking()
+
+        assert reload_calls["count"] == 0
+        assert window._manual_chart_marking
+        assert window.image_result_single.cursor().shape() == QtCore.Qt.CrossCursor
+
+        window._on_manual_chart_click(100, 100)
+        window._on_manual_chart_click(900, 100)
+        window._on_manual_chart_click(900, 400)
+        window._on_manual_chart_click(100, 400)
+
+        assert not window._manual_chart_marking
+        assert window.image_result_single.cursor().shape() != QtCore.Qt.CrossCursor
+    finally:
+        window.close()
+
+
+def test_generate_profile_draft_does_not_auto_activate(tmp_path: Path, monkeypatch, qapp):
+    chart = tmp_path / "chart.tiff"
+    Image.new("RGB", (16, 16), (20, 120, 220)).save(chart)
+
+    def fake_auto_generate_profile_from_charts(**_kwargs):
+        return {
+            "chart_captures_used": 1,
+            "training_captures_total": 1,
+            "profile_status": {
+                "status": "draft",
+                "reasons": ["sin_validacion_independiente"],
+            },
+            "profile": {
+                "error_summary": {
+                    "mean_delta_e2000": 2.0,
+                    "max_delta_e2000": 4.0,
+                }
+            },
+        }
+
+    def run_task(_label, task, on_success):
+        on_success(task())
+
+    monkeypatch.setattr(gui_module.ReferenceCatalog, "from_path", staticmethod(lambda _path: object()))
+    monkeypatch.setattr(gui_module, "auto_generate_profile_from_charts", fake_auto_generate_profile_from_charts)
+
+    window = ICCRawMainWindow()
+    try:
+        window._start_background_task = run_task
+        window._selected_chart_files = [chart]
+        window.profile_charts_dir.setText(str(tmp_path))
+        window.path_profile_active.setText(str(tmp_path / "old.icc"))
+        window.chk_apply_profile.setChecked(True)
+
+        window._on_generate_profile()
+
+        assert window.path_profile_active.text() == ""
+        assert not window.chk_apply_profile.isChecked()
+    finally:
+        window.close()
+
+
 def test_development_profile_applies_to_controls_and_queue(tmp_path: Path, qapp):
     root = tmp_path / "session"
     raw = root / "01_ORG" / "capture.NEF"
@@ -677,6 +902,7 @@ def test_development_profile_applies_to_controls_and_queue(tmp_path: Path, qapp)
     window = ICCRawMainWindow()
     try:
         window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
         window.development_profile_name_edit.setText("Ajuste base")
         window.spin_exposure.setValue(0.4)
         window.slider_noise_luma.setValue(18)
@@ -707,6 +933,7 @@ def test_queue_assignment_writes_and_reuses_raw_sidecar(tmp_path: Path, qapp):
     window = ICCRawMainWindow()
     try:
         window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
         window.development_profile_name_edit.setText("Carta base")
         window.spin_exposure.setValue(0.35)
         window._save_current_development_profile()
@@ -729,6 +956,35 @@ def test_queue_assignment_writes_and_reuses_raw_sidecar(tmp_path: Path, qapp):
         window.close()
 
 
+def test_raw_sidecar_write_errors_propagate(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion mochila")
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("disk full")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        monkeypatch.setattr(gui_module, "write_raw_sidecar", boom)
+
+        with pytest.raises(RuntimeError, match="disk full"):
+            window._write_raw_settings_sidecar(
+                raw,
+                recipe=Recipe(output_space="scene_linear_camera_rgb", output_linear=True),
+                development_profile=None,
+                detail_adjustments={},
+                render_adjustments={},
+                profile_path=None,
+                color_management_mode="no_profile",
+            )
+    finally:
+        window.close()
+
+
 def test_chart_profile_assignment_marks_raw_as_advanced_and_can_be_pasted(tmp_path: Path, qapp):
     root = tmp_path / "session"
     raw_dir = root / "01_ORG"
@@ -742,6 +998,7 @@ def test_chart_profile_assignment_marks_raw_as_advanced_and_can_be_pasted(tmp_pa
     window = ICCRawMainWindow()
     try:
         window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
         window._set_current_directory(raw_dir)
 
         paths = window._session_paths_from_root(root)
@@ -887,6 +1144,7 @@ def test_thumbnail_copy_paste_development_settings_writes_raw_sidecars(tmp_path:
     window = ICCRawMainWindow()
     try:
         window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
         window._set_current_directory(raw_dir)
 
         source_item = next(
