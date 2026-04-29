@@ -12,20 +12,20 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
-import nexoraw.gui as gui_module  # noqa: E402
-from nexoraw.chart.sampling import ReferenceCatalog  # noqa: E402
-from nexoraw.core.models import Recipe  # noqa: E402
-from nexoraw.gui import ICCRawMainWindow  # noqa: E402
-from nexoraw.provenance.c2pa import C2PASignConfig  # noqa: E402
-from nexoraw.provenance.nexoraw_proof import NexoRawProofConfig, NexoRawProofResult  # noqa: E402
-from nexoraw.raw import pipeline  # noqa: E402
-from nexoraw.session import create_session, load_session  # noqa: E402
-from nexoraw.sidecar import load_raw_sidecar, raw_sidecar_path  # noqa: E402
+import probraw.gui as gui_module  # noqa: E402
+from probraw.chart.sampling import ReferenceCatalog  # noqa: E402
+from probraw.core.models import Recipe  # noqa: E402
+from probraw.gui import ICCRawMainWindow  # noqa: E402
+from probraw.provenance.c2pa import C2PASignConfig  # noqa: E402
+from probraw.provenance.probraw_proof import ProbRawProofConfig, ProbRawProofResult  # noqa: E402
+from probraw.raw import pipeline  # noqa: E402
+from probraw.session import create_session, load_session  # noqa: E402
+from probraw.sidecar import load_raw_sidecar, raw_sidecar_path  # noqa: E402
 
 
 @pytest.fixture
 def qapp(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("NEXORAW_SETTINGS_DIR", str(tmp_path / "qt_settings"))
+    monkeypatch.setenv("PROBRAW_SETTINGS_DIR", str(tmp_path / "qt_settings"))
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     return app
 
@@ -54,14 +54,14 @@ def test_activate_session_migrates_temp_outputs_to_session_paths(tmp_path: Path,
             "profile_charts_dir": str(tmp_path / "stale_pytest_paths" / "charts"),
             "profile_output_path": "/tmp/camera_profile_gui.icc",
             "profile_report_path": "/tmp/profile_report_gui.json",
-            "profile_workdir": "/tmp/nexoraw_profile_work",
+            "profile_workdir": "/tmp/probraw_profile_work",
             "development_profile_path": "/tmp/development_profile_gui.json",
             "calibrated_recipe_path": "/tmp/recipe_calibrated_gui.yml",
             "recipe_path": str(tmp_path / "stale_pytest_paths" / "config" / "recipe_calibrated.yml"),
             "profile_active_path": "/tmp/camera_profile_gui.icc",
             "batch_input_dir": str(tmp_path / "stale_pytest_paths" / "raw"),
-            "batch_output_dir": "/tmp/nexoraw_batch_tiffs",
-            "preview_png_path": "/tmp/nexoraw_preview.png",
+            "batch_output_dir": "/tmp/probraw_batch_tiffs",
+            "preview_png_path": "/tmp/probraw_preview.png",
         },
         "queue": [],
     }
@@ -810,7 +810,7 @@ def test_manual_development_profile_can_use_generic_icc_without_chart(tmp_path: 
     standard_profiles = tmp_path / "standard-profiles"
     standard_profiles.mkdir()
     (standard_profiles / "ProPhoto.icm").write_bytes(b"p" * 256)
-    monkeypatch.setenv("NEXORAW_STANDARD_ICC_DIR", str(standard_profiles))
+    monkeypatch.setenv("PROBRAW_STANDARD_ICC_DIR", str(standard_profiles))
     root = tmp_path / "session"
     payload = create_session(root, name="Sesion sin carta")
 
@@ -1478,12 +1478,12 @@ def test_generate_profile_uses_explicit_color_reference_selection(tmp_path: Path
 def test_app_icon_resource_is_packaged(qapp):
     icon_path = gui_module._app_icon_path()
     assert icon_path is not None
-    assert icon_path.name == "nexoraw-icon.png"
+    assert icon_path.name == "probraw-icon.png"
     assert icon_path.exists()
     assert not gui_module._app_icon().isNull()
 
 
-def test_window_uses_nexoraw_app_icon(qapp):
+def test_window_uses_probraw_app_icon(qapp):
     window = ICCRawMainWindow()
     try:
         assert not window.windowIcon().isNull()
@@ -1829,8 +1829,8 @@ def test_gui_downgrades_amaze_when_gpl3_pack_is_missing(qapp, monkeypatch):
 
 
 def test_gui_c2pa_config_reads_controls_without_persisting_passphrase(tmp_path: Path, qapp):
-    cert_path = tmp_path / "nexoraw-cert.pem"
-    key_path = tmp_path / "nexoraw-key.pem"
+    cert_path = tmp_path / "probraw-cert.pem"
+    key_path = tmp_path / "probraw-key.pem"
     manifest_path = tmp_path / "profile_report.json"
     cert_path.write_text("certificate", encoding="utf-8")
     key_path.write_text("private key", encoding="utf-8")
@@ -1844,7 +1844,7 @@ def test_gui_c2pa_config_reads_controls_without_persisting_passphrase(tmp_path: 
         window.batch_c2pa_key_path.setText(str(key_path))
         window.batch_c2pa_key_passphrase.setText("test-passphrase")
         window.batch_c2pa_timestamp_url.setText("http://tsa.example.test")
-        window.batch_c2pa_signer_name.setText("NexoRAW Test")
+        window.batch_c2pa_signer_name.setText("ProbRAW Test")
         window._set_combo_text(window.batch_c2pa_alg, "ps384")
 
         config = window._c2pa_config_from_controls()
@@ -1854,7 +1854,7 @@ def test_gui_c2pa_config_reads_controls_without_persisting_passphrase(tmp_path: 
         assert config.key_passphrase == "test-passphrase"
         assert config.alg == "ps384"
         assert config.timestamp_url == "http://tsa.example.test"
-        assert config.signer_name == "NexoRAW Test"
+        assert config.signer_name == "ProbRAW Test"
         assert config.technical_manifest_path == manifest_path
         assert config.session_id == "unit-session"
 
@@ -1875,7 +1875,7 @@ def test_process_batch_files_passes_gui_c2pa_config_to_signer(tmp_path: Path, mo
     cert_path.write_text("certificate", encoding="utf-8")
     key_path.write_text("private key", encoding="utf-8")
     c2pa_config = C2PASignConfig(cert_path=cert_path, key_path=key_path)
-    proof_config = NexoRawProofConfig(private_key_path=key_path, public_key_path=None)
+    proof_config = ProbRawProofConfig(private_key_path=key_path, public_key_path=None)
     captured: dict[str, object] = {}
 
     def fake_write_signed_profiled_tiff(out_tiff, image_linear_rgb, **kwargs):
@@ -1884,7 +1884,7 @@ def test_process_batch_files_passes_gui_c2pa_config_to_signer(tmp_path: Path, mo
         captured["render_adjustments"] = kwargs["render_adjustments"]
         Path(out_tiff).parent.mkdir(parents=True, exist_ok=True)
         Path(out_tiff).write_bytes(b"signed tiff")
-        return "embedded_profile", NexoRawProofResult(
+        return "embedded_profile", ProbRawProofResult(
             proof_path=str(Path(out_tiff).with_suffix(".proof.json")),
             proof_sha256="proof-sha",
             output_tiff_sha256="tiff-sha",

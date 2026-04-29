@@ -1,6 +1,6 @@
 # Guia de contribucion
 
-Gracias por colaborar con NexoRAW. Este proyecto prioriza reproducibilidad,
+Gracias por colaborar con ProbRAW. Este proyecto prioriza reproducibilidad,
 auditoria y trazabilidad para fotografia cientifica, forense y de patrimonio.
 
 ## Tipos de contribucion bienvenidos
@@ -66,7 +66,7 @@ Ejemplo: `docs: add colorimetric validation issue template`.
 
 ## Recordatorio AGPL
 
-NexoRAW usa `AGPL-3.0-or-later`. Si ejecutas una version derivada como
+ProbRAW usa `AGPL-3.0-or-later`. Si ejecutas una version derivada como
 servicio en red, debes publicar el codigo fuente correspondiente del derivado.
 
 ## Conducta comunitaria

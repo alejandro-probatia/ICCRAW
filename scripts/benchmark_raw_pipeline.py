@@ -1,4 +1,4 @@
-"""Benchmark real del pipeline RAW de NexoRAW.
+"""Benchmark real del pipeline RAW de ProbRAW.
 
 El script no depende de psutil y funciona en Windows, macOS y Linux. Mide el
 tiempo de pared, tiempo CPU, shape/dtype del array y pico de memoria residente
@@ -24,9 +24,9 @@ from typing import Any, Callable
 
 import numpy as np
 
-from nexoraw.core.models import Recipe
-from nexoraw.raw.pipeline import develop_scene_linear_array
-from nexoraw.version import __version__
+from probraw.core.models import Recipe
+from probraw.raw.pipeline import develop_scene_linear_array
+from probraw.version import __version__
 
 
 def parse_args() -> argparse.Namespace:
@@ -182,7 +182,7 @@ def main() -> int:
 
     results: dict[str, Any] = {
         "schema": 1,
-        "nexoraw_version": __version__,
+        "probraw_version": __version__,
         "platform": {
             "system": platform.system(),
             "release": platform.release(),

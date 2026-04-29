@@ -1,7 +1,7 @@
 ﻿## Checklist de revision
 
 - [ ] Tests locales en verde (`bash scripts/run_checks.sh` o equivalente en Windows).
-- [ ] `nexoraw check-tools --strict` en verde.
+- [ ] `probraw check-tools --strict` en verde.
 - [ ] Documentacion actualizada si cambia comportamiento.
 - [ ] No se introducen mapeos silenciosos en receta/pipeline.
 - [ ] Impacto en sidecar/manifiesto documentado.

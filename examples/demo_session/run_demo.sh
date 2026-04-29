@@ -8,17 +8,17 @@ OUTPUT_DIR="$DEMO_DIR/output"
 
 bash "$DEMO_DIR/prepare_demo.sh"
 
-if command -v nexoraw >/dev/null 2>&1; then
-  NEXORAW_CMD=(nexoraw)
+if command -v probraw >/dev/null 2>&1; then
+  PROBRAW_CMD=(probraw)
   USING_WINDOWS_PYTHON=0
 elif [ -x "$ROOT_DIR/.venv/bin/python" ]; then
-  NEXORAW_CMD=("$ROOT_DIR/.venv/bin/python" -m nexoraw)
+  PROBRAW_CMD=("$ROOT_DIR/.venv/bin/python" -m probraw)
   USING_WINDOWS_PYTHON=0
 elif [ -x "$ROOT_DIR/.venv/Scripts/python.exe" ]; then
-  NEXORAW_CMD=("$ROOT_DIR/.venv/Scripts/python.exe" -m nexoraw)
+  PROBRAW_CMD=("$ROOT_DIR/.venv/Scripts/python.exe" -m probraw)
   USING_WINDOWS_PYTHON=1
 else
-  echo "ERROR: no se encontro comando nexoraw ni entorno .venv listo." >&2
+  echo "ERROR: no se encontro comando probraw ni entorno .venv listo." >&2
   exit 1
 fi
 
@@ -42,7 +42,7 @@ OUTPUT_ARG="$(to_native_path "$OUTPUT_DIR")"
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"
 
-"${NEXORAW_CMD[@]}" auto-profile-batch \
+"${PROBRAW_CMD[@]}" auto-profile-batch \
   --charts "$CHARTS_ARG" \
   --targets "$TARGETS_ARG" \
   --recipe "$RECIPE_ARG" \

@@ -178,7 +178,7 @@ Motivacion:
 
 1. Programas de revelado RAW como RawTherapee separan parametros de revelado
    reutilizables de la imagen concreta.
-2. NexoRAW debe funcionar tanto con flujo cientifico basado en carta como con
+2. ProbRAW debe funcionar tanto con flujo cientifico basado en carta como con
    un flujo operativo sin carta, donde el usuario fija manualmente criterios de
    revelado.
 3. Una misma sesion puede contener condiciones de iluminacion, objetivos o
@@ -197,7 +197,7 @@ Referencias:
 
 Decision:
 
-- cuando una sesion genera un ICC propio desde carta, NexoRAW lo considera
+- cuando una sesion genera un ICC propio desde carta, ProbRAW lo considera
   perfil de entrada de sesion;
 - el TIFF maestro conserva RGB lineal de camara/sesion e incrusta ese ICC;
 - no se convierte el TIFF maestro a sRGB, AdobeRGB o ProPhoto si existe ICC de
@@ -236,11 +236,11 @@ Referencias:
 
 Decision:
 
-- guardar junto a cada RAW un sidecar `nombre.RAW.nexoraw.json`;
+- guardar junto a cada RAW un sidecar `nombre.RAW.probraw.json`;
 - registrar receta, perfil de revelado asignado, ICC de sesion, ajustes de
   detalle/render, identidad del RAW y salidas TIFF recientes;
 - usar JSON por coherencia con los sidecars y manifiestos auditables existentes
-  en NexoRAW;
+  en ProbRAW;
 - cargar automaticamente la mochila al seleccionar o reinsertar un RAW en la
   cola cuando el perfil de revelado existe en la sesion.
 
@@ -250,7 +250,7 @@ Motivacion:
    parametrica y guardan ajustes en sidecars.
 2. Una sesion puede moverse entre equipos o usuarios sin perder los parametros
    por imagen.
-3. El sidecar por RAW complementa, no sustituye, `session.json`, NexoRAW Proof ni
+3. El sidecar por RAW complementa, no sustituye, `session.json`, ProbRAW Proof ni
    `batch_manifest.json`.
 
 Referencias:
@@ -278,7 +278,7 @@ Motivacion:
 1. No todos los monitores son sRGB; asumir sRGB puede dar saturacion y tono
    incorrectos en pantallas wide-gamut o calibradas.
 2. Los sistemas operativos ya mantienen el perfil ICC activo del monitor, por
-   lo que NexoRAW debe consumir esa configuracion antes que pedir al usuario una
+   lo que ProbRAW debe consumir esa configuracion antes que pedir al usuario una
    ruta manual.
 3. El perfil de monitor es una condicion de visualizacion, no un parametro de
    revelado ni una propiedad del archivo exportado.

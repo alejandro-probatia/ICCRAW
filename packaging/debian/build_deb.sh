@@ -3,31 +3,31 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
-APP_VERSION="${NEXORAW_APP_VERSION:-$("$PYTHON" - "$ROOT" <<'PY'
+APP_VERSION="${PROBRAW_APP_VERSION:-$("$PYTHON" - "$ROOT" <<'PY'
 import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
 namespace = {}
-exec((root / "src" / "nexoraw" / "version.py").read_text(encoding="utf-8"), namespace)
+exec((root / "src" / "probraw" / "version.py").read_text(encoding="utf-8"), namespace)
 print(namespace["__version__"])
 PY
 )}"
-DEB_VERSION="${NEXORAW_DEB_VERSION:-$(printf '%s' "$APP_VERSION" | sed -E 's/([0-9.]+)b([0-9]+)/\1~beta\2/')}"
-ARCH="${NEXORAW_DEB_ARCH:-$(dpkg --print-architecture)}"
-BUILD_AMAZE="${NEXORAW_BUILD_AMAZE:-1}"
-REQUIRE_AMAZE="${NEXORAW_REQUIRE_AMAZE:-$BUILD_AMAZE}"
-RAWPY_DEMOSAIC_WHEEL="${NEXORAW_RAWPY_DEMOSAIC_WHEEL:-}"
-RAWPY_DEMOSAIC_REPO="${NEXORAW_RAWPY_DEMOSAIC_REPO:-https://github.com/exfab/rawpy-demosaic.git}"
-RAWPY_DEMOSAIC_REF="${NEXORAW_RAWPY_DEMOSAIC_REF:-8b17075}"
-RAWPY_DEMOSAIC_SOURCE="${NEXORAW_RAWPY_DEMOSAIC_SOURCE:-git+https://github.com/exfab/rawpy-demosaic.git@8b17075}"
-RAWPY_DEMOSAIC_PACKAGE="${NEXORAW_RAWPY_DEMOSAIC_PACKAGE:-rawpy-demosaic}"
-PKG_NAME="nexoraw"
+DEB_VERSION="${PROBRAW_DEB_VERSION:-$(printf '%s' "$APP_VERSION" | sed -E 's/([0-9.]+)b([0-9]+)/\1~beta\2/')}"
+ARCH="${PROBRAW_DEB_ARCH:-$(dpkg --print-architecture)}"
+BUILD_AMAZE="${PROBRAW_BUILD_AMAZE:-1}"
+REQUIRE_AMAZE="${PROBRAW_REQUIRE_AMAZE:-$BUILD_AMAZE}"
+RAWPY_DEMOSAIC_WHEEL="${PROBRAW_RAWPY_DEMOSAIC_WHEEL:-}"
+RAWPY_DEMOSAIC_REPO="${PROBRAW_RAWPY_DEMOSAIC_REPO:-https://github.com/exfab/rawpy-demosaic.git}"
+RAWPY_DEMOSAIC_REF="${PROBRAW_RAWPY_DEMOSAIC_REF:-8b17075}"
+RAWPY_DEMOSAIC_SOURCE="${PROBRAW_RAWPY_DEMOSAIC_SOURCE:-git+https://github.com/exfab/rawpy-demosaic.git@8b17075}"
+RAWPY_DEMOSAIC_PACKAGE="${PROBRAW_RAWPY_DEMOSAIC_PACKAGE:-rawpy-demosaic}"
+PKG_NAME="probraw"
 BUILD_ROOT="$ROOT/build/deb/${PKG_NAME}_${DEB_VERSION}_${ARCH}"
 DIST_DIR="$ROOT/dist"
 DEB_PATH="$DIST_DIR/${PKG_NAME}_${DEB_VERSION}_${ARCH}.deb"
-VENV_DIR="$BUILD_ROOT/opt/nexoraw/venv"
-VENV_INSTALL_DIR="/opt/nexoraw/venv"
+VENV_DIR="$BUILD_ROOT/opt/probraw/venv"
+VENV_INSTALL_DIR="/opt/probraw/venv"
 
 is_true() {
   case "${1,,}" in
@@ -62,7 +62,7 @@ install_amaze_backend() {
 }
 
 write_amaze_build_metadata() {
-  local dest="$BUILD_ROOT/usr/share/doc/nexoraw/third_party/rawpy-demosaic"
+  local dest="$BUILD_ROOT/usr/share/doc/probraw/third_party/rawpy-demosaic"
   mkdir -p "$dest"
   local check_json="$dest/check-amaze.json"
   "$VENV_DIR/bin/python" "$ROOT/scripts/check_amaze_support.py" > "$check_json"
@@ -94,12 +94,12 @@ PY
 rm -rf "$BUILD_ROOT"
 mkdir -p \
   "$BUILD_ROOT/DEBIAN" \
-  "$BUILD_ROOT/opt/nexoraw" \
+  "$BUILD_ROOT/opt/probraw" \
   "$BUILD_ROOT/usr/bin" \
   "$BUILD_ROOT/usr/share/applications" \
   "$BUILD_ROOT/usr/share/icons/hicolor/scalable/apps" \
   "$BUILD_ROOT/usr/share/pixmaps" \
-  "$BUILD_ROOT/usr/share/doc/nexoraw" \
+  "$BUILD_ROOT/usr/share/doc/probraw" \
   "$DIST_DIR"
 
 "$PYTHON" -m venv "$VENV_DIR"
@@ -117,9 +117,8 @@ import site
 print(site.getsitepackages()[0])
 PY
 )"
-"$VENV_DIR/bin/python" -m compileall -q "$SITE_PACKAGES/nexoraw"
-"$VENV_DIR/bin/python" -m compileall -q "$SITE_PACKAGES/nexoraw"
-rm -f "$VENV_DIR/bin/iccraw" "$VENV_DIR/bin/iccraw-ui"
+"$VENV_DIR/bin/python" -m compileall -q "$SITE_PACKAGES/probraw"
+rm -f "$VENV_DIR/bin/nexoraw" "$VENV_DIR/bin/nexoraw-ui" "$VENV_DIR/bin/iccraw" "$VENV_DIR/bin/iccraw-ui"
 
 for entry in "$VENV_DIR/bin/"*; do
   [ -f "$entry" ] || continue
@@ -133,36 +132,36 @@ for entry in "$VENV_DIR/bin/"*; do
 done
 sed -i "s|$VENV_DIR|$VENV_INSTALL_DIR|g" "$VENV_DIR/pyvenv.cfg"
 
-cat > "$BUILD_ROOT/usr/bin/nexoraw" <<'SH'
+cat > "$BUILD_ROOT/usr/bin/probraw" <<'SH'
 #!/usr/bin/env sh
-exec /opt/nexoraw/venv/bin/nexoraw "$@"
+exec /opt/probraw/venv/bin/probraw "$@"
 SH
 
-cat > "$BUILD_ROOT/usr/bin/nexoraw-ui" <<'SH'
+cat > "$BUILD_ROOT/usr/bin/probraw-ui" <<'SH'
 #!/usr/bin/env sh
-exec /opt/nexoraw/venv/bin/nexoraw-ui "$@"
+exec /opt/probraw/venv/bin/probraw-ui "$@"
 SH
 
 chmod 0755 \
-  "$BUILD_ROOT/usr/bin/nexoraw" \
-  "$BUILD_ROOT/usr/bin/nexoraw-ui"
+  "$BUILD_ROOT/usr/bin/probraw" \
+  "$BUILD_ROOT/usr/bin/probraw-ui"
 
-cat > "$BUILD_ROOT/usr/share/applications/nexoraw.desktop" <<'DESKTOP'
+cat > "$BUILD_ROOT/usr/share/applications/probraw.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
-Name=NexoRAW
+Name=ProbRAW
 GenericName=RAW color profiling
 Comment=Pipeline reproducible RAW -> carta -> perfil ICC de sesion
-Exec=nexoraw-ui
-Icon=nexoraw
+Exec=probraw-ui
+Icon=probraw
 Terminal=false
 Categories=Graphics;Photography;
 Keywords=RAW;ICC;color;photography;forensics;
-StartupWMClass=nexoraw
+StartupWMClass=probraw
 DESKTOP
 
-install -m 0644 "$ROOT/src/nexoraw/resources/icons/nexoraw-icon.svg" "$BUILD_ROOT/usr/share/icons/hicolor/scalable/apps/nexoraw.svg"
-"$VENV_DIR/bin/python" - "$ROOT/src/nexoraw/resources/icons/nexoraw-icon.png" "$BUILD_ROOT" <<'PY'
+install -m 0644 "$ROOT/src/probraw/resources/icons/probraw-icon.svg" "$BUILD_ROOT/usr/share/icons/hicolor/scalable/apps/probraw.svg"
+"$VENV_DIR/bin/python" - "$ROOT/src/probraw/resources/icons/probraw-icon.png" "$BUILD_ROOT" <<'PY'
 from pathlib import Path
 import sys
 
@@ -173,29 +172,29 @@ build_root = Path(sys.argv[2])
 with Image.open(src) as image:
     image = image.convert("RGBA")
     for size in (16, 32, 48, 64, 128, 256, 512):
-        dest = build_root / "usr" / "share" / "icons" / "hicolor" / f"{size}x{size}" / "apps" / "nexoraw.png"
+        dest = build_root / "usr" / "share" / "icons" / "hicolor" / f"{size}x{size}" / "apps" / "probraw.png"
         dest.parent.mkdir(parents=True, exist_ok=True)
         resized = image if image.size == (size, size) else image.resize((size, size), Image.Resampling.LANCZOS)
         resized.save(dest)
-    pixmap = build_root / "usr" / "share" / "pixmaps" / "nexoraw.png"
+    pixmap = build_root / "usr" / "share" / "pixmaps" / "probraw.png"
     pixmap.parent.mkdir(parents=True, exist_ok=True)
     image.save(pixmap)
 PY
-install -m 0644 "$ROOT/README.md" "$BUILD_ROOT/usr/share/doc/nexoraw/README.md"
-install -m 0644 "$ROOT/CHANGELOG.md" "$BUILD_ROOT/usr/share/doc/nexoraw/CHANGELOG.md"
-install -m 0644 "$ROOT/LICENSE" "$BUILD_ROOT/usr/share/doc/nexoraw/LICENSE"
-install -m 0644 "$ROOT/docs/THIRD_PARTY_LICENSES.md" "$BUILD_ROOT/usr/share/doc/nexoraw/THIRD_PARTY_LICENSES.md"
-install -m 0644 "$ROOT/docs/LEGAL_COMPLIANCE.md" "$BUILD_ROOT/usr/share/doc/nexoraw/LEGAL_COMPLIANCE.md"
-install -m 0644 "$ROOT/docs/AMAZE_GPL3.md" "$BUILD_ROOT/usr/share/doc/nexoraw/AMAZE_GPL3.md"
-install -m 0644 "$ROOT/docs/DEBIAN_PACKAGE.md" "$BUILD_ROOT/usr/share/doc/nexoraw/DEBIAN_PACKAGE.md"
-install -m 0644 "$ROOT/docs/RELEASE_INSTALLERS.md" "$BUILD_ROOT/usr/share/doc/nexoraw/RELEASE_INSTALLERS.md"
-install -m 0644 "$ROOT/docs/MANUAL_USUARIO.md" "$BUILD_ROOT/usr/share/doc/nexoraw/MANUAL_USUARIO.md"
-install -m 0644 "$ROOT/docs/METODOLOGIA_COLOR_RAW.md" "$BUILD_ROOT/usr/share/doc/nexoraw/METODOLOGIA_COLOR_RAW.md"
-install -m 0644 "$ROOT/docs/COLOR_PIPELINE.md" "$BUILD_ROOT/usr/share/doc/nexoraw/COLOR_PIPELINE.md"
-install -m 0644 "$ROOT/docs/DECISIONS.md" "$BUILD_ROOT/usr/share/doc/nexoraw/DECISIONS.md"
-install -m 0644 "$ROOT/docs/C2PA_CAI.md" "$BUILD_ROOT/usr/share/doc/nexoraw/C2PA_CAI.md"
-install -m 0644 "$ROOT/docs/NEXORAW_PROOF.md" "$BUILD_ROOT/usr/share/doc/nexoraw/NEXORAW_PROOF.md"
-install -m 0755 "$ROOT/scripts/check_amaze_support.py" "$BUILD_ROOT/usr/share/doc/nexoraw/check_amaze_support.py"
+install -m 0644 "$ROOT/README.md" "$BUILD_ROOT/usr/share/doc/probraw/README.md"
+install -m 0644 "$ROOT/CHANGELOG.md" "$BUILD_ROOT/usr/share/doc/probraw/CHANGELOG.md"
+install -m 0644 "$ROOT/LICENSE" "$BUILD_ROOT/usr/share/doc/probraw/LICENSE"
+install -m 0644 "$ROOT/docs/THIRD_PARTY_LICENSES.md" "$BUILD_ROOT/usr/share/doc/probraw/THIRD_PARTY_LICENSES.md"
+install -m 0644 "$ROOT/docs/LEGAL_COMPLIANCE.md" "$BUILD_ROOT/usr/share/doc/probraw/LEGAL_COMPLIANCE.md"
+install -m 0644 "$ROOT/docs/AMAZE_GPL3.md" "$BUILD_ROOT/usr/share/doc/probraw/AMAZE_GPL3.md"
+install -m 0644 "$ROOT/docs/DEBIAN_PACKAGE.md" "$BUILD_ROOT/usr/share/doc/probraw/DEBIAN_PACKAGE.md"
+install -m 0644 "$ROOT/docs/RELEASE_INSTALLERS.md" "$BUILD_ROOT/usr/share/doc/probraw/RELEASE_INSTALLERS.md"
+install -m 0644 "$ROOT/docs/MANUAL_USUARIO.md" "$BUILD_ROOT/usr/share/doc/probraw/MANUAL_USUARIO.md"
+install -m 0644 "$ROOT/docs/METODOLOGIA_COLOR_RAW.md" "$BUILD_ROOT/usr/share/doc/probraw/METODOLOGIA_COLOR_RAW.md"
+install -m 0644 "$ROOT/docs/COLOR_PIPELINE.md" "$BUILD_ROOT/usr/share/doc/probraw/COLOR_PIPELINE.md"
+install -m 0644 "$ROOT/docs/DECISIONS.md" "$BUILD_ROOT/usr/share/doc/probraw/DECISIONS.md"
+install -m 0644 "$ROOT/docs/C2PA_CAI.md" "$BUILD_ROOT/usr/share/doc/probraw/C2PA_CAI.md"
+install -m 0644 "$ROOT/docs/PROBRAW_PROOF.md" "$BUILD_ROOT/usr/share/doc/probraw/PROBRAW_PROOF.md"
+install -m 0755 "$ROOT/scripts/check_amaze_support.py" "$BUILD_ROOT/usr/share/doc/probraw/check_amaze_support.py"
 
 INSTALLED_SIZE="$(du -sk "$BUILD_ROOT" | awk '{print $1}')"
 cat > "$BUILD_ROOT/DEBIAN/control" <<EOF
@@ -204,16 +203,16 @@ Version: $DEB_VERSION
 Section: graphics
 Priority: optional
 Architecture: $ARCH
-Maintainer: Comunidad AEICF <release@nexoraw.local>
+Maintainer: Comunidad AEICF <release@probraw.local>
 Installed-Size: $INSTALLED_SIZE
 Depends: python3 (>= 3.11), argyll, exiftool, colord, libgl1, libegl1, libxkbcommon0, libxcb-cursor0, libxcb-xinerama0, libgomp1, liblcms2-2, libjpeg-turbo8, libstdc++6, desktop-file-utils, hicolor-icon-theme
-Replaces: iccraw
-Conflicts: iccraw
-Homepage: https://github.com/alejandro-probatia/NexoRAW
-Description: NexoRAW $APP_VERSION reproducible RAW and ICC session profiling
- NexoRAW is a technical/scientific RAW workflow for controlled development,
+Replaces: nexoraw, iccraw
+Conflicts: nexoraw, iccraw
+Homepage: https://github.com/alejandro-probatia/ProbRAW
+Description: ProbRAW $APP_VERSION reproducible RAW and ICC session profiling
+ ProbRAW is a technical/scientific RAW workflow for controlled development,
  color chart sampling, session development profiles and ICC camera profiles.
- This package installs a bundled Python environment under /opt/nexoraw and
+ This package installs a bundled Python environment under /opt/probraw and
  command launchers under /usr/bin. AMaZE builds install rawpy-demosaic during
  package construction and record the runtime check in documentation.
 EOF

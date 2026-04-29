@@ -39,7 +39,7 @@ if (-not $SkipInstall) {
 
 Invoke-Native "Ejecutar tests" $Python @("-m", "pytest")
 
-$toolArgs = @("-m", "nexoraw", "check-tools")
+$toolArgs = @("-m", "probraw", "check-tools")
 if ($StrictExternalTools) {
   $toolArgs += "--strict"
 }

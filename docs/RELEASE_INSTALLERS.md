@@ -2,7 +2,7 @@ _Spanish version: [RELEASE_INSTALLERS.es.md](RELEASE_INSTALLERS.es.md)_
 
 # Publication of installers
 
-The NexoRAW installer release has a simple rule: no
+The ProbRAW installer release has a simple rule: no
 artifact is uploaded to the repository or GitHub Releases without first passing the
 package and installation validations.
 
@@ -10,31 +10,31 @@ package and installation validations.
 
 Always build with AMaZE required:
 ```bash
-NEXORAW_BUILD_AMAZE=1 NEXORAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
+PROBRAW_BUILD_AMAZE=1 PROBRAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
 ```
 Validate the package before installing or uploading:
 ```bash
-packaging/debian/validate_deb.sh dist/nexoraw_<version>_amd64.deb
-sha256sum dist/nexoraw_<version>_amd64.deb > dist/nexoraw_<version>_amd64.deb.sha256
+packaging/debian/validate_deb.sh dist/probraw_<version>_amd64.deb
+sha256sum dist/probraw_<version>_amd64.deb > dist/probraw_<version>_amd64.deb.sha256
 ```
 Validate on a real installation:
 ```bash
-sudo apt purge iccraw nexoraw
-sudo apt install ./dist/nexoraw_<version>_amd64.deb
+sudo apt purge nexoraw iccraw probraw
+sudo apt install ./dist/probraw_<version>_amd64.deb
 scripts/validate_linux_install.sh
-nexoraw --version
-nexoraw check-tools --strict
-nexoraw check-amaze
+probraw --version
+probraw check-tools --strict
+probraw check-amaze
 ```
-The validation checks name `NexoRAW`, launchers `nexoraw`/`nexoraw-ui`,
-absence of legacy executables `iccraw`, full hicolor icon, fallback
-`/usr/share/pixmaps/nexoraw.png`, menu category `Graphics;Photography`,
+The validation checks name `ProbRAW`, launchers `probraw`/`probraw-ui`,
+absence of legacy executables `nexoraw`/`iccraw`, full hicolor icon, fallback
+`/usr/share/pixmaps/probraw.png`, menu category `Graphics;Photography`,
 C2PA, external tools and AMaZE.
 
 Smoke GUI minimum before publishing:
 
-- open NexoRAW from the system menu;
-- confirm that it appears in `Graficos/Fotografia` with NexoRAW icon;
+- open ProbRAW from the system menu;
+- confirm that it appears in `Graficos/Fotografia` with ProbRAW icon;
 - create a new session and verify folders `00_configuraciones/`, `01_ORG/`
   and `02_DRV/`;
 - open the root of the project and confirm that the browser enters `01_ORG/`;
@@ -42,7 +42,7 @@ Smoke GUI minimum before publishing:
   previous;
 - select a RAW and check that the thumbnail shows an image, not just an icon
   generic;
-- generate or save a basic profile and confirm backpack `RAW.nexoraw.json`;
+- generate or save a basic profile and confirm backpack `RAW.probraw.json`;
 - try copy/paste setting profile between two thumbnails;
 - check `Configuracion > Configuracion global` and confirm detection or
   monitor ICC profile fallback.
@@ -54,15 +54,16 @@ with `-RequireAmaze` and a plotted wheel when PyPI does not offer a compatible o
 ```powershell
 .\packaging\windows\build_installer.ps1 -RawpyDemosaicWheel $wheel -RequireAmaze
 ```
-The build should not generate `iccraw.exe` or `iccraw-ui.exe`. The shortcuts
-they should point to `nexoraw-ui.exe` and use the `nexoraw-icon.ico` icon.
+The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
+`iccraw-ui.exe`. The shortcuts should point to `probraw-ui.exe` and use the
+`probraw-icon.ico` icon.
 
 ## Releases
 
 1. Run project tests.
 2. Run performance/GUI benchmarks when previewed,
    RAW pipeline, cache or parallelism.
-3. Update `src/nexoraw/version.py`, `CHANGELOG.md`, README and documentation
+3. Update `src/probraw/version.py`, `CHANGELOG.md`, README and documentation
    of installers.
 4. Build installers from versioned scripts, not manually.
 5. Run validations for each platform.
@@ -70,6 +71,19 @@ they should point to `nexoraw-ui.exe` and use the `nexoraw-icon.ico` icon.
 7. Upload only validated artifacts.
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
+
+## Release 0.3.0
+
+Release 0.3.0 introduces:
+
+- complete product rename to ProbRAW across package metadata, GUI identity,
+  commands, icons, documentation and release artifact filenames,
+- Debian replacement/conflict metadata for previous `nexoraw` and `iccraw`
+  beta packages,
+- migration compatibility for existing `.nexoraw.json`,
+  `.nexoraw.proof.json` and beta C2PA/Proof labels,
+- explicit project leadership statement: Probatia Forensics SL in collaboration
+  with the Asociación Española de Imagen Científica y Forense.
 
 ## Release 0.2.6
 
@@ -87,11 +101,11 @@ Release 0.2.6 introduces:
 
 Release 0.2.5 introduces:
 
-- canonical Python package layout under `src/nexoraw`,
+- canonical Python package layout under `src/probraw`,
 - removal of the old internal compatibility namespace,
 - GUI split into smaller modules by workflow area,
 - updated Linux and Windows packaging names,
-- C2PA assertion/action labels generated as `org.probatia.nexoraw.*` while
+- C2PA assertion/action labels generated as `org.probatia.probraw.*` while
   keeping verification compatibility with earlier beta manifests,
 - refreshed bilingual documentation and archived DCP+ICC planning in favor of the
   active ICC-centered workflow.
@@ -110,9 +124,9 @@ Release 0.2.4 introduces:
 Release 0.2.3 introduces:
 
 - letterless flow with real standard profiles instead of generic profiles
-  generated by NexoRAW,
+  generated by ProbRAW,
 - preferential selection of `AdobeRGB1998.icc` when it exists in the system,
-- NexoRAW Proof/C2PA manifests with full recipe adjustments, sharpness,
+- ProbRAW Proof/C2PA manifests with full recipe adjustments, sharpness,
   contrast/render and color management,
 - Expanded metadata viewer to show those reproducible settings.
 

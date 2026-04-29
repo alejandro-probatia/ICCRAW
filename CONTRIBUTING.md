@@ -2,7 +2,7 @@ _Spanish version: [CONTRIBUTING.es.md](CONTRIBUTING.es.md)_
 
 # Contribution guide
 
-Thank you for collaborating with NexoRAW. This project prioritizes reproducibility,
+Thank you for collaborating with ProbRAW. This project prioritizes reproducibility,
 audit and traceability for scientific, forensic and heritage photography.
 
 ## Types of contributions welcome
@@ -66,7 +66,7 @@ Example: `docs: add colorimetric validation issue template`.
 
 ## AGPL Reminder
 
-NexoRAW uses `AGPL-3.0-or-later`. If you run a derived version like
+ProbRAW uses `AGPL-3.0-or-later`. If you run a derived version like
 network service, you must publish the corresponding source code of the derivative.
 
 ## Community behavior

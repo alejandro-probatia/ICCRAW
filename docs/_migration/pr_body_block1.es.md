@@ -32,7 +32,7 @@ Este PR no toca codigo del pipeline. Solo anade documentacion, plantillas y demo
 ### Verificacion
 
 - `bash scripts/run_checks.sh` no afectado (no se toco codigo del pipeline).
-- `nexoraw check-tools --strict` ejecutado en entorno local: OK.
+- `probraw check-tools --strict` ejecutado en entorno local: OK.
 - `bash scripts/create_github_issues.sh --dry-run`: OK (32 issues listados).
 - `bash examples/demo_session/run_demo.sh`: OK (ICC + QA + manifiesto generados).
 - Plantillas YAML parseadas localmente con `PyYAML`: OK.

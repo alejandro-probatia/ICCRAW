@@ -2,7 +2,7 @@
 
 _English version: [METODOLOGIA_COLOR_RAW.md](METODOLOGIA_COLOR_RAW.md)_
 
-Este documento fija el criterio metodológico de NexoRAW para separar revelado
+Este documento fija el criterio metodológico de ProbRAW para separar revelado
 paramétrico, perfil de ajuste, perfil ICC de entrada, perfiles ICC de salida y
 perfil ICC del monitor.
 
@@ -27,7 +27,7 @@ interpretarse mediante una receta de revelado: demosaico, balance de blancos,
 nivel negro, compensación de exposición, curva tonal, espacio de salida y otros
 parámetros.
 
-En NexoRAW, el perfil ICC de entrada no se calcula sobre el RAW desnudo. Se
+En ProbRAW, el perfil ICC de entrada no se calcula sobre el RAW desnudo. Se
 calcula después de revelar una captura de carta con una receta controlada,
 porque las mediciones se hacen sobre valores RGB producidos por el revelador.
 Una vez generado, ese ICC describe cómo interpretar los RGB de cámara/sesión
@@ -62,9 +62,9 @@ El contrato metodológico para RAW es:
 
 Implementación actual:
 
-- con carta, NexoRAW conserva RGB lineal de cámara/sesión e incrusta el ICC de
+- con carta, ProbRAW conserva RGB lineal de cámara/sesión e incrusta el ICC de
   entrada generado;
-- sin carta, NexoRAW revela en `sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB` y
+- sin carta, ProbRAW revela en `sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB` y
   copia/incrusta un ICC estándar real;
 - los derivados convertidos desde un ICC de sesión se procesan mediante
   CMM/ArgyllCMS cuando corresponde;
@@ -72,12 +72,12 @@ Implementación actual:
 
 ## Perfil de Ajuste por Archivo
 
-NexoRAW 0.2 trata el revelado paramétrico como una propiedad asignada a cada RAW
+ProbRAW 0.2 trata el revelado paramétrico como una propiedad asignada a cada RAW
 mediante su mochila:
 
 ```text
 captura.NEF
-captura.NEF.nexoraw.json
+captura.NEF.probraw.json
 ```
 
 Una sesión puede contener varios perfiles de ajuste. Esto evita asumir que toda
@@ -119,7 +119,7 @@ Cuando no existe carta:
 2. El usuario guarda un perfil de ajuste manual.
 3. El usuario elige un espacio estándar real de salida: `sRGB`,
    `Adobe RGB (1998)` o `ProPhoto RGB`.
-4. NexoRAW revela el RAW en ese espacio y embebe el ICC estándar.
+4. ProbRAW revela el RAW en ese espacio y embebe el ICC estándar.
 5. La trazabilidad declara que no hay perfil de entrada medido y que el ICC
    incrustado es `generic_output_icc`.
 
@@ -128,16 +128,16 @@ referencia colorimétrica medida.
 
 ## TIFF Maestro y Derivados
 
-NexoRAW distingue:
+ProbRAW distingue:
 
 - **TIFF maestro con carta**: RGB de cámara/sesión, perfil de ajuste calibrado,
-  ICC de entrada de sesión, NexoRAW Proof y C2PA opcional.
+  ICC de entrada de sesión, ProbRAW Proof y C2PA opcional.
 - **TIFF derivado convertido**: salida transformada por CMM a un perfil de
   salida genérico o de dispositivo.
 - **TIFF manual sin carta**: RAW revelado en espacio estándar real, ICC estándar
   incrustado y mochila de ajuste por archivo.
 
-Las salidas existentes no se sobrescriben. NexoRAW crea versiones `_v002`,
+Las salidas existentes no se sobrescriben. ProbRAW crea versiones `_v002`,
 `_v003`, etc.
 
 ## Mochilas y Auditoría

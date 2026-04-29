@@ -5,11 +5,11 @@ import numpy as np
 import pytest
 import tifffile
 
-import nexoraw.profile.export as export_module
-from nexoraw.core.models import Recipe
-from nexoraw.core.external import external_tool_path
-from nexoraw.core.utils import read_image
-from nexoraw.profile.export import (
+import probraw.profile.export as export_module
+from probraw.core.models import Recipe
+from probraw.core.external import external_tool_path
+from probraw.core.utils import read_image
+from probraw.profile.export import (
     _argyll_reference_profile,
     _resolve_batch_workers,
     _versioned_batch_paths,
@@ -17,9 +17,9 @@ from nexoraw.profile.export import (
     color_management_mode,
     write_profiled_tiff,
 )
-from nexoraw.profile.generic import ensure_generic_output_profile
-from nexoraw.provenance.c2pa import C2PASignConfig
-from nexoraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity, verify_nexoraw_proof
+from probraw.profile.generic import ensure_generic_output_profile
+from probraw.provenance.c2pa import C2PASignConfig
+from probraw.provenance.probraw_proof import ProbRawProofConfig, generate_ed25519_identity, verify_probraw_proof
 
 
 class FakeC2PAClient:
@@ -37,8 +37,8 @@ class FakeC2PAClient:
     ) -> dict:
         dest_path.write_bytes(source_path.read_bytes() + b"\nFAKE-C2PA")
         return {
-            "active_manifest": "nexoraw:test",
-            "manifests": {"nexoraw:test": manifest},
+            "active_manifest": "probraw:test",
+            "manifests": {"probraw:test": manifest},
             "validation_status": [],
         }
 
@@ -54,11 +54,11 @@ def _fake_c2pa_config(tmp_path: Path) -> C2PASignConfig:
     return C2PASignConfig(cert_path=cert, key_path=key, client=FakeC2PAClient())
 
 
-def _proof_config(tmp_path: Path) -> NexoRawProofConfig:
+def _proof_config(tmp_path: Path) -> ProbRawProofConfig:
     private_key = tmp_path / "proof-private.pem"
     public_key = tmp_path / "proof-public.pem"
     generate_ed25519_identity(private_key_path=private_key, public_key_path=public_key)
-    return NexoRawProofConfig(
+    return ProbRawProofConfig(
         private_key_path=private_key,
         public_key_path=public_key,
         signer_name="Unit Test",
@@ -71,7 +71,7 @@ def _fake_standard_profiles(tmp_path: Path, monkeypatch) -> Path:
     (profile_dir / "sRGB.icm").write_bytes(b"s" * 256)
     (profile_dir / "AdobeRGB1998.icc").write_bytes(b"a" * 256)
     (profile_dir / "ProPhoto.icm").write_bytes(b"p" * 256)
-    monkeypatch.setenv("NEXORAW_STANDARD_ICC_DIR", str(profile_dir))
+    monkeypatch.setenv("PROBRAW_STANDARD_ICC_DIR", str(profile_dir))
     return profile_dir
 
 
@@ -176,7 +176,7 @@ def test_batch_develop_keeps_linear_audit_separate_from_final_outputs(tmp_path: 
     )
 
     assert (out_dir / "capture_01.tiff").exists()
-    assert (out_dir / "capture_01.tiff.nexoraw.proof.json").exists()
+    assert (out_dir / "capture_01.tiff.probraw.proof.json").exists()
     assert not (out_dir / "capture_01.linear.tiff").exists()
     assert (out_dir / "_linear_audit" / "capture_01.scene_linear.tiff").exists()
     assert manifest.entries[0].linear_audit_tiff == str(out_dir / "_linear_audit" / "capture_01.scene_linear.tiff")
@@ -247,14 +247,14 @@ def test_versioned_batch_paths_avoids_reserved_collisions(tmp_path: Path):
 
 
 def test_resolve_batch_workers_respects_env_override(monkeypatch):
-    monkeypatch.setenv("NEXORAW_BATCH_WORKERS", "4")
+    monkeypatch.setenv("PROBRAW_BATCH_WORKERS", "4")
 
     assert _resolve_batch_workers(1) == 1
     assert _resolve_batch_workers(3) == 3
 
 
 def test_resolve_batch_workers_accepts_explicit_override(monkeypatch):
-    monkeypatch.setenv("NEXORAW_BATCH_WORKERS", "8")
+    monkeypatch.setenv("PROBRAW_BATCH_WORKERS", "8")
 
     assert _resolve_batch_workers(5, workers=1) == 1
     assert _resolve_batch_workers(5, workers=3) == 3
@@ -264,18 +264,18 @@ def test_resolve_batch_workers_accepts_explicit_override(monkeypatch):
 def test_resolve_batch_workers_accepts_auto_keywords(monkeypatch):
     monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 8)
     monkeypatch.setattr(export_module, "_available_physical_memory_bytes", lambda: 32 * 1024 * 1024 * 1024)
-    monkeypatch.setenv("NEXORAW_BATCH_WORKERS", "auto")
+    monkeypatch.setenv("PROBRAW_BATCH_WORKERS", "auto")
     assert _resolve_batch_workers(2) == 2
-    monkeypatch.setenv("NEXORAW_BATCH_WORKERS", "max")
+    monkeypatch.setenv("PROBRAW_BATCH_WORKERS", "max")
     assert _resolve_batch_workers(2) == 2
-    monkeypatch.setenv("NEXORAW_BATCH_WORKERS", "all")
+    monkeypatch.setenv("PROBRAW_BATCH_WORKERS", "all")
     assert _resolve_batch_workers(2) == 2
 
 
 def test_resolve_batch_workers_auto_limits_by_memory(monkeypatch):
-    monkeypatch.delenv("NEXORAW_BATCH_WORKERS", raising=False)
-    monkeypatch.delenv("NEXORAW_BATCH_MEMORY_RESERVE_MB", raising=False)
-    monkeypatch.delenv("NEXORAW_BATCH_WORKER_RAM_MB", raising=False)
+    monkeypatch.delenv("PROBRAW_BATCH_WORKERS", raising=False)
+    monkeypatch.delenv("PROBRAW_BATCH_MEMORY_RESERVE_MB", raising=False)
+    monkeypatch.delenv("PROBRAW_BATCH_WORKER_RAM_MB", raising=False)
     monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 16)
     monkeypatch.setattr(export_module, "_available_physical_memory_bytes", lambda: 3 * 1024 * 1024 * 1024)
 
@@ -284,9 +284,9 @@ def test_resolve_batch_workers_auto_limits_by_memory(monkeypatch):
 
 
 def test_resolve_batch_workers_auto_honours_memory_env_tuning(monkeypatch):
-    monkeypatch.delenv("NEXORAW_BATCH_WORKERS", raising=False)
-    monkeypatch.setenv("NEXORAW_BATCH_MEMORY_RESERVE_MB", "512")
-    monkeypatch.setenv("NEXORAW_BATCH_WORKER_RAM_MB", "512")
+    monkeypatch.delenv("PROBRAW_BATCH_WORKERS", raising=False)
+    monkeypatch.setenv("PROBRAW_BATCH_MEMORY_RESERVE_MB", "512")
+    monkeypatch.setenv("PROBRAW_BATCH_WORKER_RAM_MB", "512")
     monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 12)
     monkeypatch.setattr(export_module, "_available_physical_memory_bytes", lambda: 3 * 1024 * 1024 * 1024)
 
@@ -331,7 +331,7 @@ def test_batch_develop_writes_true_linear_audit_before_output_adjustments(tmp_pa
     assert not np.allclose(rendered, audit_linear, atol=1e-3)
 
 
-def test_batch_develop_can_sign_with_nexoraw_proof_without_c2pa(tmp_path: Path):
+def test_batch_develop_can_sign_with_probraw_proof_without_c2pa(tmp_path: Path):
     raws = tmp_path / "inputs"
     out_dir = tmp_path / "out"
     raws.mkdir()
@@ -353,7 +353,7 @@ def test_batch_develop_can_sign_with_nexoraw_proof_without_c2pa(tmp_path: Path):
     proof_path = Path(entry.proof_path or "")
     assert proof_path.exists()
     assert entry.c2pa_embedded is False
-    verified = verify_nexoraw_proof(
+    verified = verify_probraw_proof(
         proof_path,
         output_tiff=Path(entry.output_tiff),
         source_raw=Path(entry.source_raw),
@@ -397,7 +397,7 @@ def test_argyll_reference_profile_searches_debian_share_path(tmp_path: Path, mon
     tool.write_text("", encoding="utf-8")
     profile.write_bytes(b"profile")
 
-    import nexoraw.profile.export as export_module
+    import probraw.profile.export as export_module
 
     monkeypatch.setattr(export_module, "external_tool_path", lambda command: str(tool) if command == "cctiff" else None)
 

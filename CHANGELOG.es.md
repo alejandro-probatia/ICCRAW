@@ -1,6 +1,6 @@
 # Changelog
 
-Todos los cambios relevantes de NexoRAW se documentan en este archivo.
+Todos los cambios relevantes de ProbRAW se documentan en este archivo.
 
 Este proyecto sigue:
 
@@ -17,6 +17,31 @@ Para mantener trazabilidad completa, cada cambio debe:
 3. referenciar, cuando aplique, impacto en reproducibilidad, legalidad o cadena de custodia.
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-04-29
+
+### Changed
+
+- Renombrado el proyecto y la identidad visible de la aplicacion a ProbRAW para
+  evitar conflicto de marca con proyectos existentes.
+- Renombrados paquete Python, lanzadores CLI, archivos desktop, iconos, capturas
+  y artefactos de release al nombre canonico `probraw`.
+- Actualizados metadatos de repositorio, instaladores y actualizaciones hacia
+  `alejandro-probatia/ProbRAW`.
+- Declarado el liderazgo del proyecto por Probatia Forensics SL en colaboracion
+  con la Asociacion Espanola de Imagen Cientifica y Forense.
+
+### Compatibility
+
+- Los nuevos sidecars RAW se escriben como `RAW.probraw.json`, pero los
+  `RAW.nexoraw.json` y `RAW.iccraw.json` existentes se siguen leyendo y se
+  migran al guardar de nuevo la sesion.
+- Los nuevos sidecars de prueba se escriben como `.probraw.proof.json`, pero
+  `.nexoraw.proof.json` y `.iccraw.proof.json` siguen siendo legibles.
+- La verificacion C2PA y Proof acepta etiquetas de asercion y variables de
+  entorno de betas anteriores como fallback de migracion.
+- Los paquetes Linux declaran `Replaces/Conflicts: nexoraw, iccraw` y no instalan
+  lanzadores heredados.
 
 ## [0.2.6] - 2026-04-29
 
@@ -49,14 +74,14 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Changed
 
-- Reorganizada la base de codigo alrededor del paquete canonico `nexoraw` y
+- Reorganizada la base de codigo alrededor del paquete canonico `probraw` y
   retirada la antigua implementacion interna bajo el namespace `iccraw`.
 - Dividida la interfaz en modulos UI/window mas pequenos para facilitar el
   mantenimiento de sesiones, preview, perfiles y cola de revelado.
 - Actualizados tests, scripts, instaladores y documentacion activa para usar de
-  forma consistente el paquete y los lanzadores `nexoraw`.
+  forma consistente el paquete y los lanzadores `probraw`.
 - Las nuevas salidas C2PA usan etiquetas de asercion/accion
-  `org.probatia.nexoraw.*`; la verificacion mantiene compatibilidad con
+  `org.probatia.probraw.*`; la verificacion mantiene compatibilidad con
   manifiestos beta anteriores `org.probatia.iccraw.*`.
 
 ## [0.2.4] - 2026-04-28
@@ -70,7 +95,7 @@ Para mantener trazabilidad completa, cada cambio debe:
   el SO esta en espanol arranca en espanol, en cualquier otro idioma arranca
   en ingles. No se migra a usuarios existentes con `app/language=es` ya
   guardado para respetar la eleccion previa.
-- Helpers `nexoraw.i18n.detect_system_language` y `nexoraw.i18n.resolve_language`
+- Helpers `probraw.i18n.detect_system_language` y `probraw.i18n.resolve_language`
   con tests unitarios en `tests/test_i18n.py`.
 
 ### Changed
@@ -83,13 +108,13 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Changed
 
-- El flujo sin carta deja de generar perfiles `NexoRAW generic ...`: el RAW se
+- El flujo sin carta deja de generar perfiles `ProbRAW generic ...`: el RAW se
   revela en un espacio RGB estandar real (`sRGB`, `Adobe RGB (1998)` o
   `ProPhoto RGB`) con LibRaw y se incrusta un ICC estandar copiado del sistema o
   de ArgyllCMS.
 - Los manifiestos de render registran `raw_color_pipeline`, indicando si la
   transformacion de color la resolvio LibRaw, el ICC de sesion o ArgyllCMS/CMM.
-- NexoRAW Proof/C2PA declaran los ajustes completos aplicados (`recipe`,
+- ProbRAW Proof/C2PA declaran los ajustes completos aplicados (`recipe`,
   detalle/nitidez, contraste/render y gestion de color); el hash de ajustes
   queda como control de integridad, no como unico dato visible para auditoria.
 
@@ -145,12 +170,12 @@ Para mantener trazabilidad completa, cada cambio debe:
 ### Added
 
 - GUI `Ayuda > Acerca de` ampliada con:
-  - director del proyecto configurable (`NEXORAW_PROJECT_DIRECTOR`),
+  - director del proyecto configurable (`PROBRAW_PROJECT_DIRECTOR`),
   - version en ejecucion,
   - estado operativo de AMaZE,
   - comprobacion de ultima version publicada en GitHub Releases,
   - actualizacion automatica que descarga y lanza el instalador de release.
-- Nuevo modulo `nexoraw.update` para consulta de releases, comparacion de
+- Nuevo modulo `probraw.update` para consulta de releases, comparacion de
   versiones, descarga de assets y ejecucion de instaladores por plataforma.
 - Histograma RGB en la pestaña `Visor` con lectura de clipping en sombras y
   luces y testigos visuales.
@@ -173,9 +198,9 @@ Para mantener trazabilidad completa, cada cambio debe:
   cola de revelado, metadatos y configuracion global.
 - Flujo documentado para sesiones sin carta: perfil de revelado manual con ICC
   generico de salida (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`) y mochila
-  `RAW.nexoraw.json` por imagen.
-- Paquete Debian de release `0.2.0`, instalable como aplicacion NexoRAW con
-  lanzadores `nexoraw`/`nexoraw-ui`, iconos hicolor y AMaZE validado en build.
+  `RAW.probraw.json` por imagen.
+- Paquete Debian de release `0.2.0`, instalable como aplicacion ProbRAW con
+  lanzadores `probraw`/`probraw-ui`, iconos hicolor y AMaZE validado en build.
 
 ### Changed
 
@@ -210,14 +235,14 @@ Para mantener trazabilidad completa, cada cambio debe:
   `raw/archivo` se resuelven automaticamente contra `01_ORG/archivo`, evitando
   tracebacks al abrir proyectos migrados.
 - GUI: al generar un perfil desde carta, el perfil avanzado queda asignado a los
-  RAW de carta mediante su mochila `RAW.nexoraw.json`.
+  RAW de carta mediante su mochila `RAW.probraw.json`.
 
 ## [0.1.0-beta.5] - 2026-04-25
 
 ### Changed
 
-- El nombre visible del proyecto pasa a ser NexoRAW. Se añaden entry points
-  `nexoraw`/`nexoraw-ui`, con alias heredados temporales para scripts beta
+- El nombre visible del proyecto pasa a ser ProbRAW. Se añaden entry points
+  `probraw`/`probraw-ui`, con alias heredados temporales para scripts beta
   existentes. Esos alias se retiran en 0.2.5.
 - CMM unificado en ArgyllCMS: se sustituye LittleCMS (`tificc`) por
   `cctiff`/`xicclu` para conversion ICC de salida, validacion y preview de
@@ -244,7 +269,7 @@ Para mantener trazabilidad completa, cada cambio debe:
   para que la conversion ICC funcione sin perfiles externos. Se elimina la
   copia de binarios y metadata de LittleCMS.
 - Paquete Debian: se elimina `liblcms2-utils` de las dependencias declaradas.
-- `nexoraw check-tools` requiere `cctiff` (ArgyllCMS) en lugar de `tificc`.
+- `probraw check-tools` requiere `cctiff` (ArgyllCMS) en lugar de `tificc`.
 
 ### Fixed
 
@@ -262,7 +287,7 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 - El instalador Windows AMaZE incluye metadata de distribucion
   `rawpy-demosaic` dentro del ejecutable PyInstaller para que
-  `nexoraw check-amaze` informe el backend exacto.
+  `probraw check-amaze` informe el backend exacto.
 - El empaquetado Windows copia avisos/licencias de `rawpy-demosaic`, LibRaw,
   los demosaic packs GPL2/GPL3 y RawSpeed, junto con hash de wheel y commit de
   fuente.
@@ -294,7 +319,7 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Las opciones de generacion ICC (`colprof`, calidad, formato y salida) y los
   criterios `RAW global` se muestran dentro de `Calibrar sesion`, antes de
   iniciar la calibracion.
-- Politica AMaZE/GPL3 documentada: NexoRAW mantiene `AGPL-3.0-or-later`, registra
+- Politica AMaZE/GPL3 documentada: ProbRAW mantiene `AGPL-3.0-or-later`, registra
   flags de `rawpy` y solo habilita AMaZE cuando `DEMOSAIC_PACK_GPL3=True`.
 - El instalador Windows empaqueta herramientas externas del flujo completo
   (`colprof`/`xicclu`, `exiftool` y `tificc`) bajo `tools/`.
@@ -333,7 +358,7 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ### Fixed
 
-- La referencia ColorChecker 2005 D50 se empaqueta dentro de `nexoraw` y se usa
+- La referencia ColorChecker 2005 D50 se empaqueta dentro de `probraw` y se usa
   como fallback cuando la GUI/CLI se ejecuta desde una instalacion `.deb` sin el
   arbol `testdata/` del repositorio.
 

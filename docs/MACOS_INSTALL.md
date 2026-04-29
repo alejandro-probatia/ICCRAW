@@ -2,7 +2,7 @@ _Spanish version: [MACOS_INSTALL.es.md](MACOS_INSTALL.es.md)_
 
 # Installation on macOS
 
-NexoRAW should preferably be distributed through an installer when it exists
+ProbRAW should preferably be distributed through an installer when it exists
 validated macOS artifact. As long as there is no macOS installer published, the path
 supported for testing is installation from code with external dependencies of the
 system.
@@ -16,7 +16,7 @@ brew install python argyll-cms exiftool
 If using MacPorts or other manual installation, the required executables must
 be available as `colprof`, `xicclu` or `icclu`, `cctiff` and `exiftool`.
 
-NexoRAW searches for tools in `PATH` and, also, in common macOS paths
+ProbRAW searches for tools in `PATH` and, also, in common macOS paths
 when the GUI is launched outside of a terminal:
 
 - `/opt/homebrew/bin`
@@ -25,7 +25,7 @@ when the GUI is launched outside of a terminal:
 - `/usr/local/opt/argyll-cms/bin`
 - `/opt/local/bin`
 
-An explicit route can also be set with `NEXORAW_TOOL_DIR`.
+An explicit route can also be set with `PROBRAW_TOOL_DIR`.
 
 ## Python installation
 
@@ -39,8 +39,8 @@ python -m pip install -e ".[gui]"
 Testing:
 ```bash
 bash scripts/check_tools.sh
-nexoraw check-tools --strict
-nexoraw-ui
+probraw check-tools --strict
+probraw-ui
 ```
 ## AMaZE
 
@@ -48,12 +48,12 @@ AMaZE requires `rawpy-demosaic` or a build of `rawpy`/LibRaw with the demosaic
 GPL3 pack. If there is a compatible wheel for the Python version used:
 ```bash
 python scripts/install_amaze_backend.py --pypi
-nexoraw check-amaze
+probraw check-amaze
 ```
 With your own wheel:
 ```bash
 python scripts/install_amaze_backend.py --wheel /ruta/rawpy_demosaic-*.whl
-nexoraw check-amaze
+probraw check-amaze
 ```
-The build is considered valid for AMaZE only if `nexoraw check-amaze` reports
+The build is considered valid for AMaZE only if `probraw check-amaze` reports
 `amaze_supported: true`.

@@ -177,7 +177,7 @@ Motivation:
 
 1. RAW developing programs like RawTherapee separate developing parameters
    reusable of the concrete image.
-2. NexoRAW should work with both chart-based scientific flow and
+2. ProbRAW should work with both chart-based scientific flow and
    an operational flow without a letter, where the user manually sets criteria for
    revealed.
 3. The same session may contain lighting conditions, objectives or
@@ -196,7 +196,7 @@ References:
 
 Decision:
 
-- when a session generates its own ICC from a card, NexoRAW considers it
+- when a session generates its own ICC from a card, ProbRAW considers it
   login profile;
 - the master TIFF preserves linear camera/session RGB and embeds that ICC;
 - the master TIFF is not converted to sRGB, AdobeRGB or ProPhoto if ICC exists
@@ -234,11 +234,11 @@ References:
 
 Decision:
 
-- store a `nombre.RAW.nexoraw.json` sidecar next to each RAW;
+- store a `nombre.RAW.probraw.json` sidecar next to each RAW;
 - record recipe, assigned development profile, session ICC, settings
   detail/render, RAW identity and recent TIFF outputs;
 - use JSON for consistency with existing auditable sidecars and manifests
-  in NexoRAW;
+  in ProbRAW;
 - automatically load the backpack when selecting or reinserting a RAW in the
   queue when the development profile exists in the session.
 
@@ -248,7 +248,7 @@ Motivation:
    parametric and save settings on sidecars.
 2. A session can move between teams or users without losing parameters
    per image.
-3. The sidecar by RAW complements, does not replace, `session.json`, NexoRAW Proof or
+3. The sidecar by RAW complements, does not replace, `session.json`, ProbRAW Proof or
    `batch_manifest.json`.
 
 References:
@@ -275,7 +275,7 @@ Motivation:
 1. Not all monitors are sRGB; assuming sRGB can give saturation and hue
    incorrect on wide-gamut or calibrated displays.
 2. Operating systems already maintain the active ICC profile of the monitor, so
-   so NexoRAW should consume that configuration before asking the user for a
+   so ProbRAW should consume that configuration before asking the user for a
    manual route.
 3. The monitor profile is a display condition, not a performance parameter.
    revealed nor a property of the exported file.

@@ -16,7 +16,7 @@ Reporta de forma privada a: `[contacto-pendiente@dominio]`.
 
 Incluye, si es posible:
 
-- Version de NexoRAW y sistema operativo.
+- Version de ProbRAW y sistema operativo.
 - Vector de ataque y pasos reproducibles.
 - Impacto potencial (confidencialidad, integridad, disponibilidad).
 - Prueba de concepto minima.
@@ -34,13 +34,13 @@ mismo canal privado.
 
 - Vulnerabilidades en parsing de RAW o de imagenes usadas en el pipeline.
 - Riesgos en ejecucion de subprocesos externos (`ExifTool`, `ArgyllCMS`).
-- Manipulacion maliciosa de sidecars, manifests o proof (`.nexoraw.proof.json`,
+- Manipulacion maliciosa de sidecars, manifests o proof (`.probraw.proof.json`,
   `batch_manifest.json`, C2PA) que comprometa trazabilidad.
 
 ## Fuera de alcance (out of scope)
 
 - Errores cosmeticos de GUI sin impacto de seguridad.
-- Fallos de dependencias upstream sin exploit propio en NexoRAW.
+- Fallos de dependencias upstream sin exploit propio en ProbRAW.
   En esos casos, reporta tambien al tracker del proveedor afectado.
 - Solicitudes de hardening generico sin escenario reproducible.
 

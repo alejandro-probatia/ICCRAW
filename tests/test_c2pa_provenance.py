@@ -5,25 +5,27 @@ import numpy as np
 import pytest
 import tifffile
 
-from nexoraw.core.models import RawMetadata, Recipe
-from nexoraw.core.utils import sha256_file
-from nexoraw.profile.export import batch_develop, write_signed_profiled_tiff
-from nexoraw.provenance.c2pa import (
-    RAW_LINK_ASSERTION_LABEL,
-    NEXORAW_RENDER_ACTION,
-    RENDER_SETTINGS_SCHEMA,
-    C2PASigningError,
+from probraw.core.models import RawMetadata, Recipe
+from probraw.core.utils import sha256_file
+from probraw.profile.export import batch_develop, write_signed_profiled_tiff
+from probraw.provenance.c2pa import (
     C2PASignConfig,
+    C2PASigningError,
+    LEGACY_RAW_LINK_ASSERTION_LABELS,
+    PROBRAW_RENDER_ACTION,
+    RAW_LINK_ASSERTION_LABEL,
+    RENDER_SETTINGS_SCHEMA,
     build_c2pa_manifest,
     build_raw_link_assertion,
     build_render_settings,
     c2pa_config_from_environment,
     ensure_local_c2pa_identity,
+    extract_raw_link_assertion,
     local_c2pa_config,
     sign_tiff_with_c2pa,
     verify_c2pa_raw_link,
 )
-from nexoraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity
+from probraw.provenance.probraw_proof import ProbRawProofConfig, generate_ed25519_identity
 
 
 class FakeC2PAClient:
@@ -57,8 +59,8 @@ class FakeC2PAClient:
         )
         dest_path.write_bytes(source_path.read_bytes() + b"\nFAKE-C2PA")
         self.manifest_store = {
-            "active_manifest": "nexoraw:1",
-            "manifests": {"nexoraw:1": manifest},
+            "active_manifest": "probraw:1",
+            "manifests": {"probraw:1": manifest},
             "validation_status": [],
         }
         return self.manifest_store
@@ -96,11 +98,11 @@ def _metadata(path: Path) -> RawMetadata:
     )
 
 
-def _proof_config(tmp_path: Path) -> NexoRawProofConfig:
+def _proof_config(tmp_path: Path) -> ProbRawProofConfig:
     private_key = tmp_path / "proof-private.pem"
     public_key = tmp_path / "proof-public.pem"
     generate_ed25519_identity(private_key_path=private_key, public_key_path=public_key)
-    return NexoRawProofConfig(private_key_path=private_key, public_key_path=public_key)
+    return ProbRawProofConfig(private_key_path=private_key, public_key_path=public_key)
 
 
 def test_raw_link_assertion_uses_raw_sha_as_probative_identifier(tmp_path: Path):
@@ -131,10 +133,10 @@ def test_raw_link_assertion_uses_raw_sha_as_probative_identifier(tmp_path: Path)
     assert assertion["schema"] == RAW_LINK_ASSERTION_LABEL
     assert assertion["raw_identity"]["sha256"] == sha256_file(raw)
     assert assertion["raw_identity"]["path_auxiliary_role"] == "non_probative_locator"
-    assert assertion["nexoraw"]["icc_profile_sha256"] == sha256_file(profile)
-    assert assertion["nexoraw"]["demosaicing_algorithm"] == "amaze"
-    assert assertion["nexoraw"]["render_settings_sha256"] == settings["settings_sha256"]
-    summary = assertion["nexoraw"]["render_settings_summary"]
+    assert assertion["probraw"]["icc_profile_sha256"] == sha256_file(profile)
+    assert assertion["probraw"]["demosaicing_algorithm"] == "amaze"
+    assert assertion["probraw"]["render_settings_sha256"] == settings["settings_sha256"]
+    summary = assertion["probraw"]["render_settings_summary"]
     assert summary["settings_sha256"] == settings["settings_sha256"]
     assert summary["detail_adjustments"]["sharpen_amount"] == 0.3
     assert summary["render_adjustments"]["brightness_ev"] == 0.5
@@ -174,7 +176,23 @@ def test_c2pa_manifest_contains_actions_and_custom_raw_link(tmp_path: Path):
     assert RAW_LINK_ASSERTION_LABEL in labels
     action_names = manifest["assertions"][0]["data"]["actions"]
     assert action_names[0]["action"] == "c2pa.created"
-    assert action_names[1]["action"] == NEXORAW_RENDER_ACTION
+    assert action_names[1]["action"] == PROBRAW_RENDER_ACTION
+
+
+def test_extract_raw_link_accepts_legacy_nexoraw_label():
+    legacy_label = "org.probatia.nexoraw.raw-link.v1"
+    assert legacy_label in LEGACY_RAW_LINK_ASSERTION_LABELS
+    payload = {"schema": legacy_label, "raw_identity": {"sha256": "raw"}}
+    manifest_store = {
+        "active_manifest": "probraw:1",
+        "manifests": {
+            "probraw:1": {
+                "assertions": [{"label": legacy_label, "data": payload}],
+            }
+        },
+    }
+
+    assert extract_raw_link_assertion(manifest_store) == payload
 
 
 def test_sign_tiff_with_c2pa_replaces_output_and_hashes_after_signing(tmp_path: Path):
@@ -204,8 +222,8 @@ def test_sign_tiff_with_c2pa_replaces_output_and_hashes_after_signing(tmp_path: 
     assert result.output_sha256_after_signing == sha256_file(tiff)
     assert client.calls[0]["source_ingredient_path"] is None
     raw_link = json.loads(client.calls[0]["manifest"]["assertions"][1]["data"])
-    assert raw_link["nexoraw"]["render_settings_sha256"] == "render-hash"
-    assert raw_link["nexoraw"]["render_settings_summary"]["render_adjustments"]["contrast"] == 0.2
+    assert raw_link["probraw"]["render_settings_sha256"] == "render-hash"
+    assert raw_link["probraw"]["render_settings_summary"]["render_adjustments"]["contrast"] == 0.2
     assert raw_link["render_settings"]["render_adjustments"]["contrast"] == 0.2
     assert "output_sha256" not in str(client.calls[0]["manifest"])
 
@@ -223,9 +241,9 @@ def test_verify_c2pa_raw_link_checks_raw_and_external_manifest(tmp_path: Path):
         raw_metadata=_metadata(raw),
     )
     manifest_store = {
-        "active_manifest": "nexoraw:1",
+        "active_manifest": "probraw:1",
         "manifests": {
-            "nexoraw:1": {
+            "probraw:1": {
                 "assertions": [
                     {"label": RAW_LINK_ASSERTION_LABEL, "data": assertion},
                 ],
@@ -275,9 +293,9 @@ def test_verify_c2pa_accepts_local_untrusted_signer_as_technical_warning(tmp_pat
         raw_metadata=_metadata(raw),
     )
     manifest_store = {
-        "active_manifest": "nexoraw:1",
+        "active_manifest": "probraw:1",
         "manifests": {
-            "nexoraw:1": {
+            "probraw:1": {
                 "assertions": [{"label": RAW_LINK_ASSERTION_LABEL, "data": assertion}],
             }
         },
@@ -353,6 +371,8 @@ def test_batch_develop_hashes_signed_tiff_when_c2pa_enabled(tmp_path: Path):
 
 def test_c2pa_environment_config_still_reports_missing_credentials(tmp_path: Path, monkeypatch):
     for name in (
+        "PROBRAW_C2PA_CERT",
+        "PROBRAW_C2PA_KEY",
         "NEXORAW_C2PA_CERT",
         "NEXORAW_C2PA_KEY",
     ):
@@ -360,6 +380,24 @@ def test_c2pa_environment_config_still_reports_missing_credentials(tmp_path: Pat
 
     with pytest.raises(C2PASigningError, match="credenciales C2PA"):
         c2pa_config_from_environment()
+
+
+def test_c2pa_environment_config_accepts_legacy_nexoraw_variables(tmp_path: Path, monkeypatch):
+    cert = tmp_path / "cert.pem"
+    key = tmp_path / "key.pem"
+    cert.write_text("cert", encoding="utf-8")
+    key.write_text("key", encoding="utf-8")
+    monkeypatch.delenv("PROBRAW_C2PA_CERT", raising=False)
+    monkeypatch.delenv("PROBRAW_C2PA_KEY", raising=False)
+    monkeypatch.setenv("NEXORAW_C2PA_CERT", str(cert))
+    monkeypatch.setenv("NEXORAW_C2PA_KEY", str(key))
+    monkeypatch.setenv("NEXORAW_C2PA_SIGNER_NAME", "Legacy signer")
+
+    config = c2pa_config_from_environment()
+
+    assert config.cert_path == cert
+    assert config.key_path == key
+    assert config.signer_name == "Legacy signer"
 
 
 def test_signed_tiff_write_does_not_leave_unsigned_final_on_c2pa_failure(tmp_path: Path):

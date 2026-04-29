@@ -2,21 +2,21 @@ _Versión en español: [ROADMAP.es.md](ROADMAP.es.md)_
 
 # Roadmap
 
-This roadmap describes the active direction of NexoRAW after the 0.2.6
+This roadmap describes the active direction of ProbRAW after the 0.3.0
 reorganization. It favors a stable, reproducible ICC workflow over adding
 parallel color-profile layers.
 
 ## Completed Foundation
 
-- Modular Python package under `src/nexoraw`.
-- Canonical CLI and GUI entry points: `nexoraw` and `nexoraw-ui`.
-- Debian package under the NexoRAW name, with no legacy `iccraw` launchers.
+- Modular Python package under `src/probraw`.
+- Canonical CLI and GUI entry points: `probraw` and `probraw-ui`.
+- Debian package under the ProbRAW name, with no legacy `iccraw` launchers.
 - Qt GUI with session, adjustment/profile and render queue tabs.
 - Persistent session structure:
   - `00_configuraciones/`
   - `01_ORG/`
   - `02_DRV/`
-- Per-file development backpacks (`RAW.nexoraw.json`).
+- Per-file development backpacks (`RAW.probraw.json`).
 - Chart-based advanced development profiles.
 - Session input ICC generation with ArgyllCMS.
 - Persistent session ICC profile catalog with several activatable versions.
@@ -27,8 +27,8 @@ parallel color-profile layers.
 - Standard output ICC workflow for no-chart sessions.
 - Monitor ICC management for preview only.
 - Manual four-corner chart marking in the viewer.
-- NexoRAW Proof and optional C2PA metadata.
-- Full test suite passing for 0.2.6 packaging validation.
+- ProbRAW Proof and optional C2PA metadata.
+- Full test suite passing for 0.3.0 packaging validation.
 
 ## Current Principle
 
@@ -73,7 +73,7 @@ Objective: improve confidence in profiles generated from references.
 
 ## Phase 4 - Performance and Large Sessions
 
-Objective: keep NexoRAW responsive as sessions grow.
+Objective: keep ProbRAW responsive as sessions grow.
 
 - Continue optimizing persistent preview and thumbnail caches.
 - Benchmark RAW browsing, 1:1 preview and profile preview on representative

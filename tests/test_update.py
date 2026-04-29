@@ -4,7 +4,7 @@ from dataclasses import asdict
 import io
 import json
 
-import nexoraw.update as update_mod
+import probraw.update as update_mod
 
 
 def test_compare_versions_with_revision_suffix() -> None:
@@ -31,8 +31,8 @@ def test_check_latest_release_payload(monkeypatch) -> None:
         "published_at": "2026-04-27T10:00:00Z",
         "assets": [
             {
-                "name": "NexoRAW-0.2.9-Setup.exe",
-                "browser_download_url": "https://example.com/NexoRAW-0.2.9-Setup.exe",
+                "name": "ProbRAW-0.2.9-Setup.exe",
+                "browser_download_url": "https://example.com/ProbRAW-0.2.9-Setup.exe",
             }
         ],
     }
@@ -52,7 +52,7 @@ def test_check_latest_release_payload(monkeypatch) -> None:
     serialized = asdict(result)
     assert serialized["latest_version"] == "0.2.9"
     assert serialized["release_url"] == "https://example.com/release"
-    assert serialized["asset_name"] == "NexoRAW-0.2.9-Setup.exe"
-    assert serialized["asset_url"] == "https://example.com/NexoRAW-0.2.9-Setup.exe"
+    assert serialized["asset_name"] == "ProbRAW-0.2.9-Setup.exe"
+    assert serialized["asset_url"] == "https://example.com/ProbRAW-0.2.9-Setup.exe"
     assert serialized["error"] is None
 

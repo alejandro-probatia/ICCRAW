@@ -1,16 +1,16 @@
 _Versión en español: [MANUAL_USUARIO.es.md](MANUAL_USUARIO.es.md)_
 
-# NexoRAW User Manual
+# ProbRAW User Manual
 
-NexoRAW is a free and open application for RAW/TIFF development with
+ProbRAW is a free and open application for RAW/TIFF development with
 reproducible criteria, ICC color management and traceability. It is designed for
 technical, scientific, documentary, heritage and forensic photography: the
 original RAW file is never modified, and each final TIFF remains linked to its
 settings, profiles, hashes and audit artifacts.
 
-![NexoRAW: main development and profiling interface](assets/screenshots/nexoraw-portada.png)
+![ProbRAW: main development and profiling interface](assets/screenshots/probraw-portada.png)
 
-This manual covers the complete NexoRAW 0.2.6 workflow: session creation, color
+This manual covers the complete ProbRAW 0.3.0 workflow: session creation, color
 chart profiling, manual work without a chart, settings copy/paste, render queue,
 TIFF export, metadata, Proof, C2PA, 3D gamut diagnostics, chart reference
 management, global settings and the meaning of every visible option in the
@@ -18,16 +18,16 @@ interface.
 
 ## 1. Installation and Startup
 
-Install NexoRAW using the published package for your platform. Users should not
+Install ProbRAW using the published package for your platform. Users should not
 install Python, dependencies or external tools manually. The installer provides:
 
-- the graphical `NexoRAW` application;
-- the `nexoraw` and `nexoraw-ui` commands for advanced use;
+- the graphical `ProbRAW` application;
+- the `probraw` and `probraw-ui` commands for advanced use;
 - the application icon;
 - the components required to develop RAW files, build profiles, sign outputs and
   read metadata.
 
-On Linux, macOS and Windows, open NexoRAW from the application menu. On Linux it
+On Linux, macOS and Windows, open ProbRAW from the application menu. On Linux it
 should appear in the graphics/photography category.
 
 Packaging and installer documentation:
@@ -52,7 +52,7 @@ Persistent structure:
 | `02_DRV/` | Derived TIFFs, previews, manifests and final outputs. |
 
 Older sessions with `raw/`, `charts/`, `exports/`, `profiles/`, `config/` or
-`work/` folders are opened in compatibility mode. NexoRAW resolves those paths
+`work/` folders are opened in compatibility mode. ProbRAW resolves those paths
 against the current structure whenever possible, without destructive conversion.
 
 ### Development Profile
@@ -61,14 +61,14 @@ A development profile is a parametric recipe assignable to one or more RAW
 files: balance, exposure, temperature, tone, sharpening, noise, chromatic
 aberration and base RAW criteria. It can be:
 
-- **Advanced with chart**: created from a color chart capture. NexoRAW computes
+- **Advanced with chart**: created from a color chart capture. ProbRAW computes
   objective adjustments from the reference and creates a session input ICC.
 - **Basic without chart**: created from manual adjustments in the development
   panels and associated with a standard output ICC.
 
-### NexoRAW Backpack
+### ProbRAW Backpack
 
-The backpack is the `RAW.nexoraw.json` sidecar written next to the RAW file. It
+The backpack is the `RAW.probraw.json` sidecar written next to the RAW file. It
 stores the profile assigned to that specific image. Thumbnail markers indicate:
 
 - blue band: advanced profile created from a chart;
@@ -77,7 +77,7 @@ stores the profile assigned to that specific image. Thumbnail markers indicate:
 
 ### Color Policy
 
-NexoRAW avoids adding a subjective DCP layer on top of the ICC workflow. The
+ProbRAW avoids adding a subjective DCP layer on top of the ICC workflow. The
 recommended base is scientific and reproducible:
 
 - with a chart: measure a colorimetric reference, build a calibrated recipe and
@@ -102,7 +102,7 @@ Practical rule:
 | Control | Function |
 | --- | --- |
 | `Inicio` | Go to the user's home directory. |
-| `Abrir carpeta...` | Open a folder; if it belongs to a session, NexoRAW detects the session root. |
+| `Abrir carpeta...` | Open a folder; if it belongs to a session, ProbRAW detects the session root. |
 | `Recargar` | Re-list the current directory and refresh thumbnails. |
 | `Pantalla completa` | Toggle full screen. Same as `F11`. |
 | Status/progress bar | Shows the active task, loading state and global progress. |
@@ -115,7 +115,7 @@ Practical rule:
 | `Configuración` | Load recipe, save recipe, restore default recipe, open global settings and jump to Session/Development/Queue tabs. |
 | `Perfil ICC` | Load active profile, use generated profile and compare QA reports. |
 | `Vista` | Compare original/result, go to Sharpness, full screen and reset panel layout. |
-| `Ayuda` | Tool diagnostics, update check and about NexoRAW. |
+| `Ayuda` | Tool diagnostics, update check and about ProbRAW. |
 
 ### Main Tabs
 
@@ -127,13 +127,13 @@ Practical rule:
 
 ## 4. Create or Open a Session
 
-![Session management](assets/screenshots/nexoraw-sesion.png)
+![Session management](assets/screenshots/probraw-sesion.png)
 
 In `1. Sesión`:
 
 | Option | Explanation |
 | --- | --- |
-| `Directorio raíz de sesión` | Main project folder. NexoRAW creates `00_configuraciones`, `01_ORG` and `02_DRV` inside it. |
+| `Directorio raíz de sesión` | Main project folder. ProbRAW creates `00_configuraciones`, `01_ORG` and `02_DRV` inside it. |
 | `Nombre de sesión` | Human-readable project name stored in `00_configuraciones/session.json`. |
 | `Condiciones de iluminación` | Free note about light, chart, temperature, flash, scene or environment. |
 | `Notas de toma` | Free note about camera, lens, exposure, tripod, procedure or incidents. |
@@ -160,7 +160,7 @@ In `2. Ajustar / Aplicar`, the left panel has vertical tabs.
 | --- | --- |
 | `Unidad / raíz` | Select the visible drive or mount point for the browser. |
 | `Actualizar` | Re-read mounted drives and refresh the tree. |
-| Folder tree | Changes the current directory. NexoRAW lists compatible files in the thumbnail strip. |
+| Folder tree | Changes the current directory. ProbRAW lists compatible files in the thumbnail strip. |
 
 Browsable files: RAW supported by the engine, DNG, TIFF, PNG, JPEG and JPG. For
 colorimetric references, use original RAW/DNG/TIFF captures, not derived outputs.
@@ -170,7 +170,7 @@ colorimetric references, use original RAW/DNG/TIFF captures, not derived outputs
 | Option | Explanation |
 | --- | --- |
 | `Archivo actual` | Path of the selected file. |
-| `Comparar original / resultado` | Shows before/after view. When enabled, NexoRAW loads maximum-quality preview when needed. |
+| `Comparar original / resultado` | Shows before/after view. When enabled, ProbRAW loads maximum-quality preview when needed. |
 | `Aplicar perfil ICC en resultado` | Applies the active ICC only to the result preview. It is off by default to avoid color casts when the ICC does not match the current camera, recipe and lighting. |
 | `-` / `+` | Zoom out or in. |
 | `1:1` | Display at real pixel size. |
@@ -189,7 +189,7 @@ measurements for checking whether adjustments are stable.
 
 ### Metadata
 
-![Metadata viewer](assets/screenshots/nexoraw-metadatos.png)
+![Metadata viewer](assets/screenshots/probraw-metadatos.png)
 
 | Option | Explanation |
 | --- | --- |
@@ -226,7 +226,7 @@ colorimetric reference and add to queue.
 
 This is the preferred workflow when objective colorimetric precision matters.
 
-![Workflow with color chart](assets/screenshots/nexoraw-flujo-con-carta.png)
+![Workflow with color chart](assets/screenshots/probraw-flujo-con-carta.png)
 
 1. Create or open the session.
 2. Copy chart RAW files and scene RAW files to `01_ORG/`.
@@ -235,7 +235,7 @@ This is the preferred workflow when objective colorimetric precision matters.
 5. In `Gestión de color y calibración`, review `Referencia de carta`, `Tipo de
    carta`, `Formato ICC`, `Tipo de perfil ICC` and `Calidad colprof`.
 6. In `RAW Global`, review demosaic and base RAW criteria. During advanced
-   profiling, NexoRAW forces objective measurement settings: linear curve,
+   profiling, ProbRAW forces objective measurement settings: linear curve,
    linear output, `scene_linear_camera_rgb`, with denoise and sharpen disabled
    for chart measurement.
 7. If automatic detection is not good enough, press `Marcar en visor`. The cursor
@@ -257,11 +257,11 @@ Expected result:
 - custom references in `00_configuraciones/references/`, if created or imported;
 - profile reports, QA, overlays and cache in
   `00_configuraciones/profile_runs/` and `00_configuraciones/work/`;
-- `RAW.nexoraw.json` backpack for the chart RAW files used.
+- `RAW.probraw.json` backpack for the chart RAW files used.
 
 ### Chart References and Custom Charts
 
-![Chart reference and ICC profile management](assets/screenshots/nexoraw-referencias-y-perfiles.png)
+![Chart reference and ICC profile management](assets/screenshots/probraw-referencias-y-perfiles.png)
 
 The bundled default reference is ColorChecker 24 / ColorChecker 2005 / D50. You
 can also import an existing JSON reference or create a custom session reference.
@@ -273,7 +273,7 @@ one row per patch with its identifier, name and Lab D50 values; the first column
 shows an approximate swatch for the entered color so obvious typing mistakes are
 easy to spot. Saving generates the JSON reference used by the profiler.
 
-![Lab reference table editor](assets/screenshots/nexoraw-editor-referencia-lab.png)
+![Lab reference table editor](assets/screenshots/probraw-editor-referencia-lab.png)
 
 Best practices:
 
@@ -297,14 +297,14 @@ surface represents the second profile and the wireframe represents the first one
 The top text reports how much of profile A is inside profile B and warns when a
 generated ICC has extreme Lab coordinates.
 
-![Pairwise 3D gamut comparison](assets/screenshots/nexoraw-gamut-3d-comparacion.png)
+![Pairwise 3D gamut comparison](assets/screenshots/probraw-gamut-3d-comparacion.png)
 
 ## 8. Complete Workflow Without a Color Chart
 
 This workflow is valid when no colorimetric reference exists. It is less
 objective, but still parametric and traceable.
 
-![Workflow without color chart](assets/screenshots/nexoraw-flujo-sin-carta.png)
+![Workflow without color chart](assets/screenshots/probraw-flujo-sin-carta.png)
 
 1. Select a representative image.
 2. Adjust `Brillo y contraste`, `Color`, `Nitidez` and, if needed, `RAW Global`.
@@ -320,14 +320,14 @@ Expected result:
 
 - manual profile in `00_configuraciones/development_profiles/`;
 - standard ICC in `00_configuraciones/profiles/standard/`;
-- `RAW.nexoraw.json` backpack with the generic output space;
+- `RAW.probraw.json` backpack with the generic output space;
 - final TIFF in `02_DRV/` with the standard ICC embedded.
 
 ## 9. Copy Settings and Backpacks
 
-![Backpacks and settings copy](assets/screenshots/nexoraw-mochila-ajustes.png)
+![Backpacks and settings copy](assets/screenshots/probraw-mochila-ajustes.png)
 
-NexoRAW treats development as per-file parametric editing.
+ProbRAW treats development as per-file parametric editing.
 
 1. Select the image with the correct profile.
 2. If the adjustment is manual and has no backpack yet, press `Guardar perfil
@@ -345,7 +345,7 @@ Best practices:
 
 ## 10. Render Queue and Export
 
-![Render queue](assets/screenshots/nexoraw-cola-revelado.png)
+![Render queue](assets/screenshots/probraw-cola-revelado.png)
 
 The queue processes a selection or a complete batch without losing which profile
 belongs to each file.
@@ -367,7 +367,7 @@ belongs to each file.
 | Table `Mensaje` | Process or error message. |
 | `Monitoreo de ejecución` | Global state, progress, task table and log. |
 
-If an output TIFF already exists, NexoRAW creates a new version:
+If an output TIFF already exists, ProbRAW creates a new version:
 `capture.tiff`, `capture_v002.tiff`, `capture_v003.tiff`, etc.
 
 ### `Exportar derivados` Panel
@@ -384,7 +384,7 @@ If an output TIFF already exists, NexoRAW creates a new version:
 | `Salida JSON de exportación` | Technical result of the export process. |
 
 Each TIFF can generate the final 16-bit TIFF, a linear audit TIFF,
-`*.nexoraw.proof.json`, a backpack, `batch_manifest.json` and C2PA metadata when
+`*.probraw.proof.json`, a backpack, `batch_manifest.json` and C2PA metadata when
 configured.
 
 ## 11. Right Panel: Complete Settings Reference
@@ -513,7 +513,7 @@ configured.
 | `Input color assumption (metadato)` | camera_native | Declarative field; does not apply an additional color transform. |
 | `Illuminant metadata` | text | Free illuminant metadata. |
 
-Note: during `Generar perfil avanzado con carta`, NexoRAW forces
+Note: during `Generar perfil avanzado con carta`, ProbRAW forces
 `tone_curve=linear`, `Salida lineal=on` and
 `Output space=scene_linear_camera_rgb`. Sharpening and noise reduction are
 disabled during chart measurement and applied later in final rendering if the
@@ -534,19 +534,19 @@ Recipe fields that are saved even when they are not always directly editable:
 
 Global settings are in `Configuración > Configuración global...`.
 
-![Global settings](assets/screenshots/nexoraw-configuracion-global.png)
+![Global settings](assets/screenshots/probraw-configuracion-global.png)
 
 ### General
 
 | Option | Explanation |
 | --- | --- |
-| `Idioma de la interfaz` | `Sistema`, `Español` or `English`. The change applies after restarting NexoRAW. |
+| `Idioma de la interfaz` | `Sistema`, `Español` or `English`. The change applies after restarting ProbRAW. |
 
 ### Signature / C2PA
 
 | Option | Explanation |
 | --- | --- |
-| `Clave privada Proof (Ed25519)` | Local private key used to sign NexoRAW Proof. |
+| `Clave privada Proof (Ed25519)` | Local private key used to sign ProbRAW Proof. |
 | `Clave pública Proof` | Public key used to verify the signature. |
 | `Frase clave Proof` | Unlock passphrase. It is not saved. |
 | `Firmante Proof` | Local signer name in Proof sidecars. |
@@ -558,7 +558,7 @@ Global settings are in `Configuración > Configuración global...`.
 | `Servidor TSA` | Timestamping URL for C2PA. |
 | `Firmante C2PA` | Signer name for the C2PA manifest. |
 
-NexoRAW Proof is the mandatory autonomous project signature. C2PA/CAI is an
+ProbRAW Proof is the mandatory autonomous project signature. C2PA/CAI is an
 interoperable layer that automatically uses a local lab identity when no
 external certificate is configured.
 
@@ -580,12 +580,12 @@ Monitor detection:
 - Linux/BSD: `colord` or `_ICC_PROFILE`;
 - Windows: WCS/ICM.
 
-If no profile is found, NexoRAW uses sRGB as the visual fallback.
+If no profile is found, ProbRAW uses sRGB as the visual fallback.
 
 ## 13. Metadata, Proof and Traceability
 
-NexoRAW Proof links RAW, TIFF, recipe, profile, settings, hashes and public key.
-The `*.nexoraw.proof.json` sidecar lets you audit that a TIFF corresponds to a
+ProbRAW Proof links RAW, TIFF, recipe, profile, settings, hashes and public key.
+The `*.probraw.proof.json` sidecar lets you audit that a TIFF corresponds to a
 specific RAW and recipe. C2PA/CAI adds a layer compatible with external tools and
 trust lists when a recognized certificate is available.
 
@@ -593,14 +593,14 @@ A complete export can contain:
 
 - final 16-bit TIFF;
 - linear audit TIFF in `_linear_audit/`;
-- `RAW.nexoraw.json`;
-- `*.nexoraw.proof.json`;
+- `RAW.probraw.json`;
+- `*.probraw.proof.json`;
 - `batch_manifest.json`;
 - C2PA manifest if configured.
 
 ## 14. Performance and Cache
 
-NexoRAW separates browsing, preview and final rendering:
+ProbRAW separates browsing, preview and final rendering:
 
 - thumbnails use a fast cache;
 - RAW files use the embedded preview first when available;
@@ -621,7 +621,7 @@ Best practices:
 ### AMaZE Is Not Available
 
 AMaZE appears as available only if the installation includes the GPL3 LibRaw/rawpy
-backend. If it is not available, use DCB or another supported algorithm. NexoRAW
+backend. If it is not available, use DCB or another supported algorithm. ProbRAW
 records the chosen algorithm in recipes and reports.
 
 ### Chart Detection Fails
@@ -648,7 +648,7 @@ traceable, but it does not replace the precision of a measured reference.
 
 ### The Image Already Had an Exported TIFF
 
-NexoRAW does not overwrite existing outputs. It creates `_v002`, `_v003`, etc.
+ProbRAW does not overwrite existing outputs. It creates `_v002`, `_v003`, etc.
 
 ## 16. Glossary
 
@@ -656,12 +656,12 @@ NexoRAW does not overwrite existing outputs. It creates `_v002`, `_v003`, etc.
 | --- | --- |
 | AMaZE | High-quality demosaic algorithm available only with GPL3 support in LibRaw/rawpy. |
 | ArgyllCMS | Toolset used to create ICC profiles, especially `colprof`. |
-| Backpack | `RAW.nexoraw.json` sidecar with settings assigned to a RAW file. |
+| Backpack | `RAW.probraw.json` sidecar with settings assigned to a RAW file. |
 | C2PA/CAI | Interoperable provenance and authenticity standard for digital content. |
 | Cache | Temporary preview, thumbnail or demosaic data that speeds up later work. |
 | Chart | Physical reference with known color patches used to measure deviations. |
 | Clipping | Shadow or highlight cut-off where signal becomes black or white without detail. |
-| DCP | Camera profile format used by some RAW developers. NexoRAW prioritizes a reproducible ICC workflow. |
+| DCP | Camera profile format used by some RAW developers. ProbRAW prioritizes a reproducible ICC workflow. |
 | DeltaE 2000 | Perceptual color-difference metric between measured and reference colors. |
 | Demosaic | Interpolation that converts the RAW Bayer/X-Trans mosaic into RGB. |
 | ICC | Color profile that describes how to interpret or convert color values. |
@@ -672,7 +672,7 @@ NexoRAW does not overwrite existing outputs. It creates `_v002`, `_v003`, etc.
 | Basic profile | Manual profile created from development controls. |
 | Monitor profile | ICC used only for correct on-screen display. |
 | Preview | Working view. It does not replace the audited final render. |
-| Proof | NexoRAW autonomous signature linking RAW, TIFF, recipe, profile and hashes. |
+| Proof | ProbRAW autonomous signature linking RAW, TIFF, recipe, profile and hashes. |
 | QA | Quality assurance for profile, detection and colorimetry. |
 | RAW Global | Panel containing base RAW development and profiling criteria. |
 | Recipe | YAML/JSON file with development parameters and technical criteria. |
@@ -682,7 +682,7 @@ NexoRAW does not overwrite existing outputs. It creates `_v002`, `_v003`, etc.
 ## 17. Related Documentation
 
 - [RAW development and ICC methodology](METODOLOGIA_COLOR_RAW.md)
-- [NexoRAW Proof](NEXORAW_PROOF.md)
+- [ProbRAW Proof](PROBRAW_PROOF.md)
 - [C2PA/CAI](C2PA_CAI.md)
 - [LibRaw + ArgyllCMS integration](INTEGRACION_LIBRAW_ARGYLL.md)
 - [Installer release process](RELEASE_INSTALLERS.md)

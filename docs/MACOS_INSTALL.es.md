@@ -1,6 +1,6 @@
 # Instalacion en macOS
 
-NexoRAW debe distribuirse preferentemente mediante instalador cuando exista
+ProbRAW debe distribuirse preferentemente mediante instalador cuando exista
 artefacto macOS validado. Mientras no haya instalador macOS publicado, la ruta
 soportada para pruebas es instalacion desde codigo con dependencias externas del
 sistema.
@@ -16,7 +16,7 @@ brew install python argyll-cms exiftool
 Si se usa MacPorts u otra instalacion manual, los ejecutables requeridos deben
 estar disponibles como `colprof`, `xicclu` o `icclu`, `cctiff` y `exiftool`.
 
-NexoRAW busca herramientas en el `PATH` y, ademas, en rutas habituales de macOS
+ProbRAW busca herramientas en el `PATH` y, ademas, en rutas habituales de macOS
 cuando la GUI se lanza fuera de una terminal:
 
 - `/opt/homebrew/bin`
@@ -25,7 +25,7 @@ cuando la GUI se lanza fuera de una terminal:
 - `/usr/local/opt/argyll-cms/bin`
 - `/opt/local/bin`
 
-Tambien puede fijarse una ruta explicita con `NEXORAW_TOOL_DIR`.
+Tambien puede fijarse una ruta explicita con `PROBRAW_TOOL_DIR`.
 
 ## Instalacion Python
 
@@ -42,8 +42,8 @@ Comprobacion:
 
 ```bash
 bash scripts/check_tools.sh
-nexoraw check-tools --strict
-nexoraw-ui
+probraw check-tools --strict
+probraw-ui
 ```
 
 ## AMaZE
@@ -53,15 +53,15 @@ pack GPL3. Si existe wheel compatible para la version de Python usada:
 
 ```bash
 python scripts/install_amaze_backend.py --pypi
-nexoraw check-amaze
+probraw check-amaze
 ```
 
 Con una wheel propia:
 
 ```bash
 python scripts/install_amaze_backend.py --wheel /ruta/rawpy_demosaic-*.whl
-nexoraw check-amaze
+probraw check-amaze
 ```
 
-La build se considera valida para AMaZE solo si `nexoraw check-amaze` informa
+La build se considera valida para AMaZE solo si `probraw check-amaze` informa
 `amaze_supported: true`.

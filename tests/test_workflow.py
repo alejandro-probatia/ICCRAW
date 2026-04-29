@@ -6,21 +6,21 @@ import numpy as np
 import pytest
 import tifffile
 
-from nexoraw.chart.detection import detect_chart_from_corners
-from nexoraw.chart.sampling import ReferenceCatalog
-from nexoraw.core.models import BatchManifest, ErrorSummary, PatchError, Recipe, ValidationResult, read_json
-from nexoraw.core.recipe import load_recipe
-from nexoraw.provenance.c2pa import C2PASignConfig
-from nexoraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity
-from nexoraw.workflow import auto_generate_profile_from_charts, auto_profile_batch
-import nexoraw.workflow as workflow
-import nexoraw.profile.builder as profiling
+from probraw.chart.detection import detect_chart_from_corners
+from probraw.chart.sampling import ReferenceCatalog
+from probraw.core.models import BatchManifest, ErrorSummary, PatchError, Recipe, ValidationResult, read_json
+from probraw.core.recipe import load_recipe
+from probraw.provenance.c2pa import C2PASignConfig
+from probraw.provenance.probraw_proof import ProbRawProofConfig, generate_ed25519_identity
+from probraw.workflow import auto_generate_profile_from_charts, auto_profile_batch
+import probraw.workflow as workflow
+import probraw.profile.builder as profiling
 
 
 class FakeC2PAClient:
     def sign_file(self, source_path, dest_path, manifest, **_kwargs):
         dest_path.write_bytes(source_path.read_bytes() + b"\nFAKE-C2PA")
-        return {"active_manifest": "nexoraw:test", "manifests": {"nexoraw:test": manifest}, "validation_status": []}
+        return {"active_manifest": "probraw:test", "manifests": {"probraw:test": manifest}, "validation_status": []}
 
     def read_manifest_store(self, asset_path):
         return {"validation_status": []}
@@ -34,12 +34,12 @@ def _fake_c2pa_config(tmp_path: Path) -> C2PASignConfig:
     return C2PASignConfig(cert_path=cert, key_path=key, client=FakeC2PAClient())
 
 
-def _proof_config(tmp_path: Path) -> NexoRawProofConfig:
+def _proof_config(tmp_path: Path) -> ProbRawProofConfig:
     private_key = tmp_path / "proof-private.pem"
     public_key = tmp_path / "proof-public.pem"
     if not private_key.exists():
         generate_ed25519_identity(private_key_path=private_key, public_key_path=public_key)
-    return NexoRawProofConfig(private_key_path=private_key, public_key_path=public_key)
+    return ProbRawProofConfig(private_key_path=private_key, public_key_path=public_key)
 
 
 def test_auto_profile_batch_end_to_end(tmp_path: Path, monkeypatch):
@@ -475,7 +475,7 @@ def test_profile_status_resolves_draft_rejected_and_expired():
 
 
 def test_sanitize_recipe_for_profiling_normalizes_non_scientific_fields():
-    from nexoraw.workflow import sanitize_recipe_for_profiling
+    from probraw.workflow import sanitize_recipe_for_profiling
 
     recipe = Recipe(
         tone_curve="srgb",
@@ -500,7 +500,7 @@ def test_sanitize_recipe_for_profiling_normalizes_non_scientific_fields():
 
 
 def test_sanitize_recipe_for_profiling_is_noop_for_scientific_recipe():
-    from nexoraw.workflow import sanitize_recipe_for_profiling
+    from probraw.workflow import sanitize_recipe_for_profiling
 
     recipe = Recipe()
     sanitized, changes = sanitize_recipe_for_profiling(recipe)

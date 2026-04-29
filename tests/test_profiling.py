@@ -6,16 +6,16 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from nexoraw.core.models import PatchSample, Recipe, SampleSet, write_json
-from nexoraw.profile.builder import build_profile, validate_profile, write_samples_cgats
-from nexoraw.profile.gamut import (
+from probraw.core.models import PatchSample, Recipe, SampleSet, write_json
+from probraw.profile.builder import build_profile, validate_profile, write_samples_cgats
+from probraw.profile.gamut import (
     _lab_inside_standard_rgb,
     _standard_rgb_to_lab,
     build_gamut_diagnostics,
     build_gamut_pair_diagnostics,
     rgb_surface_samples,
 )
-import nexoraw.profile.builder as profiling
+import probraw.profile.builder as profiling
 
 
 def test_build_profile_generates_icc_and_sidecar(tmp_path: Path, monkeypatch):
@@ -131,8 +131,8 @@ def test_argyll_builder_colprof_cache_reuses_previous_profile(tmp_path: Path, mo
     colprof_path = tmp_path / "colprof.exe"
     colprof_path.write_bytes(b"fake-colprof")
     monkeypatch.setattr(profiling, "external_tool_path", lambda name: str(colprof_path) if name == "colprof" else None)
-    monkeypatch.setenv("NEXORAW_ARGYLL_CACHE_DIR", str(tmp_path / "argyll-cache"))
-    monkeypatch.setenv("NEXORAW_ARGYLL_COLPROF_CACHE", "1")
+    monkeypatch.setenv("PROBRAW_ARGYLL_CACHE_DIR", str(tmp_path / "argyll-cache"))
+    monkeypatch.setenv("PROBRAW_ARGYLL_COLPROF_CACHE", "1")
 
     calls: list[list[str]] = []
 
@@ -165,8 +165,8 @@ def test_argyll_builder_colprof_cache_can_be_disabled(tmp_path: Path, monkeypatc
     colprof_path = tmp_path / "colprof.exe"
     colprof_path.write_bytes(b"fake-colprof")
     monkeypatch.setattr(profiling, "external_tool_path", lambda name: str(colprof_path) if name == "colprof" else None)
-    monkeypatch.setenv("NEXORAW_ARGYLL_CACHE_DIR", str(tmp_path / "argyll-cache"))
-    monkeypatch.setenv("NEXORAW_ARGYLL_COLPROF_CACHE", "0")
+    monkeypatch.setenv("PROBRAW_ARGYLL_CACHE_DIR", str(tmp_path / "argyll-cache"))
+    monkeypatch.setenv("PROBRAW_ARGYLL_COLPROF_CACHE", "0")
 
     calls: list[list[str]] = []
 

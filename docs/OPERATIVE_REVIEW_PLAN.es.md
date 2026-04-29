@@ -13,7 +13,7 @@ metodologico y plan de contraste; el estado operativo resumido vive en
 ## 1. Alcance
 
 Este documento recoge los hallazgos tecnicos detectados en la revision del
-proyecto NexoRAW y define un plan de trabajo estructurado para implementar las
+proyecto ProbRAW y define un plan de trabajo estructurado para implementar las
 correcciones de forma profesional.
 
 El objetivo no es convertir el proyecto en un editor fotografico generalista.
@@ -23,7 +23,7 @@ documental y forense.
 
 ## 2. Resumen ejecutivo
 
-NexoRAW ya tiene una base razonable:
+ProbRAW ya tiene una base razonable:
 
 - arquitectura Python modular,
 - CLI funcional,
@@ -92,8 +92,8 @@ Situacion detectada en la revision inicial:
 
 Evidencia local:
 
-- `src/nexoraw/profile/export.py`: `batch_develop` y `apply_profile_matrix`.
-- `src/nexoraw/profile/builder.py`: calculo de `matrix_camera_to_xyz` y sidecar
+- `src/probraw/profile/export.py`: `batch_develop` y `apply_profile_matrix`.
+- `src/probraw/profile/builder.py`: calculo de `matrix_camera_to_xyz` y sidecar
   `.profile.json`.
 
 Riesgo:
@@ -137,7 +137,7 @@ Situacion detectada en la revision inicial:
 Evidencia local:
 
 - `testdata/recipes/scientific_recipe.yml`: receta cientifica.
-- `src/nexoraw/raw/pipeline.py`: validacion `LIBRAW_DEMOSAIC_MAP`.
+- `src/probraw/raw/pipeline.py`: validacion `LIBRAW_DEMOSAIC_MAP`.
 
 Riesgo:
 
@@ -174,7 +174,7 @@ Situacion detectada en la revision inicial:
 
 Evidencia local:
 
-- `src/nexoraw/raw/pipeline.py`: `develop_controlled`.
+- `src/probraw/raw/pipeline.py`: `develop_controlled`.
 
 Riesgo:
 
@@ -217,8 +217,8 @@ Situacion detectada en la revision inicial:
 
 Evidencia local:
 
-- `src/nexoraw/profile/builder.py`: `validate_profile`.
-- `src/nexoraw/profile/builder.py`: `_build_profile_with_argyll`.
+- `src/probraw/profile/builder.py`: `validate_profile`.
+- `src/probraw/profile/builder.py`: `_build_profile_with_argyll`.
 
 Riesgo:
 
@@ -267,7 +267,7 @@ Situacion detectada en la revision inicial:
 
 Evidencia local:
 
-- `src/nexoraw/chart/detection.py`: `detect_chart` y `_confidence_score`.
+- `src/probraw/chart/detection.py`: `detect_chart` y `_confidence_score`.
 - Observado en smoke test: warning de fallback con `confidence_score: 1.0`.
 
 Riesgo:
@@ -338,8 +338,8 @@ Situacion detectada en la revision inicial:
 Evidencia local:
 
 - `testdata/recipes/scientific_recipe.yml`: bloque `sampling_strategy`.
-- `src/nexoraw/core/recipe.py`: `_normalize_recipe_payload`.
-- `src/nexoraw/chart/sampling.py`: `_sample_patch`.
+- `src/probraw/core/recipe.py`: `_normalize_recipe_payload`.
+- `src/probraw/chart/sampling.py`: `_sample_patch`.
 
 Riesgo:
 
@@ -378,8 +378,8 @@ Situacion detectada en la revision inicial:
 
 Evidencia local:
 
-- `src/nexoraw/chart/sampling.py`: `ReferenceCatalog`.
-- `src/nexoraw/profile/builder.py`: `D50_XYZ`.
+- `src/probraw/chart/sampling.py`: `ReferenceCatalog`.
+- `src/probraw/profile/builder.py`: `D50_XYZ`.
 
 Riesgo:
 

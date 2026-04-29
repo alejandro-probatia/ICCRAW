@@ -1,4 +1,4 @@
-from nexoraw.cli import main
+from probraw.cli import main
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ _Spanish version: [REPRODUCIBILITY.es.md](REPRODUCIBILITY.es.md)_
 
 # Reproducibility
 
-NexoRAW separates three levels:
+ProbRAW separates three levels:
 
 - Original RAW: never modified.
 - Linear scene: numerical output after LibRaw/demosaic/WB/black.

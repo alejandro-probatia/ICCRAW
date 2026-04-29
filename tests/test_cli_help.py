@@ -1,11 +1,11 @@
-from nexoraw.cli import build_parser
-from nexoraw.version import __version__
+from probraw.cli import build_parser
+from probraw.version import __version__
 
 
 def test_parser_has_expected_commands():
     parser = build_parser()
     text = parser.format_help()
-    assert parser.prog == "nexoraw"
+    assert parser.prog == "probraw"
     assert "raw-info" in text
     assert "metadata" in text
     assert "build-profile" in text

@@ -1,7 +1,7 @@
 # Performance
 
 Este documento recoge la politica practica de medicion de rendimiento en
-NexoRAW. Las optimizaciones que afecten al flujo canonico deben conservar los
+ProbRAW. Las optimizaciones que afecten al flujo canonico deben conservar los
 bytes del TIFF firmado salvo que se documenten como cambio de reproducibilidad.
 
 ## Herramientas
@@ -59,10 +59,10 @@ fallback conservador. La ruta normal de CLI usa procesos.
 
 Variables de control:
 
-- `NEXORAW_BATCH_WORKERS`: workers por defecto.
-- `NEXORAW_BATCH_MEMORY_RESERVE_MB`: RAM libre reservada antes de calcular
+- `PROBRAW_BATCH_WORKERS`: workers por defecto.
+- `PROBRAW_BATCH_MEMORY_RESERVE_MB`: RAM libre reservada antes de calcular
   workers automaticos.
-- `NEXORAW_BATCH_WORKER_RAM_MB`: presupuesto estimado por worker.
+- `PROBRAW_BATCH_WORKER_RAM_MB`: presupuesto estimado por worker.
   Por defecto son 2800 MiB, ajustado a partir de una D850 de 45,7 MP: el
   demosaico DCB consume ~1,52 GiB por proceso y el batch real necesita margen
   adicional para escribir TIFF lineal/final.
@@ -79,18 +79,18 @@ Y puede ubicarse desde CLI con `develop`, `batch-develop` y
 `auto-profile-batch`:
 
 ```powershell
-python -m nexoraw batch-develop .\01_ORG --recipe .\recipe.yml --profile .\camera.icc --out .\02_DRV --cache-dir .\00_configuraciones\cache
+python -m probraw batch-develop .\01_ORG --recipe .\recipe.yml --profile .\camera.icc --out .\02_DRV --cache-dir .\00_configuraciones\cache
 ```
 
-Si no se indica `--cache-dir`, NexoRAW intenta usar
+Si no se indica `--cache-dir`, ProbRAW intenta usar
 `00_configuraciones/cache/` de la sesion. Si no puede inferir una sesion, usa
-`~/.nexoraw/cache/`.
+`~/.probraw/cache/`.
 
 La clave incluye SHA-256 completo del RAW, algoritmo de demosaico, balance de
 blancos, modo de negro y firma del backend rawpy/LibRaw. No incluye ajustes de
 render que se aplican despues de la escena lineal, como exposicion o curva.
 
-La poda LRU se controla con `NEXORAW_DEMOSAIC_CACHE_MAX_GB` y por defecto
+La poda LRU se controla con `PROBRAW_DEMOSAIC_CACHE_MAX_GB` y por defecto
 limita la cache a 5 GiB.
 
 ## Goldens canonicos

@@ -1,10 +1,10 @@
 _Spanish version: [INTEGRACION_LIBRAW_ARGYLL.es.md](INTEGRACION_LIBRAW_ARGYLL.es.md)_
 
-# LibRaw and ArgyllCMS integration in NexoRAW
+# LibRaw and ArgyllCMS integration in ProbRAW
 
 ## Objective
 
-NexoRAW uses a single RAW development engine:
+ProbRAW uses a single RAW development engine:
 
 - **LibRaw**, using the Python `rawpy` dependency, for decoding and
   RAW interpolation.
@@ -18,7 +18,7 @@ code branches and no implicit mappings between different RAW engines.
 ## System installation
 
 For end users, external dependencies must be reached through the
-NexoRAW installers. The following manual installation is reserved for
+ProbRAW installers. The following manual installation is reserved for
 development, CI or test environments.
 ```bash
 python3 -m venv .venv
@@ -37,9 +37,9 @@ requires a GPL3 build with `DEMOSAIC_PACK_GPL3=True`; see
 Verification:
 ```bash
 bash scripts/check_tools.sh
-nexoraw check-tools --strict --out tools_report.json
+probraw check-tools --strict --out tools_report.json
 ```
-`nexoraw check-tools` records availability of ArgyllCMS and
+`probraw check-tools` records availability of ArgyllCMS and
 `exiftool`. The versions of `rawpy` and LibRaw are registered in the context
 execution (`run_context`).
 
@@ -47,9 +47,9 @@ execution (`run_context`).
 
 Key file:
 
-- `src/nexoraw/raw/pipeline.py`
+- `src/probraw/raw/pipeline.py`
 
-For RAW inputs, NexoRAW runs `rawpy.imread(...).postprocess(...)` with a
+For RAW inputs, ProbRAW runs `rawpy.imread(...).postprocess(...)` with a
 explicit contract:
 
 - 16 bit output,
@@ -83,14 +83,14 @@ Operating rule:
   interactive recipe to `dcb` to not block the calibration.
 
 In release installers, AMaZE must be verified during build
-and again in the installation with `nexoraw check-amaze`. An installer that does not
+and again in the installation with `probraw check-amaze`. An installer that does not
 can demonstrate `amaze_supported: true` should not be published as build AMaZE.
 
 ## ArgyllCMS Integration
 
 Key file:
 
-- `src/nexoraw/profile/builder.py`
+- `src/probraw/profile/builder.py`
 
 Flow:
 
@@ -116,7 +116,7 @@ Validation:
 
 Key file:
 
-- `src/nexoraw/profile/export.py`
+- `src/probraw/profile/export.py`
 
 Output modes:
 
@@ -127,7 +127,7 @@ Output modes:
    input to a standard sRGB output profile. There are equivalent modes
    `converted_adobe_rgb` and `converted_prophoto_rgb`.
 3. `standard_<espacio>_output_icc`: for sessions without a letter. There is no ICC
-   metered input; NexoRAW saves the manual recipe, reveals the RAW in sRGB,
+   metered input; ProbRAW saves the manual recipe, reveals the RAW in sRGB,
    Adobe RGB (1998) or ProPhoto RGB with LibRaw, copies a real standard ICC into
    `00_configuraciones/profiles/standard/` (or `_profiles/` in batch CLI) and
    embeds as output profile. `assigned_<espacio>_output_icc` is preserved
@@ -138,14 +138,14 @@ The complete methodology is documented in
 
 ## Local validation
 ```bash
-nexoraw develop /ruta/a/captura.dng \
+probraw develop /ruta/a/captura.dng \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/dev_out.tiff \
   --audit-linear /tmp/dev_linear.tiff
 ```
 
 ```bash
-nexoraw auto-profile-batch \
+probraw auto-profile-batch \
   --charts testdata/batch_images \
   --targets testdata/batch_images \
   --recipe testdata/recipes/scientific_recipe.yml \
@@ -167,7 +167,7 @@ nexoraw auto-profile-batch \
 
 ## C2PA/CAI integration
 
-NexoRAW requires NexoRAW Proof to sign final TIFFs and declare a link
+ProbRAW requires ProbRAW Proof to sign final TIFFs and declare a link
 RAW -> TIFF based on SHA-256 of the original RAW. C2PA/CAI remains as a layer
 optional interoperable if there is a compatible certificate. No layer replaces
 sidecars or `batch_manifest.json`.

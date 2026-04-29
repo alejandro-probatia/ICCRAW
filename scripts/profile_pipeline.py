@@ -1,4 +1,4 @@
-"""Profile granular para comandos reales de NexoRAW.
+"""Profile granular para comandos reales de ProbRAW.
 
 Ejemplos:
   python scripts/profile_pipeline.py batch-develop ./raws --recipe recipe.yml --profile camera.icc --out ./out
@@ -18,21 +18,21 @@ import time
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Profile granular de comandos NexoRAW")
+    parser = argparse.ArgumentParser(description="Profile granular de comandos ProbRAW")
     parser.add_argument("--out-dir", default=".", help="Directorio donde escribir profile.txt/profile.svg")
     parser.add_argument("--top", type=int, default=60, help="Numero de funciones en profile.txt")
     parser.add_argument("--no-py-spy", action="store_true", help="No intenta generar flamegraph con py-spy")
-    parser.add_argument("command", nargs=argparse.REMAINDER, help="Comando y argumentos para nexoraw.cli")
+    parser.add_argument("command", nargs=argparse.REMAINDER, help="Comando y argumentos para probraw.cli")
     args = parser.parse_args()
     if args.command and args.command[0] == "--":
         args.command = args.command[1:]
     if not args.command:
-        parser.error("Indica el comando NexoRAW a perfilar")
+        parser.error("Indica el comando ProbRAW a perfilar")
     return args
 
 
 def run_with_cprofile(argv: list[str], *, out_dir: Path, top: int) -> Path:
-    from nexoraw.cli import main
+    from probraw.cli import main
 
     out_dir.mkdir(parents=True, exist_ok=True)
     profile_path = out_dir / "profile.txt"
@@ -77,7 +77,7 @@ def run_with_pyspy(argv: list[str], *, out_dir: Path) -> Path | None:
         "--",
         sys.executable,
         "-m",
-        "nexoraw",
+        "probraw",
         *argv,
     ]
     subprocess.run(cmd, check=False)

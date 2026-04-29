@@ -2,7 +2,7 @@ _Versión en español: [METODOLOGIA_COLOR_RAW.es.md](METODOLOGIA_COLOR_RAW.es.md
 
 # RAW Development Methodology and ICC Management
 
-This document defines NexoRAW's methodological criteria for separating
+This document defines ProbRAW's methodological criteria for separating
 parametric RAW development, development profiles, input ICC profiles, output ICC
 profiles and monitor ICC profiles.
 
@@ -26,7 +26,7 @@ A RAW file is not a final RGB image. It is a capture of sensor data that must be
 interpreted through a development recipe: demosaic, white balance, black level,
 exposure compensation, tone curve, output space and other parameters.
 
-In NexoRAW, the input ICC profile is not computed from the bare RAW file. It is
+In ProbRAW, the input ICC profile is not computed from the bare RAW file. It is
 computed after developing a chart capture with a controlled recipe, because
 measurements are made on RGB values produced by the developer. Once generated,
 that ICC describes how to interpret the camera/session RGB produced by the same
@@ -60,9 +60,9 @@ The methodological RAW contract is:
 
 Current implementation:
 
-- with a chart, NexoRAW preserves linear camera/session RGB and embeds the
+- with a chart, ProbRAW preserves linear camera/session RGB and embeds the
   generated input ICC;
-- without a chart, NexoRAW develops into `sRGB`, `Adobe RGB (1998)` or
+- without a chart, ProbRAW develops into `sRGB`, `Adobe RGB (1998)` or
   `ProPhoto RGB` and copies/embeds a real standard ICC;
 - converted derivatives from a session ICC are processed through CMM/ArgyllCMS
   where applicable;
@@ -70,12 +70,12 @@ Current implementation:
 
 ## Per-file Development Profile
 
-NexoRAW 0.2 treats parametric development as a property assigned to each RAW file
+ProbRAW 0.2 treats parametric development as a property assigned to each RAW file
 through its backpack:
 
 ```text
 capture.NEF
-capture.NEF.nexoraw.json
+capture.NEF.probraw.json
 ```
 
 A session can contain several development profiles. This avoids assuming that a
@@ -113,11 +113,11 @@ lens, illuminant, base exposure and recipe conditions.
 
 When no chart exists:
 
-1. NexoRAW does not invent a session ICC.
+1. ProbRAW does not invent a session ICC.
 2. The user saves a manual development profile.
 3. The user chooses a real standard output space: `sRGB`, `Adobe RGB (1998)` or
    `ProPhoto RGB`.
-4. NexoRAW develops the RAW in that space and embeds the standard ICC.
+4. ProbRAW develops the RAW in that space and embeds the standard ICC.
 5. Traceability states that there is no measured input profile and that the
    embedded ICC is `generic_output_icc`.
 
@@ -126,16 +126,16 @@ precision of a measured colorimetric reference.
 
 ## Master TIFF and Derivatives
 
-NexoRAW distinguishes:
+ProbRAW distinguishes:
 
 - **Chart-based master TIFF**: camera/session RGB, calibrated development
-  profile, session input ICC, NexoRAW Proof and optional C2PA.
+  profile, session input ICC, ProbRAW Proof and optional C2PA.
 - **Converted derivative TIFF**: output transformed by CMM to a generic or device
   output profile.
 - **Manual no-chart TIFF**: RAW developed into a real standard space, embedded
   standard ICC and per-file development backpack.
 
-Existing outputs are not overwritten. NexoRAW creates `_v002`, `_v003`, etc.
+Existing outputs are not overwritten. ProbRAW creates `_v002`, `_v003`, etc.
 
 ## Backpacks and Audit
 

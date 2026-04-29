@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nexoraw.session import (
+from probraw.session import (
     DEFAULT_SUBDIRECTORIES,
     cache_dir,
     create_session,

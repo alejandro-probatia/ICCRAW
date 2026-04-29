@@ -8,7 +8,7 @@ serie 0.2.
 
 **Archivado. No implementar desde este roadmap.**
 
-La decisión metodológica actual de NexoRAW es mantener un flujo principal basado
+La decisión metodológica actual de ProbRAW es mantener un flujo principal basado
 en:
 
 1. revelado RAW reproducible;
@@ -17,7 +17,7 @@ en:
    carta;
 4. perfiles ICC estándar reales cuando no hay carta;
 5. gestión ICC del monitor limitada a la visualización;
-6. trazabilidad mediante mochilas, manifiestos, NexoRAW Proof y C2PA opcional.
+6. trazabilidad mediante mochilas, manifiestos, ProbRAW Proof y C2PA opcional.
 
 ## Motivo
 
@@ -27,7 +27,7 @@ colorimétricamente justificables a partir de referencias medibles.
 
 Un DCP puede incluir componentes útiles en ciertos reveladores RAW, pero también
 puede mezclar matrices, curvas tonales, tablas perceptuales y decisiones de
-apariencia. Integrarlo en NexoRAW obligaría a definir políticas complejas sobre
+apariencia. Integrarlo en ProbRAW obligaría a definir políticas complejas sobre
 qué partes aplicar, cómo combinarlas con el ICC de sesión y cómo evitar doble
 corrección. Ese esfuerzo aumenta la superficie de error y puede debilitar la
 claridad científica del flujo.

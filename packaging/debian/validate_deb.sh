@@ -2,19 +2,19 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-APP_VERSION="${NEXORAW_APP_VERSION:-$(python3 - "$ROOT" <<'PY'
+APP_VERSION="${PROBRAW_APP_VERSION:-$(python3 - "$ROOT" <<'PY'
 import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
 namespace = {}
-exec((root / "src" / "nexoraw" / "version.py").read_text(encoding="utf-8"), namespace)
+exec((root / "src" / "probraw" / "version.py").read_text(encoding="utf-8"), namespace)
 print(namespace["__version__"])
 PY
 )}"
-DEB_VERSION="${NEXORAW_DEB_VERSION:-$(printf '%s' "$APP_VERSION" | sed -E 's/([0-9.]+)b([0-9]+)/\1~beta\2/')}"
-DEB_PATH="${1:-$ROOT/dist/nexoraw_${DEB_VERSION}_$(dpkg --print-architecture).deb}"
-REQUIRE_AMAZE="${NEXORAW_REQUIRE_AMAZE:-1}"
+DEB_VERSION="${PROBRAW_DEB_VERSION:-$(printf '%s' "$APP_VERSION" | sed -E 's/([0-9.]+)b([0-9]+)/\1~beta\2/')}"
+DEB_PATH="${1:-$ROOT/dist/probraw_${DEB_VERSION}_$(dpkg --print-architecture).deb}"
+REQUIRE_AMAZE="${PROBRAW_REQUIRE_AMAZE:-1}"
 
 fail() {
   echo "ERROR: $*" >&2
@@ -56,10 +56,12 @@ PY
 [[ -f "$DEB_PATH" ]] || fail "no existe el paquete: $DEB_PATH"
 
 package="$(dpkg-deb --field "$DEB_PATH" Package)"
-[[ "$package" == "nexoraw" ]] || fail "Package debe ser nexoraw, es: $package"
+[[ "$package" == "probraw" ]] || fail "Package debe ser probraw, es: $package"
 
 dpkg-deb --field "$DEB_PATH" Replaces | grep -qw iccraw || fail "falta Replaces: iccraw"
 dpkg-deb --field "$DEB_PATH" Conflicts | grep -qw iccraw || fail "falta Conflicts: iccraw"
+dpkg-deb --field "$DEB_PATH" Replaces | grep -qw nexoraw || fail "falta Replaces: nexoraw"
+dpkg-deb --field "$DEB_PATH" Conflicts | grep -qw nexoraw || fail "falta Conflicts: nexoraw"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -71,28 +73,34 @@ dpkg-deb -e "$DEB_PATH" "$tmp/DEBIAN"
 contents="$tmp/contents.txt"
 dpkg-deb --contents "$DEB_PATH" > "$contents"
 
-grep -qE '\./usr/bin/nexoraw$' "$contents" || fail "falta /usr/bin/nexoraw"
-grep -qE '\./usr/bin/nexoraw-ui$' "$contents" || fail "falta /usr/bin/nexoraw-ui"
+grep -qE '\./usr/bin/probraw$' "$contents" || fail "falta /usr/bin/probraw"
+grep -qE '\./usr/bin/probraw-ui$' "$contents" || fail "falta /usr/bin/probraw-ui"
 if grep -qE '\./usr/bin/iccraw($|-ui$)' "$contents"; then
   fail "el paquete no puede instalar lanzadores /usr/bin/iccraw heredados"
 fi
-if grep -qE '\./opt/nexoraw/venv/bin/iccraw($|-ui$)' "$contents"; then
+if grep -qE '\./usr/bin/nexoraw($|-ui$)' "$contents"; then
+  fail "el paquete no puede instalar lanzadores /usr/bin/nexoraw heredados"
+fi
+if grep -qE '\./opt/probraw/venv/bin/iccraw($|-ui$)' "$contents"; then
   fail "el venv empaquetado no puede contener scripts iccraw heredados"
 fi
+if grep -qE '\./opt/probraw/venv/bin/nexoraw($|-ui$)' "$contents"; then
+  fail "el venv empaquetado no puede contener scripts nexoraw heredados"
+fi
 
-require_executable "$EXTRACT_ROOT/usr/bin/nexoraw"
-require_executable "$EXTRACT_ROOT/usr/bin/nexoraw-ui"
-require_file "$EXTRACT_ROOT/usr/share/applications/nexoraw.desktop"
-require_file "$EXTRACT_ROOT/usr/share/icons/hicolor/scalable/apps/nexoraw.svg"
-require_file "$EXTRACT_ROOT/usr/share/pixmaps/nexoraw.png"
-require_file "$EXTRACT_ROOT/usr/share/doc/nexoraw/MANUAL_USUARIO.md"
-require_file "$EXTRACT_ROOT/usr/share/doc/nexoraw/METODOLOGIA_COLOR_RAW.md"
-require_file "$EXTRACT_ROOT/usr/share/doc/nexoraw/COLOR_PIPELINE.md"
+require_executable "$EXTRACT_ROOT/usr/bin/probraw"
+require_executable "$EXTRACT_ROOT/usr/bin/probraw-ui"
+require_file "$EXTRACT_ROOT/usr/share/applications/probraw.desktop"
+require_file "$EXTRACT_ROOT/usr/share/icons/hicolor/scalable/apps/probraw.svg"
+require_file "$EXTRACT_ROOT/usr/share/pixmaps/probraw.png"
+require_file "$EXTRACT_ROOT/usr/share/doc/probraw/MANUAL_USUARIO.md"
+require_file "$EXTRACT_ROOT/usr/share/doc/probraw/METODOLOGIA_COLOR_RAW.md"
+require_file "$EXTRACT_ROOT/usr/share/doc/probraw/COLOR_PIPELINE.md"
 
-desktop="$EXTRACT_ROOT/usr/share/applications/nexoraw.desktop"
-grep -Fxq "Name=NexoRAW" "$desktop" || fail "desktop Name no es NexoRAW"
-grep -Fxq "Exec=nexoraw-ui" "$desktop" || fail "desktop Exec no usa nexoraw-ui"
-grep -Fxq "Icon=nexoraw" "$desktop" || fail "desktop Icon no usa nexoraw"
+desktop="$EXTRACT_ROOT/usr/share/applications/probraw.desktop"
+grep -Fxq "Name=ProbRAW" "$desktop" || fail "desktop Name no es ProbRAW"
+grep -Fxq "Exec=probraw-ui" "$desktop" || fail "desktop Exec no usa probraw-ui"
+grep -Fxq "Icon=probraw" "$desktop" || fail "desktop Icon no usa probraw"
 grep -Eq '^Categories=.*Graphics.*Photography.*;$' "$desktop" || fail "desktop Categories no incluye Graphics y Photography"
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate "$desktop"
@@ -102,20 +110,20 @@ depends="$(dpkg-deb --field "$DEB_PATH" Depends)"
 echo "$depends" | grep -qw colord || fail "falta dependencia de gestion de color de monitor: colord"
 
 for size in 16 32 48 64 128 256 512; do
-  icon="$EXTRACT_ROOT/usr/share/icons/hicolor/${size}x${size}/apps/nexoraw.png"
+  icon="$EXTRACT_ROOT/usr/share/icons/hicolor/${size}x${size}/apps/probraw.png"
   require_file "$icon"
   actual="$(png_size "$icon")"
   [[ "$actual" == "${size}x${size}" ]] || fail "icono ${size}x${size} tiene tamano $actual"
 done
-actual_pixmap="$(png_size "$EXTRACT_ROOT/usr/share/pixmaps/nexoraw.png")"
-[[ "$actual_pixmap" == "512x512" ]] || fail "pixmap nexoraw.png debe ser 512x512, es $actual_pixmap"
+actual_pixmap="$(png_size "$EXTRACT_ROOT/usr/share/pixmaps/probraw.png")"
+[[ "$actual_pixmap" == "512x512" ]] || fail "pixmap probraw.png debe ser 512x512, es $actual_pixmap"
 
 if is_true "$REQUIRE_AMAZE"; then
   for dep in libgomp1 liblcms2-2 libjpeg-turbo8 libstdc++6; do
     echo "$depends" | grep -qw "$dep" || fail "falta dependencia runtime AMaZE: $dep"
   done
-  amaze_json="$EXTRACT_ROOT/usr/share/doc/nexoraw/third_party/rawpy-demosaic/check-amaze.json"
-  amaze_metadata="$EXTRACT_ROOT/usr/share/doc/nexoraw/third_party/rawpy-demosaic/build-metadata.json"
+  amaze_json="$EXTRACT_ROOT/usr/share/doc/probraw/third_party/rawpy-demosaic/check-amaze.json"
+  amaze_metadata="$EXTRACT_ROOT/usr/share/doc/probraw/third_party/rawpy-demosaic/build-metadata.json"
   require_file "$amaze_json"
   require_file "$amaze_metadata"
   python3 - "$amaze_json" <<'PY'

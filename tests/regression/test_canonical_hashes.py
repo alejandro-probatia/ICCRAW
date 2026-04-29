@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from nexoraw.core.recipe import load_recipe
-from nexoraw.raw.pipeline import develop_controlled
+from probraw.core.recipe import load_recipe
+from probraw.raw.pipeline import develop_controlled
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

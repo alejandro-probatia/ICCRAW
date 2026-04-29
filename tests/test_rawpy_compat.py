@@ -1,4 +1,4 @@
-from nexoraw.raw import compat
+from probraw.raw import compat
 
 
 class FakeRaw:

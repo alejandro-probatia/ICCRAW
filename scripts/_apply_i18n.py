@@ -2,7 +2,7 @@
 _apply_i18n.py — Envuelve cadenas visibles de gui.py en self.tr()
 
 Uso:
-    python scripts/_apply_i18n.py src/nexoraw/gui.py [--dry-run]
+    python scripts/_apply_i18n.py src/probraw/gui.py [--dry-run]
 
 Principios de seguridad:
 - Solo transforma cadenas literales simples (no f-strings, no raw, no bytes)
@@ -358,7 +358,7 @@ def main() -> None:
     files = [a for a in args if not a.startswith("--")]
 
     if not files:
-        print("Uso: python scripts/_apply_i18n.py src/nexoraw/gui.py [--dry-run]")
+        print("Uso: python scripts/_apply_i18n.py src/probraw/gui.py [--dry-run]")
         sys.exit(1)
 
     for file_path in files:

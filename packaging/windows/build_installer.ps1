@@ -300,7 +300,7 @@ if (-not $SkipTests) {
 }
 
 if (-not $SkipToolCheck) {
-  $toolArgs = @("-m", "nexoraw", "check-tools")
+  $toolArgs = @("-m", "probraw", "check-tools")
   if ($StrictExternalTools) {
     $toolArgs += "--strict"
   }
@@ -308,9 +308,9 @@ if (-not $SkipToolCheck) {
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-  $Version = (& $Python -c "from nexoraw.version import __version__; print(__version__)").Trim()
+  $Version = (& $Python -c "from probraw.version import __version__; print(__version__)").Trim()
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Version)) {
-    throw "No se pudo leer la version de NexoRAW"
+    throw "No se pudo leer la version de ProbRAW"
   }
 }
 
@@ -320,8 +320,8 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
 
 $BuildRoot = Join-Path $Root "build\windows"
 $PyInstallerWork = Join-Path $BuildRoot "pyinstaller"
-$SpecPath = Join-Path $Root "packaging\windows\nexoraw.spec"
-$AppBuildDir = Join-Path $OutputRoot "NexoRAW"
+$SpecPath = Join-Path $Root "packaging\windows\probraw.spec"
+$AppBuildDir = Join-Path $OutputRoot "ProbRAW"
 $InstallerDir = Join-Path $OutputRoot "installer"
 
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
@@ -340,12 +340,12 @@ Invoke-Native "Construir aplicacion con PyInstaller" $Python @(
 Copy-ExternalTools -AppBuildDir $AppBuildDir
 Copy-RawpyDemosaicLegal -AppBuildDir $AppBuildDir
 
-Invoke-Native "Smoke CLI empaquetada" (Join-Path $AppBuildDir "nexoraw.exe") @("--version")
-Invoke-Native "Smoke ayuda CLI empaquetada" (Join-Path $AppBuildDir "nexoraw.exe") @("--help")
-Invoke-Native "Smoke herramientas empaquetadas" (Join-Path $AppBuildDir "nexoraw.exe") @("check-tools", "--strict")
-Invoke-Native "Smoke C2PA empaquetado" (Join-Path $AppBuildDir "nexoraw.exe") @("check-c2pa")
+Invoke-Native "Smoke CLI empaquetada" (Join-Path $AppBuildDir "probraw.exe") @("--version")
+Invoke-Native "Smoke ayuda CLI empaquetada" (Join-Path $AppBuildDir "probraw.exe") @("--help")
+Invoke-Native "Smoke herramientas empaquetadas" (Join-Path $AppBuildDir "probraw.exe") @("check-tools", "--strict")
+Invoke-Native "Smoke C2PA empaquetado" (Join-Path $AppBuildDir "probraw.exe") @("check-c2pa")
 if ($RequireAmaze) {
-  Invoke-Native "Smoke AMaZE empaquetado" (Join-Path $AppBuildDir "nexoraw.exe") @("check-amaze")
+  Invoke-Native "Smoke AMaZE empaquetado" (Join-Path $AppBuildDir "probraw.exe") @("check-amaze")
 }
 
 if (-not $NoInstaller) {
@@ -355,7 +355,7 @@ if (-not $NoInstaller) {
   }
 
   New-Item -ItemType Directory -Force -Path $InstallerDir | Out-Null
-  $IssPath = Join-Path $Root "packaging\windows\nexoraw.iss"
+  $IssPath = Join-Path $Root "packaging\windows\probraw.iss"
   Invoke-Native "Construir instalador Inno Setup" $Iscc @(
     "/Qp",
     "/DRootDir=`"$Root`"",

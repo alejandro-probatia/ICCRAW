@@ -1,0 +1,1174 @@
+from __future__ import annotations
+
+from ._imports import *  # noqa: F401,F403
+
+
+class LayoutMixin:
+    def _build_ui(self) -> None:
+        root = QtWidgets.QWidget()
+        root_layout = QtWidgets.QVBoxLayout(root)
+        root_layout.setContentsMargins(4, 4, 4, 4)
+        root_layout.setSpacing(4)
+
+        header = QtWidgets.QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(6)
+        header.addStretch(1)
+        header.addWidget(self._button(self.tr("Inicio"), self._go_home_directory))
+        header.addWidget(self._button(self.tr("Abrir carpeta..."), self._pick_directory))
+        header.addWidget(self._button(self.tr("Recargar"), self._reload_current_directory))
+        header.addWidget(self._button(self.tr("Pantalla completa"), self._menu_toggle_fullscreen))
+        root_layout.addLayout(header)
+
+        task_bar = QtWidgets.QHBoxLayout()
+        self.global_status_label = QtWidgets.QLabel(self.tr("Listo"))
+        self.global_status_label.setStyleSheet("font-size: 12px; color: #374151;")
+        self.global_progress = QtWidgets.QProgressBar()
+        self.global_progress.setRange(0, 1)
+        self.global_progress.setValue(0)
+        self.global_progress.setTextVisible(False)
+        self.global_progress.setMaximumHeight(8)
+        task_bar.addWidget(self.global_status_label, 1)
+        task_bar.addWidget(self.global_progress, 2)
+        root_layout.addLayout(task_bar)
+
+        self.main_tabs = QtWidgets.QTabWidget()
+        session_tab = self._build_tab_session()
+        raw_tab = self._build_tab_raw_develop()
+        queue_tab = self._build_tab_queue()
+
+        self.main_tabs.addTab(session_tab, self.tr("1. Sesión"))
+        self.main_tabs.addTab(raw_tab, self.tr("2. Ajustar / Aplicar"))
+        self.main_tabs.addTab(queue_tab, self.tr("3. Cola de Revelado"))
+
+        root_layout.addWidget(self.main_tabs, 1)
+
+        self.setCentralWidget(root)
+        self._build_global_settings_dialog()
+
+    def _build_menu_bar(self) -> None:
+        mb = self.menuBar()
+
+        menu_file = mb.addMenu(self.tr("Archivo"))
+        menu_file.addAction(self._action(self.tr("Crear sesión..."), self._on_create_session))
+        menu_file.addAction(self._action(self.tr("Abrir sesión..."), self._on_open_session))
+        menu_file.addAction(self._action(self.tr("Guardar sesión"), self._on_save_session, "Ctrl+Shift+S"))
+        menu_file.addSeparator()
+        menu_file.addAction(self._action(self.tr("Abrir carpeta..."), self._pick_directory, "Ctrl+O"))
+        menu_file.addAction(self._action(self.tr("Guardar preview PNG"), self._on_save_preview, "Ctrl+S"))
+        menu_file.addAction(self._action(self.tr("Aplicar ajustes a selección"), self._on_batch_develop_selected, "Ctrl+R"))
+        menu_file.addSeparator()
+        menu_file.addAction(self._action(self.tr("Salir"), self.close, "Ctrl+Q"))
+
+        menu_cfg = mb.addMenu(self.tr("Configuracion"))
+        menu_cfg.addAction(self._action(self.tr("Cargar receta..."), self._menu_load_recipe))
+        menu_cfg.addAction(self._action(self.tr("Guardar receta..."), self._menu_save_recipe))
+        menu_cfg.addAction(self._action(self.tr("Receta por defecto"), self._menu_reset_recipe))
+        menu_cfg.addSeparator()
+        menu_cfg.addAction(self._action(self.tr("Configuracion global..."), self._open_global_settings_dialog))
+        menu_cfg.addSeparator()
+        menu_cfg.addAction(self._action(self.tr("Ir a pestaña Sesión"), lambda: self.main_tabs.setCurrentIndex(0)))
+        menu_cfg.addAction(self._action(self.tr("Ir a pestaña Revelado"), lambda: self.main_tabs.setCurrentIndex(1)))
+        menu_cfg.addAction(self._action(self.tr("Ir a pestaña Cola"), lambda: self.main_tabs.setCurrentIndex(2)))
+
+        menu_profile = mb.addMenu(self.tr("Perfil ICC"))
+        menu_profile.addAction(self._action(self.tr("Cargar perfil activo..."), self._menu_load_profile))
+        menu_profile.addAction(self._action(self.tr("Usar perfil generado"), self._use_generated_profile_as_active))
+        menu_profile.addAction(self._action(self.tr("Comparar reportes QA..."), self._menu_compare_qa_reports))
+
+        menu_view = mb.addMenu(self.tr("Vista"))
+        a_compare = self._action(self.tr("Comparar original/resultado"), self._menu_toggle_compare)
+        a_compare.setCheckable(True)
+        a_compare.setChecked(False)
+        self._action_compare = a_compare
+        menu_view.addAction(a_compare)
+        menu_view.addAction(self._action(self.tr("Ir a Nitidez"), lambda: self._go_to_nitidez_tab()))
+        menu_view.addAction(self._action(self.tr("Pantalla completa"), self._menu_toggle_fullscreen, "F11"))
+        menu_view.addAction(self._action(self.tr("Restablecer distribución"), self._reset_layout_splitters))
+
+        menu_help = mb.addMenu(self.tr("Ayuda"))
+        menu_help.addAction(self._action(self.tr("Diagnóstico herramientas..."), self._menu_check_tools))
+        menu_help.addAction(self._action(self.tr("Buscar actualizaciones..."), self._menu_check_updates))
+        menu_help.addAction(self._action(f"Acerca de {APP_NAME}", self._menu_about))
+
+    def _go_to_nitidez_tab(self) -> None:
+        self.main_tabs.setCurrentIndex(1)
+        index = self.config_tabs.indexOf("Nitidez") if hasattr(self.config_tabs, "indexOf") else -1
+        self.config_tabs.setCurrentIndex(index if index >= 0 else 3)
+
+    def _menu_toggle_fullscreen(self, _checked: bool = False) -> None:
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
+
+    def _reset_layout_splitters(self) -> None:
+        if hasattr(self, "raw_splitter"):
+            w = max(1200, int(self.width() * 0.98))
+            left = max(260, int(w * 0.16))
+            right = max(300, int(w * 0.21))
+            center = max(520, w - left - right)
+            self.raw_splitter.setSizes([left, center, right])
+            self._left_pane_last_open_width = left
+
+        if hasattr(self, "compare_splitter"):
+            cw = max(600, int(self.width() * 0.55))
+            self.compare_splitter.setSizes([cw // 2, cw // 2])
+
+        if hasattr(self, "viewer_splitter"):
+            h = max(700, int(self.height() * 0.85))
+            self.viewer_splitter.setSizes([
+                int(h * 0.76),
+                int(h * 0.24),
+            ])
+
+    def _restore_window_settings(self) -> bool:
+        restored_layout = False
+        geometry = self._settings_to_bytearray(self._settings.value("window/geometry"))
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+        state = self._settings_to_bytearray(self._settings.value("window/state"))
+        if state is not None:
+            self.restoreState(state)
+
+        layout_version = self._settings.value("layout/version")
+        try:
+            layout_version = int(layout_version) if layout_version is not None else 0
+        except (TypeError, ValueError):
+            layout_version = 0
+        if layout_version != LAYOUT_VERSION:
+            return False
+
+        raw_splitter_state = self._settings_to_bytearray(self._settings.value("layout/raw_splitter"))
+        if raw_splitter_state is not None and hasattr(self, "raw_splitter"):
+            self.raw_splitter.restoreState(raw_splitter_state)
+            restored_layout = True
+
+        viewer_splitter_state = self._settings_to_bytearray(self._settings.value("layout/viewer_splitter"))
+        if viewer_splitter_state is not None and hasattr(self, "viewer_splitter"):
+            self.viewer_splitter.restoreState(viewer_splitter_state)
+            restored_layout = True
+
+        compare_splitter_state = self._settings_to_bytearray(self._settings.value("layout/compare_splitter"))
+        if compare_splitter_state is not None and hasattr(self, "compare_splitter"):
+            self.compare_splitter.restoreState(compare_splitter_state)
+            restored_layout = True
+        return restored_layout
+
+    def _save_window_settings(self) -> None:
+        self._settings.setValue("window/geometry", self.saveGeometry())
+        self._settings.setValue("window/state", self.saveState())
+        self._settings.setValue("layout/version", LAYOUT_VERSION)
+        if hasattr(self, "raw_splitter"):
+            self._settings.setValue("layout/raw_splitter", self.raw_splitter.saveState())
+        if hasattr(self, "viewer_splitter"):
+            self._settings.setValue("layout/viewer_splitter", self.viewer_splitter.saveState())
+        if hasattr(self, "compare_splitter"):
+            self._settings.setValue("layout/compare_splitter", self.compare_splitter.saveState())
+
+    def _settings_to_bytearray(self, value):
+        if value is None:
+            return None
+        if isinstance(value, QtCore.QByteArray):
+            return value
+        if isinstance(value, (bytes, bytearray)):
+            return QtCore.QByteArray(bytes(value))
+        return None
+
+    def _settings_bool(self, key: str, default: bool = False) -> bool:
+        value = self._settings.value(key, default)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+
+    def _default_work_directory(self) -> Path:
+        try:
+            return Path.home().expanduser().resolve()
+        except Exception:
+            return Path.cwd().expanduser().resolve()
+
+    def _startup_directory_from_settings(self) -> Path:
+        folder = self._persistent_directory("browser/last_dir")
+        return folder or self._default_work_directory()
+
+    def _persistent_directory(self, key: str) -> Path | None:
+        text = str(self._settings.value(key) or "").strip()
+        if not text:
+            return None
+        if self._is_legacy_temp_output_path(text):
+            self._settings.remove(key)
+            return None
+        folder = Path(text).expanduser()
+        if folder.exists() and folder.is_dir():
+            return folder.resolve()
+        self._settings.remove(key)
+        return None
+
+    def _persistent_session_root(self) -> Path | None:
+        key = "session/last_root"
+        text = str(self._settings.value(key) or "").strip()
+        if not text:
+            return None
+        if self._is_legacy_temp_output_path(text):
+            self._settings.remove(key)
+            return None
+        root = Path(text).expanduser()
+        if session_file_path(root).exists():
+            return root.resolve()
+        self._settings.remove(key)
+        return None
+
+    def _restore_startup_context(self) -> bool:
+        root = self._persistent_session_root()
+        if root is not None:
+            try:
+                self._activate_session(root, load_session(root))
+                return True
+            except Exception as exc:
+                self._settings.remove("session/last_root")
+                self._set_status(self.tr("No se pudo restaurar la ultima sesion:") + f" {exc}")
+
+        folder = self._persistent_directory("browser/last_dir")
+        if folder is not None:
+            self._set_current_directory(folder)
+            return True
+        return False
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        self._save_window_settings()
+        super().closeEvent(event)
+
+    def _build_tab_session(self) -> QtWidgets.QWidget:
+        tab = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(tab)
+        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setSpacing(8)
+
+        session_box = QtWidgets.QGroupBox(self.tr("Gestión de sesión"))
+        grid = QtWidgets.QGridLayout(session_box)
+
+        self.session_root_path = QtWidgets.QLineEdit(str(self._current_dir / "probraw_session"))
+        self._add_path_row(grid, 0, self.tr("Directorio raíz de sesión"), self.session_root_path, file_mode=False, save_mode=False, dir_mode=True)
+        self.session_root_path.editingFinished.connect(self._on_session_root_edited)
+        self.session_root_path.textChanged.connect(lambda _text: self._session_root_update_timer.start(150))
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Nombre de sesión")), 1, 0)
+        self.session_name_edit = QtWidgets.QLineEdit("")
+        grid.addWidget(self.session_name_edit, 1, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Condiciones de iluminación")), 2, 0)
+        self.session_illumination_edit = QtWidgets.QLineEdit("")
+        grid.addWidget(self.session_illumination_edit, 2, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Notas de toma")), 3, 0)
+        self.session_capture_edit = QtWidgets.QLineEdit("")
+        grid.addWidget(self.session_capture_edit, 3, 1, 1, 2)
+
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self._button(self.tr("Usar carpeta actual"), self._use_current_dir_as_session_root))
+        row.addWidget(self._button(self.tr("Crear sesión"), self._on_create_session))
+        row.addWidget(self._button(self.tr("Abrir sesión"), self._on_open_session))
+        row.addWidget(self._button(self.tr("Guardar sesión"), self._on_save_session))
+        grid.addLayout(row, 4, 0, 1, 3)
+
+        self.session_active_label = QtWidgets.QLabel(self.tr("Sin sesión activa"))
+        self.session_active_label.setWordWrap(True)
+        self.session_active_label.setStyleSheet("font-size: 12px; color: #1f2937;")
+        grid.addWidget(self.session_active_label, 5, 0, 1, 3)
+
+        outer.addWidget(session_box)
+
+        dirs_box = QtWidgets.QGroupBox(self.tr("Estructura persistente del proyecto"))
+        dirs_grid = QtWidgets.QGridLayout(dirs_box)
+
+        self.session_dir_charts = QtWidgets.QLineEdit("")
+        self.session_dir_charts.setReadOnly(True)
+        self.session_dir_raw = QtWidgets.QLineEdit("")
+        self.session_dir_raw.setReadOnly(True)
+        self.session_dir_profiles = QtWidgets.QLineEdit("")
+        self.session_dir_profiles.setReadOnly(True)
+        self.session_dir_exports = QtWidgets.QLineEdit("")
+        self.session_dir_exports.setReadOnly(True)
+        self.session_dir_config = QtWidgets.QLineEdit("")
+        self.session_dir_config.setReadOnly(True)
+        self.session_dir_work = QtWidgets.QLineEdit("")
+        self.session_dir_work.setReadOnly(True)
+
+        dirs_grid.addWidget(QtWidgets.QLabel(self.tr("00_configuraciones")), 0, 0)
+        dirs_grid.addWidget(self.session_dir_config, 0, 1)
+        dirs_grid.addWidget(QtWidgets.QLabel(self.tr("01_ORG originales RAW")), 1, 0)
+        dirs_grid.addWidget(self.session_dir_raw, 1, 1)
+        dirs_grid.addWidget(QtWidgets.QLabel(self.tr("02_DRV derivados")), 2, 0)
+        dirs_grid.addWidget(self.session_dir_exports, 2, 1)
+
+        outer.addWidget(dirs_box)
+
+        outer.addStretch(1)
+        return tab
+
+    def _build_tab_raw_develop(self) -> QtWidgets.QWidget:
+        tab = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self.raw_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.raw_splitter.setChildrenCollapsible(True)
+        self.raw_splitter.setHandleWidth(9)
+        self.raw_splitter.addWidget(self._build_left_pane())
+        self.raw_splitter.addWidget(self._build_center_pane())
+        self.raw_splitter.addWidget(self._build_right_pane())
+        self.raw_splitter.setCollapsible(0, False)
+        self.raw_splitter.setSizes([260, 1180, 460])
+        self.raw_splitter.setStretchFactor(0, 0)
+        self.raw_splitter.setStretchFactor(1, 1)
+        self.raw_splitter.setStretchFactor(2, 0)
+        self.raw_splitter.splitterMoved.connect(self._on_raw_splitter_moved)
+        layout.addWidget(self.raw_splitter, 1)
+        return tab
+
+    def _build_tab_profile_generation(self) -> QtWidgets.QWidget:
+        tab = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(tab)
+        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setSpacing(8)
+
+        box = QtWidgets.QGroupBox(self.tr("Carta de color: perfil avanzado de ajuste + ICC de entrada"))
+        grid = QtWidgets.QGridLayout(box)
+
+        self.profile_charts_dir = QtWidgets.QLineEdit(str(self._current_dir))
+        self._add_path_row(grid, 0, self.tr("Carpeta de referencias colorimétricas"), self.profile_charts_dir, file_mode=False, save_mode=False, dir_mode=True)
+
+        self.profile_chart_selection_label = QtWidgets.QLabel(self.tr("Referencias colorimétricas: todas las compatibles de la carpeta indicada"))
+        self.profile_chart_selection_label.setWordWrap(True)
+        self.profile_chart_selection_label.setStyleSheet("font-size: 12px; color: #374151;")
+        grid.addWidget(self.profile_chart_selection_label, 1, 0, 1, 3)
+
+        self.path_reference = QtWidgets.QLineEdit("colorchecker24_colorchecker2005_d50.json")
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Referencia de carta")), 2, 0)
+        self.reference_catalog_combo = QtWidgets.QComboBox()
+        self.reference_catalog_combo.setToolTip(
+            self.tr("Referencias incluidas y referencias personalizadas guardadas en la sesión.")
+        )
+        self.reference_catalog_combo.currentIndexChanged.connect(self._on_reference_catalog_selected)
+        grid.addWidget(self.reference_catalog_combo, 2, 1, 1, 2)
+
+        reference_buttons = QtWidgets.QHBoxLayout()
+        reference_buttons.addWidget(self._button(self.tr("Importar JSON"), self._import_reference_catalog))
+        reference_buttons.addWidget(self._button(self.tr("Nueva personalizada"), self._new_custom_reference_catalog))
+        reference_buttons.addWidget(self._button(self.tr("Editar tabla"), self._edit_current_reference_catalog))
+        reference_buttons.addWidget(self._button(self.tr("Validar"), self._validate_current_reference_catalog))
+        grid.addLayout(reference_buttons, 3, 0, 1, 3)
+
+        self._add_path_row(grid, 4, self.tr("Referencia carta JSON"), self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
+        self.path_reference.editingFinished.connect(self._on_reference_path_edited)
+
+        self.reference_status_label = QtWidgets.QLabel(self.tr("Referencia de carta no validada"))
+        self.reference_status_label.setWordWrap(True)
+        self.reference_status_label.setStyleSheet("font-size: 12px; color: #374151;")
+        grid.addWidget(self.reference_status_label, 5, 0, 1, 3)
+
+        self.profile_out_path_edit = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
+        self.path_profile_out = self.profile_out_path_edit
+        self._add_path_row(grid, 6, self.tr("Perfil ICC de entrada"), self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
+
+        self.profile_report_out = QtWidgets.QLineEdit("/tmp/profile_report_gui.json")
+        self._hide_row_widgets(self._add_path_row(grid, 7, self.tr("Reporte perfil JSON"), self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False))
+
+        self.profile_workdir = QtWidgets.QLineEdit("/tmp/probraw_profile_work")
+        self._hide_row_widgets(self._add_path_row(grid, 8, self.tr("Directorio artefactos"), self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True))
+
+        self.develop_profile_out = QtWidgets.QLineEdit("/tmp/development_profile_gui.json")
+        self._hide_row_widgets(self._add_path_row(grid, 9, self.tr("Perfil de ajuste avanzado JSON"), self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False))
+
+        self.calibrated_recipe_out = QtWidgets.QLineEdit("/tmp/recipe_calibrated_gui.yml")
+        self._hide_row_widgets(self._add_path_row(grid, 10, self.tr("Receta calibrada"), self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False))
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Tipo de carta")), 11, 0)
+        self.profile_chart_type = QtWidgets.QComboBox()
+        self.profile_chart_type.addItems(["colorchecker24", "it8"])
+        grid.addWidget(self.profile_chart_type, 11, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Confianza mínima")), 12, 0)
+        self.profile_min_conf = QtWidgets.QDoubleSpinBox()
+        self.profile_min_conf.setRange(0.0, 1.0)
+        self.profile_min_conf.setSingleStep(0.05)
+        self.profile_min_conf.setDecimals(2)
+        self.profile_min_conf.setValue(0.35)
+        grid.addWidget(self.profile_min_conf, 12, 1, 1, 2)
+
+        self.profile_allow_fallback = QtWidgets.QCheckBox(self.tr("Permitir fallback"))
+        self.profile_allow_fallback.setChecked(False)
+        grid.addWidget(self.profile_allow_fallback, 13, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Formato ICC")), 14, 0)
+        self.combo_profile_format = QtWidgets.QComboBox()
+        self.combo_profile_format.addItems(PROFILE_FORMAT_OPTIONS)
+        grid.addWidget(self.combo_profile_format, 14, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Tipo de perfil ICC")), 15, 0)
+        self.combo_profile_algo = QtWidgets.QComboBox()
+        for label, flag in PROFILE_ALGO_OPTIONS:
+            self.combo_profile_algo.addItem(self.tr(label), flag)
+        grid.addWidget(self.combo_profile_algo, 15, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Calidad colprof")), 16, 0)
+        self.combo_profile_quality = QtWidgets.QComboBox()
+        for label, q in PROFILE_QUALITY_OPTIONS:
+            self.combo_profile_quality.addItem(self.tr(label), q)
+        self.combo_profile_quality.setCurrentIndex(1)
+        grid.addWidget(self.combo_profile_quality, 16, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Args extra colprof")), 17, 0)
+        self.edit_colprof_args = QtWidgets.QLineEdit("")
+        self.edit_colprof_args.setPlaceholderText(self.tr("Ejemplo: -D \"Perfil Camara Museo\""))
+        grid.addWidget(self.edit_colprof_args, 17, 1, 1, 2)
+
+        label_camera = QtWidgets.QLabel(self.tr("Cámara (opcional)"))
+        grid.addWidget(label_camera, 18, 0)
+        self.profile_camera = QtWidgets.QLineEdit("")
+        grid.addWidget(self.profile_camera, 18, 1, 1, 2)
+        label_camera.hide()
+        self.profile_camera.hide()
+
+        label_lens = QtWidgets.QLabel(self.tr("Lente (opcional)"))
+        grid.addWidget(label_lens, 19, 0)
+        self.profile_lens = QtWidgets.QLineEdit("")
+        grid.addWidget(self.profile_lens, 19, 1, 1, 2)
+        label_lens.hide()
+        self.profile_lens.hide()
+
+        self._refresh_reference_catalog_combo()
+        self._update_reference_status()
+
+        outer.addWidget(box)
+
+        manual_box = QtWidgets.QGroupBox(self.tr("Marcado manual de carta"))
+        manual_layout = QtWidgets.QVBoxLayout(manual_box)
+        manual_buttons = QtWidgets.QHBoxLayout()
+        manual_buttons.addWidget(self._button(self.tr("Marcar en visor"), self._start_manual_chart_marking))
+        manual_buttons.addWidget(self._button(self.tr("Limpiar puntos"), self._clear_manual_chart_points))
+        manual_buttons.addWidget(self._button(self.tr("Guardar detección"), self._save_manual_chart_detection))
+        manual_layout.addLayout(manual_buttons)
+        self.manual_chart_points_label = QtWidgets.QLabel(self.tr("Puntos: 0/4"))
+        self.manual_chart_points_label.setWordWrap(True)
+        self.manual_chart_points_label.setStyleSheet("font-size: 12px; color: #374151;")
+        manual_layout.addWidget(self.manual_chart_points_label)
+        outer.addWidget(manual_box)
+
+        row_generate = QtWidgets.QHBoxLayout()
+        row_generate.addWidget(self._button(self.tr("Generar perfil avanzado con carta"), self._on_generate_profile))
+        outer.addLayout(row_generate)
+
+        self.profile_summary_label = QtWidgets.QLabel(self.tr("Sin perfil avanzado generado"))
+        self.profile_summary_label.setWordWrap(True)
+        self.profile_summary_label.setStyleSheet("font-size: 12px; color: #374151;")
+        outer.addWidget(self.profile_summary_label)
+
+        self.profile_output = QtWidgets.QPlainTextEdit()
+        self.profile_output.setReadOnly(True)
+        self.profile_output.setPlaceholderText(self.tr("Resultado JSON de la generación de perfil"))
+        self.profile_output.setMaximumHeight(170)
+        outer.addWidget(self.profile_output, 1)
+        return tab
+
+    def _build_development_profiles_panel(self) -> QtWidgets.QWidget:
+        tab = QtWidgets.QWidget()
+        grid = QtWidgets.QGridLayout(tab)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Perfil de ajuste activo")), 0, 0)
+        self.development_profile_combo = QtWidgets.QComboBox()
+        self.development_profile_combo.setToolTip(
+            self.tr("Perfil de ajuste guardado. Al aplicarlo, sus parametros pasan a los controles de revelado del RAW.")
+        )
+        grid.addWidget(self.development_profile_combo, 0, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Nombre del ajuste")), 1, 0)
+        self.development_profile_name_edit = QtWidgets.QLineEdit("Perfil manual")
+        grid.addWidget(self.development_profile_name_edit, 1, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Espacio estándar sin carta")), 2, 0)
+        self.development_output_space_combo = QtWidgets.QComboBox()
+        self.development_output_space_combo.setToolTip(
+            self.tr(
+                "Para imágenes sin carta, revela el RAW en un espacio RGB estándar real "
+                "(sRGB, Adobe RGB o ProPhoto RGB) e incrusta ese perfil ICC estándar. "
+                "Con carta se mantiene RGB de cámara e ICC de entrada de sesión."
+            )
+        )
+        self.development_output_space_combo.addItem(self.tr("Carta / RGB de cámara"), "scene_linear_camera_rgb")
+        self.development_output_space_combo.addItem(self.tr("sRGB estándar"), "srgb")
+        self.development_output_space_combo.addItem(self.tr("Adobe RGB (1998) estándar"), "adobe_rgb")
+        self.development_output_space_combo.addItem(self.tr("ProPhoto RGB estándar"), "prophoto_rgb")
+        self.development_output_space_combo.currentIndexChanged.connect(self._on_development_output_space_changed)
+        grid.addWidget(self.development_output_space_combo, 2, 1, 1, 2)
+
+        profile_buttons = QtWidgets.QGridLayout()
+        profile_buttons.addWidget(self._button(self.tr("Guardar perfil básico"), self._save_current_development_profile), 0, 0)
+        profile_buttons.addWidget(self._button(self.tr("Aplicar a controles"), self._activate_selected_development_profile), 0, 1)
+        profile_buttons.addWidget(self._button(self.tr("Asignar activo a cola"), self._queue_assign_active_development_profile), 1, 0, 1, 2)
+        grid.addLayout(profile_buttons, 3, 0, 1, 3)
+
+        self.development_profile_status_label = QtWidgets.QLabel(self.tr("Sin perfiles de ajuste guardados"))
+        self.development_profile_status_label.setWordWrap(True)
+        self.development_profile_status_label.setStyleSheet("font-size: 12px; color: #374151;")
+        grid.addWidget(self.development_profile_status_label, 4, 0, 1, 3)
+
+        self._refresh_development_profile_combo()
+        return tab
+
+    def _build_color_management_calibration_panel(self) -> QtWidgets.QWidget:
+        tab = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(tab)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(10)
+
+        profile_box = QtWidgets.QGroupBox(self.tr("Perfiles de ajuste por archivo"))
+        profile_layout = QtWidgets.QVBoxLayout(profile_box)
+        profile_layout.addWidget(self._build_development_profiles_panel())
+        layout.addWidget(profile_box)
+
+        layout.addWidget(self._build_tab_profile_generation())
+
+        self._advanced_profile_config = self._build_tab_profile_config()
+        icc_box = QtWidgets.QGroupBox(self.tr("ICC activo para preview y exportación"))
+        icc_layout = QtWidgets.QVBoxLayout(icc_box)
+        icc_layout.addWidget(self._advanced_profile_config)
+        layout.addWidget(icc_box)
+        layout.addStretch(1)
+        return tab
+
+    def _build_tab_queue(self) -> QtWidgets.QWidget:
+        tab = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(tab)
+        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setSpacing(8)
+
+        queue_box = QtWidgets.QGroupBox(self.tr("Cola de imágenes para revelado"))
+        queue_layout = QtWidgets.QVBoxLayout(queue_box)
+
+        queue_actions = QtWidgets.QHBoxLayout()
+        queue_actions.addWidget(self._button(self.tr("Añadir selección"), self._queue_add_selected))
+        queue_actions.addWidget(self._button(self.tr("Añadir RAW de sesión"), self._queue_add_session_raws))
+        queue_actions.addWidget(self._button(self.tr("Asignar perfil activo"), self._queue_assign_active_development_profile))
+        queue_actions.addWidget(self._button(self.tr("Quitar seleccionados"), self._queue_remove_selected))
+        queue_actions.addWidget(self._button(self.tr("Limpiar cola"), self._queue_clear))
+        queue_actions.addWidget(self._button(self.tr("Revelar cola"), self._queue_process))
+        queue_layout.addLayout(queue_actions)
+
+        self.queue_status_label = QtWidgets.QLabel(self.tr("Cola vacía"))
+        self.queue_status_label.setStyleSheet("font-size: 12px; color: #374151;")
+        queue_layout.addWidget(self.queue_status_label)
+
+        self.queue_table = QtWidgets.QTableWidget(0, 5)
+        self.queue_table.setHorizontalHeaderLabels([self.tr("Archivo"), self.tr("Perfil"), self.tr("Estado"), self.tr("TIFF salida"), self.tr("Mensaje")])
+        self.queue_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        self.queue_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        self.queue_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+        self.queue_table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Stretch)
+        self.queue_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.queue_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        queue_layout.addWidget(self.queue_table, 1)
+
+        outer.addWidget(queue_box, 2)
+
+        monitor_box = QtWidgets.QGroupBox(self.tr("Monitoreo de ejecución"))
+        monitor_layout = QtWidgets.QVBoxLayout(monitor_box)
+
+        top = QtWidgets.QHBoxLayout()
+        self.monitor_status_label = QtWidgets.QLabel(self.tr("Sin tareas en ejecución"))
+        self.monitor_progress = QtWidgets.QProgressBar()
+        self.monitor_progress.setRange(0, 1)
+        self.monitor_progress.setValue(0)
+        top.addWidget(self.monitor_status_label, 1)
+        top.addWidget(self.monitor_progress, 1)
+        monitor_layout.addLayout(top)
+
+        self.monitor_tasks = QtWidgets.QTableWidget(0, 4)
+        self.monitor_tasks.setHorizontalHeaderLabels([self.tr("ID"), self.tr("Tarea"), self.tr("Estado"), self.tr("Detalle")])
+        self.monitor_tasks.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        self.monitor_tasks.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+        self.monitor_tasks.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.monitor_tasks.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        monitor_layout.addWidget(self.monitor_tasks, 1)
+
+        self.monitor_log = QtWidgets.QPlainTextEdit()
+        self.monitor_log.setReadOnly(True)
+        self.monitor_log.setPlaceholderText(self.tr("Eventos y trazas de flujo"))
+        monitor_layout.addWidget(self.monitor_log, 1)
+
+        outer.addWidget(monitor_box, 2)
+        return tab
+
+    def _build_left_pane(self) -> QtWidgets.QWidget:
+        pane = QtWidgets.QWidget()
+        pane.setMinimumWidth(0)
+        pane.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
+        layout = QtWidgets.QVBoxLayout(pane)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self._left_pane_last_open_width = 260
+        self.left_tabs = PersistentSideTabWidget()
+        self.left_tabs.setTabPosition(QtWidgets.QTabWidget.West)
+        self.left_tabs.setDocumentMode(True)
+        self.left_tabs.addTab(self._build_browser_panel(), self.tr("Explorador"))
+        self.left_tabs.addTab(self._build_viewer_controls_panel(), self.tr("Visor"))
+        self.left_tabs.addTab(self._build_analysis_panel(), self.tr("Diagnóstico"))
+        self.left_tabs.addTab(self._build_metadata_panel(), self.tr("Metadatos"))
+        self.left_tabs.addTab(self._build_preview_log_panel(), self.tr("Log"))
+        self.left_tabs.currentChanged.connect(self._expand_left_pane_for_tab_access)
+        self.left_tabs.tabBarClicked.connect(self._expand_left_pane_for_tab_access)
+        layout.addWidget(self.left_tabs, 1)
+        return pane
+
+    def _left_pane_collapsed_width(self) -> int:
+        if hasattr(self, "left_tabs") and hasattr(self.left_tabs, "collapsedWidth"):
+            return int(self.left_tabs.collapsedWidth())
+        return 40
+
+    def _on_raw_splitter_moved(self, _pos: int, _index: int) -> None:
+        if not hasattr(self, "raw_splitter"):
+            return
+        sizes = self.raw_splitter.sizes()
+        if not sizes:
+            return
+        collapsed_limit = self._left_pane_collapsed_width() + 24
+        if sizes[0] > collapsed_limit:
+            self._left_pane_last_open_width = int(sizes[0])
+
+    def _expand_left_pane_for_tab_access(self, _index: int = -1) -> None:
+        if not hasattr(self, "raw_splitter"):
+            return
+        sizes = self.raw_splitter.sizes()
+        if len(sizes) < 3:
+            return
+        collapsed_limit = self._left_pane_collapsed_width() + 24
+        if sizes[0] > collapsed_limit:
+            self._left_pane_last_open_width = int(sizes[0])
+            return
+
+        total = max(1, sum(sizes))
+        target_left = max(260, int(getattr(self, "_left_pane_last_open_width", 260)))
+        target_left = min(target_left, max(self._left_pane_collapsed_width(), total - 520))
+        right = max(0, sizes[2])
+        center = max(420, total - target_left - right)
+        if target_left + center + right > total:
+            overflow = target_left + center + right - total
+            right = max(0, right - overflow)
+        center = max(420, total - target_left - right)
+        if target_left + center + right > total:
+            target_left = max(
+                self._left_pane_collapsed_width(),
+                total - center - right,
+            )
+        self.raw_splitter.setSizes([target_left, center, right])
+
+    def _build_browser_panel(self) -> QtWidgets.QWidget:
+        box = QtWidgets.QGroupBox(self.tr("Explorador de unidades y carpetas"))
+        box_layout = QtWidgets.QVBoxLayout(box)
+
+        root_row = QtWidgets.QHBoxLayout()
+        root_row.addWidget(QtWidgets.QLabel(self.tr("Unidad / raiz")))
+        self.storage_root_combo = QtWidgets.QComboBox()
+        self.storage_root_combo.currentIndexChanged.connect(self._on_storage_root_changed)
+        root_row.addWidget(self.storage_root_combo, 1)
+        root_row.addWidget(self._button(self.tr("Actualizar"), self._refresh_storage_roots))
+        box_layout.addLayout(root_row)
+
+        self.current_dir_label = QtWidgets.QLabel(self.tr(""))
+        self.current_dir_label.setWordWrap(True)
+        self.current_dir_label.setStyleSheet("font-size: 12px; color: #374151;")
+        box_layout.addWidget(self.current_dir_label)
+
+        self.dir_tree = QtWidgets.QTreeView()
+        self.dir_tree.setHeaderHidden(True)
+        self.dir_tree.setMinimumHeight(260)
+        self.dir_tree.clicked.connect(self._on_tree_clicked)
+        box_layout.addWidget(self.dir_tree, 1)
+        return box
+
+    def _build_viewer_controls_panel(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        layout.addWidget(QtWidgets.QLabel(self.tr("Archivo actual")))
+        self.selected_file_label = QtWidgets.QLabel(self.tr("Sin archivo seleccionado"))
+        self.selected_file_label.setWordWrap(True)
+        self.selected_file_label.setStyleSheet("font-size: 12px; color: #1f2937;")
+        layout.addWidget(self.selected_file_label)
+
+        self.chk_compare = QtWidgets.QCheckBox(self.tr("Comparar original / resultado"))
+        self.chk_compare.toggled.connect(self._toggle_compare)
+        layout.addWidget(self.chk_compare)
+
+        self.chk_apply_profile = QtWidgets.QCheckBox(self.tr("Aplicar perfil ICC en resultado"))
+        self.chk_apply_profile.setChecked(False)
+        self.chk_apply_profile.setToolTip(
+            self.tr(
+                "Desactivado por defecto para evitar dominantes si el perfil no corresponde "
+                "a camara + iluminacion + receta actuales."
+            )
+        )
+        self.chk_apply_profile.toggled.connect(lambda _v: self._schedule_preview_refresh())
+        layout.addWidget(self.chk_apply_profile)
+
+        zoom_grid = QtWidgets.QGridLayout()
+        zoom_grid.setHorizontalSpacing(6)
+        zoom_grid.setVerticalSpacing(6)
+        self.viewer_zoom_label = QtWidgets.QLabel(self.tr("100%"))
+        self.viewer_zoom_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.viewer_zoom_label.setMinimumWidth(52)
+        zoom_grid.addWidget(self._button(self.tr("-"), self._viewer_zoom_out), 0, 0)
+        zoom_grid.addWidget(self.viewer_zoom_label, 0, 1)
+        zoom_grid.addWidget(self._button(self.tr("+"), self._viewer_zoom_in), 0, 2)
+        zoom_grid.addWidget(self._button(self.tr("1:1"), self._viewer_zoom_100), 1, 0)
+        zoom_grid.addWidget(self._button(self.tr("Girar izq."), self._viewer_rotate_left), 1, 1)
+        zoom_grid.addWidget(self._button(self.tr("Girar der."), self._viewer_rotate_right), 1, 2)
+        zoom_grid.addWidget(self._button(self.tr("Encajar"), self._viewer_fit), 2, 0, 1, 3)
+        layout.addLayout(zoom_grid)
+
+        histogram_box = QtWidgets.QGroupBox(self.tr("Histograma RGB"))
+        histogram_layout = QtWidgets.QVBoxLayout(histogram_box)
+        histogram_layout.setContentsMargins(6, 6, 6, 6)
+        histogram_layout.setSpacing(4)
+        self.viewer_histogram = RGBHistogramWidget()
+        histogram_layout.addWidget(self.viewer_histogram, 1)
+        self.check_histogram_clip_witness = QtWidgets.QCheckBox(
+            "Testigos de clipping en sombras/luces"
+        )
+        self.check_histogram_clip_witness.setChecked(
+            self._settings_bool("view/histogram_clip_witness", True)
+        )
+        self.check_histogram_clip_witness.toggled.connect(self._on_histogram_clip_witness_toggled)
+        histogram_layout.addWidget(self.check_histogram_clip_witness)
+        self.check_image_clip_overlay = QtWidgets.QCheckBox(
+            "Overlay clipping en imagen (azul sombras / rojo luces)"
+        )
+        self.check_image_clip_overlay.setChecked(
+            self._settings_bool("view/image_clip_overlay", True)
+        )
+        self.check_image_clip_overlay.toggled.connect(self._on_image_clip_overlay_toggled)
+        histogram_layout.addWidget(self.check_image_clip_overlay)
+        clip_row = QtWidgets.QHBoxLayout()
+        clip_row.setContentsMargins(0, 0, 0, 0)
+        self.histogram_shadow_label = QtWidgets.QLabel(self.tr("Sombras: --"))
+        self.histogram_shadow_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+        self.histogram_highlight_label = QtWidgets.QLabel(self.tr("Luces: --"))
+        self.histogram_highlight_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+        clip_row.addWidget(self.histogram_shadow_label, 1)
+        clip_row.addWidget(self.histogram_highlight_label, 1)
+        histogram_layout.addLayout(clip_row)
+        self.viewer_histogram.set_clip_markers_enabled(
+            bool(self.check_histogram_clip_witness.isChecked())
+        )
+        for panel_name in ("image_result_single", "image_result_compare", "image_original_compare"):
+            if hasattr(self, panel_name):
+                getattr(self, panel_name).set_clip_overlay_enabled(
+                    bool(self.check_image_clip_overlay.isChecked())
+                )
+        layout.addWidget(histogram_box, 0)
+
+        cache_row = QtWidgets.QHBoxLayout()
+        cache_row.addWidget(
+            self._button(
+                "Precache carpeta",
+                lambda: self._on_precache_visible_previews(full_resolution=False),
+            )
+        )
+        cache_row.addWidget(
+            self._button(
+                "Precache 1:1",
+                lambda: self._on_precache_visible_previews(full_resolution=True),
+            )
+        )
+        layout.addLayout(cache_row)
+        layout.addStretch(1)
+        return panel
+
+    def _build_analysis_panel(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(4, 4, 4, 4)
+
+        self.analysis_tabs = QtWidgets.QTabWidget()
+
+        image_page = QtWidgets.QWidget()
+        image_layout = QtWidgets.QVBoxLayout(image_page)
+        image_layout.setContentsMargins(0, 0, 0, 0)
+        self.preview_analysis = QtWidgets.QPlainTextEdit()
+        self.preview_analysis.setReadOnly(True)
+        self.preview_analysis.setPlaceholderText(self.tr("Sin diagnóstico de imagen"))
+        self.preview_analysis.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        self.preview_analysis.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
+        image_layout.addWidget(self.preview_analysis, 1)
+        self.analysis_tabs.addTab(image_page, self.tr("Imagen"))
+
+        chart_page = QtWidgets.QWidget()
+        chart_layout = QtWidgets.QVBoxLayout(chart_page)
+        chart_layout.setContentsMargins(0, 0, 0, 0)
+        chart_layout.setSpacing(6)
+        self.chart_diagnostics_summary = QtWidgets.QLabel(self.tr("Sin datos de carta"))
+        self.chart_diagnostics_summary.setWordWrap(True)
+        self.chart_diagnostics_summary.setStyleSheet("font-size: 12px; color: #d1d5db;")
+        chart_layout.addWidget(self.chart_diagnostics_summary)
+        self.chart_diagnostics_table = QtWidgets.QTableWidget(0, 9)
+        self.chart_diagnostics_table.setHorizontalHeaderLabels(
+            [
+                self.tr("Parche"),
+                "L* ref",
+                "a* ref",
+                "b* ref",
+                "L* ICC",
+                "a* ICC",
+                "b* ICC",
+                "DeltaE76",
+                "DeltaE2000",
+            ]
+        )
+        self.chart_diagnostics_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.chart_diagnostics_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.chart_diagnostics_table.setAlternatingRowColors(True)
+        self.chart_diagnostics_table.setSortingEnabled(True)
+        header = self.chart_diagnostics_table.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
+        for column, width in enumerate((58, 70, 70, 70, 70, 70, 70, 74, 88)):
+            self.chart_diagnostics_table.setColumnWidth(column, width)
+        chart_layout.addWidget(self.chart_diagnostics_table, 1)
+        self.analysis_tabs.addTab(chart_page, self.tr("Carta"))
+
+        gamut_page = QtWidgets.QWidget()
+        gamut_layout = QtWidgets.QVBoxLayout(gamut_page)
+        gamut_layout.setContentsMargins(0, 0, 0, 0)
+        gamut_layout.setSpacing(6)
+        gamut_controls = QtWidgets.QGridLayout()
+        gamut_controls.setContentsMargins(0, 0, 0, 0)
+        gamut_controls.setHorizontalSpacing(6)
+        gamut_controls.setVerticalSpacing(4)
+        gamut_controls.addWidget(QtWidgets.QLabel(self.tr("Perfil A")), 0, 0)
+        self.gamut_profile_a_combo = QtWidgets.QComboBox()
+        self._populate_gamut_profile_combo(self.gamut_profile_a_combo, default_key="generated")
+        self.gamut_profile_a_combo.currentIndexChanged.connect(self._sync_gamut_custom_controls)
+        gamut_controls.addWidget(self.gamut_profile_a_combo, 0, 1)
+        gamut_controls.addWidget(QtWidgets.QLabel(self.tr("Perfil B")), 0, 2)
+        self.gamut_profile_b_combo = QtWidgets.QComboBox()
+        self._populate_gamut_profile_combo(self.gamut_profile_b_combo, default_key="standard:srgb")
+        self.gamut_profile_b_combo.currentIndexChanged.connect(self._sync_gamut_custom_controls)
+        gamut_controls.addWidget(self.gamut_profile_b_combo, 0, 3)
+
+        self.gamut_custom_a_path = QtWidgets.QLineEdit("")
+        self.gamut_custom_a_label = QtWidgets.QLabel(self.tr("ICC A"))
+        self.gamut_custom_a_browse = self._button(self.tr("..."), lambda: self._browse_gamut_custom_profile(self.gamut_custom_a_path))
+        self.gamut_custom_a_browse.setMaximumWidth(36)
+        gamut_controls.addWidget(self.gamut_custom_a_label, 1, 0)
+        gamut_controls.addWidget(self.gamut_custom_a_path, 1, 1)
+        gamut_controls.addWidget(self.gamut_custom_a_browse, 1, 2)
+        self.gamut_custom_b_path = QtWidgets.QLineEdit("")
+        self.gamut_custom_b_label = QtWidgets.QLabel(self.tr("ICC B"))
+        self.gamut_custom_b_browse = self._button(self.tr("..."), lambda: self._browse_gamut_custom_profile(self.gamut_custom_b_path))
+        self.gamut_custom_b_browse.setMaximumWidth(36)
+        gamut_controls.addWidget(self.gamut_custom_b_label, 2, 0)
+        gamut_controls.addWidget(self.gamut_custom_b_path, 2, 1)
+        gamut_controls.addWidget(self.gamut_custom_b_browse, 2, 2)
+        gamut_controls.setColumnStretch(1, 1)
+        gamut_controls.setColumnStretch(3, 1)
+        gamut_layout.addLayout(gamut_controls)
+
+        gamut_header = QtWidgets.QHBoxLayout()
+        self.gamut_status_label = QtWidgets.QLabel(self.tr("Gamut 3D: sin perfil generado"))
+        self.gamut_status_label.setWordWrap(True)
+        self.gamut_status_label.setStyleSheet("font-size: 12px; color: #d1d5db;")
+        gamut_header.addWidget(self.gamut_status_label, 1)
+        gamut_header.addWidget(self._button(self.tr("Actualizar"), self._on_refresh_gamut_diagnostics))
+        gamut_layout.addLayout(gamut_header)
+        self.gamut_3d_widget = Gamut3DWidget()
+        gamut_layout.addWidget(self.gamut_3d_widget, 1)
+        self.analysis_tabs.addTab(gamut_page, self.tr("Gamut 3D"))
+        self._sync_gamut_custom_controls()
+
+        layout.addWidget(self.analysis_tabs, 1)
+        return panel
+
+    def _populate_gamut_profile_combo(self, combo: QtWidgets.QComboBox, *, default_key: str) -> None:
+        current_key = str(combo.currentData() or default_key)
+        items = [
+            *self._managed_gamut_profile_items(),
+            (self.tr("ICC activo / salida actual"), "generated"),
+            (self.tr("Monitor"), "monitor"),
+            ("sRGB", "standard:srgb"),
+            ("Adobe RGB (1998)", "standard:adobe_rgb"),
+            ("ProPhoto RGB", "standard:prophoto_rgb"),
+            (self.tr("ICC personalizado"), "custom"),
+        ]
+        combo.blockSignals(True)
+        combo.clear()
+        for label, key in items:
+            combo.addItem(label, key)
+        index = combo.findData(current_key)
+        if index < 0:
+            index = combo.findData(default_key)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        combo.blockSignals(False)
+
+    def _build_metadata_panel(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
+
+        self.metadata_file_label = QtWidgets.QLabel(self.tr("Sin archivo seleccionado"))
+        self.metadata_file_label.setWordWrap(True)
+        self.metadata_file_label.setStyleSheet("font-size: 12px; color: #d1d5db;")
+        layout.addWidget(self.metadata_file_label)
+
+        actions = QtWidgets.QHBoxLayout()
+        actions.addWidget(self._button(self.tr("Leer metadatos"), self._refresh_metadata_view))
+        actions.addWidget(self._button(self.tr("JSON completo"), self._show_metadata_all_tab))
+        layout.addLayout(actions)
+
+        self.metadata_tabs = QtWidgets.QTabWidget()
+        self.metadata_summary = self._metadata_tree_widget()
+        self.metadata_exif = self._metadata_tree_widget()
+        self.metadata_gps = self._metadata_tree_widget()
+        self.metadata_c2pa = self._metadata_tree_widget()
+        self.metadata_all = self._metadata_text_widget("JSON completo")
+        self.metadata_tabs.addTab(self.metadata_summary, self.tr("Resumen"))
+        self.metadata_tabs.addTab(self.metadata_exif, self.tr("EXIF"))
+        self.metadata_tabs.addTab(self.metadata_gps, self.tr("GPS"))
+        self.metadata_tabs.addTab(self.metadata_c2pa, self.tr("C2PA"))
+        self.metadata_tabs.addTab(self.metadata_all, self.tr("Todo"))
+        layout.addWidget(self.metadata_tabs, 1)
+        return panel
+
+    def _metadata_tree_widget(self) -> QtWidgets.QTreeWidget:
+        tree = QtWidgets.QTreeWidget()
+        tree.setHeaderLabels([self.tr("Campo"), self.tr("Valor")])
+        tree.header().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
+        tree.header().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        tree.setAlternatingRowColors(True)
+        tree.setRootIsDecorated(True)
+        tree.setUniformRowHeights(False)
+        tree.setTextElideMode(QtCore.Qt.ElideMiddle)
+        return tree
+
+    def _metadata_text_widget(self, placeholder: str) -> QtWidgets.QPlainTextEdit:
+        widget = QtWidgets.QPlainTextEdit()
+        widget.setReadOnly(True)
+        widget.setPlaceholderText(placeholder)
+        widget.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        return widget
+
+    def _build_preview_log_panel(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(4, 4, 4, 4)
+        self.preview_log = QtWidgets.QPlainTextEdit()
+        self.preview_log.setReadOnly(True)
+        self.preview_log.setPlaceholderText(self.tr("Eventos y trazas de ejecucion"))
+        layout.addWidget(self.preview_log, 1)
+        return panel
+
+    def _build_thumbnails_pane(self) -> QtWidgets.QWidget:
+        pane = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(pane)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        toolbar = QtWidgets.QHBoxLayout()
+        toolbar.setContentsMargins(4, 0, 4, 0)
+        toolbar.addWidget(QtWidgets.QLabel(self.tr("Miniaturas")))
+        self.thumbnail_size_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.thumbnail_size_slider.setRange(MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE)
+        self.thumbnail_size_slider.setSingleStep(8)
+        self.thumbnail_size_slider.setPageStep(16)
+        thumbnail_size = self._thumbnail_size_from_settings()
+        self.thumbnail_size_slider.setValue(thumbnail_size)
+        self.thumbnail_size_slider.valueChanged.connect(self._on_thumbnail_size_changed)
+        toolbar.addWidget(self.thumbnail_size_slider, 1)
+        self.thumbnail_size_label = QtWidgets.QLabel(f"{thumbnail_size}px")
+        self.thumbnail_size_label.setMinimumWidth(48)
+        self.thumbnail_size_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        toolbar.addWidget(self.thumbnail_size_label)
+        layout.addLayout(toolbar)
+
+        self.file_list = QtWidgets.QListWidget()
+        self.file_list.setViewMode(QtWidgets.QListView.IconMode)
+        self.file_list.setFlow(QtWidgets.QListView.LeftToRight)
+        self.file_list.setWrapping(False)
+        self.file_list.setResizeMode(QtWidgets.QListView.Adjust)
+        self.file_list.setMovement(QtWidgets.QListView.Static)
+        self.file_list.setSpacing(2)
+        self.file_list.setWordWrap(False)
+        self.file_list.setUniformItemSizes(True)
+        self.file_list.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        self.file_list.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
+        self.file_list.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        self.file_list.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.file_list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self.file_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.file_list.setStyleSheet(
+            "QListWidget {"
+            "background-color: #1b1f24;"
+            "border: 1px solid #343a40;"
+            "padding: 2px;"
+            "}"
+            "QListWidget::item {"
+            "background-color: #171a1e;"
+            "border: 1px solid #2c3238;"
+            "margin: 0px;"
+            "padding: 0px;"
+            "}"
+            "QListWidget::item:selected {"
+            "border: 2px solid #d1d5db;"
+            "background-color: #1f252b;"
+            "}"
+        )
+        self.file_list.itemSelectionChanged.connect(self._on_file_selection_changed)
+        self.file_list.itemDoubleClicked.connect(self._on_file_double_clicked)
+        self.file_list.customContextMenuRequested.connect(self._show_file_list_context_menu)
+        self.file_list.horizontalScrollBar().valueChanged.connect(self._on_thumbnail_scroll_changed)
+        self._apply_thumbnail_size(thumbnail_size)
+        layout.addWidget(self.file_list, 1)
+
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self._button(self.tr("Usar selección como referencias colorimétricas"), self._use_selected_files_as_profile_charts))
+        row.addWidget(self._button(self.tr("Añadir selección a cola"), self._queue_add_selected))
+        layout.addLayout(row)
+
+        profile_row = QtWidgets.QHBoxLayout()
+        profile_row.addWidget(self._button(self.tr("Guardar perfil básico en imagen"), self._save_current_development_settings_to_selected))
+        profile_row.addWidget(self._button(self.tr("Copiar perfil de ajuste"), self._copy_development_settings_from_selected))
+        profile_row.addWidget(self._button(self.tr("Pegar perfil de ajuste"), self._paste_development_settings_to_selected))
+        layout.addLayout(profile_row)
+        return pane
+
+    def _thumbnail_size_from_settings(self) -> int:
+        value = self._settings.value("view/thumbnail_size", DEFAULT_THUMBNAIL_SIZE)
+        try:
+            size = int(value)
+        except (TypeError, ValueError):
+            size = DEFAULT_THUMBNAIL_SIZE
+        return int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
+
+    def _apply_thumbnail_size(self, size: int) -> None:
+        size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
+        thumb_h = size
+        thumb_w = size
+        self.file_list.setIconSize(QtCore.QSize(thumb_w, thumb_h))
+        grid_size = QtCore.QSize(thumb_w + 4, thumb_h + 4)
+        self.file_list.setGridSize(grid_size)
+        for row in range(self.file_list.count()):
+            item = self.file_list.item(row)
+            if item is not None and item.flags() != QtCore.Qt.NoItemFlags:
+                item.setSizeHint(grid_size)
+        if hasattr(self, "thumbnail_size_label"):
+            self.thumbnail_size_label.setText(f"{size}px")
+
+    def _on_thumbnail_size_changed(self, size: int) -> None:
+        size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
+        self._settings.setValue("view/thumbnail_size", size)
+        self._apply_thumbnail_size(size)
+        self._refresh_color_reference_thumbnail_markers()
+        self._queue_thumbnail_generation(self._file_list_paths(), delay_ms=80)
+
+    def _build_center_pane(self) -> QtWidgets.QWidget:
+        pane = QtWidgets.QWidget()
+        pane.setMinimumWidth(420)
+        layout = QtWidgets.QVBoxLayout(pane)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self.viewer_stack = QtWidgets.QStackedWidget()
+
+        self.image_result_single = ImagePanel(self.tr("Resultado"))
+        self.image_result_single.imageClicked.connect(self._on_result_image_click)
+        single_page = QtWidgets.QWidget()
+        single_layout = QtWidgets.QVBoxLayout(single_page)
+        single_layout.setContentsMargins(0, 0, 0, 0)
+        single_layout.addWidget(self.image_result_single, 1)
+        self.viewer_stack.addWidget(single_page)
+
+        self.image_original_compare = ImagePanel(self.tr(""), framed=False, background="#15181d")
+        self.image_result_compare = ImagePanel(self.tr(""), framed=False, background="#15181d")
+        self.image_result_compare.imageClicked.connect(self._on_result_image_click)
+        self.compare_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.compare_splitter.setChildrenCollapsible(True)
+        self.compare_splitter.setHandleWidth(3)
+        self.compare_splitter.setStyleSheet(
+            "QSplitter::handle:horizontal {"
+            "background-color: #0f1115;"
+            "border-left: 1px solid #2f353d;"
+            "border-right: 1px solid #2f353d;"
+            "}"
+        )
+        self.compare_splitter.addWidget(self.image_original_compare)
+        self.compare_splitter.addWidget(self.image_result_compare)
+        self.compare_splitter.setSizes([560, 560])
+        compare_page = QtWidgets.QWidget()
+        compare_layout = QtWidgets.QVBoxLayout(compare_page)
+        compare_layout.setContentsMargins(0, 0, 0, 0)
+        compare_layout.setSpacing(0)
+        compare_header = QtWidgets.QWidget()
+        compare_header.setStyleSheet("background-color: #15181d;")
+        compare_header_layout = QtWidgets.QHBoxLayout(compare_header)
+        compare_header_layout.setContentsMargins(0, 2, 0, 2)
+        compare_header_layout.setSpacing(0)
+        compare_header_layout.addStretch(1)
+        before_label = QtWidgets.QLabel(self.tr("Antes"))
+        after_label = QtWidgets.QLabel(self.tr("Despues"))
+        for label in (before_label, after_label):
+            label.setAlignment(QtCore.Qt.AlignCenter)
+            label.setMinimumWidth(72)
+            label.setStyleSheet(
+                "QLabel {"
+                "background-color: #7a7d82;"
+                "color: #f8fafc;"
+                "font-size: 11px;"
+                "font-weight: 600;"
+                "padding: 1px 8px;"
+                "border: 1px solid #8f9399;"
+                "}"
+            )
+        compare_header_layout.addWidget(before_label, 0, QtCore.Qt.AlignHCenter)
+        compare_header_layout.addWidget(after_label, 0, QtCore.Qt.AlignHCenter)
+        compare_header_layout.addStretch(1)
+        compare_layout.addWidget(compare_header, 0)
+        compare_layout.addWidget(self.compare_splitter, 1)
+        self.viewer_stack.addWidget(compare_page)
+        self.viewer_stack.setCurrentIndex(0)
+
+        self.viewer_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self.viewer_splitter.setChildrenCollapsible(True)
+        self.viewer_splitter.setHandleWidth(8)
+        self.viewer_splitter.addWidget(self.viewer_stack)
+        self.viewer_splitter.addWidget(self._build_thumbnails_pane())
+        self.viewer_splitter.setStretchFactor(0, 1)
+        self.viewer_splitter.setStretchFactor(1, 0)
+        self.viewer_splitter.setSizes([760, 240])
+        layout.addWidget(self.viewer_splitter, 1)
+        return pane
+
+    def _build_right_pane(self) -> QtWidgets.QWidget:
+        pane = QtWidgets.QWidget()
+        pane.setMinimumWidth(280)
+        layout = QtWidgets.QVBoxLayout(pane)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self.config_tabs = CollapsibleToolPanel()
+        self.config_tabs.addItem(self._build_tab_brightness_contrast(), self.tr("Brillo y contraste"), expanded=True)
+        self.config_tabs.addItem(self._build_tab_color_adjustments(), self.tr("Color"), expanded=True)
+        self.config_tabs.addItem(self._build_tab_preview_settings(), self.tr("Nitidez"), expanded=True)
+        self.config_tabs.addItem(self._build_color_management_calibration_panel(), self.tr("Gestión de color y calibración"), expanded=True)
+        self._advanced_raw_config = self._build_tab_raw_config(self.tr("Criterios RAW globales"))
+        self.config_tabs.addItem(self._advanced_raw_config, self.tr("RAW Global"), expanded=False)
+        self.config_tabs.addItem(self._build_tab_batch_config(), self.tr("Exportar derivados"), expanded=False)
+        layout.addWidget(self.config_tabs, 1)
+
+        return pane

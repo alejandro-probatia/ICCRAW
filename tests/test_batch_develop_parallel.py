@@ -3,17 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 
-from nexoraw.core.models import Recipe
-from nexoraw.core.utils import sha256_file
-from nexoraw.profile.export import batch_develop
-from nexoraw.provenance.nexoraw_proof import NexoRawProofConfig, generate_ed25519_identity
+from probraw.core.models import Recipe
+from probraw.core.utils import sha256_file
+from probraw.profile.export import batch_develop
+from probraw.provenance.probraw_proof import ProbRawProofConfig, generate_ed25519_identity
 
 
-def _proof_config(tmp_path: Path) -> NexoRawProofConfig:
+def _proof_config(tmp_path: Path) -> ProbRawProofConfig:
     private_key = tmp_path / "proof-private.pem"
     public_key = tmp_path / "proof-public.pem"
     generate_ed25519_identity(private_key_path=private_key, public_key_path=public_key)
-    return NexoRawProofConfig(
+    return ProbRawProofConfig(
         private_key_path=private_key,
         public_key_path=public_key,
         signer_name="Parallel Unit Test",

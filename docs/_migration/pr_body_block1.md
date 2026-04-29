@@ -34,7 +34,7 @@ This PR does not touch pipeline code. Just add documentation, templates and demo
 ### Verification
 
 - `bash scripts/run_checks.sh` not affected (pipeline code was not touched).
-- `nexoraw check-tools --strict` executed in local environment: OK.
+- `probraw check-tools --strict` executed in local environment: OK.
 - `bash scripts/create_github_issues.sh --dry-run`: OK (32 issues listed).
 - `bash examples/demo_session/run_demo.sh`: OK (ICC + QA + manifest generated).
 - YAML templates parsed locally with `PyYAML`: OK.

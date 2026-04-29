@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from nexoraw.core.models import Recipe
-from nexoraw.sidecar import RAW_SIDECAR_SCHEMA, load_raw_sidecar, raw_sidecar_path, write_raw_sidecar
+from probraw.core.models import Recipe
+from probraw.sidecar import RAW_SIDECAR_SCHEMA, load_raw_sidecar, raw_sidecar_path, write_raw_sidecar
 
 
 def test_write_raw_sidecar_records_recipe_profile_and_output(tmp_path: Path):
@@ -11,7 +12,7 @@ def test_write_raw_sidecar_records_recipe_profile_and_output(tmp_path: Path):
     raw = root / "raw" / "capture.NEF"
     profile = root / "profiles" / "session.icc"
     tiff = root / "exports" / "tiff" / "capture.tiff"
-    proof = tiff.with_suffix(".tiff.nexoraw.proof.json")
+    proof = tiff.with_suffix(".tiff.probraw.proof.json")
     raw.parent.mkdir(parents=True)
     profile.parent.mkdir(parents=True)
     tiff.parent.mkdir(parents=True)
@@ -84,3 +85,34 @@ def test_write_raw_sidecar_records_generic_output_icc_role(tmp_path: Path):
     assert payload["development_profile"]["profile_type"] == "basic"
     assert payload["color_management"]["icc_profile_role"] == "generic_output_icc"
     assert payload["color_management"]["icc_profile_path"] == "profiles/ProPhoto.icm"
+
+
+def test_legacy_nexoraw_sidecar_is_loaded_and_migrated_on_write(tmp_path: Path):
+    raw = tmp_path / "capture.NEF"
+    raw.write_bytes(b"raw bytes")
+    legacy = raw.with_name(raw.name + ".nexoraw.json")
+    legacy.write_text(
+        json.dumps(
+            {
+                "schema": "org.probatia.nexoraw.raw-sidecar.v1",
+                "created_at": "2026-04-01T10:00:00+00:00",
+                "outputs": [{"tiff_path": "old.tiff"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_raw_sidecar(raw)["schema"] == "org.probatia.nexoraw.raw-sidecar.v1"
+
+    new_sidecar = write_raw_sidecar(
+        raw,
+        recipe=Recipe(exposure_compensation=0.5),
+        output_tiff=tmp_path / "new.tiff",
+        status="rendered",
+    )
+
+    assert new_sidecar == raw_sidecar_path(raw)
+    payload = load_raw_sidecar(raw)
+    assert payload["schema"] == RAW_SIDECAR_SCHEMA
+    assert payload["created_at"] == "2026-04-01T10:00:00+00:00"
+    assert [Path(item["tiff_path"]).name for item in payload["outputs"]] == ["old.tiff", "new.tiff"]

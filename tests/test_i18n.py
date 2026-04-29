@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from unittest import mock
 
-from nexoraw import i18n
+from probraw import i18n
 
 
 def test_resolve_language_explicit_overrides_system():

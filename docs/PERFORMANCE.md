@@ -3,7 +3,7 @@ _Spanish version: [PERFORMANCE.es.md](PERFORMANCE.es.md)_
 # Performance
 
 This document includes the practical policy of performance measurement in
-NexoRAW. Optimizations that affect canonical flow must preserve the
+ProbRAW. Optimizations that affect canonical flow must preserve the
 bytes of the signed TIFF unless documented as a reproducibility change.
 
 ## Tools
@@ -55,10 +55,10 @@ conservative fallback. The normal CLI route uses processes.
 
 Control variables:
 
-- `NEXORAW_BATCH_WORKERS`: default workers.
-- `NEXORAW_BATCH_MEMORY_RESERVE_MB`: Free RAM reserved before calculating
+- `PROBRAW_BATCH_WORKERS`: default workers.
+- `PROBRAW_BATCH_MEMORY_RESERVE_MB`: Free RAM reserved before calculating
   automatic workers.
-- `NEXORAW_BATCH_WORKER_RAM_MB`: estimated budget per worker.
+- `PROBRAW_BATCH_WORKER_RAM_MB`: estimated budget per worker.
   By default it is 2800 MiB, adjusted from a 45.7 MP D850: the
   DCB demosaic consumes ~1.52 GiB per process and the real batch needs margin
   additional to write linear/final TIFF.
@@ -72,17 +72,17 @@ use_cache: true
 And it can be located from CLI with `develop`, `batch-develop` and
 `auto-profile-batch`:
 ```powershell
-python -m nexoraw batch-develop .\01_ORG --recipe .\recipe.yml --profile .\camera.icc --out .\02_DRV --cache-dir .\00_configuraciones\cache
+python -m probraw batch-develop .\01_ORG --recipe .\recipe.yml --profile .\camera.icc --out .\02_DRV --cache-dir .\00_configuraciones\cache
 ```
-If `--cache-dir` is not indicated, NexoRAW attempts to use
+If `--cache-dir` is not indicated, ProbRAW attempts to use
 `00_configuraciones/cache/` of the session. If it cannot infer a session, use
-`~/.nexoraw/cache/`.
+`~/.probraw/cache/`.
 
 The key includes full RAW SHA-256, demosaic algorithm, balance
 whites, black mode and rawpy/LibRaw backend signature. Does not include settings
 render that are applied after the linear scene, such as exposure or curve.
 
-LRU pruning is controlled with `NEXORAW_DEMOSAIC_CACHE_MAX_GB` and by default
+LRU pruning is controlled with `PROBRAW_DEMOSAIC_CACHE_MAX_GB` and by default
 limits the cache to 5 GiB.
 
 ## Canonical Goldens

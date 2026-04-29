@@ -6,7 +6,7 @@ comunidades de fotografia cientifica, forense y colorimetria.
 ## Comando listo para ejecutar
 
 ```bash
-gh repo edit alejandro-probatia/NexoRAW \
+gh repo edit alejandro-probatia/ProbRAW \
   --add-topic raw-processing \
   --add-topic color-management \
   --add-topic icc-profile \
@@ -27,7 +27,7 @@ gh repo edit alejandro-probatia/NexoRAW \
 ## Justificacion por topic
 
 - `raw-processing`: describe el nucleo tecnico del proyecto.
-- `color-management`: posiciona NexoRAW en gestion de color.
+- `color-management`: posiciona ProbRAW en gestion de color.
 - `icc-profile`: facilita descubrimiento por comunidades ICC/Argyll.
 - `forensic-photography`: conecta con uso forense documental.
 - `colorimetry`: atrae revisores y usuarios de metrologia del color.

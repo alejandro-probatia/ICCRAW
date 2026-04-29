@@ -1,14 +1,15 @@
 from pathlib import Path
 import json
 
-from nexoraw import metadata_viewer
-from nexoraw.metadata_viewer import (
+from probraw import metadata_viewer
+from probraw.metadata_viewer import (
     inspect_file_metadata,
     metadata_display_sections,
     metadata_sections_text,
     read_exif_gps_metadata,
+    read_probraw_proof_metadata,
 )
-from nexoraw.provenance.c2pa import RAW_LINK_ASSERTION_LABEL
+from probraw.provenance.c2pa import RAW_LINK_ASSERTION_LABEL
 
 
 class FakeCompletedProcess:
@@ -20,9 +21,9 @@ class FakeCompletedProcess:
 class FakeC2PAClient:
     def read_manifest_store(self, asset_path: Path) -> dict:
         return {
-            "active_manifest": "urn:nexoraw:test",
+            "active_manifest": "urn:probraw:test",
             "manifests": {
-                "urn:nexoraw:test": {
+                "urn:probraw:test": {
                     "signature_info": {"alg": "Ps256", "common_name": "Test"},
                     "assertions": [
                         {"label": "c2pa.actions.v2", "data": {}},
@@ -96,7 +97,7 @@ def test_inspect_file_metadata_includes_c2pa_summary(tmp_path: Path, monkeypatch
     sections = metadata_sections_text(result)
 
     assert result["c2pa"]["status"] == "ok"
-    assert result["c2pa"]["active_manifest_id"] == "urn:nexoraw:test"
+    assert result["c2pa"]["active_manifest_id"] == "urn:probraw:test"
     assert "c2pa.actions.v2" in result["c2pa"]["assertion_labels"]
     assert "signed.tiff" in sections["summary"]
 
@@ -120,15 +121,30 @@ def test_c2pa_absence_is_not_reported_as_valid():
     assert c2pa_items["Vinculo RAW-TIFF C2PA"] == "No disponible"
 
 
-def test_metadata_display_exposes_nexoraw_proof_render_settings():
+def test_probraw_proof_metadata_reads_legacy_nexoraw_sidecar(tmp_path: Path):
+    image = tmp_path / "rendered.tiff"
+    image.write_bytes(b"tiff")
+    legacy_proof = image.with_suffix(image.suffix + ".nexoraw.proof.json")
+    legacy_proof.write_text(
+        json.dumps({"schema": "org.probatia.nexoraw.proof.v1"}),
+        encoding="utf-8",
+    )
+
+    result = read_probraw_proof_metadata(image)
+
+    assert result["status"] == "invalid"
+    assert result["proof_path"] == str(legacy_proof)
+
+
+def test_metadata_display_exposes_probraw_proof_render_settings():
     display = metadata_display_sections(
         {
             "file": {"basename": "rendered.tiff"},
             "exif_gps": {"groups": {}, "all": {}, "gps": {}},
             "c2pa": {"status": "skipped"},
-            "nexoraw_proof": {
+            "probraw_proof": {
                 "status": "ok",
-                "proof_path": "rendered.tiff.nexoraw.proof.json",
+                "proof_path": "rendered.tiff.probraw.proof.json",
                 "signature_valid": True,
                 "public_key_sha256_actual": "pub",
                 "proof": {
@@ -195,7 +211,7 @@ def test_metadata_display_exposes_nexoraw_proof_render_settings():
         for item in group["items"]
     }
     titles = [group["title"] for group in display["c2pa"]]
-    assert "Ajustes TIFF NexoRAW Proof: detalle y nitidez" in titles
+    assert "Ajustes TIFF ProbRAW Proof: detalle y nitidez" in titles
     assert c2pa_items["sharpen_amount"] == "0.7"
     assert c2pa_items["contrast"] == "0.18"
     assert c2pa_items["Camera RGB -> XYZ/RGB"] == "deferred_to_embedded_session_input_icc"

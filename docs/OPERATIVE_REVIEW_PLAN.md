@@ -15,7 +15,7 @@ methodological and contrast plan; summary operating status lives in
 ## 1. Scope
 
 This document includes the technical findings detected in the review of the
-NexoRAW project and defines a structured work plan to implement the
+ProbRAW project and defines a structured work plan to implement the
 professional corrections.
 
 The goal is not to turn the project into a generalist photo editor.
@@ -25,7 +25,7 @@ documentary and forensic.
 
 ## 2. Executive summary
 
-NexoRAW already has a reasonable foundation:
+ProbRAW already has a reasonable foundation:
 
 - modular Python architecture,
 - Functional CLI,
@@ -93,8 +93,8 @@ Situation detected in the initial review:
 
 Local evidence:
 
-- `src/nexoraw/profile/export.py`: `batch_develop` and `apply_profile_matrix`.
-- `src/nexoraw/profile/builder.py`: calculation of `matrix_camera_to_xyz` and sidecar
+- `src/probraw/profile/export.py`: `batch_develop` and `apply_profile_matrix`.
+- `src/probraw/profile/builder.py`: calculation of `matrix_camera_to_xyz` and sidecar
   `.profile.json`.
 
 Risk:
@@ -137,7 +137,7 @@ Situation detected in the initial review:
 Local evidence:
 
 - `testdata/recipes/scientific_recipe.yml`: scientific recipe.
-- `src/nexoraw/raw/pipeline.py`: `LIBRAW_DEMOSAIC_MAP` validation.
+- `src/probraw/raw/pipeline.py`: `LIBRAW_DEMOSAIC_MAP` validation.
 
 Risk:
 
@@ -174,7 +174,7 @@ Situation detected in the initial review:
 
 Local evidence:
 
-- `src/nexoraw/raw/pipeline.py`: `develop_controlled`.
+- `src/probraw/raw/pipeline.py`: `develop_controlled`.
 
 Risk:
 
@@ -216,8 +216,8 @@ Situation detected in the initial review:
 
 Local evidence:
 
-- `src/nexoraw/profile/builder.py`: `validate_profile`.
-- `src/nexoraw/profile/builder.py`: `_build_profile_with_argyll`.
+- `src/probraw/profile/builder.py`: `validate_profile`.
+- `src/probraw/profile/builder.py`: `_build_profile_with_argyll`.
 
 Risk:
 
@@ -265,7 +265,7 @@ Situation detected in the initial review:
 
 Local evidence:
 
-- `src/nexoraw/chart/detection.py`: `detect_chart` and `_confidence_score`.
+- `src/probraw/chart/detection.py`: `detect_chart` and `_confidence_score`.
 - Observed in smoke test: fallback warning with `confidence_score: 1.0`.
 
 Risk:
@@ -335,8 +335,8 @@ Situation detected in the initial review:
 Local evidence:
 
 - `testdata/recipes/scientific_recipe.yml`: `sampling_strategy` block.
-- `src/nexoraw/core/recipe.py`: `_normalize_recipe_payload`.
-- `src/nexoraw/chart/sampling.py`: `_sample_patch`.
+- `src/probraw/core/recipe.py`: `_normalize_recipe_payload`.
+- `src/probraw/chart/sampling.py`: `_sample_patch`.
 
 Risk:
 
@@ -374,8 +374,8 @@ Situation detected in the initial review:
 
 Local evidence:
 
-- `src/nexoraw/chart/sampling.py`: `ReferenceCatalog`.
-- `src/nexoraw/profile/builder.py`: `D50_XYZ`.
+- `src/probraw/chart/sampling.py`: `ReferenceCatalog`.
+- `src/probraw/profile/builder.py`: `D50_XYZ`.
 
 Risk:
 

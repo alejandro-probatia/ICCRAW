@@ -1,6 +1,6 @@
 # Publicacion de instaladores
 
-La publicacion de instaladores de NexoRAW tiene una regla simple: ningun
+La publicacion de instaladores de ProbRAW tiene una regla simple: ningun
 artefacto se sube al repositorio ni a GitHub Releases sin pasar primero las
 validaciones de paquete e instalacion.
 
@@ -9,36 +9,36 @@ validaciones de paquete e instalacion.
 Construir siempre con AMaZE exigido:
 
 ```bash
-NEXORAW_BUILD_AMAZE=1 NEXORAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
+PROBRAW_BUILD_AMAZE=1 PROBRAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
 ```
 
 Validar el paquete antes de instalar o subir:
 
 ```bash
-packaging/debian/validate_deb.sh dist/nexoraw_<version>_amd64.deb
-sha256sum dist/nexoraw_<version>_amd64.deb > dist/nexoraw_<version>_amd64.deb.sha256
+packaging/debian/validate_deb.sh dist/probraw_<version>_amd64.deb
+sha256sum dist/probraw_<version>_amd64.deb > dist/probraw_<version>_amd64.deb.sha256
 ```
 
 Validar en una instalacion real:
 
 ```bash
-sudo apt purge iccraw nexoraw
-sudo apt install ./dist/nexoraw_<version>_amd64.deb
+sudo apt purge nexoraw iccraw probraw
+sudo apt install ./dist/probraw_<version>_amd64.deb
 scripts/validate_linux_install.sh
-nexoraw --version
-nexoraw check-tools --strict
-nexoraw check-amaze
+probraw --version
+probraw check-tools --strict
+probraw check-amaze
 ```
 
-La validacion comprueba nombre `NexoRAW`, lanzadores `nexoraw`/`nexoraw-ui`,
-ausencia de ejecutables heredados `iccraw`, icono hicolor completo, fallback
-`/usr/share/pixmaps/nexoraw.png`, categoria de menu `Graphics;Photography`,
+La validacion comprueba nombre `ProbRAW`, lanzadores `probraw`/`probraw-ui`,
+ausencia de ejecutables heredados `nexoraw`/`iccraw`, icono hicolor completo, fallback
+`/usr/share/pixmaps/probraw.png`, categoria de menu `Graphics;Photography`,
 C2PA, herramientas externas y AMaZE.
 
 Smoke GUI minimo antes de publicar:
 
-- abrir NexoRAW desde el menu del sistema;
-- confirmar que aparece en `Graficos/Fotografia` con icono NexoRAW;
+- abrir ProbRAW desde el menu del sistema;
+- confirmar que aparece en `Graficos/Fotografia` con icono ProbRAW;
 - crear una sesion nueva y verificar carpetas `00_configuraciones/`, `01_ORG/`
   y `02_DRV/`;
 - abrir la raiz del proyecto y confirmar que el navegador entra en `01_ORG/`;
@@ -46,7 +46,7 @@ Smoke GUI minimo antes de publicar:
   anterior;
 - seleccionar un RAW y comprobar que la miniatura muestra imagen, no solo icono
   generico;
-- generar o guardar un perfil basico y confirmar mochila `RAW.nexoraw.json`;
+- generar o guardar un perfil basico y confirmar mochila `RAW.probraw.json`;
 - probar copiar/pegar perfil de ajuste entre dos miniaturas;
 - revisar `Configuracion > Configuracion global` y confirmar deteccion o
   fallback del perfil ICC del monitor.
@@ -60,15 +60,16 @@ con `-RequireAmaze` y una wheel trazada cuando PyPI no ofrezca una compatible:
 .\packaging\windows\build_installer.ps1 -RawpyDemosaicWheel $wheel -RequireAmaze
 ```
 
-El build no debe generar `iccraw.exe` ni `iccraw-ui.exe`. Los accesos directos
-deben apuntar a `nexoraw-ui.exe` y usar el icono `nexoraw-icon.ico`.
+El build no debe generar `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` ni
+`iccraw-ui.exe`. Los accesos directos deben apuntar a `probraw-ui.exe` y usar el
+icono `probraw-icon.ico`.
 
 ## Releases
 
 1. Ejecutar tests del proyecto.
 2. Ejecutar benchmarks de rendimiento/GUI cuando se hayan tocado preview,
    pipeline RAW, cache o paralelismo.
-3. Actualizar `src/nexoraw/version.py`, `CHANGELOG.md`, README y documentacion
+3. Actualizar `src/probraw/version.py`, `CHANGELOG.md`, README y documentacion
    de instaladores.
 4. Construir instaladores desde scripts versionados, no manualmente.
 5. Ejecutar las validaciones de cada plataforma.
@@ -76,6 +77,19 @@ deben apuntar a `nexoraw-ui.exe` y usar el icono `nexoraw-icon.ico`.
 7. Subir solo los artefactos validados.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
+
+## Release 0.3.0
+
+La release 0.3.0 introduce:
+
+- cambio completo de marca a ProbRAW en metadatos de paquete, identidad GUI,
+  comandos, iconos, documentacion y nombres de artefactos de release,
+- metadatos Debian de sustitucion/conflicto para paquetes beta anteriores
+  `nexoraw` e `iccraw`,
+- compatibilidad de migracion para `.nexoraw.json`, `.nexoraw.proof.json` y
+  etiquetas beta C2PA/Proof,
+- declaracion explicita del liderazgo de Probatia Forensics SL en colaboracion
+  con la Asociacion Espanola de Imagen Cientifica y Forense.
 
 ## Release 0.2.6
 
@@ -94,11 +108,11 @@ La release 0.2.6 introduce:
 
 La release 0.2.5 introduce:
 
-- estructura canonica del paquete Python bajo `src/nexoraw`,
+- estructura canonica del paquete Python bajo `src/probraw`,
 - retirada del antiguo namespace interno de compatibilidad,
 - division de la GUI en modulos mas pequenos por area de flujo,
 - nombres de empaquetado Linux y Windows actualizados,
-- etiquetas C2PA de asercion/accion generadas como `org.probatia.nexoraw.*`,
+- etiquetas C2PA de asercion/accion generadas como `org.probatia.probraw.*`,
   manteniendo compatibilidad de verificacion con manifiestos beta anteriores,
 - documentacion bilingüe actualizada y roadmap DCP+ICC archivado a favor del
   flujo activo centrado en ICC.
@@ -117,9 +131,9 @@ La release 0.2.4 introduce:
 La release 0.2.3 introduce:
 
 - flujo sin carta con perfiles estandar reales en lugar de perfiles genericos
-  generados por NexoRAW,
+  generados por ProbRAW,
 - seleccion preferente de `AdobeRGB1998.icc` cuando existe en el sistema,
-- manifiestos NexoRAW Proof/C2PA con ajustes completos de receta, nitidez,
+- manifiestos ProbRAW Proof/C2PA con ajustes completos de receta, nitidez,
   contraste/render y gestion de color,
 - visor de metadatos ampliado para mostrar esos ajustes reproducibles.
 

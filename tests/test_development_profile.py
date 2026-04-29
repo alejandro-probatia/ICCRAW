@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from nexoraw.core.models import PatchSample, Recipe, SampleSet
-from nexoraw.profile.development import build_development_profile
+from probraw.core.models import PatchSample, Recipe, SampleSet
+from probraw.profile.development import build_development_profile
 
 
 def test_build_development_profile_balances_neutral_row_and_exposure():

@@ -8,8 +8,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Version de NexoRAW
-      placeholder: "Ej: v0.2.0"
+      label: Version de ProbRAW
+      placeholder: "Ej: v0.3.0"
     validations:
       required: true
   - type: input

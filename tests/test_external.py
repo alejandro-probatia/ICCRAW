@@ -1,6 +1,6 @@
 import subprocess
 
-from nexoraw.core import external
+from probraw.core import external
 
 
 class FakeStartupInfo:
@@ -53,7 +53,7 @@ def test_run_external_leaves_non_windows_kwargs_unchanged(monkeypatch):
 def test_bundled_tool_dirs_includes_macos_package_manager_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(external.sys, "platform", "darwin", raising=False)
     monkeypatch.setattr(external.sys, "executable", str(tmp_path / "venv" / "bin" / "python"), raising=False)
-    monkeypatch.delenv("NEXORAW_TOOL_DIR", raising=False)
+    monkeypatch.delenv("PROBRAW_TOOL_DIR", raising=False)
 
     paths = {str(path) for path in external.bundled_tool_dirs()}
 

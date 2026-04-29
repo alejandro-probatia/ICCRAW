@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from PIL import ImageCms
 
-from nexoraw.display_color import (
+from probraw.display_color import (
     _colord_display_device_candidates,
     _parse_colord_profile_filename,
     _parse_xprop_icc_profile_bytes,

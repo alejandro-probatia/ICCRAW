@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 import tempfile
 
-from nexoraw.core.recipe import load_recipe
-from nexoraw.raw.pipeline import develop_controlled
-from nexoraw.version import __version__
+from probraw.core.recipe import load_recipe
+from probraw.raw.pipeline import develop_controlled
+from probraw.version import __version__
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +26,7 @@ def sha256_file(path: Path) -> str:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Regenera hashes golden canonicos de NexoRAW")
+    parser = argparse.ArgumentParser(description="Regenera hashes golden canonicos de ProbRAW")
     parser.add_argument("--confirm", action="store_true", help="Requerido para modificar MANIFEST.json")
     parser.add_argument("--note", default="", help="Nota breve para el log de regeneracion")
     return parser.parse_args()
@@ -39,7 +39,7 @@ def main() -> int:
 
     payload = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     cases = list(payload.get("cases") or [])
-    with tempfile.TemporaryDirectory(prefix="nexoraw-golden-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="probraw-golden-") as tmp:
         tmp_path = Path(tmp)
         for case in cases:
             recipe = load_recipe(REPO_ROOT / case["recipe"])
@@ -54,7 +54,7 @@ def main() -> int:
     timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     note = str(args.note or "regeneracion manual").strip()
     with LOG_PATH.open("a", encoding="utf-8") as handle:
-        handle.write(f"\n- {timestamp} - NexoRAW {__version__}: {note}\n")
+        handle.write(f"\n- {timestamp} - ProbRAW {__version__}: {note}\n")
     print(f"Regenerado {MANIFEST_PATH}")
     return 0
 

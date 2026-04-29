@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build_translations.sh — Actualizar y compilar las traducciones de NexoRAW
+# build_translations.sh — Actualizar y compilar las traducciones de ProbRAW
 #
 # Uso:
 #   ./scripts/build_translations.sh            # actualiza + compila todos los idiomas
@@ -13,17 +13,17 @@ set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCALES_SRC="$REPO_ROOT/locales"
-LOCALES_BIN="$REPO_ROOT/src/nexoraw/resources/locales"
+LOCALES_BIN="$REPO_ROOT/src/probraw/resources/locales"
 
 # Ficheros Python de los que se extraen cadenas
 PY_SOURCES=(
-    "$REPO_ROOT/src/nexoraw/gui.py"
-    "$REPO_ROOT/src/nexoraw/gui_config.py"
-    "$REPO_ROOT/src/nexoraw/ui/widgets.py"
-    "$REPO_ROOT/src/nexoraw/ui/window/"*.py
-    "$REPO_ROOT/src/nexoraw/cli.py"
-    "$REPO_ROOT/src/nexoraw/workflow.py"
-    "$REPO_ROOT/src/nexoraw/reporting.py"
+    "$REPO_ROOT/src/probraw/gui.py"
+    "$REPO_ROOT/src/probraw/gui_config.py"
+    "$REPO_ROOT/src/probraw/ui/widgets.py"
+    "$REPO_ROOT/src/probraw/ui/window/"*.py
+    "$REPO_ROOT/src/probraw/cli.py"
+    "$REPO_ROOT/src/probraw/workflow.py"
+    "$REPO_ROOT/src/probraw/reporting.py"
 )
 
 # Idiomas gestionados (uno por fichero .ts en locales/)
@@ -48,7 +48,11 @@ compile() {
             echo "  ✗ No existe $ts_file — omitido"
             continue
         fi
-        pyside6-lrelease "$ts_file" -qm "$qm_file"
+        if command -v pyside6-lrelease >/dev/null 2>&1; then
+            pyside6-lrelease "$ts_file" -qm "$qm_file"
+        else
+            lrelease "$ts_file" -qm "$qm_file"
+        fi
         echo "  → $qm_file generado"
     done
 }

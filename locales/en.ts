@@ -2,7 +2,7 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="en_US" sourcelanguage="es_ES">
 <context>
-    <name>NexoRawMainWindow</name>
+    <name>ProbRawMainWindow</name>
     <message>
         <location filename="../src/iccraw/gui.py" line="1242"/>
         <location filename="../src/iccraw/gui.py" line="1261"/>
@@ -936,8 +936,8 @@
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="2572"/>
-        <source>Durante la generación de un perfil avanzado con carta, NexoRAW fuerza estos parámetros a modo objetivo: tone_curve=linear, salida lineal=on, output_space=scene_linear_camera_rgb. Denoise y sharpen quedan desactivados durante la medición de carta y se configuran en la pestaña Nitidez para el revelado final.</source>
-        <translation>During advanced profile generation with a chart, NexoRAW forces these parameters to objective mode: tone_curve=linear, linear output=on, output_space=scene_linear_camera_rgb. Denoise and sharpen are disabled during chart measurement and configured in the Sharpness tab for final development.</translation>
+        <source>Durante la generación de un perfil avanzado con carta, ProbRAW fuerza estos parámetros a modo objetivo: tone_curve=linear, salida lineal=on, output_space=scene_linear_camera_rgb. Denoise y sharpen quedan desactivados durante la medición de carta y se configuran en la pestaña Nitidez para el revelado final.</source>
+        <translation>During advanced profile generation with a chart, ProbRAW forces these parameters to objective mode: tone_curve=linear, linear output=on, output_space=scene_linear_camera_rgb. Denoise and sharpen are disabled during chart measurement and configured in the Sharpness tab for final development.</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="2588"/>
@@ -986,8 +986,8 @@
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="2632"/>
-        <source>Configuracion global de NexoRAW</source>
-        <translation>NexoRAW global settings</translation>
+        <source>Configuracion global de ProbRAW</source>
+        <translation>ProbRAW global settings</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="2640"/>
@@ -1042,8 +1042,8 @@
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="2701"/>
-        <source>El cambio de idioma se aplica al reiniciar NexoRAW. No se cierra automáticamente para no perder cambios sin guardar de la sesión actual.</source>
-        <translation>The language change takes effect after restarting NexoRAW. The application will not close automatically so you do not lose unsaved changes in the current session.</translation>
+        <source>El cambio de idioma se aplica al reiniciar ProbRAW. No se cierra automáticamente para no perder cambios sin guardar de la sesión actual.</source>
+        <translation>The language change takes effect after restarting ProbRAW. The application will not close automatically so you do not lose unsaved changes in the current session.</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="2726"/>
@@ -1052,13 +1052,13 @@
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="2727"/>
-        <source>Reinicia NexoRAW para aplicar el nuevo idioma.</source>
-        <translation>Restart NexoRAW to apply the new language.</translation>
+        <source>Reinicia ProbRAW para aplicar el nuevo idioma.</source>
+        <translation>Restart ProbRAW to apply the new language.</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="2734"/>
-        <source>NexoRAW Proof</source>
-        <translation>NexoRAW Proof</translation>
+        <source>ProbRAW Proof</source>
+        <translation>ProbRAW Proof</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="2738"/>
@@ -1235,8 +1235,8 @@ Continue?</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="3083"/>
-        <source>Ya existe una identidad local NexoRAW Proof. Se han cargado sus rutas.</source>
-        <translation>A local NexoRAW Proof identity already exists. Its paths have been loaded.</translation>
+        <source>Ya existe una identidad local ProbRAW Proof. Se han cargado sus rutas.</source>
+        <translation>A local ProbRAW Proof identity already exists. Its paths have been loaded.</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="3087"/>
@@ -1260,8 +1260,8 @@ Continue?</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="3191"/>
-        <source>NexoRAW crea por defecto una identidad local Proof y una identidad C2PA local. Revisa Configuracion &gt; Configuracion global si quieres usar credenciales propias.</source>
-        <translation>NexoRAW creates a local Proof identity and a local C2PA identity by default. Check Settings &gt; Global settings if you want to use your own credentials.</translation>
+        <source>ProbRAW crea por defecto una identidad local Proof y una identidad C2PA local. Revisa Configuracion &gt; Configuracion global si quieres usar credenciales propias.</source>
+        <translation>ProbRAW creates a local Proof identity and a local C2PA identity by default. Check Settings &gt; Global settings if you want to use your own credentials.</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="3489"/>
@@ -1722,8 +1722,8 @@ Do you want to continue?</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="6611"/>
-        <source>Cierra NexoRAW cuando el instalador lo solicite.</source>
-        <translation>Close NexoRAW when the installer requests it.</translation>
+        <source>Cierra ProbRAW cuando el instalador lo solicite.</source>
+        <translation>Close ProbRAW when the installer requests it.</translation>
     </message>
     <message>
         <location filename="../src/iccraw/gui.py" line="6617"/>
@@ -2350,8 +2350,8 @@ Continue?</translation>
         <translation>EXIF</translation>
     </message>
     <message>
-        <source>NexoRAW - Ajuste paramétrico RAW</source>
-        <translation type="vanished">NexoRAW - Parametric RAW Adjustment</translation>
+        <source>ProbRAW - Ajuste paramétrico RAW</source>
+        <translation type="vanished">ProbRAW - Parametric RAW Adjustment</translation>
     </message>
 </context>
 <context>

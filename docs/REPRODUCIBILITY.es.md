@@ -1,6 +1,6 @@
 # Reproducibilidad
 
-NexoRAW separa tres niveles:
+ProbRAW separa tres niveles:
 
 - RAW original: nunca se modifica.
 - Escena lineal: salida numerica despues de LibRaw/demosaico/WB/negro.

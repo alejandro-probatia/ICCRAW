@@ -5,10 +5,10 @@ import pytest
 import rawpy
 import tifffile
 
-from nexoraw.core.models import Recipe
-from nexoraw.raw import pipeline
-from nexoraw.core.utils import read_image
-from nexoraw.raw.pipeline import (
+from probraw.core.models import Recipe
+from probraw.raw import pipeline
+from probraw.core.utils import read_image
+from probraw.raw.pipeline import (
     _build_libraw_postprocess_kwargs,
     _develop_image,
     _parse_int_mode_value,

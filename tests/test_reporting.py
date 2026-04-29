@@ -1,7 +1,7 @@
 import subprocess
 import types
 
-from nexoraw import reporting
+from probraw import reporting
 
 
 def test_check_external_tools_reports_available_required_tools(monkeypatch):

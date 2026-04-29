@@ -3,7 +3,7 @@ _Spanish version: [WINDOWS_INSTALLER.es.md](WINDOWS_INSTALLER.es.md)_
 # Windows Installer
 
 This document prepares the construction and testing flow to generate
-a NexoRAW Windows installer.
+a ProbRAW Windows installer.
 
 ## Scope
 
@@ -24,8 +24,8 @@ AMaZE policy, technical decisions, licenses and release notes.
 
 The diagnosis is verified with:
 ```powershell
-nexoraw check-tools --strict
-nexoraw check-c2pa
+probraw check-tools --strict
+probraw check-c2pa
 ```
 ## Preparation of the development environment
 
@@ -54,7 +54,7 @@ Avoid publishing a release without a working CMM.
 
 ## Build application without installer
 
-Generate `dist\windows\NexoRAW\` with `nexoraw.exe` and `nexoraw-ui.exe`:
+Generate `dist\windows\ProbRAW\` with `probraw.exe` and `probraw-ui.exe`:
 ```powershell
 .\packaging\windows\build_installer.ps1 -NoInstaller
 ```
@@ -66,7 +66,7 @@ Generate the application and then the installer:
 ```
 Expected artifact:
 ```text
-dist\windows\installer\NexoRAW-<version>-Setup.exe
+dist\windows\installer\ProbRAW-<version>-Setup.exe
 ```
 For release preparation, execute with strict external tools:
 ```powershell
@@ -93,7 +93,7 @@ The downloaded artifact can be installed locally with:
 ```powershell
 $wheel = (Get-ChildItem -Recurse .\tmp\wheels -Filter "rawpy_demosaic-*.whl" | Select-Object -First 1).FullName
 .\scripts\install_amaze_backend.ps1 -Wheel $wheel
-.\.venv\Scripts\python.exe -m nexoraw check-amaze
+.\.venv\Scripts\python.exe -m probraw check-amaze
 ```
 To publish an installer that fails if AMaZE is not active:
 ```powershell
@@ -113,14 +113,14 @@ of release traceability.
 On a clean Windows machine:
 
 1. Install `.exe`.
-2. Open `NexoRAW` from the start menu.
+2. Open `ProbRAW` from the start menu.
 3. Run `Diagnostico herramientas` from the shortcut group.
 4. Confirm:
-   - `nexoraw --version`,
-   - `nexoraw check-tools --strict`,
-   - `nexoraw check-c2pa`,
-   - `nexoraw check-amaze`,
-   - `nexoraw-ui` starts,
+   - `probraw --version`,
+   - `probraw check-tools --strict`,
+   - `probraw check-c2pa`,
+   - `probraw check-amaze`,
+   - `probraw-ui` starts,
    - sliders and tone curve respond without blocking the window during play
      drag,
    - a test of `detect-chart`/`sample-chart` with `testdata` works,
@@ -137,8 +137,8 @@ $env:QT_QPA_PLATFORM="offscreen"
 ```
 ## Maintenance Notes
 
-- The PyInstaller specification is in `packaging/windows/nexoraw.spec`.
-- The Inno Setup template is in `packaging/windows/nexoraw.iss`.
+- The PyInstaller specification is in `packaging/windows/probraw.spec`.
+- The Inno Setup template is in `packaging/windows/probraw.iss`.
 - The `build_installer.ps1` script installs the extras `dev`, `gui`,
   `installer` and `c2pa` before packaging.
 - The installer copies ArgyllCMS (`bin` and `ref`, including `sRGB.icm`) and ExifTool into
@@ -146,10 +146,10 @@ $env:QT_QPA_PLATFORM="offscreen"
   consult system `PATH`.
 - To publish an installer with AMaZE, use `-RequireAmaze`; the build must
   report `rawpy.flags["DEMOSAIC_PACK_GPL3"] == True`.
-- If the user does not configure an external C2PA certificate, NexoRAW creates a
-  Local and self-issued C2PA identity under `%USERPROFILE%\.nexoraw\c2pa`.
+- If the user does not configure an external C2PA certificate, ProbRAW creates a
+  Local and self-issued C2PA identity under `%USERPROFILE%\.probraw\c2pa`.
   C2PA readers can mark it as `signingCredential.untrusted`; that is
   expected and means that the signature does not belong to a central CAI list, not that
-  The NexoRAW RAW-TIFF link is missing.
+  The ProbRAW RAW-TIFF link is missing.
 - The generated binaries are in `dist\windows\`; the storms in
   `build\windows\`.

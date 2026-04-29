@@ -1,8 +1,8 @@
-# Integración de LibRaw y ArgyllCMS en NexoRAW
+# Integración de LibRaw y ArgyllCMS en ProbRAW
 
 ## Objetivo
 
-NexoRAW usa un único motor de revelado RAW:
+ProbRAW usa un único motor de revelado RAW:
 
 - **LibRaw**, mediante la dependencia Python `rawpy`, para decodificación e
   interpolación RAW.
@@ -16,7 +16,7 @@ ramas de código y sin mapeos implícitos entre motores RAW distintos.
 ## Instalación del sistema
 
 Para usuarios finales, las dependencias externas deben llegar mediante los
-instaladores de NexoRAW. La instalacion manual siguiente queda reservada a
+instaladores de ProbRAW. La instalacion manual siguiente queda reservada a
 desarrollo, CI o entornos de prueba.
 
 ```bash
@@ -40,10 +40,10 @@ Verificación:
 
 ```bash
 bash scripts/check_tools.sh
-nexoraw check-tools --strict --out tools_report.json
+probraw check-tools --strict --out tools_report.json
 ```
 
-`nexoraw check-tools` registra disponibilidad de ArgyllCMS y
+`probraw check-tools` registra disponibilidad de ArgyllCMS y
 `exiftool`. Las versiones de `rawpy` y LibRaw quedan registradas en el contexto
 de ejecución (`run_context`).
 
@@ -51,9 +51,9 @@ de ejecución (`run_context`).
 
 Archivo clave:
 
-- `src/nexoraw/raw/pipeline.py`
+- `src/probraw/raw/pipeline.py`
 
-Para entradas RAW, NexoRAW ejecuta `rawpy.imread(...).postprocess(...)` con un
+Para entradas RAW, ProbRAW ejecuta `rawpy.imread(...).postprocess(...)` con un
 contrato explícito:
 
 - salida de 16 bit,
@@ -87,14 +87,14 @@ Regla operativa:
   receta interactiva a `dcb` para no bloquear la calibracion.
 
 En los instaladores de release, AMaZE debe verificarse durante la construccion
-y de nuevo en la instalacion con `nexoraw check-amaze`. Un instalador que no
+y de nuevo en la instalacion con `probraw check-amaze`. Un instalador que no
 pueda demostrar `amaze_supported: true` no debe publicarse como build AMaZE.
 
 ## Integración ArgyllCMS
 
 Archivo clave:
 
-- `src/nexoraw/profile/builder.py`
+- `src/probraw/profile/builder.py`
 
 Flujo:
 
@@ -122,7 +122,7 @@ Validación:
 
 Archivo clave:
 
-- `src/nexoraw/profile/export.py`
+- `src/probraw/profile/export.py`
 
 Modos de salida:
 
@@ -133,7 +133,7 @@ Modos de salida:
    de entrada a un perfil sRGB estandar de salida. Existen modos equivalentes
    `converted_adobe_rgb` y `converted_prophoto_rgb`.
 3. `standard_<espacio>_output_icc`: para sesiones sin carta. No hay ICC de
-   entrada medido; NexoRAW guarda la receta manual, revela el RAW en sRGB,
+   entrada medido; ProbRAW guarda la receta manual, revela el RAW en sRGB,
    Adobe RGB (1998) o ProPhoto RGB con LibRaw, copia un ICC estandar real en
    `00_configuraciones/profiles/standard/` (o `_profiles/` en batch CLI) y lo
    incrusta como perfil de salida. `assigned_<espacio>_output_icc` se conserva
@@ -145,14 +145,14 @@ La metodologia completa se documenta en
 ## Validación local
 
 ```bash
-nexoraw develop /ruta/a/captura.dng \
+probraw develop /ruta/a/captura.dng \
   --recipe testdata/recipes/scientific_recipe.yml \
   --out /tmp/dev_out.tiff \
   --audit-linear /tmp/dev_linear.tiff
 ```
 
 ```bash
-nexoraw auto-profile-batch \
+probraw auto-profile-batch \
   --charts testdata/batch_images \
   --targets testdata/batch_images \
   --recipe testdata/recipes/scientific_recipe.yml \
@@ -175,7 +175,7 @@ nexoraw auto-profile-batch \
 
 ## Integracion C2PA/CAI
 
-NexoRAW exige NexoRAW Proof para firmar TIFFs finales y declarar un vinculo
+ProbRAW exige ProbRAW Proof para firmar TIFFs finales y declarar un vinculo
 RAW -> TIFF basado en SHA-256 del RAW original. C2PA/CAI queda como capa
 interoperable opcional si hay certificado compatible. Ninguna capa sustituye
 los sidecars ni `batch_manifest.json`.

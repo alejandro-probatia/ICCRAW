@@ -1,48 +1,49 @@
 _Versión en español: [README.es.md](README.es.md)_
 
 <p align="center">
-  <img src="assets/nexoraw-logo.svg" alt="NexoRAW logo" width="560">
+  <img src="assets/probraw-logo.svg" alt="ProbRAW logo" width="560">
 </p>
 
-# NexoRAW
+# ProbRAW
 
 Reproducible and auditable RAW/TIFF development for scientific, forensic and
 heritage photography, with session ICC profiling, per-file parametric settings
 and open AGPL traceability.
 
-![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.2.6-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.0-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
-![NexoRAW main interface](docs/assets/screenshots/nexoraw-portada.png)
+![ProbRAW main interface](docs/assets/screenshots/probraw-portada.png)
 
-## What NexoRAW Is
+## What ProbRAW Is
 
-NexoRAW is not a general-purpose creative editor. Its goal is narrower: make RAW
+ProbRAW is not a general-purpose creative editor. Its goal is narrower: make RAW
 development explainable, repeatable and reviewable when color accuracy,
 provenance and auditability matter.
 
 The current workflow is intentionally ICC-centered:
 
-- with a valid color chart, NexoRAW builds a calibrated development profile and a
+- with a valid color chart, ProbRAW builds a calibrated development profile and a
   session-specific input ICC profile;
-- without a chart, NexoRAW uses a manual development profile and a real standard
+- without a chart, ProbRAW uses a manual development profile and a real standard
   output ICC (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`);
 - monitor ICC management affects only on-screen preview;
 - DCP support is not an active implementation target for the 0.2 line.
 
 ## Current Status
 
-NexoRAW 0.2.6 is suitable for controlled testing, method review and release
+ProbRAW 0.3.0 is suitable for controlled testing, method review and release
 candidate validation. It is not yet a certified scientific or forensic
 production system.
 
-The current version adds chart reference management from the interface, session
-ICC profile versioning, background profile generation and a 3D gamut diagnostic
-for pairwise profile comparison.
+The current version completes the product rename to ProbRAW, updates package and
+release artifacts, preserves compatibility with previous session sidecars and
+keeps the new chart-reference, session ICC and 3D gamut tools introduced in the
+previous iteration.
 
 The latest packaging validation passed with:
 
 ```text
-218 passed, 1 warning
+222 passed, 1 warning
 ```
 
 ## Documentation
@@ -54,7 +55,7 @@ The latest packaging validation passed with:
 - [Roadmap](docs/ROADMAP.md)
 - [Performance](docs/PERFORMANCE.md)
 - [Reproducibility](docs/REPRODUCIBILITY.md)
-- [NexoRAW Proof](docs/NEXORAW_PROOF.md)
+- [ProbRAW Proof](docs/PROBRAW_PROOF.md)
 - [C2PA/CAI](docs/C2PA_CAI.md)
 - [LibRaw + ArgyllCMS Integration](docs/INTEGRACION_LIBRAW_ARGYLL.md)
 - [Debian Package](docs/DEBIAN_PACKAGE.md)
@@ -69,13 +70,13 @@ The latest packaging validation passed with:
 End users should prefer the published installers. For development:
 
 ```bash
-git clone https://github.com/alejandro-probatia/NexoRAW.git
-cd NexoRAW
+git clone https://github.com/alejandro-probatia/ProbRAW.git
+cd ProbRAW
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .[gui]
-nexoraw check-tools --out tools_report.json
-nexoraw-ui
+probraw check-tools --out tools_report.json
+probraw-ui
 ```
 
 Optional external tools for full profiling/export workflows:
@@ -94,18 +95,18 @@ Build and install locally:
 
 ```bash
 bash packaging/debian/build_deb.sh
-sudo apt install ./dist/nexoraw_<version>_amd64.deb
+sudo apt install ./dist/probraw_<version>_amd64.deb
 ```
 
-The Debian package installs NexoRAW under `/opt/nexoraw` and exposes only the
+The Debian package installs ProbRAW under `/opt/probraw` and exposes only the
 canonical launchers:
 
-- `nexoraw`
-- `nexoraw-ui`
+- `probraw`
+- `probraw-ui`
 
-Legacy `iccraw` launchers and internal compatibility scripts are no longer
-installed since 0.2.5. If an old beta package is present, remove it before
-testing the current package.
+Legacy `nexoraw`/`iccraw` launchers and internal compatibility scripts are no
+longer installed. The package declares replacement/conflict metadata so current
+installers can supersede previous beta names cleanly.
 
 ## GUI Workflow
 
@@ -133,15 +134,15 @@ The full list of controls and workflows is documented in the
 Inspect tools and RAW metadata:
 
 ```bash
-nexoraw check-tools --strict --out tools_report.json
-nexoraw raw-info input.raw
-nexoraw metadata input.raw --out metadata.json
+probraw check-tools --strict --out tools_report.json
+probraw raw-info input.raw
+probraw metadata input.raw --out metadata.json
 ```
 
 Develop a RAW with a recipe:
 
 ```bash
-nexoraw develop input.raw \
+probraw develop input.raw \
   --recipe recipe.yml \
   --out output.tiff \
   --audit-linear output_linear.tiff
@@ -150,22 +151,22 @@ nexoraw develop input.raw \
 Create a chart-based profile:
 
 ```bash
-nexoraw detect-chart chart.tiff \
+probraw detect-chart chart.tiff \
   --out detection.json \
   --preview overlay.png \
   --chart-type colorchecker24
 
-nexoraw sample-chart chart.tiff \
+probraw sample-chart chart.tiff \
   --detection detection.json \
   --reference testdata/references/colorchecker24_colorchecker2005_d50.json \
   --out samples.json
 
-nexoraw build-develop-profile samples.json \
+probraw build-develop-profile samples.json \
   --recipe recipe.yml \
   --out development_profile.json \
   --calibrated-recipe recipe_calibrated.yml
 
-nexoraw build-profile samples.json \
+probraw build-profile samples.json \
   --recipe recipe_calibrated.yml \
   --out camera_profile.icc \
   --report profile_report.json
@@ -174,7 +175,7 @@ nexoraw build-profile samples.json \
 Batch render:
 
 ```bash
-nexoraw batch-develop ./01_ORG \
+probraw batch-develop ./01_ORG \
   --recipe recipe_calibrated.yml \
   --profile camera_profile.icc \
   --out ./02_DRV \
@@ -185,11 +186,11 @@ nexoraw batch-develop ./01_ORG \
 Verify provenance:
 
 ```bash
-nexoraw verify-proof ./02_DRV/capture.tiff.nexoraw.proof.json \
+probraw verify-proof ./02_DRV/capture.tiff.probraw.proof.json \
   --tiff ./02_DRV/capture.tiff \
   --raw ./01_ORG/capture.NEF
 
-nexoraw verify-c2pa ./02_DRV/capture.tiff \
+probraw verify-c2pa ./02_DRV/capture.tiff \
   --raw ./01_ORG/capture.NEF \
   --manifest ./02_DRV/batch_manifest.json
 ```
@@ -201,14 +202,14 @@ nexoraw verify-c2pa ./02_DRV/capture.tiff \
   software version.
 - Chart-based workflows keep measurement decisions separate from visual
   adjustment decisions.
-- TIFF outputs are not overwritten; NexoRAW creates `_v002`, `_v003`, etc.
-- NexoRAW Proof links RAW, TIFF, recipe, ICC, settings and hashes.
+- TIFF outputs are not overwritten; ProbRAW creates `_v002`, `_v003`, etc.
+- ProbRAW Proof links RAW, TIFF, recipe, ICC, settings and hashes.
 - C2PA/CAI is available as an interoperable provenance layer when configured.
 
 ## License and Governance
 
 - Project license: `AGPL-3.0-or-later`.
-- NexoRAW is maintained as a free, open and auditable community project.
+- ProbRAW is maintained as a free, open and auditable community project.
 - The AGPL is a free software license and does not prohibit third-party
   commercial use; the non-commercial orientation is a governance goal, not an
   additional license restriction.
@@ -216,5 +217,5 @@ nexoraw verify-c2pa ./02_DRV/capture.tiff \
   including LibRaw/rawpy, rawpy-demosaic, ArgyllCMS, ExifTool, Qt/PySide6 and
   C2PA tooling.
 
-Project initiative: **Probatia Forensics SL**, with the community of the
+ProbRAW is led by **Probatia Forensics SL** in collaboration with the
 **Asociación Española de Imagen Científica y Forense**.

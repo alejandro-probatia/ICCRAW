@@ -28,9 +28,9 @@ El contrato RAW debe fallar temprano cuando la receta declara parametros que el 
 - Tests cubren recetas validas e invalidas por backend.
 
 ### Archivos probablemente afectados
-- src/nexoraw/core/recipe.py
-- src/nexoraw/raw/pipeline.py
-- src/nexoraw/workflow.py
+- src/probraw/core/recipe.py
+- src/probraw/raw/pipeline.py
+- src/probraw/workflow.py
 ```
 
 ### [P0-02] Corregir audit_linear_tiff para garantizar salida lineal previa a curvas y conversiones
@@ -46,9 +46,9 @@ El TIFF de auditoria lineal debe representar el estado de revelado lineal antes 
 - En `profiling_mode` no se aplica curva tonal.
 
 ### Archivos probablemente afectados
-- src/nexoraw/raw/pipeline.py
-- src/nexoraw/workflow.py
-- src/nexoraw/core/models.py
+- src/probraw/raw/pipeline.py
+- src/probraw/workflow.py
+- src/probraw/core/models.py
 ```
 
 ### [P0-03] Separar en batch-develop los modos de asignar ICC de entrada y convertir con CMM
@@ -64,9 +64,9 @@ La exportacion de lote debe distinguir entre RGB de camara con ICC de entrada y 
 - Manifiesto declara modo de gestion de color utilizado.
 
 ### Archivos probablemente afectados
-- src/nexoraw/profile/export.py
-- src/nexoraw/workflow.py
-- src/nexoraw/gui.py
+- src/probraw/profile/export.py
+- src/probraw/workflow.py
+- src/probraw/gui.py
 ```
 
 ### [P0-04] Integrar un CMM real para conversiones ICC y dejar la matriz lateral solo como diagnostico
@@ -82,9 +82,9 @@ La matriz lateral de diagnostico no debe sustituir transformaciones ICC reales e
 - No hay conversion de salida basada solo en matriz lateral.
 
 ### Archivos probablemente afectados
-- src/nexoraw/profile/export.py
-- src/nexoraw/profile/builder.py
-- src/nexoraw/core/external.py
+- src/probraw/profile/export.py
+- src/probraw/profile/builder.py
+- src/probraw/core/external.py
 ```
 
 ### [P0-05] Validar el perfil ICC real generado por ArgyllCMS en lugar de solo la matriz del sidecar
@@ -100,9 +100,9 @@ La validacion colorimetrica debe evaluar el ICC real para evitar metricas optimi
 - Se distingue fit/training de validacion independiente.
 
 ### Archivos probablemente afectados
-- src/nexoraw/profile/builder.py
-- src/nexoraw/workflow.py
-- src/nexoraw/cli.py
+- src/probraw/profile/builder.py
+- src/probraw/workflow.py
+- src/probraw/cli.py
 ```
 
 ### [P0-06] Anadir dataset RAW-DNG real con licencia clara y checksums para integracion
@@ -138,7 +138,7 @@ Sin ArgyllCMS y ExifTool en CI no se valida el pipeline operativo completo.
 ### Archivos probablemente afectados
 - .github/workflows/
 - scripts/check_tools.sh
-- src/nexoraw/reporting.py
+- src/probraw/reporting.py
 ```
 
 ## P1
@@ -156,9 +156,9 @@ Un fallback demasiado permisivo puede perfilar regiones incorrectas con aparienc
 - Reporte indica `detection_mode` y warnings bloqueantes.
 
 ### Archivos probablemente afectados
-- src/nexoraw/chart/detection.py
-- src/nexoraw/workflow.py
-- src/nexoraw/cli.py
+- src/probraw/chart/detection.py
+- src/probraw/workflow.py
+- src/probraw/cli.py
 ```
 
 ### [P1-02] Anadir modo manual asistido para marcar esquinas de carta en CLI y GUI
@@ -174,9 +174,9 @@ En capturas con contorno ambiguo se requiere marcado manual reproducible para ev
 - Deteccion manual queda trazada en artefactos de sesion.
 
 ### Archivos probablemente afectados
-- src/nexoraw/chart/detection.py
-- src/nexoraw/cli.py
-- src/nexoraw/gui.py
+- src/probraw/chart/detection.py
+- src/probraw/cli.py
+- src/probraw/gui.py
 ```
 
 ### [P1-03] Aplicar parametros completos de muestreo desde receta en lugar de valores fijos
@@ -192,9 +192,9 @@ El muestreo debe obedecer la receta declarada para preservar reproducibilidad.
 - Sidecar registra parametros efectivos por parche.
 
 ### Archivos probablemente afectados
-- src/nexoraw/core/recipe.py
-- src/nexoraw/chart/sampling.py
-- src/nexoraw/workflow.py
+- src/probraw/core/recipe.py
+- src/probraw/chart/sampling.py
+- src/probraw/workflow.py
 ```
 
 ### [P1-04] Validar iluminante, observador, fuente y version de referencia de carta en modo estricto
@@ -210,9 +210,9 @@ Referencias insuficientemente tipadas generan DeltaE no comparables entre sesion
 - Tests cubren referencia compatible e incompatible.
 
 ### Archivos probablemente afectados
-- src/nexoraw/chart/sampling.py
-- src/nexoraw/profile/builder.py
-- src/nexoraw/workflow.py
+- src/probraw/chart/sampling.py
+- src/probraw/profile/builder.py
+- src/probraw/workflow.py
 ```
 
 ### [P1-05] Implementar validacion cruzada con capturas de holdout independientes
@@ -228,9 +228,9 @@ Sin holdout independiente no se puede estimar generalizacion del perfil por sesi
 - Estado final del perfil depende de umbrales sobre validacion.
 
 ### Archivos probablemente afectados
-- src/nexoraw/workflow.py
-- src/nexoraw/profile/builder.py
-- src/nexoraw/cli.py
+- src/probraw/workflow.py
+- src/probraw/profile/builder.py
+- src/probraw/cli.py
 ```
 
 ### [P1-06] Mejorar deteccion automatica de ColorChecker24 en condiciones no ideales
@@ -246,8 +246,8 @@ Las condiciones reales de captura requieren robustez frente a contornos ambiguos
 - Overlay incluye diagnostico de calidad de deteccion.
 
 ### Archivos probablemente afectados
-- src/nexoraw/chart/detection.py
-- src/nexoraw/workflow.py
+- src/probraw/chart/detection.py
+- src/probraw/workflow.py
 - tests/test_detection_sampling.py
 ```
 
@@ -264,9 +264,9 @@ El soporte IT8 ampliaria cobertura metrologica para laboratorios y patrimonio.
 - QA y validacion reportan metricas para IT8.
 
 ### Archivos probablemente afectados
-- src/nexoraw/chart/detection.py
-- src/nexoraw/chart/sampling.py
-- src/nexoraw/resources/references/
+- src/probraw/chart/detection.py
+- src/probraw/chart/sampling.py
+- src/probraw/resources/references/
 ```
 
 ### [P1-08] Anadir export CGATS completo para interoperabilidad externa
@@ -282,8 +282,8 @@ Export CGATS facilita auditoria y comparacion con herramientas externas de perfi
 - Test de smoke valida formato generado.
 
 ### Archivos probablemente afectados
-- src/nexoraw/profile/export.py
-- src/nexoraw/cli.py
+- src/probraw/profile/export.py
+- src/probraw/cli.py
 - tests/test_export.py
 ```
 
@@ -300,7 +300,7 @@ Una referencia operativa no sintetica mejora comparabilidad de resultados en cam
 - Documentacion indica alcance y limites de referencia.
 
 ### Archivos probablemente afectados
-- src/nexoraw/resources/references/
+- src/probraw/resources/references/
 - testdata/references/
 - docs/METODOLOGIA_COLOR_RAW.md
 ```
@@ -318,9 +318,9 @@ El ICC no debe absorber errores de neutralidad y densidad que deben corregirse a
 - Trazabilidad registra recipe base y recipe calibrada.
 
 ### Archivos probablemente afectados
-- src/nexoraw/profile/development.py
-- src/nexoraw/workflow.py
-- src/nexoraw/cli.py
+- src/probraw/profile/development.py
+- src/probraw/workflow.py
+- src/probraw/cli.py
 ```
 
 ### [P1-11] Ejecutar auto-profile-batch en doble pasada receta base -> receta calibrada -> ICC
@@ -336,9 +336,9 @@ La doble pasada desacopla correccion de revelado y perfilado ICC de sesion.
 - Resultado final incluye ambos artefactos en manifiesto.
 
 ### Archivos probablemente afectados
-- src/nexoraw/workflow.py
-- src/nexoraw/profile/development.py
-- src/nexoraw/cli.py
+- src/probraw/workflow.py
+- src/probraw/profile/development.py
+- src/probraw/cli.py
 ```
 
 ### [P1-12] Reorganizar la GUI como flujo por archivo con mochila por RAW y copia-pegado de ajustes
@@ -354,9 +354,9 @@ La GUI debe reflejar un flujo operativo por archivo y sesion, no solo acciones a
 - Copia/pegado de ajustes funciona entre miniaturas seleccionadas.
 
 ### Archivos probablemente afectados
-- src/nexoraw/gui.py
-- src/nexoraw/sidecar.py
-- src/nexoraw/session.py
+- src/probraw/gui.py
+- src/probraw/sidecar.py
+- src/probraw/session.py
 ```
 
 ### [P1-13] Integrar detecciones manuales guardadas por captura dentro de auto-profile-batch
@@ -372,9 +372,9 @@ Las detecciones manuales deben ser reutilizables para evitar repetir marcado y r
 - Flujo GUI y CLI comparten mismo formato de deteccion persistida.
 
 ### Archivos probablemente afectados
-- src/nexoraw/workflow.py
-- src/nexoraw/gui.py
-- src/nexoraw/chart/detection.py
+- src/probraw/workflow.py
+- src/probraw/gui.py
+- src/probraw/chart/detection.py
 ```
 
 ### [P1-14] Anadir QA de nitidez-MTF y contraste local con criterio medible
@@ -390,9 +390,9 @@ La calidad de captura requiere metricas objetivas mas alla del ajuste visual sub
 - Reporte separa advertencias de calidad de color y calidad espacial.
 
 ### Archivos probablemente afectados
-- src/nexoraw/workflow.py
-- src/nexoraw/reporting.py
-- src/nexoraw/gui.py
+- src/probraw/workflow.py
+- src/probraw/reporting.py
+- src/probraw/gui.py
 ```
 
 ## P2
@@ -429,7 +429,7 @@ El proyecto necesita baseline de rendimiento para priorizar optimizaciones medib
 
 ### Archivos probablemente afectados
 - scripts/benchmark_pipeline.py
-- src/nexoraw/workflow.py
+- src/probraw/workflow.py
 - docs/OPERATIVE_REVIEW_PLAN.md
 ```
 
@@ -484,7 +484,7 @@ Los smoke GUI evitan regresiones obvias de interfaz en cambios de flujo y empaqu
 ### Archivos probablemente afectados
 - tests/
 - scripts/run_checks.sh
-- src/nexoraw/gui.py
+- src/probraw/gui.py
 ```
 
 ### [P2-06] Llevar smoke GUI a CI multiplataforma
@@ -538,8 +538,8 @@ La cadena de custodia interoperable requiere firma y verificacion de manifiestos
 - Se documentan limites de confianza (`untrusted` local).
 
 ### Archivos probablemente afectados
-- src/nexoraw/provenance/c2pa.py
-- src/nexoraw/provenance/nexoraw_proof.py
+- src/probraw/provenance/c2pa.py
+- src/probraw/provenance/probraw_proof.py
 - docs/C2PA_CAI.md
 ```
 
@@ -556,9 +556,9 @@ Algunos casos de uso requieren modelos de perfil mas complejos que una matriz 3x
 - Sidecar indica modelo de perfil usado.
 
 ### Archivos probablemente afectados
-- src/nexoraw/profile/builder.py
-- src/nexoraw/profile/export.py
-- src/nexoraw/workflow.py
+- src/probraw/profile/builder.py
+- src/probraw/profile/export.py
+- src/probraw/workflow.py
 ```
 
 ### [P3-03] Crear comparador automatico de perfiles entre sesiones e iluminantes
@@ -574,9 +574,9 @@ Comparar perfiles entre sesiones ayuda a detectar deriva y cambios instrumentale
 - GUI puede visualizar resumen comparativo.
 
 ### Archivos probablemente afectados
-- src/nexoraw/qa_compare.py
-- src/nexoraw/cli.py
-- src/nexoraw/gui.py
+- src/probraw/qa_compare.py
+- src/probraw/cli.py
+- src/probraw/gui.py
 ```
 
 ### [P3-04] Implementar internacionalizacion GUI es-en y presets tecnicos por disciplina
@@ -592,7 +592,7 @@ La adopcion comunitaria mejora con interfaz bilingue y presets segun disciplina.
 - Tests de smoke cubren seleccion de idioma y preset.
 
 ### Archivos probablemente afectados
-- src/nexoraw/gui.py
-- src/nexoraw/resources/
+- src/probraw/gui.py
+- src/probraw/resources/
 - docs/MANUAL_USUARIO.md
 ```

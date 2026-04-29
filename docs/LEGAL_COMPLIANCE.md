@@ -4,12 +4,12 @@ _Spanish version: [LEGAL_COMPLIANCE.es.md](LEGAL_COMPLIANCE.es.md)_
 
 ## Scope
 
-This document defines the NexoRAW legal compliance framework for use
+This document defines the ProbRAW legal compliance framework for use
 scientific and forensic.
 
 ## Project License
 
-- NexoRAW is distributed under `AGPL-3.0-or-later`.
+- ProbRAW is distributed under `AGPL-3.0-or-later`.
 - Any redistribution (source code or binaries) must preserve:
   - copyright notice,
   - AGPL license,
@@ -21,13 +21,13 @@ scientific and forensic.
 
 ## AMaZE and GPL demosaic packs
 
-NexoRAW can use AMaZE if the installed `rawpy` module is linked to LibRaw
+ProbRAW can use AMaZE if the installed `rawpy` module is linked to LibRaw
 with `LIBRAW_DEMOSAIC_PACK_GPL3` enabled. This case requires GPL3+ for the
 resulting product; `AGPL-3.0-or-later` meets that requirement.
 
 Policy:
 
-1. keep NexoRAW under `AGPL-3.0-or-later`,
+1. keep ProbRAW under `AGPL-3.0-or-later`,
 2. prefer `rawpy-demosaic` for builds with AMaZE when wheel exists
    compatible or build your own wheel,
 3. Do not advertise AMaZE as available unless
@@ -38,7 +38,7 @@ Policy:
 
 ## External flow tools
 
-NexoRAW combines Python dependencies and external tools:
+ProbRAW combines Python dependencies and external tools:
 
 - `rawpy`/LibRaw or `rawpy-demosaic`/LibRaw for RAW development.
 - `ArgyllCMS` (`colprof`, `xicclu`, `cctiff`) for construction, validation and
@@ -53,7 +53,7 @@ Relevant license notes:
    They impose GPL2+ or GPL3+ depending on the pack used.
 3. `rawpy` standard is MIT and does not include GPL packs in its wheels.
 4. `rawpy-demosaic` is `GPL-3.0-or-later` and includes the GPL2/GPL3 packs.
-5. Community PySide6 is distributed under LGPLv3/GPLv3; in NexoRAW it is used as an optional GUI dependency.
+5. Community PySide6 is distributed under LGPLv3/GPLv3; in ProbRAW it is used as an optional GUI dependency.
 
 Integration policy:
 1. no third party binaries are embedded within the repository,

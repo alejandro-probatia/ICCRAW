@@ -6,10 +6,10 @@ import numpy as np
 import tifffile
 import colour
 
-from nexoraw.core.models import Recipe
-from nexoraw.profile.export import apply_profile_matrix
-import nexoraw.raw.preview as preview_module
-from nexoraw.raw.preview import (
+from probraw.core.models import Recipe
+from probraw.profile.export import apply_profile_matrix
+import probraw.raw.preview as preview_module
+from probraw.raw.preview import (
     _camera_rgb_display_balance_if_needed,
     apply_adjustments,
     apply_lateral_chromatic_aberration,
@@ -243,7 +243,7 @@ def test_load_image_for_preview_hq_uses_half_size_when_preview_is_smaller(tmp_pa
     called: dict[str, bool] = {}
 
     monkeypatch.setattr(preview_module, "_raw_preview_source_max_side", lambda _path: 6200)
-    monkeypatch.delenv("NEXORAW_PREVIEW_HQ_HALF_SIZE", raising=False)
+    monkeypatch.delenv("PROBRAW_PREVIEW_HQ_HALF_SIZE", raising=False)
 
     def fake_develop(_path, _recipe, *, half_size=False):
         called["half_size"] = bool(half_size)
@@ -288,7 +288,7 @@ def test_load_image_for_preview_hq_can_disable_half_size_by_env(tmp_path: Path, 
     called: dict[str, bool] = {}
 
     monkeypatch.setattr(preview_module, "_raw_preview_source_max_side", lambda _path: 6200)
-    monkeypatch.setenv("NEXORAW_PREVIEW_HQ_HALF_SIZE", "0")
+    monkeypatch.setenv("PROBRAW_PREVIEW_HQ_HALF_SIZE", "0")
 
     def fake_develop(_path, _recipe, *, half_size=False):
         called["half_size"] = bool(half_size)

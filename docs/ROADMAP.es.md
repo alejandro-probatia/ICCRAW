@@ -2,21 +2,21 @@ _English version: [ROADMAP.md](ROADMAP.md)_
 
 # Roadmap
 
-Este roadmap describe la dirección activa de NexoRAW tras la reorganización
-0.2.6. Prioriza un flujo ICC estable y reproducible frente a añadir capas
+Este roadmap describe la dirección activa de ProbRAW tras la reorganización
+0.3.0. Prioriza un flujo ICC estable y reproducible frente a añadir capas
 paralelas de perfilado de color.
 
 ## Base Completada
 
-- Paquete Python modular bajo `src/nexoraw`.
-- Entry points canónicos CLI y GUI: `nexoraw` y `nexoraw-ui`.
-- Paquete Debian con nombre NexoRAW, sin lanzadores heredados `iccraw`.
+- Paquete Python modular bajo `src/probraw`.
+- Entry points canónicos CLI y GUI: `probraw` y `probraw-ui`.
+- Paquete Debian con nombre ProbRAW, sin lanzadores heredados `iccraw`.
 - GUI Qt con pestañas de sesión, ajuste/perfilado y cola de revelado.
 - Estructura persistente de sesión:
   - `00_configuraciones/`
   - `01_ORG/`
   - `02_DRV/`
-- Mochilas de ajuste por archivo (`RAW.nexoraw.json`).
+- Mochilas de ajuste por archivo (`RAW.probraw.json`).
 - Perfiles avanzados de ajuste desde carta.
 - Generación de ICC de entrada de sesión con ArgyllCMS.
 - Catálogo persistente de perfiles ICC de sesión con varias versiones activables.
@@ -27,8 +27,8 @@ paralelas de perfilado de color.
 - Flujo con ICC estándar de salida para sesiones sin carta.
 - Gestión ICC del monitor limitada al preview.
 - Marcado manual de cuatro esquinas de carta en el visor.
-- NexoRAW Proof y metadatos C2PA opcionales.
-- Suite completa de tests superada para la validación de empaquetado 0.2.6.
+- ProbRAW Proof y metadatos C2PA opcionales.
+- Suite completa de tests superada para la validación de empaquetado 0.3.0.
 
 ## Principio Actual
 
@@ -76,7 +76,7 @@ Objetivo: aumentar la confianza en perfiles generados desde referencias.
 
 ## Fase 4 - Rendimiento y Sesiones Grandes
 
-Objetivo: mantener NexoRAW fluido cuando las sesiones crecen.
+Objetivo: mantener ProbRAW fluido cuando las sesiones crecen.
 
 - Seguir optimizando cachés persistentes de preview y miniaturas.
 - Medir navegación RAW, preview 1:1 y preview de perfil en hardware

@@ -19,16 +19,16 @@ Governance and licensing:
 
 ## Package layout
 
-The code lives in `src/nexoraw/`, organized by domain to allow it to grow without oversized flat files:
+The code lives in `src/probraw/`, organized by domain to allow it to grow without oversized flat files:
 ```text
-src/nexoraw/
+src/probraw/
   __init__.py, __main__.py, version.py
   cli.py                       # interfaz de línea de comandos
   gui.py                       # Qt/PySide6 main window and UI orchestration
   gui_config.py                # GUI visual, cache and compatibility constants
   workflow.py                  # orquestación end-to-end
   session.py                   # modelo y persistencia de sesiones
-  sidecar.py                   # mochilas RAW.nexoraw.json por imagen
+  sidecar.py                   # mochilas RAW.probraw.json por imagen
   display_color.py             # perfil ICC de monitor por plataforma
   reporting.py                 # contexto de ejecución y trazabilidad
 
@@ -55,7 +55,7 @@ src/nexoraw/
 
   ui/                          # reusable Qt widgets, without session logic
     widgets.py                 # image viewer, histogram and tone curve controls
-    window/                    # NexoRawMainWindow behavior by domain
+    window/                    # ProbRawMainWindow behavior by domain
       layout.py                # menus, tabs and main panes
       control_panels.py        # development/export control tabs
       settings.py              # global dialog, language, signatures and display color
@@ -79,7 +79,7 @@ src/nexoraw/
 ```
 ## Project structure
 
-A NexoRAW 0.2 session uses three main folders:
+A ProbRAW 0.2 session uses three main folders:
 ```text
 proyecto/
   00_configuraciones/          # session.json, perfiles, ICC, reportes, cache
@@ -107,7 +107,7 @@ such as `raw/captura.NEF` versus `01_ORG/captura.NEF` when the file exists.
 - `.profile.json` sidecar with matrix, recipe and metrics is always saved for reproducibility.
 - If there is a letter, the ICC is treated as a session entry profile and is embedded
   in the master TIFF without converting to generic space.
-- If there is no card, NexoRAW reveals the RAW in a real standard RGB space
+- If there is no card, ProbRAW reveals the RAW in a real standard RGB space
   (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`), copy/embed the standard ICC
   from the system or ArgyllCMS and declares it as `generic_output_icc`.
 
@@ -145,7 +145,7 @@ It registers:
   LibRaw parameters affecting demosaic/WB/black and backend signature
   rawpy/LibRaw. Changing demosaic algorithm invalidates the entry.
 - The cache applies LRU pruning by maximum size. By default it uses 5 GiB,
-  configurable with `NEXORAW_DEMOSAIC_CACHE_MAX_GB`.
+  configurable with `PROBRAW_DEMOSAIC_CACHE_MAX_GB`.
 
 ## Key principle
 

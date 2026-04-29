@@ -2,12 +2,12 @@
 set -euo pipefail
 
 run_app() {
-  if [ -x ".venv/bin/nexoraw" ]; then
-    .venv/bin/nexoraw "$@"
-  elif command -v nexoraw >/dev/null 2>&1; then
-    nexoraw "$@"
+  if [ -x ".venv/bin/probraw" ]; then
+    .venv/bin/probraw "$@"
+  elif command -v probraw >/dev/null 2>&1; then
+    probraw "$@"
   else
-    python -m nexoraw "$@"
+    python -m probraw "$@"
   fi
 }
 

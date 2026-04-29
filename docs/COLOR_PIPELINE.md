@@ -4,7 +4,7 @@ _Versión en español: [COLOR_PIPELINE.es.md](COLOR_PIPELINE.es.md)_
 
 ## Operational Status
 
-NexoRAW 0.2.6 implements the main ICC workflow and the session-based GUI. The
+ProbRAW 0.3.0 implements the main ICC workflow and the session-based GUI. The
 application is suitable for controlled testing and release validation, but it
 should not yet be presented as a certified scientific or forensic production
 system.
@@ -91,7 +91,7 @@ Detection:
 - macOS: ColorSync.
 - Linux/BSD: `colord`, `colormgr` or `_ICC_PROFILE`.
 
-If the profile disappears or cannot be opened, NexoRAW logs the problem and uses
+If the profile disappears or cannot be opened, ProbRAW logs the problem and uses
 sRGB as the visual fallback.
 
 ## Profile Validity

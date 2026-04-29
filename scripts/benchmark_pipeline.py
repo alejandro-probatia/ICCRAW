@@ -19,10 +19,10 @@ try:
 except Exception:
     pass
 
-from nexoraw.core.recipe import load_recipe
-from nexoraw.core.utils import sha256_file
-from nexoraw.raw.pipeline import develop_controlled, develop_image_array
-from nexoraw.raw.preview import apply_adjustments, apply_render_adjustments, linear_to_srgb_display, load_image_for_preview
+from probraw.core.recipe import load_recipe
+from probraw.core.utils import sha256_file
+from probraw.raw.pipeline import develop_controlled, develop_image_array
+from probraw.raw.preview import apply_adjustments, apply_render_adjustments, linear_to_srgb_display, load_image_for_preview
 
 
 def _time_call(fn, repeat: int) -> tuple[object, list[float]]:
@@ -46,7 +46,7 @@ def _summary(timings: list[float]) -> dict[str, float | int]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Benchmark basico de preview/render NexoRAW")
+    parser = argparse.ArgumentParser(description="Benchmark basico de preview/render ProbRAW")
     parser.add_argument("input", type=Path)
     parser.add_argument("--recipe", type=Path, required=True)
     parser.add_argument("--repeat", type=int, default=3)

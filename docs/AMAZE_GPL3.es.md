@@ -2,7 +2,7 @@
 
 ## Decisión de licencia
 
-NexoRAW se distribuye bajo `AGPL-3.0-or-later`. Esta licencia es compatible con
+ProbRAW se distribuye bajo `AGPL-3.0-or-later`. Esta licencia es compatible con
 la condición GPL3+ exigida por el demosaic pack GPL3 de LibRaw, que incluye el
 algoritmo AMaZE.
 
@@ -68,10 +68,10 @@ LIBRAW_DEMOSAIC_PACK_GPL2
 LIBRAW_DEMOSAIC_PACK_GPL3
 ```
 
-La wheel resultante y el instalador de NexoRAW deben incluir avisos de licencia
+La wheel resultante y el instalador de ProbRAW deben incluir avisos de licencia
 GPL3/AGPL y una forma clara de obtener el código fuente correspondiente.
 
-NexoRAW incluye un workflow manual de GitHub Actions para construir la wheel
+ProbRAW incluye un workflow manual de GitHub Actions para construir la wheel
 Windows de `rawpy-demosaic` con MSVC:
 
 ```text
@@ -91,7 +91,7 @@ Una vez descargada la wheel:
 ```powershell
 $wheel = (Get-ChildItem -Recurse .\tmp\wheels -Filter "rawpy_demosaic-*.whl" | Select-Object -First 1).FullName
 .\scripts\install_amaze_backend.ps1 -Wheel $wheel
-.\.venv\Scripts\python.exe -m nexoraw check-amaze
+.\.venv\Scripts\python.exe -m probraw check-amaze
 ```
 
 Para empaquetar Windows con AMaZE:
@@ -113,7 +113,7 @@ El paquete `.deb` instala y verifica el backend AMaZE durante la construccion
 por defecto. Desde la raiz del repositorio:
 
 ```bash
-NEXORAW_BUILD_AMAZE=1 NEXORAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
+PROBRAW_BUILD_AMAZE=1 PROBRAW_REQUIRE_AMAZE=1 bash packaging/debian/build_deb.sh
 ```
 
 La fuente Git por defecto usada para construir la wheel embebida es:
@@ -122,20 +122,20 @@ La fuente Git por defecto usada para construir la wheel embebida es:
 git+https://github.com/exfab/rawpy-demosaic.git@8b17075
 ```
 
-Se puede sustituir por otra fuente trazada con `NEXORAW_RAWPY_DEMOSAIC_SOURCE`
+Se puede sustituir por otra fuente trazada con `PROBRAW_RAWPY_DEMOSAIC_SOURCE`
 si esa fuente es instalable directamente por `pip`, o por una wheel ya
-construida con `NEXORAW_RAWPY_DEMOSAIC_WHEEL`.
+construida con `PROBRAW_RAWPY_DEMOSAIC_WHEEL`.
 
 Con una wheel local:
 
 ```bash
-NEXORAW_REQUIRE_AMAZE=1 \
-NEXORAW_RAWPY_DEMOSAIC_WHEEL=/ruta/rawpy_demosaic-*.whl \
+PROBRAW_REQUIRE_AMAZE=1 \
+PROBRAW_RAWPY_DEMOSAIC_WHEEL=/ruta/rawpy_demosaic-*.whl \
 bash packaging/debian/build_deb.sh
 ```
 
 La build registra `check-amaze.json` y `build-metadata.json` en
-`/usr/share/doc/nexoraw/third_party/rawpy-demosaic/`. La validacion previa a
+`/usr/share/doc/probraw/third_party/rawpy-demosaic/`. La validacion previa a
 release falla si `check-amaze.json` no contiene `amaze_supported: true`.
 
 ## macOS
@@ -145,7 +145,7 @@ multiplataforma de backend AMaZE es el mismo script Python:
 
 ```bash
 python scripts/install_amaze_backend.py --pypi
-nexoraw check-amaze
+probraw check-amaze
 ```
 
 Si no hay wheel compatible para la version de Python/arquitectura usada, crear
@@ -153,18 +153,18 @@ o descargar una wheel propia:
 
 ```bash
 python scripts/install_amaze_backend.py --wheel /ruta/rawpy_demosaic-*.whl
-nexoraw check-amaze
+probraw check-amaze
 ```
 
 `rawpy-demosaic` exporta el modulo Python `rawpy`, pero su distribucion Python
 se llama `rawpy-demosaic`. Por eso `pip` puede avisar de que no esta instalada
 la distribucion `rawpy>=0.26` aunque la importacion runtime `import rawpy`
 funcione con AMaZE. La comprobacion obligatoria para publicar una build es
-`nexoraw check-amaze`.
+`probraw check-amaze`.
 
 ## Comprobación operativa
 
-NexoRAW no infiere soporte AMaZE por la presencia del enum
+ProbRAW no infiere soporte AMaZE por la presencia del enum
 `rawpy.DemosaicAlgorithm.AMAZE`; esa constante puede existir aunque el pack no
 esté compilado. La comprobación válida es:
 

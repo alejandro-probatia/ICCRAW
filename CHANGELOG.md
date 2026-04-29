@@ -2,7 +2,7 @@ _Spanish version: [CHANGELOG.es.md](CHANGELOG.es.md)_
 
 # Changelog
 
-All relevant NexoRAW changes are documented in this file.
+All relevant ProbRAW changes are documented in this file.
 
 This project follows:
 
@@ -19,6 +19,31 @@ To maintain full traceability, each change must:
 3. reference, when applicable, impact on reproducibility, legality or chain of custody.
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-04-29
+
+### Changed
+
+- Renamed the project and visible application identity to ProbRAW to avoid brand
+  collision with existing projects.
+- Renamed the Python package, CLI launchers, desktop files, icons, screenshots
+  and release artifacts to the canonical `probraw` naming.
+- Updated repository, installer and update metadata to point to
+  `alejandro-probatia/ProbRAW`.
+- Declared project leadership by Probatia Forensics SL in collaboration with the
+  Asociación Española de Imagen Científica y Forense.
+
+### Compatibility
+
+- New RAW sidecars are written as `RAW.probraw.json`, while existing
+  `RAW.nexoraw.json` and `RAW.iccraw.json` files are still loaded and migrated
+  when the session is saved again.
+- New proof sidecars are written as `.probraw.proof.json`, while legacy
+  `.nexoraw.proof.json` and `.iccraw.proof.json` files remain readable.
+- C2PA and Proof verification accept previous beta assertion labels and
+  environment variables as migration fallbacks.
+- Linux packages now declare `Replaces/Conflicts: nexoraw, iccraw` and do not
+  install legacy launchers.
 
 ## [0.2.6] - 2026-04-29
 
@@ -50,13 +75,13 @@ To maintain full traceability, each change must:
 
 ### Changed
 
-- Reorganized the codebase around the canonical `nexoraw` package and removed
+- Reorganized the codebase around the canonical `probraw` package and removed
   the old internal `iccraw` implementation namespace.
 - Split the GUI into smaller UI/window modules to make session, preview,
   profile and batch workflows easier to maintain.
 - Updated tests, scripts, installers and active documentation to use the
-  `nexoraw` package and launcher names consistently.
-- New C2PA outputs now use `org.probatia.nexoraw.*` assertion/action labels;
+  `probraw` package and launcher names consistently.
+- New C2PA outputs now use `org.probatia.probraw.*` assertion/action labels;
   verification keeps compatibility with earlier beta `org.probatia.iccraw.*`
   manifests.
 
@@ -71,7 +96,7 @@ To maintain full traceability, each change must:
   if the OS is in Spanish the app starts in Spanish, in any other language it
   starts in English. Existing users with `app/language=es` already stored are
   not migrated, preserving their previous choice.
-- Helpers `nexoraw.i18n.detect_system_language` and `nexoraw.i18n.resolve_language`
+- Helpers `probraw.i18n.detect_system_language` and `probraw.i18n.resolve_language`
   with unit tests in `tests/test_i18n.py`.
 
 ### Changed
@@ -84,13 +109,13 @@ To maintain full traceability, each change must:
 
 ### Changed
 
-- The flow without chart stops generating profiles `NexoRAW generic ...`: the RAW is
+- The flow without chart stops generating profiles `ProbRAW generic ...`: the RAW is
   reveals in a real standard RGB space (`sRGB`, `Adobe RGB (1998)` or
   `ProPhoto RGB`) with LibRaw and embed a standard ICC copied from the system or
   by ArgyllCMS.
 - The render manifests register `raw_color_pipeline`, indicating whether the
   color transformation was solved by LibRaw, session ICC or ArgyllCMS/CMM.
-- NexoRAW Proof/C2PA declare the full settings applied (`recipe`,
+- ProbRAW Proof/C2PA declare the full settings applied (`recipe`,
   detail/sharpness, contrast/render and color management); the settings hash
   It remains as an integrity control, not as the only visible data for audit.
 
@@ -143,12 +168,12 @@ Profile`
 ## [0.2.1] - 2026-04-27
 
 ### Added- `Ayuda > Acerca de` GUI expanded with:
-  - configurable project manager (`NEXORAW_PROJECT_DIRECTOR`),
+  - configurable project manager (`PROBRAW_PROJECT_DIRECTOR`),
   - running version,
   - AMaZE operational status,
   - checking the latest version published in GitHub Releases,
   - automatic update that downloads and launches the release installer.
-- New module `nexoraw.update` for querying releases, comparing
+- New module `probraw.update` for querying releases, comparing
   versions, downloading assets and executing installers by platform.
 - RGB histogram in the `Visor` tab with clipping reading in shadows and
   lights and visual witnesses.
@@ -171,9 +196,9 @@ Profile`
   development queue, metadata and global configuration.
 - Documented flow for non-chart sessions: manual development profile with ICC
   generic output (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`) and backpack
-  `RAW.nexoraw.json` per image.
-- Debian package release `0.2.0`, installable as a NexoRAW application with
-  `nexoraw`/`nexoraw-ui` launchers, hicolor icons and AMaZE validated in build.
+  `RAW.probraw.json` per image.
+- Debian package release `0.2.0`, installable as a ProbRAW application with
+  `probraw`/`probraw-ui` launchers, hicolor icons and AMaZE validated in build.
 
 ### Changed- The manual stops explaining installation from code and manual dependencies;
   user installation is considered covered by installers
@@ -206,14 +231,14 @@ Profile`
   `raw/archivo` automatically resolve against `01_ORG/archivo`, avoiding
   tracebacks when opening migrated projects.
 - GUI: when generating a profile from a menu, the advanced profile is assigned to the
-  RAW card using your `RAW.nexoraw.json` backpack.
+  RAW card using your `RAW.probraw.json` backpack.
 
 ## [0.1.0-beta.5] - 2026-04-25
 
 ### Changed
 
-- The visible name of the project becomes NexoRAW. Entry points
-  `nexoraw`/`nexoraw-ui` are added, with temporary legacy aliases for existing
+- The visible name of the project becomes ProbRAW. Entry points
+  `probraw`/`probraw-ui` are added, with temporary legacy aliases for existing
   beta scripts. Those aliases are removed in 0.2.5.
 - Unified CMM in ArgyllCMS: LittleCMS (`tificc`) is replaced by
   `cctiff`/`xicclu` for output ICC conversion, validation and preview of
@@ -240,7 +265,7 @@ Profile`
   so that the ICC conversion works without external profiles. It eliminates the
   copy of LittleCMS binaries and metadata.
 - Debian package: `liblcms2-utils` is removed from declared dependencies.
-- `nexoraw check-tools` requires `cctiff` (ArgyllCMS) instead of `tificc`.
+- `probraw check-tools` requires `cctiff` (ArgyllCMS) instead of `tificc`.
 
 ### Fixed
 
@@ -256,7 +281,7 @@ Profile`
 
 ### Changed- Windows AMaZE installer includes distribution metadata
   `rawpy-demosaic` inside the PyInstaller executable so that
-  `nexoraw check-amaze` report the exact backend.
+  `probraw check-amaze` report the exact backend.
 - Windows packaging copies notices/licenses from `rawpy-demosaic`, LibRaw,
   the GPL2/GPL3 and RawSpeed demosaic packs, along with wheel hash and commit
   source.
@@ -286,7 +311,7 @@ Profile`
 - The ICC generation options (`colprof`, quality, format and output) and the
   `RAW global` criteria are displayed within `Calibrar sesion`, before
   start calibration.
-- Documented AMaZE/GPL3 policy: NexoRAW maintains `AGPL-3.0-or-later`, registers
+- Documented AMaZE/GPL3 policy: ProbRAW maintains `AGPL-3.0-or-later`, registers
   flags of `rawpy` and only enables AMaZE when `DEMOSAIC_PACK_GPL3=True`.
 - Windows installer packages complete flow external tools
   (`colprof`/`xicclu`, `exiftool` and `tificc`) under `tools/`.
@@ -323,7 +348,7 @@ Profile`
 
 ### Fixed
 
-- ColorChecker 2005 D50 reference is packaged inside `nexoraw` and used
+- ColorChecker 2005 D50 reference is packaged inside `probraw` and used
   as a fallback when the GUI/CLI is run from a `.deb` installation without the
   tree `testdata/` of the repository.
 

@@ -7,7 +7,7 @@ trazabilidad y validacion tecnico-cientifica.
 Leyenda: `✅` disponible, `⚠️ parcial` disponible con limites o flujo manual,
 `❌` no disponible/no es foco principal.
 
-| Eje | NexoRAW | Darktable | RawTherapee | Lightroom + dcamprof | basICColor |
+| Eje | ProbRAW | Darktable | RawTherapee | Lightroom + dcamprof | basICColor |
 | --- | --- | --- | --- | --- | --- |
 | Revelado RAW lineal auditable (sin curvas creativas no declaradas) | ✅ | ⚠️ parcial (historial de ajustes, orientado a revelado creativo) | ⚠️ parcial (parametrico, orientado a revelado creativo) | ⚠️ parcial (flujo propietario, trazabilidad limitada) | ❌ (no es revelador RAW generalista) |
 | Perfil ICC por sesion (no permanente de camara) | ✅ | ⚠️ parcial (posible con flujo manual) | ⚠️ parcial (posible con flujo manual) | ⚠️ parcial (dcamprof permite perfilado, no integrado por sesion de forma nativa) | ✅ |
@@ -21,9 +21,9 @@ Leyenda: `✅` disponible, `⚠️ parcial` disponible con limites o flujo manua
 
 ## Lectura rapida
 
-- NexoRAW no compite en herramientas creativas avanzadas frente a Darktable o
+- ProbRAW no compite en herramientas creativas avanzadas frente a Darktable o
   RawTherapee.
 - basICColor es referencia colorimetrica industrial, pero no prioriza
   trazabilidad forense abierta con sidecars/manifiestos.
-- El diferencial de NexoRAW es la combinacion de reproducibilidad operativa,
+- El diferencial de ProbRAW es la combinacion de reproducibilidad operativa,
   auditoria y perfilado por sesion con evidencia tecnica exportable.

@@ -3,14 +3,14 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nexoraw"
+name = "probraw"
 dynamic = ["version"]
 description = "Pipeline reproducible para RAW, deteccion de carta y perfilado ICC de camara"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "AGPL-3.0-or-later"}
 authors = [
-  {name = "Comunidad de la Asociacion Espanola de Imagen Cientifica y Forense"}
+  {name = "Probatia Forensics SL y Asociacion Espanola de Imagen Cientifica y Forense"}
 ]
 classifiers = [
   "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
@@ -48,20 +48,20 @@ c2pa = [
 ]
 
 [project.scripts]
-nexoraw = "nexoraw.cli:main"
-nexoraw-ui = "nexoraw.gui:main"
+probraw = "probraw.cli:main"
+probraw-ui = "probraw.gui:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.dynamic]
-version = {attr = "nexoraw.version.__version__"}
+version = {attr = "probraw.version.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"nexoraw.resources" = ["references/*.json", "icons/*.svg", "icons/*.png", "icons/*.ico", "locales/*.qm"]
+"probraw.resources" = ["references/*.json", "icons/*.svg", "icons/*.png", "icons/*.ico", "locales/*.qm"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
