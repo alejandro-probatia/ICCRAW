@@ -7,6 +7,430 @@ class SessionDevelopmentMixin:
     def _profile_timestamp(self) -> str:
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
+    def _icc_profile_suffixes(self) -> set[str]:
+        return {str(suffix).lower() for suffix in PROFILE_FORMAT_OPTIONS}
+
+    def _profile_file_timestamp(self, path: Path) -> str:
+        try:
+            return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).replace(microsecond=0).isoformat()
+        except Exception:
+            return self._profile_timestamp()
+
+    def _icc_profile_id_for_path(self, path: Path) -> str:
+        stored = self._session_relative_or_absolute(path)
+        digest = hashlib.sha1(stored.encode("utf-8")).hexdigest()[:12]
+        slug = self._slug_for_development_profile(Path(path).stem)
+        return f"icc-{slug}-{digest}"
+
+    def _icc_profile_by_id(self, profile_id: str) -> dict[str, Any] | None:
+        for profile in self._icc_profiles:
+            if str(profile.get("id") or "") == profile_id:
+                return profile
+        return None
+
+    def _icc_profile_by_path(self, path: Path) -> dict[str, Any] | None:
+        try:
+            target = path.expanduser().resolve(strict=False)
+        except Exception:
+            target = path.expanduser()
+        for profile in self._icc_profiles:
+            stored = self._session_stored_path(profile.get("path"))
+            if stored is None:
+                continue
+            try:
+                candidate = stored.expanduser().resolve(strict=False)
+            except Exception:
+                candidate = stored.expanduser()
+            if candidate == target:
+                return profile
+        return None
+
+    def _normalize_icc_profile_descriptor(self, descriptor: dict[str, Any]) -> dict[str, Any] | None:
+        if not isinstance(descriptor, dict):
+            return None
+        raw_path = (
+            descriptor.get("path")
+            or descriptor.get("icc_profile_path")
+            or descriptor.get("profile_path")
+        )
+        path = self._session_stored_path(raw_path)
+        if path is None or path.suffix.lower() not in self._icc_profile_suffixes() or not path.exists():
+            return None
+
+        report_path = self._session_stored_path(descriptor.get("profile_report_path"))
+        development_profile_path = self._session_stored_path(descriptor.get("development_profile_path"))
+        recipe_path = self._session_stored_path(descriptor.get("recipe_path"))
+        status = str(descriptor.get("status") or self._profile_status_for_path(path) or "").strip().lower()
+        if not status:
+            status = "unknown"
+        created_at = str(descriptor.get("created_at") or self._profile_file_timestamp(path))
+        updated_at = str(descriptor.get("updated_at") or created_at)
+        name = str(descriptor.get("name") or path.stem).strip() or path.stem
+
+        normalized = {
+            "id": str(descriptor.get("id") or self._icc_profile_id_for_path(path)),
+            "name": name,
+            "source": str(descriptor.get("source") or "generated"),
+            "path": self._session_relative_or_absolute(path),
+            "profile_report_path": self._session_relative_or_absolute(report_path) if report_path is not None else "",
+            "development_profile_id": str(descriptor.get("development_profile_id") or ""),
+            "development_profile_path": self._session_relative_or_absolute(development_profile_path)
+            if development_profile_path is not None
+            else "",
+            "recipe_path": self._session_relative_or_absolute(recipe_path) if recipe_path is not None else "",
+            "status": status,
+            "created_at": created_at,
+            "updated_at": updated_at,
+        }
+        return normalized
+
+    def _sort_icc_profiles(self) -> None:
+        self._icc_profiles.sort(
+            key=lambda item: (
+                str(item.get("created_at") or ""),
+                str(item.get("name") or item.get("id") or ""),
+            ),
+            reverse=True,
+        )
+
+    def _coalesce_icc_profile_descriptors(self, descriptors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        by_id: dict[str, dict[str, Any]] = {}
+        by_path: dict[str, str] = {}
+        for descriptor in descriptors:
+            normalized = self._normalize_icc_profile_descriptor(descriptor)
+            if normalized is None:
+                continue
+            profile_id = str(normalized.get("id") or "")
+            path_key = str(normalized.get("path") or "")
+            target_id = by_path.get(path_key, profile_id)
+            if target_id in by_id:
+                merged = dict(by_id[target_id])
+                for key, value in normalized.items():
+                    if value not in ("", None):
+                        if key == "status" and value == "unknown" and merged.get("status"):
+                            continue
+                        if key == "created_at" and merged.get("created_at"):
+                            continue
+                        if key == "source" and value == "generated" and merged.get("source") not in ("", None, "generated"):
+                            continue
+                        merged[key] = value
+                by_id[target_id] = merged
+                by_path[path_key] = target_id
+            else:
+                by_id[profile_id] = normalized
+                by_path[path_key] = profile_id
+        result = list(by_id.values())
+        result.sort(
+            key=lambda item: (
+                str(item.get("created_at") or ""),
+                str(item.get("name") or item.get("id") or ""),
+            ),
+            reverse=True,
+        )
+        return result
+
+    def _session_icc_profile_scan_descriptors(self, *, paths: dict[str, Path] | None = None) -> list[dict[str, Any]]:
+        if paths is None:
+            if self._active_session_root is None:
+                return []
+            paths = self._session_paths_from_root(self._active_session_root)
+        profiles_dir = paths.get("profiles")
+        if profiles_dir is None or not profiles_dir.exists():
+            return []
+        descriptors: list[dict[str, Any]] = []
+        try:
+            candidates = sorted(
+                p for p in profiles_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in self._icc_profile_suffixes()
+            )
+        except Exception:
+            candidates = []
+        for path in candidates:
+            descriptors.append(
+                {
+                    "name": path.stem,
+                    "source": "generated",
+                    "path": str(path),
+                    "created_at": self._profile_file_timestamp(path),
+                    "updated_at": self._profile_file_timestamp(path),
+                }
+            )
+        return descriptors
+
+    def _icc_profile_descriptors_from_session_state(
+        self,
+        state: dict[str, Any],
+        *,
+        paths: dict[str, Path],
+        defaults: dict[str, Path],
+    ) -> list[dict[str, Any]]:
+        descriptors: list[dict[str, Any]] = []
+        raw_profiles = state.get("icc_profiles")
+        if isinstance(raw_profiles, list):
+            descriptors.extend(profile for profile in raw_profiles if isinstance(profile, dict))
+
+        for key, source in (
+            ("profile_active_path", "active"),
+            ("profile_output_path", "generated"),
+        ):
+            path = self._session_stored_path(state.get(key))
+            if path is not None and path.exists():
+                descriptors.append({"path": str(path), "source": source, "name": path.stem})
+
+        if defaults["profile_out"].exists():
+            descriptors.append(
+                {
+                    "path": str(defaults["profile_out"]),
+                    "source": "generated",
+                    "name": defaults["profile_out"].stem,
+                }
+            )
+
+        raw_development_profiles = state.get("development_profiles")
+        if isinstance(raw_development_profiles, list):
+            for profile in raw_development_profiles:
+                if not isinstance(profile, dict):
+                    continue
+                icc_path = self._session_stored_path(profile.get("icc_profile_path"))
+                if icc_path is None or not icc_path.exists():
+                    continue
+                descriptors.append(
+                    {
+                        "path": str(icc_path),
+                        "source": "generated",
+                        "name": str(profile.get("name") or icc_path.stem),
+                        "development_profile_id": str(profile.get("id") or ""),
+                        "development_profile_path": str(profile.get("manifest_path") or ""),
+                        "profile_report_path": str(profile.get("profile_report_path") or ""),
+                        "recipe_path": str(profile.get("recipe_path") or ""),
+                    }
+                )
+
+        descriptors.extend(self._session_icc_profile_scan_descriptors(paths=paths))
+        return descriptors
+
+    def _load_session_icc_profiles(
+        self,
+        state: dict[str, Any],
+        *,
+        paths: dict[str, Path],
+        defaults: dict[str, Path],
+    ) -> None:
+        self._icc_profiles = self._coalesce_icc_profile_descriptors(
+            self._icc_profile_descriptors_from_session_state(state, paths=paths, defaults=defaults)
+        )
+        requested_active_id = str(state.get("active_icc_profile_id") or "")
+        self._active_icc_profile_id = requested_active_id if self._icc_profile_by_id(requested_active_id) else ""
+
+    def _sync_session_icc_profiles_from_disk(self) -> None:
+        descriptors = list(self._icc_profiles)
+        if self._active_session_root is not None:
+            descriptors.extend(self._session_icc_profile_scan_descriptors())
+        active = self.path_profile_active.text().strip() if hasattr(self, "path_profile_active") else ""
+        if active:
+            descriptors.append({"path": active, "source": "active", "name": Path(active).stem})
+        self._icc_profiles = self._coalesce_icc_profile_descriptors(descriptors)
+        self._sync_active_icc_profile_id_from_path()
+        self._refresh_profile_management_views()
+
+    def _sync_active_icc_profile_id_from_path(self) -> None:
+        if not hasattr(self, "path_profile_active"):
+            return
+        text = self.path_profile_active.text().strip()
+        if not text:
+            self._active_icc_profile_id = ""
+            return
+        profile = self._icc_profile_by_path(Path(text).expanduser())
+        self._active_icc_profile_id = str(profile.get("id") or "") if profile else ""
+
+    def _session_icc_profiles_snapshot(self) -> list[dict[str, Any]]:
+        return [dict(profile) for profile in self._icc_profiles]
+
+    def _icc_profile_combo_label(self, profile: dict[str, Any]) -> str:
+        name = str(profile.get("name") or profile.get("id") or "ICC")
+        status = str(profile.get("status") or "").strip()
+        source = str(profile.get("source") or "generated")
+        suffixes = []
+        if status and status != "unknown":
+            suffixes.append(status)
+        if source and source not in {"generated", "active"}:
+            suffixes.append(source)
+        if suffixes:
+            return f"{name} ({', '.join(suffixes)})"
+        return name
+
+    def _refresh_icc_profile_combo(self) -> None:
+        if not hasattr(self, "icc_profile_combo"):
+            return
+        current = self._active_icc_profile_id
+        self.icc_profile_combo.blockSignals(True)
+        self.icc_profile_combo.clear()
+        self.icc_profile_combo.addItem(self.tr("Sin perfil ICC activo"), "")
+        for profile in self._icc_profiles:
+            profile_id = str(profile.get("id") or "")
+            if not profile_id:
+                continue
+            self.icc_profile_combo.addItem(self._icc_profile_combo_label(profile), profile_id)
+        index = self.icc_profile_combo.findData(current)
+        self.icc_profile_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.icc_profile_combo.blockSignals(False)
+        if hasattr(self, "icc_profile_status_label"):
+            active = self._icc_profile_by_id(current)
+            active_label = self._icc_profile_combo_label(active) if active is not None else self.tr("ninguno")
+            self.icc_profile_status_label.setText(
+                f"Perfiles ICC de sesión: {len(self._icc_profiles)} | Activo: {active_label}"
+            )
+
+    def _managed_gamut_profile_items(self) -> list[tuple[str, str]]:
+        return [
+            (self.tr("Sesión:") + f" {self._icc_profile_combo_label(profile)}", f"managed:{profile.get('id')}")
+            for profile in self._icc_profiles
+            if str(profile.get("id") or "")
+        ]
+
+    def _refresh_gamut_profile_combos(self) -> None:
+        for attr, default_key in (
+            ("gamut_profile_a_combo", f"managed:{self._active_icc_profile_id}" if self._active_icc_profile_id else "generated"),
+            ("gamut_profile_b_combo", "standard:srgb"),
+        ):
+            combo = getattr(self, attr, None)
+            if combo is not None:
+                self._populate_gamut_profile_combo(combo, default_key=default_key)
+        if hasattr(self, "_sync_gamut_custom_controls"):
+            self._sync_gamut_custom_controls()
+
+    def _refresh_profile_management_views(self) -> None:
+        self._refresh_icc_profile_combo()
+        self._refresh_gamut_profile_combos()
+
+    def _register_icc_profile(self, descriptor: dict[str, Any], *, activate: bool, save: bool = True) -> str:
+        normalized = self._normalize_icc_profile_descriptor(descriptor)
+        if normalized is None:
+            return ""
+        profile_id = str(normalized.get("id") or "")
+        replaced = False
+        for idx, existing in enumerate(self._icc_profiles):
+            same_id = str(existing.get("id") or "") == profile_id
+            same_path = str(existing.get("path") or "") == str(normalized.get("path") or "")
+            if same_id or same_path:
+                merged = dict(existing)
+                for key, value in normalized.items():
+                    if value in ("", None):
+                        continue
+                    if key == "status" and value == "unknown" and merged.get("status"):
+                        continue
+                    if key == "created_at" and merged.get("created_at"):
+                        continue
+                    if key == "source" and value == "generated" and merged.get("source") not in ("", None, "generated"):
+                        continue
+                    merged[key] = value
+                self._icc_profiles[idx] = merged
+                profile_id = str(merged.get("id") or profile_id)
+                replaced = True
+                break
+        if not replaced:
+            self._icc_profiles.append(normalized)
+        self._sort_icc_profiles()
+        if activate:
+            self._activate_icc_profile_id(profile_id, save=False, refresh_preview=False)
+        else:
+            self._refresh_profile_management_views()
+        if save:
+            self._save_active_session(silent=True)
+        return profile_id
+
+    def _activate_icc_profile_id(
+        self,
+        profile_id: str,
+        *,
+        save: bool = True,
+        refresh_preview: bool = True,
+    ) -> bool:
+        if not profile_id:
+            self._active_icc_profile_id = ""
+            if hasattr(self, "path_profile_active"):
+                self.path_profile_active.clear()
+            if hasattr(self, "chk_apply_profile"):
+                self.chk_apply_profile.setChecked(False)
+            self._refresh_profile_management_views()
+            if save:
+                self._save_active_session(silent=True)
+            return True
+
+        profile = self._icc_profile_by_id(profile_id)
+        path = self._session_stored_path(profile.get("path")) if profile else None
+        if profile is None or path is None or not path.exists() or not self._profile_can_be_active(path):
+            return False
+        self._active_icc_profile_id = profile_id
+        self.path_profile_active.setText(str(path))
+        self.chk_apply_profile.setChecked(True)
+        self._refresh_profile_management_views()
+        if refresh_preview:
+            self._invalidate_preview_cache()
+            self._schedule_preview_refresh()
+        if save:
+            self._save_active_session(silent=True)
+        return True
+
+    def _activate_selected_icc_profile(self) -> None:
+        profile_id = str(self.icc_profile_combo.currentData() or "") if hasattr(self, "icc_profile_combo") else ""
+        if not profile_id:
+            self._activate_icc_profile_id("", save=True)
+            self._set_status(self.tr("Perfil ICC activo desactivado"))
+            return
+        profile = self._icc_profile_by_id(profile_id)
+        path = self._session_stored_path(profile.get("path")) if profile else None
+        if profile is None or path is None or not path.exists() or not self._profile_can_be_active(path):
+            status = self._profile_status_for_path(path) if path is not None else self.tr("no disponible")
+            QtWidgets.QMessageBox.warning(
+                self,
+                self.tr("Perfil no activable"),
+                self.tr("No se activa el perfil porque su estado QA es") + f" '{status}'.",
+            )
+            self._refresh_icc_profile_combo()
+            return
+        self._activate_icc_profile_id(profile_id, save=True)
+        self._set_status(self.tr("Perfil activo:") + f" {path}")
+
+    def _strip_version_suffix(self, stem: str) -> str:
+        if len(stem) > 5 and stem[-5:-3] == "_v" and stem[-3:].isdigit():
+            return stem[:-5]
+        return stem
+
+    def _next_generated_icc_profile_path(self, requested: Path) -> Path:
+        requested = Path(requested).expanduser()
+        base = requested.with_name(f"{self._strip_version_suffix(requested.stem)}{requested.suffix}")
+        return versioned_output_path(base)
+
+    def _profile_artifact_paths_for_generation(
+        self,
+        *,
+        requested_profile_out: Path,
+        requested_profile_report: Path,
+        requested_workdir: Path,
+        requested_development_profile: Path,
+        requested_calibrated_recipe: Path,
+    ) -> dict[str, Path]:
+        profile_out = self._next_generated_icc_profile_path(requested_profile_out)
+        if self._active_session_root is None:
+            return {
+                "profile_out": profile_out,
+                "profile_report": versioned_output_path(requested_profile_report),
+                "workdir": requested_workdir,
+                "development_profile": versioned_output_path(requested_development_profile),
+                "calibrated_recipe": versioned_output_path(requested_calibrated_recipe),
+            }
+
+        paths = self._session_paths_from_root(self._active_session_root)
+        run_dir = paths["config"] / "profile_runs" / profile_out.stem
+        return {
+            "profile_out": profile_out,
+            "profile_report": run_dir / "profile_report.json",
+            "workdir": paths["work"] / "profile_generation" / profile_out.stem,
+            "development_profile": run_dir / "development_profile.json",
+            "calibrated_recipe": run_dir / "recipe_calibrated.yml",
+        }
+
     def _slug_for_development_profile(self, name: str) -> str:
         raw = "".join(ch.lower() if ch.isalnum() else "-" for ch in name.strip())
         slug = "-".join(part for part in raw.split("-") if part) or "perfil"
@@ -694,6 +1118,8 @@ class SessionDevelopmentMixin:
         if icc_role == "session_input_icc" and icc_path is not None and icc_path.exists() and self._profile_can_be_active(icc_path):
             self.path_profile_active.setText(str(icc_path))
             self.chk_apply_profile.setChecked(True)
+            self._sync_active_icc_profile_id_from_path()
+            self._refresh_profile_management_views()
 
         self._invalidate_preview_cache()
         self._log_preview(f"Mochila NexoRAW aplicada: {raw_sidecar_path(path).name}")
@@ -810,9 +1236,13 @@ class SessionDevelopmentMixin:
         if isinstance(icc_path, Path) and icc_path.exists() and self._profile_can_be_active(icc_path):
             self.path_profile_active.setText(str(icc_path))
             self.chk_apply_profile.setChecked(True)
+            self._sync_active_icc_profile_id_from_path()
+            self._refresh_profile_management_views()
         elif is_generic_output_space(settings["recipe"].output_space):
             self.path_profile_active.clear()
             self.chk_apply_profile.setChecked(False)
+            self._sync_active_icc_profile_id_from_path()
+            self._refresh_profile_management_views()
         self._active_development_profile_id = profile_id
         self._refresh_development_profile_combo()
         self._invalidate_preview_cache()
@@ -830,9 +1260,7 @@ class SessionDevelopmentMixin:
     ) -> str:
         if self._active_session_root is None:
             return ""
-        base_id = self._slug_for_development_profile(name)
-        existing = self._development_profile_by_id(base_id)
-        profile_id = base_id if existing is None else str(existing.get("id") or base_id)
+        profile_id = self._unique_development_profile_id(name)
         try:
             payload = json.loads(development_profile_path.read_text(encoding="utf-8")) if development_profile_path.exists() else {}
             if not isinstance(payload, dict):

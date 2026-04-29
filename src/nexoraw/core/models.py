@@ -175,6 +175,8 @@ class PatchError:
     patch_id: str
     delta_e76: float
     delta_e2000: float
+    reference_lab: list[float] | None = None
+    profile_lab: list[float] | None = None
 
 
 @dataclass

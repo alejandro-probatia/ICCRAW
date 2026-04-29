@@ -7,6 +7,9 @@ class TaskStatusMixin:
     def _start_background_task(self, label: str, task, on_success) -> None:
         self._set_status(self.tr("Ejecutando:") + f" {label}")
         task_row = self._monitor_task_start(label)
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
         thread = TaskThread(task)
         self._threads.append(thread)
 

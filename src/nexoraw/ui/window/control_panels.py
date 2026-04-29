@@ -381,13 +381,28 @@ class ControlPanelsMixin:
         tab = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(tab)
 
-        self.path_profile_active = QtWidgets.QLineEdit("/tmp/camera_profile.icc")
-        self._add_path_row(grid, 0, self.tr("Perfil ICC de entrada activo"), self.path_profile_active, file_mode=True, save_mode=False, dir_mode=False)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Perfil ICC de sesión")), 0, 0)
+        self.icc_profile_combo = QtWidgets.QComboBox()
+        self.icc_profile_combo.setToolTip(
+            self.tr("Perfiles ICC registrados en la sesión. Permite activar versiones generadas anteriormente.")
+        )
+        grid.addWidget(self.icc_profile_combo, 0, 1, 1, 2)
 
         row = QtWidgets.QHBoxLayout()
+        row.addWidget(self._button(self.tr("Activar seleccionado"), self._activate_selected_icc_profile))
         row.addWidget(self._button(self.tr("Cargar perfil activo"), self._menu_load_profile))
         row.addWidget(self._button(self.tr("Usar perfil generado"), self._use_generated_profile_as_active))
         grid.addLayout(row, 1, 0, 1, 3)
+
+        self.path_profile_active = QtWidgets.QLineEdit("/tmp/camera_profile.icc")
+        self._add_path_row(grid, 2, self.tr("Perfil ICC de entrada activo"), self.path_profile_active, file_mode=True, save_mode=False, dir_mode=False)
+
+        self.icc_profile_status_label = QtWidgets.QLabel(self.tr("Sin perfiles ICC de sesión"))
+        self.icc_profile_status_label.setWordWrap(True)
+        self.icc_profile_status_label.setStyleSheet("font-size: 12px; color: #d1d5db;")
+        grid.addWidget(self.icc_profile_status_label, 3, 0, 1, 3)
+
+        self._refresh_icc_profile_combo()
         return tab
 
     def _build_tab_batch_config(self) -> QtWidgets.QWidget:

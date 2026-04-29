@@ -31,7 +31,14 @@ from .gui_config import (
     _env_flag,
 )
 from .raw.preview import apply_render_adjustments
-from .ui.widgets import CollapsibleToolPanel, ImagePanel, RGBHistogramWidget, ToneCurveEditor
+from .ui.widgets import (
+    CollapsibleToolPanel,
+    Gamut3DWidget,
+    ImagePanel,
+    PersistentSideTabWidget,
+    RGBHistogramWidget,
+    ToneCurveEditor,
+)
 from .ui.window import (
     BatchWorkflowMixin,
     BrowserMetadataMixin,
@@ -48,6 +55,8 @@ from .ui.window._imports import (
     ReferenceCatalog,
     apply_adjustments,
     auto_generate_profile_from_charts,
+    build_gamut_diagnostics,
+    build_gamut_pair_diagnostics,
     detect_system_display_profile,
     develop_image_array,
     extract_embedded_preview,
@@ -153,6 +162,8 @@ if QtWidgets is not None:
             self._active_session_root: Path | None = None
             self._active_session_payload: dict[str, Any] | None = None
             self._develop_queue: list[dict[str, str]] = []
+            self._icc_profiles: list[dict[str, Any]] = []
+            self._active_icc_profile_id = ""
             self._development_profiles: list[dict[str, Any]] = []
             self._active_development_profile_id = ""
             self._development_settings_clipboard: dict[str, Any] | None = None

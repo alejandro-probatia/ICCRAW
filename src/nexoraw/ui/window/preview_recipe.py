@@ -39,7 +39,7 @@ class PreviewRecipeMixin:
         else:
             self._set_combo_data(self.combo_profile_quality, "m")
             self._set_combo_data(self.combo_profile_algo, "-as")
-            self.edit_colprof_args.setText("")
+            self.edit_colprof_args.setText("-u -R")
 
     def _sync_demosaic_capabilities(self) -> None:
         flags = rawpy_feature_flags()
@@ -109,6 +109,10 @@ class PreviewRecipeMixin:
                 algo = a
             else:
                 extra.append(a)
+        if "-u" not in args:
+            extra.append("-u")
+        if "-R" not in args:
+            extra.append("-R")
         if quality is not None:
             self._set_combo_data(self.combo_profile_quality, quality)
         if algo is not None:
@@ -555,6 +559,10 @@ class PreviewRecipeMixin:
                 args.extend(shlex.split(custom))
             except Exception:
                 self._log_preview("No se pudieron parsear args extra colprof; se ignoran.")
+        if "-u" not in args:
+            args.append("-u")
+        if "-R" not in args:
+            args.append("-R")
         return args
 
     def _parse_wb_multipliers(self, text: str, fallback: list[float]) -> list[float]:

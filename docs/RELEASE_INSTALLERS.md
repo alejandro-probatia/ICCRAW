@@ -71,6 +71,18 @@ they should point to `nexoraw-ui.exe` and use the `nexoraw-icon.ico` icon.
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.2.6
+
+Release 0.2.6 introduces:
+
+- advanced profile generation in the background to keep the GUI responsive,
+- persistent session ICC profile catalog with several activatable versions,
+- pairwise `Gamut 3D` comparison for session profiles, monitor profile, standard
+  profiles and custom ICC files,
+- visual chart reference management, including import, creation, validation and a
+  Lab table editor with color swatches,
+- versioned profiling artifacts under `00_configuraciones/profile_runs/`.
+
 ## Release 0.2.5
 
 Release 0.2.5 introduces:

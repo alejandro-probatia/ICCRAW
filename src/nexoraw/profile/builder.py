@@ -135,8 +135,21 @@ def _profile_error_summary(
     de00 = np.asarray(delta_e2000(predicted_lab, reference_lab), dtype=np.float64)
 
     patch_errors = [
-        PatchError(patch_id=pid, delta_e76=float(a), delta_e2000=float(b))
-        for pid, a, b in zip(patch_ids, de76, de00, strict=True)
+        PatchError(
+            patch_id=pid,
+            delta_e76=float(a),
+            delta_e2000=float(b),
+            reference_lab=_lab_triplet(reference),
+            profile_lab=_lab_triplet(predicted),
+        )
+        for pid, a, b, reference, predicted in zip(
+            patch_ids,
+            de76,
+            de00,
+            reference_lab,
+            predicted_lab,
+            strict=True,
+        )
     ]
 
     s76 = summarize(de76)
@@ -165,8 +178,21 @@ def validate_profile(samples: SampleSet, profile_path: Path) -> ValidationResult
     de00 = np.asarray(delta_e2000(predicted_lab, reference_lab), dtype=np.float64)
 
     patch_errors = [
-        PatchError(patch_id=pid, delta_e76=float(a), delta_e2000=float(b))
-        for pid, a, b in zip(patch_ids, de76, de00, strict=True)
+        PatchError(
+            patch_id=pid,
+            delta_e76=float(a),
+            delta_e2000=float(b),
+            reference_lab=_lab_triplet(reference),
+            profile_lab=_lab_triplet(predicted),
+        )
+        for pid, a, b, reference, predicted in zip(
+            patch_ids,
+            de76,
+            de00,
+            reference_lab,
+            predicted_lab,
+            strict=True,
+        )
     ]
 
     s76 = summarize(de76)
@@ -183,6 +209,13 @@ def validate_profile(samples: SampleSet, profile_path: Path) -> ValidationResult
     )
 
     return ValidationResult(profile_path=str(profile_path), error_summary=summary, patch_errors=patch_errors)
+
+
+def _lab_triplet(values: np.ndarray) -> list[float]:
+    lab = np.asarray(values, dtype=np.float64).reshape(-1)
+    if lab.size < 3:
+        return [0.0, 0.0, 0.0]
+    return [float(lab[0]), float(lab[1]), float(lab[2])]
 
 
 def _lookup_lab_with_icc(profile_path: Path, measured_rgb: np.ndarray) -> np.ndarray:
@@ -298,7 +331,7 @@ def _build_profile_with_argyll(
     elif env_args:
         args.extend(env_args.split())
     else:
-        args.extend(["-qm", "-as"])
+        args.extend(["-qm", "-as", "-u", "-R"])
 
     cache_path: Path | None = None
     if _colprof_cache_enabled():

@@ -18,6 +18,33 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-04-29
+
+### Added
+
+- Diagnóstico `Gamut 3D` en la pestaña de diagnóstico para comparar por pares el
+  ICC de sesión, el perfil del monitor, perfiles estándar (`sRGB`, `Adobe RGB
+  (1998)`, `ProPhoto RGB`) e ICC externos.
+- Catálogo persistente de perfiles ICC por sesión con activación explícita,
+  soporte para varias versiones generadas y recarga desde `session.json`.
+- Gestión de referencias de carta desde la interfaz: catálogo de referencias
+  incluidas, importación de JSON externos, referencias personalizadas de sesión y
+  validación.
+- Editor tabular de referencias Lab con muestras de color por parche para crear
+  JSON de cartas personalizadas sin editar el archivo a mano.
+
+### Changed
+
+- La generación avanzada de perfiles registra artefactos versionados en
+  `00_configuraciones/profile_runs/` y conserva los perfiles ICC generados en
+  `00_configuraciones/profiles/`.
+- La ejecución de perfilado se lanza en segundo plano desde la GUI para evitar
+  que crear un perfil deje la aplicación bloqueada durante un buen rato.
+- Los argumentos por defecto de ArgyllCMS incluyen `-u -R` para reducir gamuts
+  ICC de cámara claramente irreales.
+- Manual de usuario y capturas actualizados con el flujo de referencias, perfiles
+  ICC de sesión y comparación Gamut 3D.
+
 ## [0.2.5] - 2026-04-29
 
 ### Changed

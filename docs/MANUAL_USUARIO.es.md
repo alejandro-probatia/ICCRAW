@@ -10,10 +10,11 @@ perfiles, hashes y artefactos de auditoría.
 
 ![NexoRAW: interfaz principal de revelado y perfilado](assets/screenshots/nexoraw-portada.png)
 
-Este manual cubre el flujo completo de NexoRAW 0.2.5: creación de sesión,
+Este manual cubre el flujo completo de NexoRAW 0.2.6: creación de sesión,
 perfilado con carta, perfil manual sin carta, copia de ajustes, cola de revelado,
-exportación TIFF, metadatos, Proof, C2PA, configuración global y significado de
-todas las opciones visibles en la interfaz.
+exportación TIFF, metadatos, Proof, C2PA, diagnóstico Gamut 3D, gestión de
+referencias de carta, configuración global y significado de todas las opciones
+visibles en la interfaz.
 
 ## 1. Instalación y arranque
 
@@ -46,7 +47,7 @@ Estructura persistente:
 
 | Carpeta | Uso |
 | --- | --- |
-| `00_configuraciones/` | `session.json`, recetas, perfiles de ajuste, perfiles ICC, reportes, caché, intermedios y artefactos de trabajo. |
+| `00_configuraciones/` | `session.json`, recetas, referencias personalizadas, perfiles de ajuste, perfiles ICC, reportes, caché, intermedios y artefactos de trabajo. |
 | `01_ORG/` | RAW originales, DNG, TIFF originales y capturas de carta. Es el directorio de fuentes. |
 | `02_DRV/` | TIFF derivados, previsualizaciones, manifiestos y salidas finales. |
 
@@ -232,7 +233,7 @@ Este es el flujo preferente cuando se busca precisión colorimétrica objetiva.
 2. Copia los RAW de carta y de escena a `01_ORG/`.
 3. En `2. Ajustar / Aplicar`, selecciona la captura o capturas de carta.
 4. Pulsa `Usar selección como referencias colorimétricas`.
-5. En `Gestión de color y calibración`, revisa `Referencia carta JSON`, `Tipo de
+5. En `Gestión de color y calibración`, revisa `Referencia de carta`, `Tipo de
    carta`, `Formato ICC`, `Tipo de perfil ICC` y `Calidad colprof`.
 6. En `RAW Global`, revisa demosaico y criterios RAW base. Durante el perfilado
    avanzado NexoRAW fuerza una medición objetiva: curva lineal, salida lineal,
@@ -254,8 +255,53 @@ Resultado esperado:
 - receta calibrada en `00_configuraciones/`;
 - perfil avanzado en `00_configuraciones/development_profiles/`;
 - ICC de entrada en `00_configuraciones/profiles/`;
-- reportes de perfil, QA, overlays y caché en `00_configuraciones/work/`;
+- referencias personalizadas en `00_configuraciones/references/`, si se han
+  creado o importado;
+- reportes de perfil, QA, overlays y caché en
+  `00_configuraciones/profile_runs/` y `00_configuraciones/work/`;
 - mochila `RAW.nexoraw.json` en los RAW de carta usados.
+
+### Referencias de carta y cartas personalizadas
+
+![Gestión de referencias de carta y perfiles ICC](assets/screenshots/nexoraw-referencias-y-perfiles.png)
+
+La referencia incluida por defecto es ColorChecker 24 / ColorChecker 2005 / D50.
+También puedes importar un JSON existente o crear una referencia personalizada de
+sesión. Las referencias propias se guardan en
+`00_configuraciones/references/`, aparecen en el selector `Referencia de carta`
+y se conservan al cerrar y abrir la sesión.
+
+Para una carta personalizada, usa `Nueva personalizada` o `Editar tabla`. El
+editor muestra una fila por parche con identificador, nombre y valores Lab D50;
+la primera columna pinta una muestra aproximada del color introducido para
+detectar errores obvios de tecleo. Al guardar, NexoRAW genera el JSON de
+referencia que usará el perfilador.
+
+![Editor tabular de referencia Lab](assets/screenshots/nexoraw-editor-referencia-lab.png)
+
+Buenas prácticas:
+
+- los `patch_id` deben coincidir con el orden de detección de la carta;
+- usa valores Lab D50 con observador 2 grados para el flujo ICC actual;
+- documenta la fuente de medición en `Fuente`;
+- pulsa `Validar` antes de generar el perfil.
+
+### Perfiles ICC de sesión y comparación Gamut 3D
+
+Cada perfil ICC generado queda registrado en la sesión con nombre, ruta, estado y
+origen. Esto permite tener varias versiones del mismo perfil, por ejemplo matriz,
+cLUT, diferentes referencias o diferentes argumentos de ArgyllCMS, sin perder el
+historial. El selector `Perfil ICC de sesión` permite activar cualquiera de esas
+versiones para preview/exportación.
+
+La pestaña `Diagnóstico > Gamut 3D` compara siempre un par de perfiles, no todos
+a la vez. Elige `Perfil A` y `Perfil B` entre perfiles de sesión, el ICC activo,
+el monitor, sRGB, Adobe RGB, ProPhoto RGB o un ICC personalizado. La superficie
+sólida representa el segundo perfil y la malla el primero. El texto superior
+indica qué porcentaje del perfil A queda dentro del perfil B y avisa cuando el
+ICC generado tiene coordenadas Lab extremas.
+
+![Comparador Gamut 3D por pares](assets/screenshots/nexoraw-gamut-3d-comparacion.png)
 
 ## 8. Flujo completo sin carta de color
 
@@ -411,7 +457,12 @@ están configurados.
 | --- | --- |
 | `Carpeta de referencias colorimétricas` | Carpeta donde están las capturas de carta. Si hay selección explícita, se usan esas imágenes. |
 | `Referencias colorimétricas seleccionadas` | Indica cuántas capturas de carta se usarán. |
-| `Referencia carta JSON` | Archivo con valores de referencia de la carta. |
+| `Referencia de carta` | Selector de referencias incluidas y referencias personalizadas guardadas en la sesión. |
+| `Importar JSON` | Copia una referencia externa validada a `00_configuraciones/references/`. |
+| `Nueva personalizada` | Crea una referencia editable de sesión a partir de una plantilla. |
+| `Editar tabla` | Abre el editor tabular Lab con muestras de color por parche. |
+| `Validar` | Comprueba estructura, iluminante, observador y valores Lab. |
+| `Referencia carta JSON` | Ruta del JSON seleccionado o generado para la carta. |
 | `Perfil ICC de entrada` | Ruta de salida del ICC generado. |
 | `Reporte perfil JSON` | Ruta automática del reporte técnico de perfil. Normalmente queda en `00_configuraciones/work/`. |
 | `Directorio artefactos` | Directorio automático de overlays, mediciones, intermedios y cachés del perfilado. |
@@ -423,7 +474,7 @@ están configurados.
 | `Formato ICC` | `.icc` o `.icm`. |
 | `Tipo de perfil ICC` | `shaper+matrix (-as)`, `gamma+matrix (-ag)`, `matrix only (-am)`, `Lab cLUT (-al)` o `XYZ cLUT (-ax)`. |
 | `Calidad colprof` | Low, Medium, High, Ultra. A mayor calidad, más coste de cálculo. |
-| `Args extra colprof` | Argumentos avanzados para ArgyllCMS, por ejemplo `-D "Perfil Cámara Museo"`. |
+| `Args extra colprof` | Argumentos avanzados para ArgyllCMS, por ejemplo `-D "Perfil Cámara Museo"`. El valor por defecto usa `-u -R` para evitar perfiles con gamut irrealmente libre. |
 | `Cámara (opcional)` | Campo reservado de metadatos de perfil. En la interfaz actual se rellena automáticamente u opera oculto. |
 | `Lente (opcional)` | Campo reservado de metadatos de perfil. En la interfaz actual se rellena automáticamente u opera oculto. |
 | `Marcar en visor` | Inicia marcado manual de cuatro esquinas. El cursor cambia a cruz. |
@@ -437,8 +488,10 @@ están configurados.
 | Opción | Explicación |
 | --- | --- |
 | `Perfil ICC de entrada activo` | ICC usado para preview/exportación cuando corresponde al perfil de sesión. |
+| `Perfil ICC de sesión` | Catálogo de perfiles ICC generados o cargados en la sesión. |
+| `Activar seleccionado` | Activa el perfil seleccionado del catálogo de sesión. |
 | `Cargar perfil activo` | Selecciona manualmente un ICC existente. |
-| `Usar perfil generado` | Carga el ICC generado por el flujo con carta. |
+| `Usar perfil generado` | Registra y activa el último ICC generado por el flujo con carta. |
 
 ### RAW Global
 
@@ -475,7 +528,7 @@ Campos de receta guardados aunque no siempre sean editables directamente:
 
 | Campo | Explicación |
 | --- | --- |
-| `chart_reference` | Referencia JSON usada para medir la carta. Se rellena desde `Referencia carta JSON`. |
+| `chart_reference` | Referencia JSON usada para medir la carta. Se rellena desde `Referencia de carta`. |
 | `sampling_trim_percent` | Porcentaje recortado por extremo al usar muestreo robusto `trimmed_mean`. |
 | `sampling_reject_saturated` | Excluye píxeles saturados durante el muestreo de parches. |
 | `profile_engine` | Motor de perfilado. Actualmente `argyll`. |

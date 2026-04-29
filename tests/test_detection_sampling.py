@@ -5,7 +5,7 @@ import pytest
 import tifffile
 
 from nexoraw.chart.detection import detect_chart, detect_chart_from_corners
-from nexoraw.chart.sampling import ReferenceCatalog, sample_chart
+from nexoraw.chart.sampling import ReferenceCatalog, bundled_reference_catalogs, reference_catalog_template, sample_chart
 from nexoraw.core.models import ChartDetectionResult, PatchDetection, Point2
 
 
@@ -215,3 +215,20 @@ def test_colorchecker2005_reference_falls_back_to_packaged_resource():
 
     assert reference.reference_source.startswith("colour-science")
     assert reference.patch_map["P01"]["patch_name"] == "dark skin"
+
+
+def test_bundled_reference_catalogs_expose_colorchecker_reference():
+    catalogs = bundled_reference_catalogs()
+
+    assert catalogs
+    assert catalogs[0]["path"] == "colorchecker24_colorchecker2005_d50.json"
+    assert "ColorChecker 24" in catalogs[0]["label"]
+
+
+def test_reference_catalog_template_is_strictly_valid_for_custom_colorchecker():
+    payload = reference_catalog_template(chart_name="ColorChecker personalizada", patch_count=24)
+
+    catalog = ReferenceCatalog(payload, strict=True)
+
+    assert catalog.chart_name == "ColorChecker personalizada"
+    assert len(catalog.patches) == 24

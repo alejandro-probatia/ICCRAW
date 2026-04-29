@@ -306,6 +306,19 @@ class PreviewMenuMixin:
             return
         self.path_profile_active.setText(path)
         self.chk_apply_profile.setChecked(True)
+        profile_id = self._register_icc_profile(
+            {
+                "name": profile_path.stem,
+                "source": "loaded",
+                "path": str(profile_path),
+                "status": self._profile_status_for_path(profile_path) or "unknown",
+            },
+            activate=True,
+            save=False,
+        )
+        if profile_id:
+            self._active_icc_profile_id = profile_id
+            self._refresh_profile_management_views()
         self._set_status(self.tr("Perfil activo:") + f" {path}")
         self._refresh_preview()
         self._save_active_session(silent=True)

@@ -768,15 +768,15 @@ def preview_analysis_text(
     a = _analysis_sample_float(adjusted_linear, max_pixels=max_pixels)
 
     lines: list[str] = []
-    lines.append("Resumen de análisis (lineal 0..1)")
+    lines.append("Diagnóstico de imagen (preview lineal 0..1)")
     lines.append("")
-    lines.extend(_channel_stats("Original", o))
+    lines.extend(_exposure_stats("Resultado ajustado", a))
     lines.append("")
-    lines.extend(_channel_stats("Ajustada", a))
+    lines.extend(_recipe_impact_stats(o, a))
     lines.append("")
-    diff = np.abs(a - o)
-    lines.append(f"Diferencia media absoluta global: {float(np.mean(diff)):.6f}")
-    lines.append(f"Diferencia máxima absoluta global: {float(np.max(diff)):.6f}")
+    lines.extend(_channel_stats("Canales ajustados", a))
+    lines.append("")
+    lines.extend(_channel_stats("Canales originales", o))
     return "\n".join(lines)
 
 
@@ -809,7 +809,50 @@ def _channel_stats(label: str, image: np.ndarray) -> list[str]:
                 f"std={float(np.std(ch)):.6f} "
                 f"min={float(np.min(ch)):.6f} "
                 f"max={float(np.max(ch)):.6f} "
+                f"clip_low={float(np.mean(ch <= 0.001)) * 100.0:.3f}% "
                 f"clip_hi={float(np.mean(ch >= 0.999)) * 100.0:.3f}%"
             )
         )
     return lines
+
+
+def _exposure_stats(label: str, image: np.ndarray) -> list[str]:
+    luminance = _analysis_luminance(image)
+    p01, p50, p99 = np.percentile(luminance, [1, 50, 99])
+    mean_rgb = np.mean(image[..., :3], axis=(0, 1))
+    green = max(float(mean_rgb[1]), 1e-6)
+    return [
+        f"{label}:",
+        (
+            f"  Luminancia: media={float(np.mean(luminance)):.6f} "
+            f"p01={float(p01):.6f} p50={float(p50):.6f} p99={float(p99):.6f}"
+        ),
+        (
+            f"  Clipping global: sombras={float(np.mean(luminance <= 0.001)) * 100.0:.3f}% "
+            f"luces={float(np.mean(luminance >= 0.999)) * 100.0:.3f}%"
+        ),
+        (
+            f"  Balance RGB medio: R/G={float(mean_rgb[0]) / green:.3f} "
+            f"B/G={float(mean_rgb[2]) / green:.3f}"
+        ),
+    ]
+
+
+def _recipe_impact_stats(original: np.ndarray, adjusted: np.ndarray) -> list[str]:
+    diff = np.abs(adjusted - original)
+    original_luma = _analysis_luminance(original)
+    adjusted_luma = _analysis_luminance(adjusted)
+    return [
+        "Impacto de la receta:",
+        f"  Diferencia media absoluta global: {float(np.mean(diff)):.6f}",
+        f"  Diferencia máxima absoluta global: {float(np.max(diff)):.6f}",
+        (
+            "  Desplazamiento de luminancia media: "
+            f"{float(np.mean(adjusted_luma) - np.mean(original_luma)):+.6f}"
+        ),
+    ]
+
+
+def _analysis_luminance(image: np.ndarray) -> np.ndarray:
+    weights = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    return np.sum(image[..., :3] * weights.reshape((1, 1, 3)), axis=2)

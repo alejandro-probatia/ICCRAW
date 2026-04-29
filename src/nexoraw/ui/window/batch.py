@@ -335,6 +335,17 @@ class BatchWorkflowMixin:
             except Exception as exc:
                 self._log_preview(f"No se pudo activar receta calibrada: {exc}")
         self.chk_apply_profile.setChecked(True)
+        self._register_icc_profile(
+            {
+                "name": p.stem,
+                "source": "generated",
+                "path": str(p),
+                "recipe_path": str(recipe_path) if recipe_path.exists() else "",
+                "status": self._profile_status_for_path(p) or "unknown",
+            },
+            activate=True,
+            save=False,
+        )
         self._invalidate_preview_cache()
         self._schedule_preview_refresh()
         self._set_status(self.tr("Perfil activo:") + f" {p}")

@@ -171,7 +171,11 @@ def test_preview_analysis_text_includes_global_stats():
     original = np.full((8, 8, 3), 0.4, dtype=np.float32)
     adjusted = np.full((8, 8, 3), 0.5, dtype=np.float32)
     text = preview_analysis_text(original, adjusted)
-    assert "Resumen de análisis" in text
+    assert "Diagnóstico de imagen" in text
+    assert "Resultado ajustado" in text
+    assert "Clipping global" in text
+    assert "Balance RGB medio" in text
+    assert "Impacto de la receta" in text
     assert "Diferencia media absoluta global" in text
     assert "Diferencia máxima absoluta global" in text
 
@@ -182,8 +186,8 @@ def test_preview_analysis_text_samples_large_images_without_changing_format():
 
     text = preview_analysis_text(original, adjusted, max_pixels=2048)
 
-    assert "Original:" in text
-    assert "Ajustada:" in text
+    assert "Canales originales:" in text
+    assert "Canales ajustados:" in text
     assert "Diferencia media absoluta global" in text
 
 

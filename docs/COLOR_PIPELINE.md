@@ -4,7 +4,7 @@ _Versión en español: [COLOR_PIPELINE.es.md](COLOR_PIPELINE.es.md)_
 
 ## Operational Status
 
-NexoRAW 0.2.5 implements the main ICC workflow and the session-based GUI. The
+NexoRAW 0.2.6 implements the main ICC workflow and the session-based GUI. The
 application is suitable for controlled testing and release validation, but it
 should not yet be presented as a certified scientific or forensic production
 system.
@@ -53,6 +53,11 @@ Rules:
 9. `validate-profile`: DeltaE 76/2000 validation of the real ICC.
 10. `batch-develop`: batch rendering with assigned development profile and ICC.
 
+Custom chart references are stored in `00_configuraciones/references/`. Each
+advanced profiling run writes its artifacts under
+`00_configuraciones/profile_runs/`, and resulting ICC files are registered as
+activatable session profiles.
+
 ## Critical Invariants
 
 1. The executed recipe must match the declared recipe.
@@ -72,6 +77,8 @@ Rules:
    a standard ICC is embedded and the output is declared `generic_output_icc`.
 10. On-screen display uses a display-only conversion to the configured monitor
     ICC profile.
+11. The 3D gamut diagnostic is a visual profile comparison; it does not modify
+    recipes, pixels, active profiles or manifests.
 
 ## Monitor Color Management
 

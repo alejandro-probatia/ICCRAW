@@ -10,7 +10,7 @@ Revelado RAW/TIFF reproducible y auditable para fotografía científica, forense
 patrimonial, con perfilado ICC por sesión, ajustes paramétricos por archivo y
 trazabilidad abierta AGPL.
 
-![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.2.5-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.2.6-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![Interfaz principal de NexoRAW](docs/assets/screenshots/nexoraw-portada.png)
 
@@ -31,14 +31,18 @@ El flujo actual está centrado de forma deliberada en ICC:
 
 ## Estado Actual
 
-NexoRAW 0.2.5 es adecuado para pruebas controladas, revisión metodológica y
+NexoRAW 0.2.6 es adecuado para pruebas controladas, revisión metodológica y
 validación de candidata a release. Todavía no es un sistema certificado para
 producción científica o forense.
+
+La versión actual añade gestión de referencias de carta desde la interfaz,
+perfiles ICC de sesión con varias versiones, perfilado en segundo plano y un
+diagnóstico Gamut 3D para comparar pares de perfiles.
 
 La última validación de empaquetado pasó con:
 
 ```text
-203 passed, 1 warning
+218 passed, 1 warning
 ```
 
 ## Documentación
@@ -101,7 +105,7 @@ canónicos:
 - `nexoraw-ui`
 
 Los lanzadores heredados `iccraw` y los scripts internos de compatibilidad ya no
-se instalan en 0.2.5. Si existe una beta antigua instalada, conviene retirarla
+se instalan desde 0.2.5. Si existe una beta antigua instalada, conviene retirarla
 antes de probar el paquete actual.
 
 ## Flujo GUI

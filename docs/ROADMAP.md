@@ -2,7 +2,7 @@ _Versión en español: [ROADMAP.es.md](ROADMAP.es.md)_
 
 # Roadmap
 
-This roadmap describes the active direction of NexoRAW after the 0.2.5
+This roadmap describes the active direction of NexoRAW after the 0.2.6
 reorganization. It favors a stable, reproducible ICC workflow over adding
 parallel color-profile layers.
 
@@ -19,11 +19,16 @@ parallel color-profile layers.
 - Per-file development backpacks (`RAW.nexoraw.json`).
 - Chart-based advanced development profiles.
 - Session input ICC generation with ArgyllCMS.
+- Persistent session ICC profile catalog with several activatable versions.
+- Chart references managed from the interface, including a Lab table editor for
+  custom charts.
+- Pairwise 3D gamut diagnostics for session profiles, monitor profile, standard
+  spaces and custom ICC files.
 - Standard output ICC workflow for no-chart sessions.
 - Monitor ICC management for preview only.
 - Manual four-corner chart marking in the viewer.
 - NexoRAW Proof and optional C2PA metadata.
-- Full test suite passing for 0.2.5 packaging validation.
+- Full test suite passing for 0.2.6 packaging validation.
 
 ## Current Principle
 
@@ -42,7 +47,7 @@ Objective: make the current GUI workflow robust with real RAW sessions.
 
 - Exercise the installed application with real chart captures and target RAWs.
 - Improve chart-selection interaction, cursor states and overlay consistency.
-- Harden long-running profile generation and batch rendering.
+- Harden long-running batch rendering and cross-profile validation.
 - Expand regression tests around manual chart marking and queue processing.
 - Keep AMaZE availability visible and verifiable in packaged builds.
 

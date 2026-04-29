@@ -19,6 +19,7 @@ class SessionPathsMixin:
             "exports": absolute / "02_DRV",
             "charts": absolute / "01_ORG",
             "profiles": absolute / "00_configuraciones" / "profiles",
+            "references": absolute / "00_configuraciones" / "references",
             "work": absolute / "00_configuraciones" / "work",
         }
 
@@ -124,6 +125,11 @@ class SessionPathsMixin:
 
     def _profile_status_for_path(self, profile_path: Path) -> str | None:
         sidecars = [profile_path.with_suffix(".profile.json")]
+        registered_profile = self._icc_profile_by_path(profile_path) if hasattr(self, "_icc_profile_by_path") else None
+        if registered_profile is not None:
+            registered_report = self._session_stored_path(registered_profile.get("profile_report_path"))
+            if registered_report is not None:
+                sidecars.append(registered_report)
         if self._active_session_root is not None:
             defaults = self._session_default_outputs()
             sidecars.append(defaults["profile_report"])
@@ -162,6 +168,10 @@ class SessionPathsMixin:
                     status = str(candidate.get("status") or "").strip().lower()
                     if status:
                         return status
+        if registered_profile is not None:
+            status = str(registered_profile.get("status") or "").strip().lower()
+            if status and status != "unknown":
+                return status
         return None
 
     def _profile_payload_has_rejected_training_error(self, data: dict[str, Any]) -> bool:

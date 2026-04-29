@@ -23,6 +23,25 @@ except Exception:  # pragma: no cover - entorno sin GUI
     QtWidgets = None
 
 if QtWidgets is not None:
+    class PersistentSideTabWidget(QtWidgets.QTabWidget):
+        def __init__(self, *, collapsed_margin: int = 6, minimum_tab_width: int = 34) -> None:
+            super().__init__()
+            self._collapsed_margin = int(collapsed_margin)
+            self._minimum_tab_width = int(minimum_tab_width)
+
+        def collapsedWidth(self) -> int:  # noqa: N802
+            tab_bar = self.tabBar()
+            if tab_bar is None:
+                return self._minimum_tab_width
+            frame_width = self.style().pixelMetric(QtWidgets.QStyle.PM_DefaultFrameWidth, None, self)
+            width = tab_bar.sizeHint().width() + 2 * frame_width + self._collapsed_margin
+            return max(self._minimum_tab_width, int(width))
+
+        def minimumSizeHint(self) -> QtCore.QSize:  # noqa: N802
+            hint = super().minimumSizeHint()
+            return QtCore.QSize(self.collapsedWidth(), min(hint.height(), 160))
+
+
     class CollapsibleToolPanel(QtWidgets.QScrollArea):
         def __init__(self) -> None:
             super().__init__()
@@ -563,6 +582,312 @@ if QtWidgets is not None:
             painter.drawPolygon(points)
 
 
+    class Gamut3DWidget(QtWidgets.QWidget):
+        def __init__(self) -> None:
+            super().__init__()
+            self._series: list[dict[str, Any]] = []
+            self._azimuth = -38.0
+            self._elevation = 24.0
+            self._zoom = 1.0
+            self._drag_start: QtCore.QPoint | None = None
+            self.setMinimumHeight(260)
+            self.setMouseTracking(True)
+            self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+
+        def sizeHint(self) -> QtCore.QSize:  # noqa: N802
+            return QtCore.QSize(420, 320)
+
+        def clear(self) -> None:
+            self._series = []
+            self.setToolTip("")
+            self.update()
+
+        def set_gamut_payload(self, payload: dict[str, Any] | None) -> None:
+            if not isinstance(payload, dict):
+                self.clear()
+                return
+            self.set_series(payload.get("series") if isinstance(payload.get("series"), list) else [])
+            comparisons = payload.get("comparisons") if isinstance(payload.get("comparisons"), list) else []
+            skipped = payload.get("skipped") if isinstance(payload.get("skipped"), list) else []
+            tooltip_lines = []
+            for item in comparisons:
+                if not isinstance(item, dict):
+                    continue
+                tooltip_lines.append(
+                    f"{item.get('source', 'Perfil')} en {item.get('target', '')}: "
+                    f"{float(item.get('inside_ratio') or 0.0) * 100.0:.1f}% dentro"
+                )
+            for item in skipped:
+                if isinstance(item, dict):
+                    tooltip_lines.append(f"Omitido {item.get('label', '')}: {item.get('reason', '')}")
+            self.setToolTip("\n".join(line for line in tooltip_lines if line.strip()))
+
+        def set_series(self, series: list[Any]) -> None:
+            normalized: list[dict[str, Any]] = []
+            for item in series:
+                if not isinstance(item, dict):
+                    continue
+                points = np.asarray(item.get("points_lab"), dtype=np.float64)
+                if points.ndim != 2 or points.shape[1] < 3:
+                    continue
+                points = points[:, :3]
+                points = points[np.all(np.isfinite(points), axis=1)]
+                if points.size == 0:
+                    continue
+                normalized.append(
+                    {
+                        "label": str(item.get("label") or "Perfil"),
+                        "color": str(item.get("color") or "#94a3b8"),
+                        "points": np.ascontiguousarray(points, dtype=np.float64),
+                        "rgb": self._coerce_rgb_points(item.get("surface_rgb"), points.shape[0]),
+                        "quads": self._coerce_quads(item.get("quads"), points.shape[0]),
+                        "role": str(item.get("role") or "wire"),
+                    }
+                )
+            self._series = normalized
+            self.update()
+
+        def _coerce_rgb_points(self, value: Any, count: int) -> np.ndarray:
+            rgb = np.asarray(value, dtype=np.float64)
+            if rgb.ndim != 2 or rgb.shape[1] < 3 or rgb.shape[0] != count:
+                return np.zeros((count, 3), dtype=np.float64)
+            return np.ascontiguousarray(np.clip(rgb[:, :3], 0.0, 1.0), dtype=np.float64)
+
+        def _coerce_quads(self, value: Any, count: int) -> list[list[int]]:
+            quads: list[list[int]] = []
+            if not isinstance(value, list):
+                return quads
+            for item in value:
+                if not isinstance(item, (list, tuple)) or len(item) < 4:
+                    continue
+                try:
+                    quad = [int(item[idx]) for idx in range(4)]
+                except (TypeError, ValueError):
+                    continue
+                if all(0 <= idx < count for idx in quad):
+                    quads.append(quad)
+            return quads
+
+        def mousePressEvent(self, event) -> None:  # noqa: N802
+            if event.button() == QtCore.Qt.LeftButton:
+                self._drag_start = event.position().toPoint() if hasattr(event, "position") else event.pos()
+                event.accept()
+                return
+            super().mousePressEvent(event)
+
+        def mouseMoveEvent(self, event) -> None:  # noqa: N802
+            if self._drag_start is None:
+                return super().mouseMoveEvent(event)
+            pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+            delta = pos - self._drag_start
+            self._drag_start = pos
+            self._azimuth += float(delta.x()) * 0.45
+            self._elevation = float(np.clip(self._elevation + float(delta.y()) * 0.35, -78.0, 78.0))
+            self.update()
+            event.accept()
+
+        def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+            if event.button() == QtCore.Qt.LeftButton:
+                self._drag_start = None
+                event.accept()
+                return
+            super().mouseReleaseEvent(event)
+
+        def wheelEvent(self, event) -> None:  # noqa: N802
+            delta = event.angleDelta().y()
+            if delta:
+                factor = 1.12 if delta > 0 else 1.0 / 1.12
+                self._zoom = float(np.clip(self._zoom * factor, 0.55, 3.0))
+                self.update()
+                event.accept()
+                return
+            super().wheelEvent(event)
+
+        def paintEvent(self, _event) -> None:  # noqa: N802
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            painter.fillRect(self.rect(), QtGui.QColor("#171a1f"))
+
+            plot_rect = self.rect().adjusted(8, 8, -8, -30)
+            if plot_rect.width() <= 40 or plot_rect.height() <= 40:
+                return
+
+            painter.setPen(QtGui.QPen(QtGui.QColor("#313842"), 1))
+            painter.drawRect(plot_rect)
+
+            if not self._series:
+                self._draw_axes(painter, plot_rect, np.asarray([50.0, 0.0, 0.0], dtype=np.float64), 1.0)
+                painter.setPen(QtGui.QColor("#9ca3af"))
+                painter.drawText(plot_rect, QtCore.Qt.AlignCenter, self.tr("Sin datos de gamut 3D"))
+                return
+
+            all_points = np.vstack([item["points"] for item in self._series])
+            center = self._lab_center(all_points)
+            scale = self._projection_scale(all_points, center, plot_rect)
+            self._draw_axes(painter, plot_rect, center, scale)
+
+            solid_quads: list[tuple[float, QtGui.QPolygonF, QtGui.QColor]] = []
+            wire_quads: list[tuple[float, QtGui.QPolygonF, QtGui.QColor]] = []
+            fallback_points: list[tuple[float, QtCore.QPointF, QtGui.QColor]] = []
+            for item in self._series:
+                base_color = QtGui.QColor(str(item["color"]))
+                projected, depth = self._project_points(item["points"], center, scale, plot_rect)
+                quads = item.get("quads") or []
+                if not quads:
+                    base_color.setAlpha(210 if item.get("role") == "solid" else 170)
+                    for point, z in zip(projected, depth, strict=True):
+                        fallback_points.append((float(z), point, QtGui.QColor(base_color)))
+                    continue
+                for quad in quads:
+                    polygon = QtGui.QPolygonF([projected[idx] for idx in quad])
+                    z = float(np.mean([depth[idx] for idx in quad]))
+                    if item.get("role") == "solid":
+                        color = self._solid_quad_color(item, quad, fallback=base_color)
+                        solid_quads.append((z, polygon, color))
+                    else:
+                        color = QtGui.QColor(base_color)
+                        color.setAlpha(210)
+                        wire_quads.append((z, polygon, color))
+
+            painter.setPen(QtCore.Qt.NoPen)
+            for _depth, polygon, color in sorted(solid_quads, key=lambda entry: entry[0]):
+                painter.setBrush(QtGui.QBrush(color))
+                painter.drawPolygon(polygon)
+            painter.setBrush(QtCore.Qt.NoBrush)
+            for _depth, polygon, color in sorted(solid_quads, key=lambda entry: entry[0]):
+                edge = QtGui.QColor("#0f172a")
+                edge.setAlpha(46)
+                painter.setPen(QtGui.QPen(edge, 0.45))
+                painter.drawPolygon(polygon)
+            for _depth, polygon, color in sorted(wire_quads, key=lambda entry: entry[0]):
+                painter.setPen(QtGui.QPen(color, 0.75))
+                painter.drawPolygon(polygon)
+            painter.setPen(QtCore.Qt.NoPen)
+            for _depth, point, color in sorted(fallback_points, key=lambda entry: entry[0]):
+                painter.setBrush(QtGui.QBrush(color))
+                painter.drawEllipse(point, 2.0, 2.0)
+
+            self._draw_legend(painter, plot_rect)
+            painter.setPen(QtGui.QColor("#9ca3af"))
+            painter.drawText(
+                self.rect().adjusted(8, 0, -8, -6),
+                QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom,
+                f"Lab 3D | az {self._azimuth:.0f} / el {self._elevation:.0f}",
+            )
+
+        def _draw_axes(
+            self,
+            painter: QtGui.QPainter,
+            rect: QtCore.QRect,
+            center: np.ndarray,
+            scale: float,
+        ) -> None:
+            axis_points = np.asarray(
+                [
+                    [0.0, 0.0, 0.0],
+                    [100.0, 0.0, 0.0],
+                    [50.0, -120.0, 0.0],
+                    [50.0, 120.0, 0.0],
+                    [50.0, 0.0, -120.0],
+                    [50.0, 0.0, 120.0],
+                ],
+                dtype=np.float64,
+            )
+            projected, _depth = self._project_points(axis_points, center, scale, rect)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#4b5563"), 1))
+            painter.drawLine(projected[0], projected[1])
+            painter.drawLine(projected[2], projected[3])
+            painter.drawLine(projected[4], projected[5])
+            painter.setPen(QtGui.QColor("#cbd5e1"))
+            painter.drawText(projected[1] + QtCore.QPointF(4, -4), "L*")
+            painter.drawText(projected[3] + QtCore.QPointF(4, 0), "a*")
+            painter.drawText(projected[5] + QtCore.QPointF(4, 0), "b*")
+
+        def _draw_legend(self, painter: QtGui.QPainter, rect: QtCore.QRect) -> None:
+            x = rect.left() + 10
+            y = rect.top() + 10
+            painter.setFont(QtGui.QFont(painter.font().family(), 8))
+            for item in self._series:
+                color = QtGui.QColor(str(item["color"]))
+                color.setAlpha(230)
+                painter.setPen(QtCore.Qt.NoPen)
+                if item.get("role") == "solid":
+                    painter.setBrush(QtGui.QBrush(color))
+                    painter.drawRect(QtCore.QRectF(x + 1, y + 2, 9, 9))
+                else:
+                    painter.setBrush(QtCore.Qt.NoBrush)
+                    painter.setPen(QtGui.QPen(color, 1.2))
+                    painter.drawRect(QtCore.QRectF(x + 1, y + 2, 9, 9))
+                painter.setPen(QtGui.QColor("#d1d5db"))
+                painter.drawText(QtCore.QPointF(x + 16, y + 10), f"{item['label']} ({len(item['points'])})")
+                y += 16
+
+        def _solid_quad_color(self, item: dict[str, Any], quad: list[int], *, fallback: QtGui.QColor) -> QtGui.QColor:
+            rgb = item.get("rgb")
+            if isinstance(rgb, np.ndarray) and rgb.ndim == 2 and rgb.shape[0] > max(quad):
+                mean_rgb = np.clip(np.mean(rgb[quad, :3], axis=0), 0.0, 1.0)
+                color = QtGui.QColor(
+                    int(round(float(mean_rgb[0]) * 255.0)),
+                    int(round(float(mean_rgb[1]) * 255.0)),
+                    int(round(float(mean_rgb[2]) * 255.0)),
+                    168,
+                )
+                return color
+            color = QtGui.QColor(fallback)
+            color.setAlpha(150)
+            return color
+
+        def _project_points(
+            self,
+            points: np.ndarray,
+            center: np.ndarray,
+            scale: float,
+            rect: QtCore.QRect,
+            *,
+            apply_zoom: bool = True,
+        ) -> tuple[list[QtCore.QPointF], np.ndarray]:
+            centered = np.asarray(points, dtype=np.float64) - center.reshape((1, 3))
+            a = centered[:, 1]
+            b = centered[:, 2]
+            l = centered[:, 0]
+            az = np.deg2rad(float(self._azimuth))
+            el = np.deg2rad(float(self._elevation))
+            x_rot = a * np.cos(az) - b * np.sin(az)
+            depth = a * np.sin(az) + b * np.cos(az)
+            y_rot = l * np.cos(el) - depth * np.sin(el)
+            depth = depth * np.cos(el) + l * np.sin(el)
+            cx = rect.center().x()
+            cy = rect.center().y()
+            effective_scale = float(scale) * (float(self._zoom) if apply_zoom else 1.0)
+            projected = [
+                QtCore.QPointF(cx + float(x) * effective_scale, cy - float(y) * effective_scale)
+                for x, y in zip(x_rot, y_rot, strict=True)
+            ]
+            return projected, depth
+
+        def _lab_center(self, points: np.ndarray) -> np.ndarray:
+            if points.size == 0:
+                return np.asarray([50.0, 0.0, 0.0], dtype=np.float64)
+            return np.asarray(
+                [
+                    50.0,
+                    float(np.median(points[:, 1])),
+                    float(np.median(points[:, 2])),
+                ],
+                dtype=np.float64,
+            )
+
+        def _projection_scale(self, points: np.ndarray, center: np.ndarray, rect: QtCore.QRect) -> float:
+            if points.size == 0:
+                return 1.0
+            projected, _depth = self._project_points(points, center, 1.0, rect, apply_zoom=False)
+            xs = np.asarray([point.x() - rect.center().x() for point in projected], dtype=np.float64)
+            ys = np.asarray([point.y() - rect.center().y() for point in projected], dtype=np.float64)
+            span = max(float(np.max(np.abs(xs))), float(np.max(np.abs(ys))), 1.0)
+            available = max(20.0, min(rect.width(), rect.height()) * 0.44)
+            return available / span
+
+
     class ImagePanel(QtWidgets.QLabel):
         imageClicked = QtCore.Signal(float, float)
 
@@ -841,15 +1166,19 @@ if QtWidgets is not None:
             ty = mapped.y() - bounds.top()
             return QtCore.QPointF(rect.left() + tx * scale, rect.top() + ty * scale)
 else:  # pragma: no cover - importable en entornos sin Qt
+    PersistentSideTabWidget = None
     CollapsibleToolPanel = None
     ToneCurveEditor = None
     RGBHistogramWidget = None
+    Gamut3DWidget = None
     ImagePanel = None
 
 
 __all__ = [
+    "PersistentSideTabWidget",
     "CollapsibleToolPanel",
     "ToneCurveEditor",
     "RGBHistogramWidget",
+    "Gamut3DWidget",
     "ImagePanel",
 ]

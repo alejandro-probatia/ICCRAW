@@ -3,7 +3,7 @@ _English version: [ROADMAP.md](ROADMAP.md)_
 # Roadmap
 
 Este roadmap describe la dirección activa de NexoRAW tras la reorganización
-0.2.5. Prioriza un flujo ICC estable y reproducible frente a añadir capas
+0.2.6. Prioriza un flujo ICC estable y reproducible frente a añadir capas
 paralelas de perfilado de color.
 
 ## Base Completada
@@ -19,11 +19,16 @@ paralelas de perfilado de color.
 - Mochilas de ajuste por archivo (`RAW.nexoraw.json`).
 - Perfiles avanzados de ajuste desde carta.
 - Generación de ICC de entrada de sesión con ArgyllCMS.
+- Catálogo persistente de perfiles ICC de sesión con varias versiones activables.
+- Referencias de carta gestionadas desde la interfaz, incluyendo editor tabular
+  Lab para cartas personalizadas.
+- Diagnóstico Gamut 3D por pares para comparar perfiles de sesión, monitor,
+  espacios estándar e ICC personalizados.
 - Flujo con ICC estándar de salida para sesiones sin carta.
 - Gestión ICC del monitor limitada al preview.
 - Marcado manual de cuatro esquinas de carta en el visor.
 - NexoRAW Proof y metadatos C2PA opcionales.
-- Suite completa de tests superada para la validación de empaquetado 0.2.5.
+- Suite completa de tests superada para la validación de empaquetado 0.2.6.
 
 ## Principio Actual
 
@@ -44,7 +49,7 @@ Objetivo: hacer robusto el flujo GUI actual con sesiones RAW reales.
 - Probar la aplicación instalada con capturas reales de carta y RAW objetivo.
 - Mejorar interacción de selección de carta, estados de cursor y consistencia de
   overlays.
-- Endurecer generación de perfiles y revelado por lote de larga duración.
+- Endurecer revelado por lote de larga duración y validación cruzada de perfiles.
 - Ampliar regresiones sobre marcado manual de carta y procesamiento de cola.
 - Mantener AMaZE visible y verificable en builds empaquetadas.
 

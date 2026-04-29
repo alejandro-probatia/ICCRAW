@@ -16,7 +16,7 @@ PROFILE_REFERENCE_FORBIDDEN_DIRS = {
     "config": "configuracion",
 }
 
-LAYOUT_VERSION = 4
+LAYOUT_VERSION = 5
 APP_NAME = "NexoRAW"
 ORG_NAME = "NexoRAW"
 APP_ICON_RESOURCE = "icons/nexoraw-icon.png"

@@ -109,6 +109,7 @@ class LayoutMixin:
             right = max(300, int(w * 0.21))
             center = max(520, w - left - right)
             self.raw_splitter.setSizes([left, center, right])
+            self._left_pane_last_open_width = left
 
         if hasattr(self, "compare_splitter"):
             cw = max(600, int(self.width() * 0.55))
@@ -320,10 +321,12 @@ class LayoutMixin:
         self.raw_splitter.addWidget(self._build_left_pane())
         self.raw_splitter.addWidget(self._build_center_pane())
         self.raw_splitter.addWidget(self._build_right_pane())
+        self.raw_splitter.setCollapsible(0, False)
         self.raw_splitter.setSizes([260, 1180, 460])
         self.raw_splitter.setStretchFactor(0, 0)
         self.raw_splitter.setStretchFactor(1, 1)
         self.raw_splitter.setStretchFactor(2, 0)
+        self.raw_splitter.splitterMoved.connect(self._on_raw_splitter_moved)
         layout.addWidget(self.raw_splitter, 1)
         return tab
 
@@ -344,78 +347,103 @@ class LayoutMixin:
         self.profile_chart_selection_label.setStyleSheet("font-size: 12px; color: #374151;")
         grid.addWidget(self.profile_chart_selection_label, 1, 0, 1, 3)
 
-        self.path_reference = QtWidgets.QLineEdit("testdata/references/colorchecker24_colorchecker2005_d50.json")
-        self._add_path_row(grid, 2, self.tr("Referencia carta JSON"), self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
+        self.path_reference = QtWidgets.QLineEdit("colorchecker24_colorchecker2005_d50.json")
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Referencia de carta")), 2, 0)
+        self.reference_catalog_combo = QtWidgets.QComboBox()
+        self.reference_catalog_combo.setToolTip(
+            self.tr("Referencias incluidas y referencias personalizadas guardadas en la sesión.")
+        )
+        self.reference_catalog_combo.currentIndexChanged.connect(self._on_reference_catalog_selected)
+        grid.addWidget(self.reference_catalog_combo, 2, 1, 1, 2)
+
+        reference_buttons = QtWidgets.QHBoxLayout()
+        reference_buttons.addWidget(self._button(self.tr("Importar JSON"), self._import_reference_catalog))
+        reference_buttons.addWidget(self._button(self.tr("Nueva personalizada"), self._new_custom_reference_catalog))
+        reference_buttons.addWidget(self._button(self.tr("Editar tabla"), self._edit_current_reference_catalog))
+        reference_buttons.addWidget(self._button(self.tr("Validar"), self._validate_current_reference_catalog))
+        grid.addLayout(reference_buttons, 3, 0, 1, 3)
+
+        self._add_path_row(grid, 4, self.tr("Referencia carta JSON"), self.path_reference, file_mode=True, save_mode=False, dir_mode=False)
+        self.path_reference.editingFinished.connect(self._on_reference_path_edited)
+
+        self.reference_status_label = QtWidgets.QLabel(self.tr("Referencia de carta no validada"))
+        self.reference_status_label.setWordWrap(True)
+        self.reference_status_label.setStyleSheet("font-size: 12px; color: #374151;")
+        grid.addWidget(self.reference_status_label, 5, 0, 1, 3)
 
         self.profile_out_path_edit = QtWidgets.QLineEdit("/tmp/camera_profile_gui.icc")
         self.path_profile_out = self.profile_out_path_edit
-        self._add_path_row(grid, 3, self.tr("Perfil ICC de entrada"), self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
+        self._add_path_row(grid, 6, self.tr("Perfil ICC de entrada"), self.profile_out_path_edit, file_mode=False, save_mode=True, dir_mode=False)
 
         self.profile_report_out = QtWidgets.QLineEdit("/tmp/profile_report_gui.json")
-        self._hide_row_widgets(self._add_path_row(grid, 4, self.tr("Reporte perfil JSON"), self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False))
+        self._hide_row_widgets(self._add_path_row(grid, 7, self.tr("Reporte perfil JSON"), self.profile_report_out, file_mode=False, save_mode=True, dir_mode=False))
 
         self.profile_workdir = QtWidgets.QLineEdit("/tmp/nexoraw_profile_work")
-        self._hide_row_widgets(self._add_path_row(grid, 5, self.tr("Directorio artefactos"), self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True))
+        self._hide_row_widgets(self._add_path_row(grid, 8, self.tr("Directorio artefactos"), self.profile_workdir, file_mode=False, save_mode=False, dir_mode=True))
 
         self.develop_profile_out = QtWidgets.QLineEdit("/tmp/development_profile_gui.json")
-        self._hide_row_widgets(self._add_path_row(grid, 6, self.tr("Perfil de ajuste avanzado JSON"), self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False))
+        self._hide_row_widgets(self._add_path_row(grid, 9, self.tr("Perfil de ajuste avanzado JSON"), self.develop_profile_out, file_mode=False, save_mode=True, dir_mode=False))
 
         self.calibrated_recipe_out = QtWidgets.QLineEdit("/tmp/recipe_calibrated_gui.yml")
-        self._hide_row_widgets(self._add_path_row(grid, 7, self.tr("Receta calibrada"), self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False))
+        self._hide_row_widgets(self._add_path_row(grid, 10, self.tr("Receta calibrada"), self.calibrated_recipe_out, file_mode=False, save_mode=True, dir_mode=False))
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Tipo de carta")), 8, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Tipo de carta")), 11, 0)
         self.profile_chart_type = QtWidgets.QComboBox()
         self.profile_chart_type.addItems(["colorchecker24", "it8"])
-        grid.addWidget(self.profile_chart_type, 8, 1, 1, 2)
+        grid.addWidget(self.profile_chart_type, 11, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Confianza mínima")), 9, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Confianza mínima")), 12, 0)
         self.profile_min_conf = QtWidgets.QDoubleSpinBox()
         self.profile_min_conf.setRange(0.0, 1.0)
         self.profile_min_conf.setSingleStep(0.05)
         self.profile_min_conf.setDecimals(2)
         self.profile_min_conf.setValue(0.35)
-        grid.addWidget(self.profile_min_conf, 9, 1, 1, 2)
+        grid.addWidget(self.profile_min_conf, 12, 1, 1, 2)
 
         self.profile_allow_fallback = QtWidgets.QCheckBox(self.tr("Permitir fallback"))
         self.profile_allow_fallback.setChecked(False)
-        grid.addWidget(self.profile_allow_fallback, 10, 1, 1, 2)
+        grid.addWidget(self.profile_allow_fallback, 13, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Formato ICC")), 11, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Formato ICC")), 14, 0)
         self.combo_profile_format = QtWidgets.QComboBox()
         self.combo_profile_format.addItems(PROFILE_FORMAT_OPTIONS)
-        grid.addWidget(self.combo_profile_format, 11, 1, 1, 2)
+        grid.addWidget(self.combo_profile_format, 14, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Tipo de perfil ICC")), 12, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Tipo de perfil ICC")), 15, 0)
         self.combo_profile_algo = QtWidgets.QComboBox()
         for label, flag in PROFILE_ALGO_OPTIONS:
             self.combo_profile_algo.addItem(self.tr(label), flag)
-        grid.addWidget(self.combo_profile_algo, 12, 1, 1, 2)
+        grid.addWidget(self.combo_profile_algo, 15, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Calidad colprof")), 13, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Calidad colprof")), 16, 0)
         self.combo_profile_quality = QtWidgets.QComboBox()
         for label, q in PROFILE_QUALITY_OPTIONS:
             self.combo_profile_quality.addItem(self.tr(label), q)
         self.combo_profile_quality.setCurrentIndex(1)
-        grid.addWidget(self.combo_profile_quality, 13, 1, 1, 2)
+        grid.addWidget(self.combo_profile_quality, 16, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Args extra colprof")), 14, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Args extra colprof")), 17, 0)
         self.edit_colprof_args = QtWidgets.QLineEdit("")
         self.edit_colprof_args.setPlaceholderText(self.tr("Ejemplo: -D \"Perfil Camara Museo\""))
-        grid.addWidget(self.edit_colprof_args, 14, 1, 1, 2)
+        grid.addWidget(self.edit_colprof_args, 17, 1, 1, 2)
 
         label_camera = QtWidgets.QLabel(self.tr("Cámara (opcional)"))
-        grid.addWidget(label_camera, 15, 0)
+        grid.addWidget(label_camera, 18, 0)
         self.profile_camera = QtWidgets.QLineEdit("")
-        grid.addWidget(self.profile_camera, 15, 1, 1, 2)
+        grid.addWidget(self.profile_camera, 18, 1, 1, 2)
         label_camera.hide()
         self.profile_camera.hide()
 
         label_lens = QtWidgets.QLabel(self.tr("Lente (opcional)"))
-        grid.addWidget(label_lens, 16, 0)
+        grid.addWidget(label_lens, 19, 0)
         self.profile_lens = QtWidgets.QLineEdit("")
-        grid.addWidget(self.profile_lens, 16, 1, 1, 2)
+        grid.addWidget(self.profile_lens, 19, 1, 1, 2)
         label_lens.hide()
         self.profile_lens.hide()
+
+        self._refresh_reference_catalog_combo()
+        self._update_reference_status()
 
         outer.addWidget(box)
 
@@ -578,21 +606,67 @@ class LayoutMixin:
 
     def _build_left_pane(self) -> QtWidgets.QWidget:
         pane = QtWidgets.QWidget()
-        pane.setMinimumWidth(260)
+        pane.setMinimumWidth(0)
+        pane.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
         layout = QtWidgets.QVBoxLayout(pane)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
-        self.left_tabs = QtWidgets.QTabWidget()
+        self._left_pane_last_open_width = 260
+        self.left_tabs = PersistentSideTabWidget()
         self.left_tabs.setTabPosition(QtWidgets.QTabWidget.West)
         self.left_tabs.setDocumentMode(True)
         self.left_tabs.addTab(self._build_browser_panel(), self.tr("Explorador"))
         self.left_tabs.addTab(self._build_viewer_controls_panel(), self.tr("Visor"))
-        self.left_tabs.addTab(self._build_analysis_panel(), self.tr("Análisis"))
+        self.left_tabs.addTab(self._build_analysis_panel(), self.tr("Diagnóstico"))
         self.left_tabs.addTab(self._build_metadata_panel(), self.tr("Metadatos"))
         self.left_tabs.addTab(self._build_preview_log_panel(), self.tr("Log"))
+        self.left_tabs.currentChanged.connect(self._expand_left_pane_for_tab_access)
+        self.left_tabs.tabBarClicked.connect(self._expand_left_pane_for_tab_access)
         layout.addWidget(self.left_tabs, 1)
         return pane
+
+    def _left_pane_collapsed_width(self) -> int:
+        if hasattr(self, "left_tabs") and hasattr(self.left_tabs, "collapsedWidth"):
+            return int(self.left_tabs.collapsedWidth())
+        return 40
+
+    def _on_raw_splitter_moved(self, _pos: int, _index: int) -> None:
+        if not hasattr(self, "raw_splitter"):
+            return
+        sizes = self.raw_splitter.sizes()
+        if not sizes:
+            return
+        collapsed_limit = self._left_pane_collapsed_width() + 24
+        if sizes[0] > collapsed_limit:
+            self._left_pane_last_open_width = int(sizes[0])
+
+    def _expand_left_pane_for_tab_access(self, _index: int = -1) -> None:
+        if not hasattr(self, "raw_splitter"):
+            return
+        sizes = self.raw_splitter.sizes()
+        if len(sizes) < 3:
+            return
+        collapsed_limit = self._left_pane_collapsed_width() + 24
+        if sizes[0] > collapsed_limit:
+            self._left_pane_last_open_width = int(sizes[0])
+            return
+
+        total = max(1, sum(sizes))
+        target_left = max(260, int(getattr(self, "_left_pane_last_open_width", 260)))
+        target_left = min(target_left, max(self._left_pane_collapsed_width(), total - 520))
+        right = max(0, sizes[2])
+        center = max(420, total - target_left - right)
+        if target_left + center + right > total:
+            overflow = target_left + center + right - total
+            right = max(0, right - overflow)
+        center = max(420, total - target_left - right)
+        if target_left + center + right > total:
+            target_left = max(
+                self._left_pane_collapsed_width(),
+                total - center - right,
+            )
+        self.raw_splitter.setSizes([target_left, center, right])
 
     def _build_browser_panel(self) -> QtWidgets.QWidget:
         box = QtWidgets.QGroupBox(self.tr("Explorador de unidades y carpetas"))
@@ -722,11 +796,125 @@ class LayoutMixin:
         panel = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(panel)
         layout.setContentsMargins(4, 4, 4, 4)
+
+        self.analysis_tabs = QtWidgets.QTabWidget()
+
+        image_page = QtWidgets.QWidget()
+        image_layout = QtWidgets.QVBoxLayout(image_page)
+        image_layout.setContentsMargins(0, 0, 0, 0)
         self.preview_analysis = QtWidgets.QPlainTextEdit()
         self.preview_analysis.setReadOnly(True)
-        self.preview_analysis.setPlaceholderText(self.tr("Analisis tecnico lineal"))
-        layout.addWidget(self.preview_analysis, 1)
+        self.preview_analysis.setPlaceholderText(self.tr("Sin diagnóstico de imagen"))
+        self.preview_analysis.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+        self.preview_analysis.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
+        image_layout.addWidget(self.preview_analysis, 1)
+        self.analysis_tabs.addTab(image_page, self.tr("Imagen"))
+
+        chart_page = QtWidgets.QWidget()
+        chart_layout = QtWidgets.QVBoxLayout(chart_page)
+        chart_layout.setContentsMargins(0, 0, 0, 0)
+        chart_layout.setSpacing(6)
+        self.chart_diagnostics_summary = QtWidgets.QLabel(self.tr("Sin datos de carta"))
+        self.chart_diagnostics_summary.setWordWrap(True)
+        self.chart_diagnostics_summary.setStyleSheet("font-size: 12px; color: #d1d5db;")
+        chart_layout.addWidget(self.chart_diagnostics_summary)
+        self.chart_diagnostics_table = QtWidgets.QTableWidget(0, 9)
+        self.chart_diagnostics_table.setHorizontalHeaderLabels(
+            [
+                self.tr("Parche"),
+                "L* ref",
+                "a* ref",
+                "b* ref",
+                "L* ICC",
+                "a* ICC",
+                "b* ICC",
+                "DeltaE76",
+                "DeltaE2000",
+            ]
+        )
+        self.chart_diagnostics_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.chart_diagnostics_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.chart_diagnostics_table.setAlternatingRowColors(True)
+        self.chart_diagnostics_table.setSortingEnabled(True)
+        header = self.chart_diagnostics_table.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
+        for column, width in enumerate((58, 70, 70, 70, 70, 70, 70, 74, 88)):
+            self.chart_diagnostics_table.setColumnWidth(column, width)
+        chart_layout.addWidget(self.chart_diagnostics_table, 1)
+        self.analysis_tabs.addTab(chart_page, self.tr("Carta"))
+
+        gamut_page = QtWidgets.QWidget()
+        gamut_layout = QtWidgets.QVBoxLayout(gamut_page)
+        gamut_layout.setContentsMargins(0, 0, 0, 0)
+        gamut_layout.setSpacing(6)
+        gamut_controls = QtWidgets.QGridLayout()
+        gamut_controls.setContentsMargins(0, 0, 0, 0)
+        gamut_controls.setHorizontalSpacing(6)
+        gamut_controls.setVerticalSpacing(4)
+        gamut_controls.addWidget(QtWidgets.QLabel(self.tr("Perfil A")), 0, 0)
+        self.gamut_profile_a_combo = QtWidgets.QComboBox()
+        self._populate_gamut_profile_combo(self.gamut_profile_a_combo, default_key="generated")
+        self.gamut_profile_a_combo.currentIndexChanged.connect(self._sync_gamut_custom_controls)
+        gamut_controls.addWidget(self.gamut_profile_a_combo, 0, 1)
+        gamut_controls.addWidget(QtWidgets.QLabel(self.tr("Perfil B")), 0, 2)
+        self.gamut_profile_b_combo = QtWidgets.QComboBox()
+        self._populate_gamut_profile_combo(self.gamut_profile_b_combo, default_key="standard:srgb")
+        self.gamut_profile_b_combo.currentIndexChanged.connect(self._sync_gamut_custom_controls)
+        gamut_controls.addWidget(self.gamut_profile_b_combo, 0, 3)
+
+        self.gamut_custom_a_path = QtWidgets.QLineEdit("")
+        self.gamut_custom_a_label = QtWidgets.QLabel(self.tr("ICC A"))
+        self.gamut_custom_a_browse = self._button(self.tr("..."), lambda: self._browse_gamut_custom_profile(self.gamut_custom_a_path))
+        self.gamut_custom_a_browse.setMaximumWidth(36)
+        gamut_controls.addWidget(self.gamut_custom_a_label, 1, 0)
+        gamut_controls.addWidget(self.gamut_custom_a_path, 1, 1)
+        gamut_controls.addWidget(self.gamut_custom_a_browse, 1, 2)
+        self.gamut_custom_b_path = QtWidgets.QLineEdit("")
+        self.gamut_custom_b_label = QtWidgets.QLabel(self.tr("ICC B"))
+        self.gamut_custom_b_browse = self._button(self.tr("..."), lambda: self._browse_gamut_custom_profile(self.gamut_custom_b_path))
+        self.gamut_custom_b_browse.setMaximumWidth(36)
+        gamut_controls.addWidget(self.gamut_custom_b_label, 2, 0)
+        gamut_controls.addWidget(self.gamut_custom_b_path, 2, 1)
+        gamut_controls.addWidget(self.gamut_custom_b_browse, 2, 2)
+        gamut_controls.setColumnStretch(1, 1)
+        gamut_controls.setColumnStretch(3, 1)
+        gamut_layout.addLayout(gamut_controls)
+
+        gamut_header = QtWidgets.QHBoxLayout()
+        self.gamut_status_label = QtWidgets.QLabel(self.tr("Gamut 3D: sin perfil generado"))
+        self.gamut_status_label.setWordWrap(True)
+        self.gamut_status_label.setStyleSheet("font-size: 12px; color: #d1d5db;")
+        gamut_header.addWidget(self.gamut_status_label, 1)
+        gamut_header.addWidget(self._button(self.tr("Actualizar"), self._on_refresh_gamut_diagnostics))
+        gamut_layout.addLayout(gamut_header)
+        self.gamut_3d_widget = Gamut3DWidget()
+        gamut_layout.addWidget(self.gamut_3d_widget, 1)
+        self.analysis_tabs.addTab(gamut_page, self.tr("Gamut 3D"))
+        self._sync_gamut_custom_controls()
+
+        layout.addWidget(self.analysis_tabs, 1)
         return panel
+
+    def _populate_gamut_profile_combo(self, combo: QtWidgets.QComboBox, *, default_key: str) -> None:
+        current_key = str(combo.currentData() or default_key)
+        items = [
+            *self._managed_gamut_profile_items(),
+            (self.tr("ICC activo / salida actual"), "generated"),
+            (self.tr("Monitor"), "monitor"),
+            ("sRGB", "standard:srgb"),
+            ("Adobe RGB (1998)", "standard:adobe_rgb"),
+            ("ProPhoto RGB", "standard:prophoto_rgb"),
+            (self.tr("ICC personalizado"), "custom"),
+        ]
+        combo.blockSignals(True)
+        combo.clear()
+        for label, key in items:
+            combo.addItem(label, key)
+        index = combo.findData(current_key)
+        if index < 0:
+            index = combo.findData(default_key)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        combo.blockSignals(False)
 
     def _build_metadata_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()

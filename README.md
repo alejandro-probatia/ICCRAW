@@ -10,7 +10,7 @@ Reproducible and auditable RAW/TIFF development for scientific, forensic and
 heritage photography, with session ICC profiling, per-file parametric settings
 and open AGPL traceability.
 
-![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.2.5-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.2.6-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![NexoRAW main interface](docs/assets/screenshots/nexoraw-portada.png)
 
@@ -31,14 +31,18 @@ The current workflow is intentionally ICC-centered:
 
 ## Current Status
 
-NexoRAW 0.2.5 is suitable for controlled testing, method review and release
+NexoRAW 0.2.6 is suitable for controlled testing, method review and release
 candidate validation. It is not yet a certified scientific or forensic
 production system.
+
+The current version adds chart reference management from the interface, session
+ICC profile versioning, background profile generation and a 3D gamut diagnostic
+for pairwise profile comparison.
 
 The latest packaging validation passed with:
 
 ```text
-203 passed, 1 warning
+218 passed, 1 warning
 ```
 
 ## Documentation
@@ -100,8 +104,8 @@ canonical launchers:
 - `nexoraw-ui`
 
 Legacy `iccraw` launchers and internal compatibility scripts are no longer
-installed in 0.2.5. If an old beta package is present, remove it before testing
-the current package.
+installed since 0.2.5. If an old beta package is present, remove it before
+testing the current package.
 
 ## GUI Workflow
 

@@ -27,7 +27,12 @@ from PIL import Image, ImageOps
 import yaml
 
 from ...chart.detection import detect_chart_from_corners_array, draw_detection_overlay_array
-from ...chart.sampling import ReferenceCatalog
+from ...chart.sampling import (
+    ReferenceCatalog,
+    bundled_reference_catalogs,
+    reference_catalog_label,
+    reference_catalog_template,
+)
 from ...core.models import Recipe, to_json_dict, write_json
 from ...core.recipe import load_recipe, save_recipe
 from ...core.utils import RAW_EXTENSIONS, read_image as _read_image, versioned_output_path, write_tiff16
@@ -45,6 +50,10 @@ from ...profile.export import (
     write_signed_profiled_tiff as _write_signed_profiled_tiff,
 )
 from ...profile.generic import ensure_generic_output_profile, generic_output_profile, is_generic_output_space
+from ...profile.gamut import (
+    build_gamut_diagnostics as _build_gamut_diagnostics,
+    build_gamut_pair_diagnostics as _build_gamut_pair_diagnostics,
+)
 from ...provenance.c2pa import C2PASignConfig, DEFAULT_TIMESTAMP_URL, auto_c2pa_config
 from ...provenance.nexoraw_proof import (
     NexoRawProofConfig,
@@ -80,7 +89,14 @@ from ...workflow import (
     DEFAULT_QA_MEAN_DELTA_E2000_MAX,
     auto_generate_profile_from_charts as _auto_generate_profile_from_charts,
 )
-from ..widgets import CollapsibleToolPanel, ImagePanel, RGBHistogramWidget, ToneCurveEditor
+from ..widgets import (
+    CollapsibleToolPanel,
+    Gamut3DWidget,
+    ImagePanel,
+    PersistentSideTabWidget,
+    RGBHistogramWidget,
+    ToneCurveEditor,
+)
 from .core import TaskThread
 
 try:
@@ -134,3 +150,11 @@ def write_raw_sidecar(*args, **kwargs):
 
 def auto_generate_profile_from_charts(*args, **kwargs):
     return _gui_callable("auto_generate_profile_from_charts", _auto_generate_profile_from_charts)(*args, **kwargs)
+
+
+def build_gamut_diagnostics(*args, **kwargs):
+    return _gui_callable("build_gamut_diagnostics", _build_gamut_diagnostics)(*args, **kwargs)
+
+
+def build_gamut_pair_diagnostics(*args, **kwargs):
+    return _gui_callable("build_gamut_pair_diagnostics", _build_gamut_pair_diagnostics)(*args, **kwargs)

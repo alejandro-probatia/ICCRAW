@@ -77,6 +77,19 @@ deben apuntar a `nexoraw-ui.exe` y usar el icono `nexoraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.2.6
+
+La release 0.2.6 introduce:
+
+- generación de perfiles avanzada en segundo plano para mantener la GUI
+  responsiva,
+- catálogo persistente de perfiles ICC de sesión con varias versiones activables,
+- comparador `Gamut 3D` por pares para perfiles de sesión, monitor, perfiles
+  estándar e ICC personalizados,
+- gestión visual de referencias de carta, incluyendo importación, creación,
+  validación y editor tabular Lab con muestras de color,
+- artefactos de perfilado versionados en `00_configuraciones/profile_runs/`.
+
 ## Release 0.2.5
 
 La release 0.2.5 introduce:

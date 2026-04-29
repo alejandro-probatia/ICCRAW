@@ -8,6 +8,13 @@ import pytest
 
 from nexoraw.core.models import PatchSample, Recipe, SampleSet, write_json
 from nexoraw.profile.builder import build_profile, validate_profile, write_samples_cgats
+from nexoraw.profile.gamut import (
+    _lab_inside_standard_rgb,
+    _standard_rgb_to_lab,
+    build_gamut_diagnostics,
+    build_gamut_pair_diagnostics,
+    rgb_surface_samples,
+)
 import nexoraw.profile.builder as profiling
 
 
@@ -59,6 +66,43 @@ def test_build_profile_generates_icc_and_sidecar(tmp_path: Path, monkeypatch):
     assert out_icc.stat().st_size > 256
     assert Path(result.output_profile_json).exists()
     assert result.metadata["profile_engine_used"] == "argyll"
+    assert result.patch_errors[0].reference_lab == samples[0].reference_lab
+    assert result.patch_errors[0].profile_lab == samples[0].reference_lab
+
+
+def test_standard_gamut_diagnostics_include_expected_rgb_spaces():
+    payload = build_gamut_diagnostics(generated_profile=None, monitor_profile=None, grid_size=7)
+
+    assert [series["label"] for series in payload["series"]] == [
+        "sRGB",
+        "Adobe RGB (1998)",
+        "ProPhoto RGB",
+    ]
+    assert payload["series"][0]["points_lab"].shape == (218, 3)
+    assert len(payload["series"][0]["quads"]) == 216
+    assert payload["series"][0]["health"]["status"] == "ok"
+
+
+def test_pair_gamut_diagnostics_compare_only_two_profiles():
+    payload = build_gamut_pair_diagnostics(
+        profile_a={"kind": "standard", "key": "adobe_rgb"},
+        profile_b={"kind": "standard", "key": "srgb"},
+        grid_size=7,
+    )
+
+    assert [series["label"] for series in payload["series"]] == ["Adobe RGB (1998)", "sRGB"]
+    assert [series["role"] for series in payload["series"]] == ["wire", "solid"]
+    assert payload["comparisons"][0]["source"] == "Adobe RGB (1998)"
+    assert payload["comparisons"][0]["target"] == "sRGB"
+
+
+def test_standard_gamut_membership_recognizes_own_surface_samples():
+    rgb = rgb_surface_samples(5)
+    lab = _standard_rgb_to_lab(rgb, "srgb")
+
+    inside = _lab_inside_standard_rgb(lab, "srgb")
+
+    assert inside.all()
 
 
 def test_argyll_builder_accepts_icm_output(tmp_path: Path, monkeypatch):

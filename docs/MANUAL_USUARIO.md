@@ -10,10 +10,11 @@ settings, profiles, hashes and audit artifacts.
 
 ![NexoRAW: main development and profiling interface](assets/screenshots/nexoraw-portada.png)
 
-This manual covers the complete NexoRAW 0.2.5 workflow: session creation, color
+This manual covers the complete NexoRAW 0.2.6 workflow: session creation, color
 chart profiling, manual work without a chart, settings copy/paste, render queue,
-TIFF export, metadata, Proof, C2PA, global settings and the meaning of every
-visible option in the interface.
+TIFF export, metadata, Proof, C2PA, 3D gamut diagnostics, chart reference
+management, global settings and the meaning of every visible option in the
+interface.
 
 ## 1. Installation and Startup
 
@@ -46,7 +47,7 @@ Persistent structure:
 
 | Folder | Purpose |
 | --- | --- |
-| `00_configuraciones/` | `session.json`, recipes, development profiles, ICC profiles, reports, cache, intermediates and work artifacts. |
+| `00_configuraciones/` | `session.json`, recipes, custom references, development profiles, ICC profiles, reports, cache, intermediates and work artifacts. |
 | `01_ORG/` | Original RAW, DNG, original TIFF and chart captures. This is the source directory. |
 | `02_DRV/` | Derived TIFFs, previews, manifests and final outputs. |
 
@@ -231,7 +232,7 @@ This is the preferred workflow when objective colorimetric precision matters.
 2. Copy chart RAW files and scene RAW files to `01_ORG/`.
 3. In `2. Ajustar / Aplicar`, select the chart capture or captures.
 4. Press `Usar selección como referencias colorimétricas`.
-5. In `Gestión de color y calibración`, review `Referencia carta JSON`, `Tipo de
+5. In `Gestión de color y calibración`, review `Referencia de carta`, `Tipo de
    carta`, `Formato ICC`, `Tipo de perfil ICC` and `Calidad colprof`.
 6. In `RAW Global`, review demosaic and base RAW criteria. During advanced
    profiling, NexoRAW forces objective measurement settings: linear curve,
@@ -253,8 +254,50 @@ Expected result:
 - calibrated recipe in `00_configuraciones/`;
 - advanced profile in `00_configuraciones/development_profiles/`;
 - input ICC in `00_configuraciones/profiles/`;
-- profile reports, QA, overlays and cache in `00_configuraciones/work/`;
+- custom references in `00_configuraciones/references/`, if created or imported;
+- profile reports, QA, overlays and cache in
+  `00_configuraciones/profile_runs/` and `00_configuraciones/work/`;
 - `RAW.nexoraw.json` backpack for the chart RAW files used.
+
+### Chart References and Custom Charts
+
+![Chart reference and ICC profile management](assets/screenshots/nexoraw-referencias-y-perfiles.png)
+
+The bundled default reference is ColorChecker 24 / ColorChecker 2005 / D50. You
+can also import an existing JSON reference or create a custom session reference.
+Custom references are stored in `00_configuraciones/references/`, appear in the
+`Referencia de carta` selector and are restored when the session is reopened.
+
+For a custom chart, use `Nueva personalizada` or `Editar tabla`. The editor shows
+one row per patch with its identifier, name and Lab D50 values; the first column
+shows an approximate swatch for the entered color so obvious typing mistakes are
+easy to spot. Saving generates the JSON reference used by the profiler.
+
+![Lab reference table editor](assets/screenshots/nexoraw-editor-referencia-lab.png)
+
+Best practices:
+
+- `patch_id` values must match the chart detection order;
+- use Lab D50 values with 2-degree observer for the current ICC workflow;
+- document the measurement source in `Fuente`;
+- press `Validar` before building the profile.
+
+### Session ICC Profiles and 3D Gamut Comparison
+
+Each generated ICC profile is registered in the session with name, path, status
+and source. This allows several versions of the same profile, for example matrix,
+cLUT, different references or different ArgyllCMS arguments, without losing
+history. The `Perfil ICC de sesión` selector activates any registered version for
+preview/export.
+
+The `Diagnóstico > Gamut 3D` tab always compares a pair of profiles, not every
+profile at once. Choose `Perfil A` and `Perfil B` from session profiles, the
+active ICC, the monitor, sRGB, Adobe RGB, ProPhoto RGB or a custom ICC. The solid
+surface represents the second profile and the wireframe represents the first one.
+The top text reports how much of profile A is inside profile B and warns when a
+generated ICC has extreme Lab coordinates.
+
+![Pairwise 3D gamut comparison](assets/screenshots/nexoraw-gamut-3d-comparacion.png)
 
 ## 8. Complete Workflow Without a Color Chart
 
@@ -409,7 +452,12 @@ configured.
 | --- | --- |
 | `Carpeta de referencias colorimétricas` | Folder containing chart captures. If an explicit selection exists, those images are used. |
 | `Referencias colorimétricas seleccionadas` | Shows how many chart captures will be used. |
-| `Referencia carta JSON` | File with the chart reference values. |
+| `Referencia de carta` | Selector for bundled references and custom references saved in the session. |
+| `Importar JSON` | Copies a validated external reference into `00_configuraciones/references/`. |
+| `Nueva personalizada` | Creates an editable session reference from a template. |
+| `Editar tabla` | Opens the Lab table editor with per-patch color swatches. |
+| `Validar` | Checks structure, illuminant, observer and Lab values. |
+| `Referencia carta JSON` | Path of the selected or generated chart JSON. |
 | `Perfil ICC de entrada` | Output path for the generated ICC. |
 | `Reporte perfil JSON` | Automatic path for the technical profile report. It normally lives in `00_configuraciones/work/`. |
 | `Directorio artefactos` | Automatic directory for overlays, measurements, intermediates and profiling cache. |
@@ -421,7 +469,7 @@ configured.
 | `Formato ICC` | `.icc` or `.icm`. |
 | `Tipo de perfil ICC` | `shaper+matrix (-as)`, `gamma+matrix (-ag)`, `matrix only (-am)`, `Lab cLUT (-al)` or `XYZ cLUT (-ax)`. |
 | `Calidad colprof` | Low, Medium, High, Ultra. Higher quality costs more compute. |
-| `Args extra colprof` | Advanced ArgyllCMS arguments, for example `-D "Museum Camera Profile"`. |
+| `Args extra colprof` | Advanced ArgyllCMS arguments, for example `-D "Museum Camera Profile"`. The default uses `-u -R` to avoid an unrealistically unconstrained gamut. |
 | `Cámara (opcional)` | Reserved profile metadata field. In the current interface it is filled automatically or kept hidden. |
 | `Lente (opcional)` | Reserved profile metadata field. In the current interface it is filled automatically or kept hidden. |
 | `Marcar en visor` | Starts manual four-corner marking. The cursor changes to a crosshair. |
@@ -435,8 +483,10 @@ configured.
 | Option | Explanation |
 | --- | --- |
 | `Perfil ICC de entrada activo` | ICC used for preview/export when it matches the session profile. |
+| `Perfil ICC de sesión` | Catalog of ICC profiles generated or loaded in the session. |
+| `Activar seleccionado` | Activates the selected session profile. |
 | `Cargar perfil activo` | Manually selects an existing ICC. |
-| `Usar perfil generado` | Loads the ICC generated by the chart workflow. |
+| `Usar perfil generado` | Registers and activates the latest ICC generated by the chart workflow. |
 
 ### RAW Global
 
@@ -473,7 +523,7 @@ Recipe fields that are saved even when they are not always directly editable:
 
 | Field | Explanation |
 | --- | --- |
-| `chart_reference` | JSON reference used to measure the chart. Filled from `Referencia carta JSON`. |
+| `chart_reference` | JSON reference used to measure the chart. Filled from `Referencia de carta`. |
 | `sampling_trim_percent` | Percentage trimmed from each end when robust `trimmed_mean` sampling is used. |
 | `sampling_reject_saturated` | Excludes saturated pixels during patch sampling. |
 | `profile_engine` | Profiling engine. Currently `argyll`. |

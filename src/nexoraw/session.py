@@ -16,6 +16,7 @@ DEFAULT_SUBDIRECTORIES: dict[str, str] = {
     "exports": "02_DRV",
     "charts": "01_ORG",
     "profiles": "00_configuraciones/profiles",
+    "references": "00_configuraciones/references",
     "work": "00_configuraciones/work",
     "cache": "00_configuraciones/cache",
 }

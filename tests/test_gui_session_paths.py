@@ -13,6 +13,7 @@ pytest.importorskip("PySide6")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 import nexoraw.gui as gui_module  # noqa: E402
+from nexoraw.chart.sampling import ReferenceCatalog  # noqa: E402
 from nexoraw.core.models import Recipe  # noqa: E402
 from nexoraw.gui import ICCRawMainWindow  # noqa: E402
 from nexoraw.provenance.c2pa import C2PASignConfig  # noqa: E402
@@ -218,6 +219,115 @@ def test_activate_session_rejects_existing_state_paths_outside_project_root(tmp_
         window.close()
 
 
+def _custom_reference_payload(name: str = "ColorChecker personalizada") -> dict:
+    return {
+        "chart_name": name,
+        "chart_version": "unit",
+        "reference_source": "unit-test",
+        "illuminant": "D50",
+        "observer": "2",
+        "patches": [
+            {"patch_id": f"P{i:02d}", "patch_name": f"Patch {i:02d}", "reference_lab": [50.0, 0.0, 0.0]}
+            for i in range(1, 25)
+        ],
+    }
+
+
+def test_session_can_save_and_reload_custom_reference_catalog(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    payload = create_session(root, name="Sesion referencias")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        saved = window._save_reference_payload_to_session(
+            _custom_reference_payload(),
+            desired_name="mi carta",
+        )
+
+        assert saved.parent == root / "00_configuraciones" / "references"
+        assert window.path_reference.text() == str(saved)
+        assert "ColorChecker personalizada" in window.reference_status_label.text()
+        assert window.reference_catalog_combo.findData(str(saved)) >= 0
+
+        state = load_session(root)["state"]
+        assert state["reference_path"] == str(saved)
+    finally:
+        window.close()
+
+    second = ICCRawMainWindow()
+    try:
+        second._activate_session(root, load_session(root))
+
+        assert second.path_reference.text() == str(saved)
+        assert second.reference_catalog_combo.findData(str(saved)) >= 0
+        assert "ColorChecker personalizada" in second.reference_status_label.text()
+    finally:
+        second.close()
+
+
+def test_invalid_custom_reference_is_rejected_by_session_save(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    payload = create_session(root, name="Sesion referencias")
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        bad = _custom_reference_payload()
+        bad["patches"] = bad["patches"][:3]
+
+        with pytest.raises(RuntimeError, match="Referencia de carta invalida"):
+            window._save_reference_payload_to_session(bad, desired_name="incompleta")
+    finally:
+        window.close()
+
+
+def test_reference_table_generates_custom_reference_payload(qapp):
+    window = ICCRawMainWindow()
+    try:
+        table = QtWidgets.QTableWidget()
+        window._populate_reference_table(table, _custom_reference_payload())
+        table.item(0, 3).setText("37.9856")
+        table.item(0, 4).setText("13.5551")
+        table.item(0, 5).setText("14.0501")
+
+        payload = window._reference_payload_from_table(
+            table,
+            chart_name="ColorChecker personalizada",
+            chart_version="medida",
+            reference_source="espectro personalizado",
+            illuminant="D50",
+            observer="2",
+            patch_order="row-major",
+        )
+
+        assert payload["chart_name"] == "ColorChecker personalizada"
+        assert payload["patches"][0]["reference_lab"] == [37.9856, 13.5551, 14.0501]
+        assert ReferenceCatalog(payload, strict=True).patch_map["P01"]["reference_lab"] == [37.9856, 13.5551, 14.0501]
+    finally:
+        window.close()
+
+
+def test_reference_lab_swatch_updates_from_lab_values(qapp):
+    window = ICCRawMainWindow()
+    try:
+        table = QtWidgets.QTableWidget()
+        window._populate_reference_table(table, _custom_reference_payload())
+
+        table.item(0, 3).setText("50")
+        table.item(0, 4).setText("0")
+        table.item(0, 5).setText("0")
+        rgb = window._lab_reference_to_srgb_u8([50.0, 0.0, 0.0])
+        color = table.item(0, 0).background().color()
+
+        assert max(rgb) - min(rgb) <= 4
+        assert 115 <= rgb[0] <= 125
+        assert color.red() == rgb[0]
+        assert color.green() == rgb[1]
+        assert color.blue() == rgb[2]
+    finally:
+        window.close()
+
+
 def test_file_icons_do_not_decode_image_data(tmp_path: Path, monkeypatch, qapp):
     image_path = tmp_path / "frame.tiff"
     raw_path = tmp_path / "capture.dng"
@@ -240,14 +350,43 @@ def test_file_icons_do_not_decode_image_data(tmp_path: Path, monkeypatch, qapp):
 def test_raw_develop_layout_prioritizes_viewer_area(qapp):
     window = ICCRawMainWindow()
     try:
+        assert isinstance(window.left_tabs, gui_module.PersistentSideTabWidget)
         assert window.left_tabs.tabPosition() == QtWidgets.QTabWidget.West
         labels = [window.left_tabs.tabText(i) for i in range(window.left_tabs.count())]
-        assert labels == ["Explorador", "Visor", "Análisis", "Metadatos", "Log"]
+        assert labels == ["Explorador", "Visor", "Diagnóstico", "Metadatos", "Log"]
+        analysis_labels = [window.analysis_tabs.tabText(i) for i in range(window.analysis_tabs.count())]
+        assert analysis_labels == ["Imagen", "Carta", "Gamut 3D"]
+        assert isinstance(window.gamut_3d_widget, gui_module.Gamut3DWidget)
         assert window.viewer_splitter.count() == 2
         assert window.viewer_splitter.widget(0) is window.viewer_stack
         assert hasattr(window, "thumbnail_size_slider")
         if hasattr(QtWidgets.QFileSystemModel, "DontWatchForChanges"):
             assert not window._dir_model.testOption(QtWidgets.QFileSystemModel.DontWatchForChanges)
+    finally:
+        window.close()
+
+
+def test_left_vertical_tabs_remain_available_when_sidebar_is_compacted(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window.resize(1280, 760)
+        window.main_tabs.setCurrentIndex(1)
+        window.show()
+        qapp.processEvents()
+
+        collapsed_width = window.left_tabs.collapsedWidth()
+        window.raw_splitter.setSizes([0, 960, 300])
+        qapp.processEvents()
+
+        sizes = window.raw_splitter.sizes()
+        assert sizes[0] >= collapsed_width
+        assert window.left_tabs.tabBar().isVisible()
+        assert window.left_tabs.tabBar().width() > 0
+
+        window.left_tabs.setCurrentIndex(1)
+        qapp.processEvents()
+
+        assert window.raw_splitter.sizes()[0] >= 260
     finally:
         window.close()
 
@@ -723,6 +862,20 @@ def test_output_space_combo_synchronizes_linear_state_and_basic_selector(qapp):
         window.close()
 
 
+def test_colprof_args_default_to_restricted_input_gamut(qapp):
+    window = ICCRawMainWindow()
+    try:
+        assert window._build_colprof_args() == ["-qm", "-as", "-u", "-R"]
+
+        window._apply_recipe_to_controls(Recipe(argyll_colprof_args=["-qh", "-al"]))
+
+        assert window.combo_profile_quality.currentData() == "h"
+        assert window.combo_profile_algo.currentData() == "-al"
+        assert window._build_colprof_args() == ["-qh", "-al", "-u", "-R"]
+    finally:
+        window.close()
+
+
 def test_loading_or_using_icc_profile_enables_apply_profile(tmp_path: Path, monkeypatch, qapp):
     root = tmp_path / "session"
     payload = create_session(root, name="Sesion perfiles")
@@ -753,6 +906,116 @@ def test_loading_or_using_icc_profile_enables_apply_profile(tmp_path: Path, monk
 
         assert window.chk_apply_profile.isChecked()
         assert window._active_session_icc_for_settings() == generated
+    finally:
+        window.close()
+
+
+def test_activate_session_loads_generated_icc_profile_catalog(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    payload = create_session(
+        root,
+        name="Sesion perfiles",
+        state={"preview_apply_profile": True},
+    )
+    window = ICCRawMainWindow()
+    try:
+        monkeypatch.setattr(window, "_is_legacy_temp_output_path", lambda _value: False)
+        paths = window._session_paths_from_root(root)
+        first = paths["profiles"] / "d50.icc"
+        second = paths["profiles"] / "led.icc"
+        first.parent.mkdir(parents=True, exist_ok=True)
+        first.write_bytes(b"d50 profile" * 32)
+        second.write_bytes(b"led profile" * 32)
+        first.with_suffix(".profile.json").write_text('{"profile_status": "validated"}', encoding="utf-8")
+        second.with_suffix(".profile.json").write_text('{"profile_status": "draft"}', encoding="utf-8")
+        payload["state"]["profile_active_path"] = str(second)
+
+        window._activate_session(root, payload)
+
+        assert [Path(profile["path"]).name for profile in window._icc_profiles] == ["led.icc", "d50.icc"]
+        assert Path(window.path_profile_active.text()) == second
+        assert window.chk_apply_profile.isChecked()
+        assert window.icc_profile_combo.count() == 3
+        assert window.icc_profile_combo.currentData() == window._active_icc_profile_id
+        assert window.gamut_profile_a_combo.findData(f"managed:{window._active_icc_profile_id}") >= 0
+
+        saved_state = load_session(root)["state"]
+        assert [Path(profile["path"]).name for profile in saved_state["icc_profiles"]] == ["led.icc", "d50.icc"]
+        assert saved_state["active_icc_profile_id"] == window._active_icc_profile_id
+    finally:
+        window.close()
+
+
+def test_profile_generation_versions_session_icc_outputs_and_registers_profile(tmp_path: Path, monkeypatch, qapp):
+    chart = tmp_path / "chart.tiff"
+    Image.new("RGB", (16, 16), (20, 120, 220)).save(chart)
+    root = tmp_path / "session"
+    payload = create_session(root, name="Sesion perfiles")
+    captured: dict[str, Path] = {}
+
+    def fake_auto_generate_profile_from_charts(**kwargs):
+        captured.update(
+            {
+                "profile_out": kwargs["profile_out"],
+                "profile_report_out": kwargs["profile_report_out"],
+                "development_profile_out": kwargs["development_profile_out"],
+                "calibrated_recipe_out": kwargs["calibrated_recipe_out"],
+                "work_dir": kwargs["work_dir"],
+            }
+        )
+        kwargs["profile_out"].parent.mkdir(parents=True, exist_ok=True)
+        kwargs["profile_out"].write_bytes(b"new profile" * 32)
+        kwargs["profile_report_out"].parent.mkdir(parents=True, exist_ok=True)
+        kwargs["profile_report_out"].write_text("{}", encoding="utf-8")
+        kwargs["development_profile_out"].parent.mkdir(parents=True, exist_ok=True)
+        kwargs["development_profile_out"].write_text("{}", encoding="utf-8")
+        gui_module.save_recipe(Recipe(), kwargs["calibrated_recipe_out"])
+        return {
+            "chart_captures_used": 1,
+            "training_captures_total": 1,
+            "development_profile_path": str(kwargs["development_profile_out"]),
+            "calibrated_recipe_path": str(kwargs["calibrated_recipe_out"]),
+            "profile_report_path": str(kwargs["profile_report_out"]),
+            "profile_status": {
+                "status": "validated",
+                "generated_at": "2026-04-29T12:00:00+00:00",
+            },
+            "profile": {"error_summary": {}, "patch_errors": []},
+        }
+
+    def run_task(_label, task, on_success):
+        on_success(task())
+
+    monkeypatch.setattr(gui_module.ReferenceCatalog, "from_path", staticmethod(lambda _path: object()))
+    monkeypatch.setattr(gui_module, "auto_generate_profile_from_charts", fake_auto_generate_profile_from_charts)
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        defaults = window._session_default_outputs()
+        defaults["profile_out"].parent.mkdir(parents=True, exist_ok=True)
+        defaults["profile_out"].write_bytes(b"existing profile" * 32)
+        window._start_background_task = run_task
+        window._selected_chart_files = [chart]
+        window.profile_charts_dir.setText(str(tmp_path))
+
+        window._on_generate_profile()
+
+        assert captured["profile_out"].name == "Sesion perfiles_v002.icc"
+        assert captured["profile_report_out"].parent == root / "00_configuraciones" / "profile_runs" / "Sesion perfiles_v002"
+        assert captured["work_dir"] == root / "00_configuraciones" / "work" / "profile_generation" / "Sesion perfiles_v002"
+        assert Path(window.path_profile_active.text()) == captured["profile_out"]
+        assert window.chk_apply_profile.isChecked()
+        assert window.icc_profile_combo.currentData() == window._active_icc_profile_id
+        assert [Path(profile["path"]).name for profile in window._icc_profiles][:2] == [
+            "Sesion perfiles_v002.icc",
+            "Sesion perfiles.icc",
+        ]
+
+        saved_state = load_session(root)["state"]
+        assert Path(saved_state["icc_profiles"][0]["path"]).name == "Sesion perfiles_v002.icc"
+        assert saved_state["active_icc_profile_id"] == window._active_icc_profile_id
+        assert window._next_generated_icc_profile_path(captured["profile_out"]).name == "Sesion perfiles_v003.icc"
     finally:
         window.close()
 
@@ -865,8 +1128,19 @@ def test_generate_profile_draft_does_not_auto_activate(tmp_path: Path, monkeypat
             "profile": {
                 "error_summary": {
                     "mean_delta_e2000": 2.0,
+                    "median_delta_e2000": 1.8,
+                    "p95_delta_e2000": 3.5,
                     "max_delta_e2000": 4.0,
-                }
+                },
+                "patch_errors": [
+                    {
+                        "patch_id": "P01",
+                        "reference_lab": [37.99, 13.56, 14.06],
+                        "profile_lab": [38.45, 12.91, 15.10],
+                        "delta_e76": 1.3,
+                        "delta_e2000": 1.1,
+                    }
+                ],
             },
         }
 
@@ -888,6 +1162,107 @@ def test_generate_profile_draft_does_not_auto_activate(tmp_path: Path, monkeypat
 
         assert window.path_profile_active.text() == ""
         assert not window.chk_apply_profile.isChecked()
+        assert window.chart_diagnostics_table.rowCount() == 1
+        assert window.chart_diagnostics_table.item(0, 0).text() == "P01"
+        assert "DeltaE2000 media 2.00" in window.chart_diagnostics_summary.text()
+    finally:
+        window.close()
+
+
+def test_large_profile_payload_is_summarized_for_ui(qapp):
+    payload = {
+        "chart_captures_total": 1,
+        "training_captures_total": 1,
+        "chart_captures_used": 1,
+        "profile_report_path": "/tmp/profile_report.json",
+        "profile_status": {"status": "draft"},
+        "profile": {
+            "error_summary": {"mean_delta_e2000": 1.2, "max_delta_e2000": 3.4},
+            "patch_errors": [
+                {
+                    "patch_id": f"P{i:03d}",
+                    "delta_e76": float(i),
+                    "delta_e2000": float(i),
+                    "reference_lab": [50.0, 0.0, 0.0],
+                    "profile_lab": [51.0, 0.0, 0.0],
+                }
+                for i in range(40)
+            ],
+        },
+        "bulky_debug_blob": ["x" * 1000 for _ in range(80)],
+    }
+
+    window = ICCRawMainWindow()
+    try:
+        text = window._profile_output_text(payload)
+
+        assert "La salida completa es grande" in text
+        assert "worst_patch_errors" in text
+        assert "bulky_debug_blob" not in text
+    finally:
+        window.close()
+
+
+def test_gamut_refresh_populates_diagnostic_widget(tmp_path: Path, monkeypatch, qapp):
+    profile = tmp_path / "camera.icc"
+    profile.write_bytes(b"fake icc" * 32)
+    captured: dict[str, object] = {}
+
+    def fake_build_gamut_pair_diagnostics(**kwargs):
+        captured.update(kwargs)
+        return {
+            "series": [
+                {
+                    "label": "ICC generado",
+                    "color": "#f8fafc",
+                    "role": "wire",
+                    "points_lab": gui_module.np.asarray(
+                        [[50.0, 0.0, 0.0], [60.0, 20.0, 10.0]],
+                        dtype=gui_module.np.float64,
+                    ),
+                    "surface_rgb": gui_module.np.asarray(
+                        [[0.0, 0.0, 0.0], [1.0, 0.5, 0.25]],
+                        dtype=gui_module.np.float64,
+                    ),
+                    "quads": [],
+                },
+                {
+                    "label": "sRGB",
+                    "color": "#f97316",
+                    "role": "solid",
+                    "points_lab": gui_module.np.asarray(
+                        [[50.0, 0.0, 0.0], [60.0, 20.0, 10.0]],
+                        dtype=gui_module.np.float64,
+                    ),
+                    "surface_rgb": gui_module.np.asarray(
+                        [[0.0, 0.0, 0.0], [1.0, 0.5, 0.25]],
+                        dtype=gui_module.np.float64,
+                    ),
+                    "quads": [],
+                }
+            ],
+            "comparisons": [{"source": "ICC generado", "target": "sRGB", "inside_ratio": 1.0}],
+            "skipped": [],
+        }
+
+    def run_task(_label, task, on_success):
+        on_success(task())
+
+    monkeypatch.setattr(gui_module, "build_gamut_pair_diagnostics", fake_build_gamut_pair_diagnostics)
+    monkeypatch.setattr(gui_module, "detect_system_display_profile", lambda: None)
+
+    window = ICCRawMainWindow()
+    try:
+        window._start_background_task = run_task
+        window.profile_out_path_edit.setText(str(profile))
+
+        window._on_refresh_gamut_diagnostics()
+
+        assert captured["profile_a"]["path"] == str(profile)
+        assert captured["profile_b"] == {"kind": "standard", "key": "srgb"}
+        assert len(window.gamut_3d_widget._series) == 2
+        assert "ICC generado en sRGB: 100.0% dentro" in window.gamut_status_label.text()
+        assert window.analysis_tabs.tabText(window.analysis_tabs.currentIndex()) == "Gamut 3D"
     finally:
         window.close()
 

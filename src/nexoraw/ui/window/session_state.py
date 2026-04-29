@@ -21,10 +21,13 @@ class SessionStateMixin:
         self._populate_session_directory_fields(self._session_paths_from_root(root))
 
     def _session_state_snapshot(self) -> dict[str, Any]:
+        self._sync_session_icc_profiles_from_disk()
         chart_files, _rejected_chart_files = self._filter_profile_reference_files(self._selected_chart_files)
         active_profile = self.path_profile_active.text().strip()
         active_profile_path = Path(active_profile).expanduser() if active_profile else None
         active_profile_valid = active_profile_path is not None and self._profile_can_be_active(active_profile_path)
+        if not active_profile_valid:
+            self._active_icc_profile_id = ""
         return {
             "profile_charts_dir": self.profile_charts_dir.text().strip(),
             "profile_chart_files": [str(p) for p in chart_files],
@@ -41,6 +44,8 @@ class SessionStateMixin:
             "profile_lens": self.profile_lens.text().strip(),
             "recipe_path": self.path_recipe.text().strip(),
             "profile_active_path": active_profile if active_profile_valid else "",
+            "icc_profiles": self._session_icc_profiles_snapshot(),
+            "active_icc_profile_id": self._active_icc_profile_id if active_profile_valid else "",
             "development_profiles": list(self._development_profiles),
             "active_development_profile_id": self._active_development_profile_id,
             "batch_input_dir": self.batch_input_dir.text().strip(),
@@ -102,6 +107,8 @@ class SessionStateMixin:
             "profile_lens": "",
             "recipe_path": str(defaults["recipe"]),
             "profile_active_path": "",
+            "icc_profiles": [],
+            "active_icc_profile_id": "",
             "development_profiles": [],
             "active_development_profile_id": "",
             "batch_input_dir": str(paths["raw"]),
@@ -147,6 +154,7 @@ class SessionStateMixin:
         ] if isinstance(raw_profiles, list) else []
         self._active_development_profile_id = str(state.get("active_development_profile_id") or "")
         self._refresh_development_profile_combo()
+        self._load_session_icc_profiles(state, paths=paths, defaults=defaults)
 
         self.profile_charts_dir.setText(str(charts_dir))
         chart_files_state = state.get("profile_chart_files")
@@ -166,6 +174,8 @@ class SessionStateMixin:
             self._selected_chart_files = []
         self._sync_profile_chart_selection_label()
         self.path_reference.setText(str(state.get("reference_path") or self.path_reference.text().strip()))
+        self._refresh_reference_catalog_combo()
+        self._update_reference_status()
         self.profile_out_path_edit.setText(
             str(self._session_output_path_or_default(state.get("profile_output_path"), defaults["profile_out"]))
         )
@@ -203,7 +213,15 @@ class SessionStateMixin:
 
         profile_active = str(state.get("profile_active_path") or "").strip()
         active_candidate: Path | None = None
-        if profile_active and not self._is_legacy_temp_output_path(profile_active):
+        active_profile_descriptor = self._icc_profile_by_id(self._active_icc_profile_id)
+        active_descriptor_path = (
+            self._session_stored_path(active_profile_descriptor.get("path"))
+            if active_profile_descriptor is not None
+            else None
+        )
+        if active_descriptor_path is not None:
+            active_candidate = active_descriptor_path
+        elif profile_active and not self._is_legacy_temp_output_path(profile_active):
             active_candidate = Path(profile_active).expanduser()
         elif defaults["profile_out"].exists():
             active_candidate = defaults["profile_out"]
@@ -212,6 +230,9 @@ class SessionStateMixin:
             self.path_profile_active.setText(str(active_candidate))
         else:
             self.path_profile_active.clear()
+            self._active_icc_profile_id = ""
+        self._sync_active_icc_profile_id_from_path()
+        self._refresh_profile_management_views()
 
         chart_type = str(state.get("profile_chart_type") or "colorchecker24")
         self._set_combo_text(self.profile_chart_type, chart_type)

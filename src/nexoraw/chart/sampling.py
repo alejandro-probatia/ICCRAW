@@ -84,6 +84,58 @@ _BUNDLED_REFERENCE_ALIASES = {
 }
 
 
+def bundled_reference_catalogs() -> list[dict[str, str]]:
+    seen: set[str] = set()
+    catalogs: list[dict[str, str]] = []
+    for bundled_name in sorted(set(_BUNDLED_REFERENCE_ALIASES.values())):
+        if bundled_name in seen:
+            continue
+        seen.add(bundled_name)
+        ref = resources.files("nexoraw.resources").joinpath("references", bundled_name)
+        payload = json.loads(ref.read_text(encoding="utf-8"))
+        catalog = ReferenceCatalog(payload, strict=False)
+        catalogs.append(
+            {
+                "name": bundled_name,
+                "path": bundled_name,
+                "label": reference_catalog_label(catalog),
+                "chart_name": catalog.chart_name,
+                "chart_version": catalog.chart_version,
+                "illuminant": catalog.illuminant,
+            }
+        )
+    return catalogs
+
+
+def reference_catalog_label(catalog: ReferenceCatalog) -> str:
+    parts = [
+        str(catalog.chart_name or "Carta").strip(),
+        str(catalog.chart_version or "").strip(),
+        str(catalog.illuminant or "").strip(),
+    ]
+    return " / ".join(part for part in parts if part and part != "unknown")
+
+
+def reference_catalog_template(*, chart_name: str = "Carta personalizada", patch_count: int = 24) -> dict:
+    count = max(1, int(patch_count))
+    return {
+        "chart_name": chart_name,
+        "chart_version": "personalizada",
+        "reference_source": "Medición personalizada introducida en NexoRAW",
+        "illuminant": "D50",
+        "observer": "2",
+        "patch_order": "row-major, top-left to bottom-right",
+        "patches": [
+            {
+                "patch_id": f"P{index:02d}",
+                "patch_name": f"Patch {index:02d}",
+                "reference_lab": [50.0, 0.0, 0.0],
+            }
+            for index in range(1, count + 1)
+        ],
+    }
+
+
 def _read_reference_payload(path: Path) -> dict:
     candidate = Path(path)
     if candidate.exists():

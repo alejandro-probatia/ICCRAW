@@ -4,7 +4,7 @@ _English version: [COLOR_PIPELINE.md](COLOR_PIPELINE.md)_
 
 ## Estado Operativo
 
-NexoRAW 0.2.5 implementa el flujo ICC principal y la interfaz de trabajo por
+NexoRAW 0.2.6 implementa el flujo ICC principal y la interfaz de trabajo por
 sesión. La aplicación es apta para pruebas controladas y validación de release,
 pero todavía no debe presentarse como sistema certificado de producción
 científica/forense.
@@ -53,6 +53,11 @@ Reglas:
 9. `validate-profile`: validación DeltaE 76/2000 del ICC real.
 10. `batch-develop`: revelado de lote con perfil de ajuste e ICC asignado.
 
+Las referencias de carta personalizadas se guardan en
+`00_configuraciones/references/`. Cada ejecución avanzada de perfilado deja sus
+artefactos en `00_configuraciones/profile_runs/`, y los ICC resultantes quedan
+registrados como perfiles de sesión activables.
+
 ## Invariantes Críticas
 
 1. La receta ejecutada debe coincidir con la receta declarada.
@@ -73,6 +78,8 @@ Reglas:
    un ICC estándar y se declara `generic_output_icc`.
 10. La visualización en pantalla usa una conversión exclusiva hacia el perfil ICC
     del monitor configurado.
+11. El diagnóstico Gamut 3D es una comparación visual de perfiles; no modifica
+    recetas, píxeles, perfiles activos ni manifiestos.
 
 ## Gestión de Color del Monitor
 
