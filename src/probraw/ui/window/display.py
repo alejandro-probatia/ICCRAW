@@ -60,6 +60,11 @@ class DisplayControlsMixin:
         return slider, label
 
     def _render_adjustment_state(self) -> dict[str, Any]:
+        channel_points = self._tone_curve_channel_points_state()
+        luminance_points = channel_points.get(
+            "luminance",
+            [[float(x), float(y)] for x, y in normalize_tone_curve_points(self.tone_curve_editor.points())],
+        )
         return {
             "illuminant": self.combo_illuminant_render.currentText().strip(),
             "temperature_kelvin": int(self.spin_render_temperature.value()),
@@ -71,12 +76,12 @@ class DisplayControlsMixin:
             "midtone": self.slider_midtone.value() / 100.0,
             "tone_curve_enabled": bool(self.check_tone_curve_enabled.isChecked()),
             "tone_curve_preset": self._tone_curve_preset_key(),
+            "tone_curve_channel": self._tone_curve_channel_key(),
             "tone_curve_black_point": self.slider_tone_curve_black.value() / 1000.0,
             "tone_curve_white_point": self.slider_tone_curve_white.value() / 1000.0,
-            "tone_curve_points": [
-                [float(x), float(y)]
-                for x, y in normalize_tone_curve_points(self.tone_curve_editor.points())
-            ],
+            "tone_curve_points": luminance_points,
+            "tone_curve_channel_points": channel_points,
+            "tone_curve_channel_presets": dict(getattr(self, "_tone_curve_channel_presets", {})),
         }
 
     def _render_adjustment_kwargs_from_state(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -90,6 +95,7 @@ class DisplayControlsMixin:
             "contrast": float(state.get("contrast", 0.0)),
             "midtone": float(state.get("midtone", 1.0)),
             "tone_curve_points": state.get("tone_curve_points") if state.get("tone_curve_enabled") else None,
+            "tone_curve_channel_points": state.get("tone_curve_channel_points") if state.get("tone_curve_enabled") else None,
             "tone_curve_black_point": float(state.get("tone_curve_black_point", 0.0)),
             "tone_curve_white_point": float(
                 max(float(state.get("tone_curve_black_point", 0.0)) + 0.01, float(state.get("tone_curve_white_point", 1.0)))
@@ -142,12 +148,40 @@ class DisplayControlsMixin:
         curve_enabled = bool(state.get("tone_curve_enabled", False))
         curve_preset = str(state.get("tone_curve_preset") or "linear")
         curve_points = self._coerce_tone_curve_points(state.get("tone_curve_points"))
+        channel_points = self._coerce_tone_curve_channel_points(state.get("tone_curve_channel_points"))
+        if curve_points is not None and "luminance" not in channel_points:
+            channel_points["luminance"] = curve_points
+        if not channel_points:
+            channel_points["luminance"] = self._tone_curve_preset_points(curve_preset)
+        presets = state.get("tone_curve_channel_presets")
+        self._ensure_tone_curve_channel_state()
+        for channel, points in channel_points.items():
+            self._tone_curve_channel_points[channel] = points
+        if isinstance(presets, dict):
+            for channel in ("luminance", "red", "green", "blue"):
+                preset = str(presets.get(channel) or "")
+                if preset:
+                    self._tone_curve_channel_presets[channel] = preset
+        self._tone_curve_channel_presets["luminance"] = str(
+            self._tone_curve_channel_presets.get("luminance") or curve_preset
+        )
+        active_channel = str(state.get("tone_curve_channel") or "luminance")
+        if active_channel not in {"luminance", "red", "green", "blue"}:
+            active_channel = "luminance"
         curve_black = float(state.get("tone_curve_black_point", 0.0))
         curve_white = float(state.get("tone_curve_white_point", 1.0))
-        self._set_combo_data(self.combo_tone_curve_preset, curve_preset)
+        self.combo_tone_curve_channel.blockSignals(True)
+        self._set_combo_data(self.combo_tone_curve_channel, active_channel)
+        self.combo_tone_curve_channel.blockSignals(False)
+        self._tone_curve_active_channel = active_channel
+        self.combo_tone_curve_preset.blockSignals(True)
+        self._set_combo_data(self.combo_tone_curve_preset, self._tone_curve_channel_presets.get(active_channel, curve_preset))
+        self.combo_tone_curve_preset.blockSignals(False)
         self._set_tone_curve_range_controls(curve_black, curve_white)
         self.tone_curve_editor.set_points(
-            curve_points or self._tone_curve_preset_points(curve_preset),
+            self._tone_curve_channel_points.get(active_channel)
+            or curve_points
+            or self._tone_curve_preset_points(curve_preset),
             emit=False,
         )
         self.check_tone_curve_enabled.setChecked(curve_enabled)
@@ -425,13 +459,14 @@ class DisplayControlsMixin:
         )
 
     def _set_result_display_u8(self, display_u8: np.ndarray, *, compare_enabled: bool) -> None:
+        colorimetric_u8 = self._preview_colorimetric_u8(display_u8)
         if bool(compare_enabled and self._compare_view_active()):
             self.image_result_compare.set_rgb_u8_image(display_u8)
-            self._apply_clip_overlay_to_panel(self.image_result_compare, display_u8)
+            self._apply_clip_overlay_to_panel(self.image_result_compare, colorimetric_u8)
         else:
             self.image_result_single.set_rgb_u8_image(display_u8)
-            self._apply_clip_overlay_to_panel(self.image_result_single, display_u8)
-        self._update_viewer_histogram(display_u8)
+            self._apply_clip_overlay_to_panel(self.image_result_single, colorimetric_u8)
+        self._update_viewer_histogram(colorimetric_u8)
 
     def _ensure_original_compare_panel(self, *, bypass_profile: bool) -> None:
         if self._original_linear is None:

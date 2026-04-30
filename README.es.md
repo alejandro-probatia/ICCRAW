@@ -10,7 +10,7 @@ Revelado RAW/TIFF reproducible y auditable para fotografía científica, forense
 patrimonial, con perfilado ICC por sesión, ajustes paramétricos por archivo y
 trazabilidad abierta AGPL.
 
-![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.2-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.3-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![Interfaz principal de ProbRAW](docs/assets/screenshots/probraw-portada.png)
 
@@ -27,23 +27,22 @@ El flujo actual está centrado de forma deliberada en ICC:
 - sin carta, ProbRAW usa un perfil de ajuste manual y un ICC estándar real de
   salida (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`);
 - la gestión ICC del monitor afecta solo a la previsualización en pantalla;
-- el soporte DCP no es un objetivo activo de implementación en la línea 0.2.
+- el soporte DCP no es un objetivo activo de implementación en la línea 0.3.
 
 ## Estado Actual
 
-ProbRAW 0.3.2 es adecuado para pruebas controladas, revisión metodológica y
+ProbRAW 0.3.3 es adecuado para pruebas controladas, revisión metodológica y
 validación de candidata a release. Todavía no es un sistema certificado para
 producción científica o forense.
 
-La versión actual completa el cambio de marca a ProbRAW, actualiza paquete y
-artefactos de release, conserva compatibilidad con sidecars de sesiones previas
-y mantiene las nuevas herramientas de referencias de carta, perfiles ICC de
-sesión y diagnóstico Gamut 3D introducidas en la iteración anterior.
+La versión actual consolida el flujo de interfaz por sesión, el histograma
+colorimétrico previo al ICC de monitor, las curvas por canal y la recuperación
+automática de diagnósticos de carta desde los reportes de perfil guardados.
 
 La última validación de empaquetado pasó con:
 
 ```text
-222 passed, 1 warning
+228 passed, 1 warning
 ```
 
 ## Documentación

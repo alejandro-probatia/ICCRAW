@@ -353,12 +353,33 @@ def test_raw_develop_layout_prioritizes_viewer_area(qapp):
         assert isinstance(window.left_tabs, gui_module.PersistentSideTabWidget)
         assert window.left_tabs.tabPosition() == QtWidgets.QTabWidget.West
         labels = [window.left_tabs.tabText(i) for i in range(window.left_tabs.count())]
-        assert labels == ["Explorador", "Visor", "Diagnóstico", "Metadatos", "Log"]
+        assert labels == ["Explorador", "Diagnóstico", "Metadatos", "Log"]
         analysis_labels = [window.analysis_tabs.tabText(i) for i in range(window.analysis_tabs.count())]
         assert analysis_labels == ["Imagen", "Carta", "Gamut 3D"]
         assert isinstance(window.gamut_3d_widget, gui_module.Gamut3DWidget)
         assert window.viewer_splitter.count() == 2
-        assert window.viewer_splitter.widget(0) is window.viewer_stack
+        assert window.viewer_splitter.widget(0) is window.viewer_area
+        assert window.viewer_stack.parentWidget() is window.viewer_area
+        assert isinstance(window.chk_compare, QtGui.QAction)
+        assert isinstance(window.chk_apply_profile, QtGui.QAction)
+        assert isinstance(window._action_side_columns_focus, QtGui.QAction)
+        toolbar_buttons = window.viewer_toolbar.findChildren(QtWidgets.QToolButton)
+        assert len(toolbar_buttons) >= 11
+        assert not any(button.menu() is not None for button in toolbar_buttons)
+        assert not window.raw_splitter.widget(0).isHidden()
+        assert not window.raw_splitter.widget(2).isHidden()
+        window._action_side_columns_focus.setChecked(True)
+        qapp.processEvents()
+        assert window.raw_splitter.widget(0).isHidden()
+        assert window.raw_splitter.widget(2).isHidden()
+        window._action_side_columns_focus.setChecked(False)
+        qapp.processEvents()
+        assert not window.raw_splitter.widget(0).isHidden()
+        assert not window.raw_splitter.widget(2).isHidden()
+        assert any(
+            window.viewer_histogram is child
+            for child in window.right_workflow_tabs.widget(1).findChildren(gui_module.RGBHistogramWidget)
+        )
         assert hasattr(window, "thumbnail_size_slider")
         if hasattr(QtWidgets.QFileSystemModel, "DontWatchForChanges"):
             assert not window._dir_model.testOption(QtWidgets.QFileSystemModel.DontWatchForChanges)
@@ -1102,6 +1123,67 @@ def test_profile_report_with_high_training_error_is_not_activable(tmp_path: Path
         window.close()
 
 
+def test_session_activation_loads_saved_chart_diagnostics(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    payload = create_session(root, name="perfil_carta")
+    profile_path = root / "00_configuraciones" / "profiles" / "perfil_carta.icc"
+    report_path = root / "00_configuraciones" / "profile_runs" / "perfil_carta" / "profile_report.json"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_bytes(b"fake icc profile bytes" * 16)
+    report_path.write_text(
+        json.dumps(
+            {
+                "output_icc": str(profile_path),
+                "error_summary": {
+                    "mean_delta_e2000": 2.4,
+                    "median_delta_e2000": 2.1,
+                    "p95_delta_e2000": 3.8,
+                    "max_delta_e2000": 4.2,
+                },
+                "patch_errors": [
+                    {
+                        "patch_id": "P01",
+                        "reference_lab": [37.99, 13.56, 14.06],
+                        "profile_lab": [38.45, 12.91, 15.10],
+                        "delta_e76": 1.3,
+                        "delta_e2000": 1.1,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    payload["state"].update(
+        {
+            "profile_output_path": str(profile_path),
+            "profile_report_path": str(report_path),
+            "profile_active_path": str(profile_path),
+            "icc_profiles": [
+                {
+                    "id": "icc-perfil-carta",
+                    "name": "perfil_carta",
+                    "path": profile_path.relative_to(root).as_posix(),
+                    "profile_report_path": report_path.relative_to(root).as_posix(),
+                    "status": "validated",
+                }
+            ],
+            "active_icc_profile_id": "icc-perfil-carta",
+        }
+    )
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+
+        assert window.chart_diagnostics_table.rowCount() == 1
+        assert window.chart_diagnostics_table.item(0, 0).text() == "P01"
+        assert "DeltaE2000 media 2.40" in window.chart_diagnostics_summary.text()
+        assert window.chart_diagnostics_summary.toolTip() == str(report_path)
+    finally:
+        window.close()
+
+
 def test_manual_chart_points_use_display_coordinate_space(tmp_path: Path, qapp):
     root = tmp_path / "session"
     raw = root / "01_ORG" / "chart.NEF"
@@ -1631,15 +1713,31 @@ def test_thumbnail_copy_paste_development_settings_writes_raw_sidecars(tmp_path:
 def test_raw_adjustment_groups_follow_editor_flow(qapp):
     window = ICCRawMainWindow()
     try:
+        workflow_labels = [
+            window.right_workflow_tabs.tabText(i)
+            for i in range(window.right_workflow_tabs.count())
+        ]
+        assert workflow_labels == [
+            "Color / calibración",
+            "Ajustes personalizados",
+            "RAW / exportación",
+        ]
+
         panel_labels = [window.config_tabs.itemText(i) for i in range(window.config_tabs.count())]
-        assert panel_labels[:6] == [
+        assert panel_labels == [
             "Brillo y contraste",
             "Color",
             "Nitidez",
-            "Gestión de color y calibración",
+        ]
+        raw_export_labels = [
+            window.raw_export_tabs.itemText(i)
+            for i in range(window.raw_export_tabs.count())
+        ]
+        assert raw_export_labels == [
             "RAW Global",
             "Exportar derivados",
         ]
+        assert "Gestión de color y calibración" not in panel_labels
         assert "Calibrar sesión" not in panel_labels
         assert "Corrección básica" not in panel_labels
         assert isinstance(window._advanced_raw_config, QtWidgets.QGroupBox)
@@ -1652,7 +1750,12 @@ def test_development_profile_controls_live_in_color_management_flow(qapp):
     window = ICCRawMainWindow()
     try:
         panel_labels = [window.config_tabs.itemText(i) for i in range(window.config_tabs.count())]
-        assert "Gestión de color y calibración" in panel_labels
+        workflow_labels = [
+            window.right_workflow_tabs.tabText(i)
+            for i in range(window.right_workflow_tabs.count())
+        ]
+        assert "Color / calibración" in workflow_labels
+        assert "Gestión de color y calibración" not in panel_labels
         assert "Perfiles de revelado" not in panel_labels
         assert window.config_tabs.indexOf("Nitidez") == panel_labels.index("Nitidez")
 
@@ -1664,8 +1767,55 @@ def test_development_profile_controls_live_in_color_management_flow(qapp):
                 parent = parent.parentWidget()
             return False
 
-        assert is_descendant(window.development_profile_combo, window.config_tabs)
+        assert is_descendant(window.development_profile_combo, window.right_workflow_tabs.widget(0))
+        assert not is_descendant(window.development_profile_combo, window.config_tabs)
         assert not is_descendant(window.development_profile_combo, window.main_tabs.widget(0))
+    finally:
+        window.close()
+
+
+def test_session_tab_shows_statistics_and_recent_sessions(tmp_path: Path, qapp):
+    root_a = tmp_path / "session_a"
+    root_b = tmp_path / "session_b"
+
+    create_session(
+        root_a,
+        name="case_a",
+        state={
+            "development_profiles": [{"id": "basic-1", "name": "Manual", "profile_type": "basic"}],
+        },
+        queue=[{"source": str(root_a / "01_ORG" / "a.nef"), "status": "pending"}],
+    )
+    create_session(root_b, name="case_b", state={}, queue=[])
+
+    (root_a / "01_ORG" / "a.nef").write_bytes(b"raw-a")
+    (root_a / "01_ORG" / "b.CR3").write_bytes(b"raw-b")
+    (root_a / "01_ORG" / "a.nef.probraw.json").write_text("{}", encoding="utf-8")
+    (root_a / "02_DRV" / "a.tiff").write_bytes(b"tiff-a")
+    (root_a / "00_configuraciones" / "profiles" / "session.icc").write_bytes(b"icc")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root_a, load_session(root_a))
+
+        assert window.session_stats_labels["raw_images"].text() == "2"
+        assert window.session_stats_labels["tiff_images"].text() == "1"
+        assert window.session_stats_labels["icc_profiles"].text() == "1"
+        assert window.session_stats_labels["development_profiles"].text() == "1"
+        assert window.session_stats_labels["raw_sidecars"].text() == "1"
+        assert window.session_stats_labels["queue_items"].text() == "1"
+
+        window._activate_session(root_b, load_session(root_b))
+        recent_roots = [
+            window.recent_sessions_combo.itemData(i)
+            for i in range(window.recent_sessions_combo.count())
+        ]
+        assert str(root_a.resolve()) in recent_roots
+        assert str(root_b.resolve()) in recent_roots
+
+        window.recent_sessions_combo.setCurrentIndex(recent_roots.index(str(root_a.resolve())))
+        window._open_selected_recent_session()
+        assert window._active_session_root == root_a.resolve()
     finally:
         window.close()
 
@@ -1735,6 +1885,32 @@ def test_display_color_settings_migrate_old_disabled_default(tmp_path: Path, mon
         window.close()
 
 
+def test_histogram_uses_colorimetric_preview_before_monitor_transform(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window.path_profile_active.setText("/tmp/generated-profile.icc")
+        window.chk_apply_profile.setChecked(True)
+        window._preview_srgb = gui_module.np.asarray(
+            [
+                [
+                    [1.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0],
+                ]
+            ],
+            dtype=gui_module.np.float32,
+        )
+        monitor_display = gui_module.np.zeros((1, 2, 3), dtype=gui_module.np.uint8)
+
+        window._set_result_display_u8(monitor_display, compare_enabled=False)
+
+        metrics = window.viewer_histogram.clip_metrics()
+        assert metrics["highlight_r"] == pytest.approx(0.5)
+        assert metrics["shadow_g"] == pytest.approx(1.0)
+        assert "antes del ICC del monitor" in window.viewer_histogram.toolTip()
+    finally:
+        window.close()
+
+
 def test_right_column_uses_independent_collapsible_sections(qapp):
     window = ICCRawMainWindow()
     try:
@@ -1773,11 +1949,34 @@ def test_advanced_tone_curve_is_persisted_in_render_state(qapp):
         assert state["tone_curve_black_point"] == 0.08
         assert state["tone_curve_white_point"] == 0.92
         assert state["tone_curve_points"][1] == [0.5, 0.72]
+        assert state["tone_curve_channel"] == "luminance"
+        assert state["tone_curve_channel_points"]["luminance"][1] == [0.5, 0.72]
         assert kwargs["tone_curve_points"] == state["tone_curve_points"]
+        assert kwargs["tone_curve_channel_points"] == state["tone_curve_channel_points"]
         assert kwargs["tone_curve_black_point"] == 0.08
         assert kwargs["tone_curve_white_point"] == 0.92
         assert window.tone_curve_editor.sizeHint().width() == window.tone_curve_editor.sizeHint().height()
         assert window.tone_curve_editor.hasHeightForWidth()
+    finally:
+        window.close()
+
+
+def test_tone_curve_editor_preserves_per_channel_points(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window.check_tone_curve_enabled.setChecked(True)
+        window.tone_curve_editor.set_points([(0.0, 0.0), (0.45, 0.7), (1.0, 1.0)])
+        window._set_combo_data(window.combo_tone_curve_channel, "red")
+        window.tone_curve_editor.set_points([(0.0, 0.0), (0.35, 0.58), (1.0, 1.0)])
+
+        state = window._render_adjustment_state()
+        kwargs = window._render_adjustment_kwargs()
+
+        assert state["tone_curve_channel"] == "red"
+        assert state["tone_curve_channel_points"]["luminance"][1] == [0.45, 0.7]
+        assert state["tone_curve_channel_points"]["red"][1] == [0.35, 0.58]
+        assert kwargs["tone_curve_points"] == state["tone_curve_channel_points"]["luminance"]
+        assert kwargs["tone_curve_channel_points"]["red"][1] == [0.35, 0.58]
     finally:
         window.close()
 

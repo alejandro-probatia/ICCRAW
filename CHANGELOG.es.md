@@ -18,11 +18,46 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+Sin cambios pendientes.
+
+## [0.3.3] - 2026-04-30
+
+### Added
+
+- La pestaña `1. Sesión` muestra ahora estadísticas de la sesión activa:
+  imágenes RAW, TIFF derivados, perfiles ICC, perfiles de ajuste, mochilas RAW
+  y elementos en cola.
+- Acceso directo a sesiones recientes desde la pestaña de sesión.
+- El diagnóstico `Carta` puede recargar datos de parches desde el
+  `profile_report.json` guardado y los restaura automáticamente al abrir la
+  sesión.
+- La curva tonal avanzada permite edición por canal: luminosidad, rojo, verde y
+  azul.
+- Nuevo botón de enfoque del visor para ocultar/restaurar columnas laterales en
+  un clic.
+
+### Changed
+
+- Reorganizada la tercera columna de `2. Ajustar / Aplicar` en tres pestañas de
+  flujo: `Color / calibración`, `Ajustes personalizados` y `RAW / exportación`.
+- La pestaña vertical `Visor` desaparece del panel izquierdo: los controles de
+  comparación, zoom, giro, encaje, caché y aplicación ICC viven ahora en una
+  barra superior horizontal del visor central con iconos compactos.
+- El histograma queda fijo en la cabecera de `Ajustes personalizados`.
+- El histograma y el overlay de clipping leen la señal colorimétrica de preview
+  antes de la conversión al perfil ICC del monitor; la conversión de monitor se
+  mantiene como última capa exclusiva de visualización.
+- Actualizados manuales y capturas para reflejar el nuevo flujo de interfaz y la
+  política de gestión de color.
+
 ### Fixed
 
-- El visor `Gamut 3D` reinicia camara y zoom cuando cambian los perfiles o la
-  malla Lab, evitando que una vista anterior con elevacion extrema haga parecer
-  el gamut estirado hasta reiniciar la aplicacion.
+- El visor `Gamut 3D` reinicia cámara y zoom cuando cambian los perfiles o la
+  malla Lab, evitando que una vista anterior con elevación extrema haga parecer
+  el gamut estirado hasta reiniciar la aplicación.
+- Al reabrir una sesión con perfiles generados, la pestaña `Carta` ya no queda
+  en `Sin datos de carta` cuando existe un reporte de perfil con errores por
+  parche.
 
 ## [0.3.2] - 2026-04-29
 

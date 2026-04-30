@@ -20,11 +20,43 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+No pending changes.
+
+## [0.3.3] - 2026-04-30
+
+### Added
+
+- The `1. Sesión` tab now shows active-session statistics: RAW images, derived
+  TIFFs, ICC profiles, development profiles, RAW sidecars and queued items.
+- Direct access to recent sessions from the session tab.
+- The `Carta` diagnostics tab can reload patch data from saved
+  `profile_report.json` files and restores it automatically when a session is
+  opened.
+- The advanced tone curve supports per-channel editing: luminance, red, green
+  and blue.
+- New viewer-focus button to hide/restore side columns with one click.
+
+### Changed
+
+- The third column in `2. Ajustar / Aplicar` is reorganized into three workflow
+  tabs: `Color / calibración`, `Ajustes personalizados` and `RAW / exportación`.
+- The vertical `Visor` tab was removed from the left pane: compare, zoom,
+  rotate, fit, cache and ICC-preview controls now live in a compact horizontal
+  toolbar above the central viewer.
+- The histogram is always visible in the `Ajustes personalizados` header.
+- Histogram and clipping overlay now read the colorimetric preview signal before
+  monitor ICC conversion; monitor conversion remains the final display-only
+  layer.
+- User manuals and screenshots were updated for the new interface flow and color
+  management policy.
+
 ### Fixed
 
 - The `Gamut 3D` viewer now resets camera and zoom when the profile pair or Lab
   mesh changes, avoiding a previous high-elevation view making the gamut look
   stretched until the application is restarted.
+- Reopening a session with generated profiles no longer leaves the `Carta` tab
+  at `Sin datos de carta` when a profile report with per-patch errors exists.
 
 ## [0.3.2] - 2026-04-29
 
@@ -151,9 +183,10 @@ To maintain full traceability, each change must:
 
 ## [0.2.2] - 2026-04-27
 
-### Added- `scripts/profile_pipeline.py` to profile real commands with `c
-Profile`
-  and, if installed, generate flamegraph with `py-spy`.
+### Added
+
+- `scripts/profile_pipeline.py` to profile real commands with `cProfile`
+  and, if installed, generate flamegraphs with `py-spy`.
 - `scripts/benchmark_raw_pipeline.py` for cross-platform benchmark
   demosaic, numerical cache and process scaling with real RAWs.
 - `scripts/benchmark_gui_interaction.py` to measure slider fluidity and curve
@@ -192,7 +225,9 @@ Profile`
 
 ## [0.2.1] - 2026-04-27
 
-### Added- `Ayuda > Acerca de` GUI expanded with:
+### Added
+
+- `Ayuda > Acerca de` GUI expanded with:
   - configurable project manager (`PROBRAW_PROJECT_DIRECTOR`),
   - running version,
   - AMaZE operational status,
@@ -225,7 +260,9 @@ Profile`
 - Debian package release `0.2.0`, installable as a ProbRAW application with
   `probraw`/`probraw-ui` launchers, hicolor icons and AMaZE validated in build.
 
-### Changed- The manual stops explaining installation from code and manual dependencies;
+### Changed
+
+- The manual stops explaining installation from code and manual dependencies;
   user installation is considered covered by installers
   multiplatform.
 - The GUI treats profiles as settings assigned to RAW: advanced profile from
@@ -304,7 +341,9 @@ Profile`
 
 ## [0.1.0-beta.4] - 2026-04-25
 
-### Changed- Windows AMaZE installer includes distribution metadata
+### Changed
+
+- Windows AMaZE installer includes distribution metadata
   `rawpy-demosaic` inside the PyInstaller executable so that
   `probraw check-amaze` report the exact backend.
 - Windows packaging copies notices/licenses from `rawpy-demosaic`, LibRaw,
@@ -328,7 +367,9 @@ Profile`
 - Prepared the Windows packaging flow with PowerShell scripts,
   PyInstaller, Inno Setup template and testing documentation.
 
-### Changed- High quality preview, batch export and GUI development paths avoid
+### Changed
+
+- High quality preview, batch export and GUI development paths avoid
   Temporary TIFFs when not needed.
 - The RAW preview in RGB/profiled camera mode applies a visual normalization
   for the viewer only, avoiding green casts when marking unaltered cards
@@ -356,7 +397,9 @@ Profile`
 - Redundant manual loading buttons on the viewer are removed; the selection of
   miniature becomes the main action.
 
-### Fixed- Support for ArgyllCMS on Windows when `colprof` generates `.icm` on
+### Fixed
+
+- Support for ArgyllCMS on Windows when `colprof` generates `.icm` on
   instead of `.icc`.
 - The RAW backend explicitly informs when a recipe calls for AMaZE without
   demosaic pack GPL3; the GUI avoids the crash by downgrading to `dcb` with warning.
@@ -379,7 +422,9 @@ Profile`
 
 ## [0.1.0-beta.1] - 2026-04-24
 
-### Changed- The GUI migrates routes inherited from `/tmp` to the session structure:
+### Changed
+
+- The GUI migrates routes inherited from `/tmp` to the session structure:
   profiles in `profiles/`, reports/recipes in `config/`, work in `work/`
   and TIFF/preview in `exports/`.
 - `batch-develop` separates ICC management into explicit modes:
@@ -482,7 +527,11 @@ Profile`
   - development/profile settings,
   - active profile,
   - development queue.
-- `tests_py/test_session.py` unit test for structure, loading and session normalization.### Changed- The previous GUI (tkinter) is completely replaced by a Qt implementation.
+- `tests_py/test_session.py` unit test for structure, loading and session normalization.
+
+### Changed
+
+- The previous GUI (tkinter) is completely replaced by a Qt implementation.
 - `apply_profile_matrix` moved to public API in `icc_entrada.export` for reuse in preview.
 - Documentation and roadmap updated to reflect Qt GUI and AGPL legal policy + dependencies.
 - Redesign of GUI to a 3-panel layout (browser, main viewer, control panel) prioritizing image space and practical production flow.
@@ -516,7 +565,9 @@ Profile`
   so that they are not confused with the final inspection or delivery TIFFs.
 - Automatic flow can reserve letter captures for hold-out validation,
   generate `qa_session_report.json` and classify the session as `validated`,
-  `rejected` or `not_validated`.### Docs
+  `rejected` or `not_validated`.
+
+### Docs
 
 - Extended README with project objective, scope, limits and methodology
   applied to RAW flow -> letter -> development profile -> ICC -> batch.
@@ -548,7 +599,9 @@ Profile`
 
 ## [0.1.0] - 2026-04-23
 
-### Added- Initial structure of the modular project (`core`, `src`, `cli`, `docs`, `tests`).
+### Added
+
+- Initial structure of the modular project (`core`, `src`, `cli`, `docs`, `tests`).
 - Functional CLI for technical flow: `raw-info`, `develop`, `detect-chart`, `sample-chart`, `build-profile`, `validate-profile`, `batch-develop`.
 - Lightweight GUI in `tkinter` to operate the entire flow without command line.
 - Automatic end-to-end flow (`auto-profile-batch`) for letter -> ICC profile -> 16-bit TIFF batch.

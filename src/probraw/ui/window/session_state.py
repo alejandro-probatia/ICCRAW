@@ -9,6 +9,7 @@ class SessionStateMixin:
         self.session_root_path.setText(str(root))
         self.session_name_edit.setText(root.name)
         self._populate_session_directory_fields(self._session_paths_from_root(root))
+        self._refresh_session_statistics()
         self._set_status(self.tr("Raiz de sesion:") + f" {root}")
 
     def _on_session_root_edited(self) -> None:
@@ -19,6 +20,162 @@ class SessionStateMixin:
         if not self.session_name_edit.text().strip() and root.name:
             self.session_name_edit.setText(root.name)
         self._populate_session_directory_fields(self._session_paths_from_root(root))
+        self._refresh_session_statistics()
+
+    def _recent_session_roots(self) -> list[Path]:
+        raw = self._settings.value("session/recent_roots", "")
+        values: list[str] = []
+        if isinstance(raw, (list, tuple)):
+            values = [str(item) for item in raw]
+        elif isinstance(raw, str) and raw.strip():
+            try:
+                decoded = json.loads(raw)
+                if isinstance(decoded, list):
+                    values = [str(item) for item in decoded]
+                else:
+                    values = [raw]
+            except Exception:
+                values = [raw]
+
+        roots: list[Path] = []
+        seen: set[str] = set()
+        for value in values:
+            text = str(value).strip()
+            if not text:
+                continue
+            path = Path(text).expanduser()
+            try:
+                resolved = path.resolve(strict=False)
+            except Exception:
+                resolved = path
+            key = str(resolved)
+            if key in seen or not session_file_path(resolved).exists():
+                continue
+            seen.add(key)
+            roots.append(resolved)
+        return roots
+
+    def _store_recent_session_roots(self, roots: list[Path]) -> None:
+        self._settings.setValue("session/recent_roots", json.dumps([str(path) for path in roots[:10]]))
+
+    def _remember_recent_session(self, root: Path) -> None:
+        try:
+            resolved = Path(root).expanduser().resolve(strict=False)
+        except Exception:
+            resolved = Path(root).expanduser()
+        roots = [resolved]
+        roots.extend(path for path in self._recent_session_roots() if path != resolved)
+        self._store_recent_session_roots(roots)
+        self._refresh_recent_sessions_combo()
+
+    def _refresh_recent_sessions_combo(self) -> None:
+        combo = getattr(self, "recent_sessions_combo", None)
+        if combo is None:
+            return
+        current_data = str(combo.currentData() or "")
+        combo.blockSignals(True)
+        combo.clear()
+        roots = self._recent_session_roots()
+        for root in roots:
+            try:
+                payload = load_session(root)
+                name = str(payload.get("metadata", {}).get("name") or root.name)
+            except Exception:
+                name = root.name
+            combo.addItem(f"{name} - {root}", str(root))
+        if not roots:
+            combo.addItem(self.tr("No hay sesiones recientes"), "")
+        elif current_data:
+            idx = combo.findData(current_data)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+        combo.blockSignals(False)
+
+    def _open_selected_recent_session(self) -> None:
+        combo = getattr(self, "recent_sessions_combo", None)
+        if combo is None:
+            return
+        root_text = str(combo.currentData() or "").strip()
+        if not root_text:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("No hay una sesión reciente seleccionada."))
+            return
+        root = Path(root_text).expanduser()
+        try:
+            payload = load_session(root)
+        except Exception as exc:
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("Info"),
+                self.tr("No se pudo abrir la sesión reciente:") + f"\n{exc}",
+            )
+            self._refresh_recent_sessions_combo()
+            return
+        self._activate_session(root, payload)
+
+    def _refresh_session_statistics(self) -> None:
+        labels = getattr(self, "session_stats_labels", None)
+        if not isinstance(labels, dict):
+            return
+        root_text = ""
+        if getattr(self, "_active_session_root", None) is not None:
+            root_text = str(self._active_session_root)
+        elif hasattr(self, "session_root_path"):
+            root_text = self.session_root_path.text().strip()
+
+        root = Path(root_text).expanduser() if root_text else None
+        stats = {
+            "raw_images": 0,
+            "tiff_images": 0,
+            "icc_profiles": 0,
+            "development_profiles": len(getattr(self, "_development_profiles", []) or []),
+            "raw_sidecars": 0,
+            "queue_items": len(getattr(self, "_develop_queue", []) or []),
+        }
+
+        if root is not None:
+            paths = self._session_paths_from_root(root)
+            stats["raw_images"] = self._count_files_with_suffixes(paths["raw"], RAW_EXTENSIONS)
+            stats["tiff_images"] = self._count_files_with_suffixes(paths["exports"], {".tif", ".tiff"})
+            stats["icc_profiles"] = self._count_files_with_suffixes(paths["profiles"], {".icc", ".icm"})
+            stats["raw_sidecars"] = self._count_files_with_suffixes(paths["raw"], {".json"}, suffix_text=".probraw.json")
+
+        for key, value in stats.items():
+            label = labels.get(key)
+            if label is not None:
+                label.setText(str(int(value)))
+
+        status_label = getattr(self, "session_stats_updated_label", None)
+        if status_label is not None:
+            if root is None:
+                status_label.setText(self.tr("Sin sesión activa"))
+            else:
+                status_label.setText(self.tr("Actualizado para:") + f"\n{root}")
+
+    def _count_files_with_suffixes(
+        self,
+        directory: Path,
+        suffixes: set[str],
+        *,
+        suffix_text: str | None = None,
+    ) -> int:
+        try:
+            base = Path(directory).expanduser()
+            if not base.exists():
+                return 0
+            count = 0
+            normalized = {str(s).lower() for s in suffixes}
+            for path in base.rglob("*"):
+                if not path.is_file():
+                    continue
+                name = path.name.lower()
+                if suffix_text is not None:
+                    if name.endswith(suffix_text):
+                        count += 1
+                elif path.suffix.lower() in normalized:
+                    count += 1
+            return count
+        except Exception:
+            return 0
 
     def _session_state_snapshot(self) -> dict[str, Any]:
         self._sync_session_icc_profiles_from_disk()
@@ -83,9 +240,22 @@ class SessionStateMixin:
             "midtone": 1.0,
             "tone_curve_enabled": False,
             "tone_curve_preset": "linear",
+            "tone_curve_channel": "luminance",
             "tone_curve_black_point": 0.0,
             "tone_curve_white_point": 1.0,
             "tone_curve_points": [[0.0, 0.0], [1.0, 1.0]],
+            "tone_curve_channel_points": {
+                "luminance": [[0.0, 0.0], [1.0, 1.0]],
+                "red": [[0.0, 0.0], [1.0, 1.0]],
+                "green": [[0.0, 0.0], [1.0, 1.0]],
+                "blue": [[0.0, 0.0], [1.0, 1.0]],
+            },
+            "tone_curve_channel_presets": {
+                "luminance": "linear",
+                "red": "linear",
+                "green": "linear",
+                "blue": "linear",
+            },
         }
 
     def _new_session_initial_state(self, root: Path, session_name: str) -> dict[str, Any]:
@@ -233,6 +403,7 @@ class SessionStateMixin:
             self._active_icc_profile_id = ""
         self._sync_active_icc_profile_id_from_path()
         self._refresh_profile_management_views()
+        self._refresh_chart_diagnostics_from_session(focus=False)
 
         chart_type = str(state.get("profile_chart_type") or "colorchecker24")
         self._set_combo_text(self.profile_chart_type, chart_type)
@@ -307,6 +478,7 @@ class SessionStateMixin:
             session_name=session_name,
         )
         self._settings.setValue("session/last_root", str(self._active_session_root))
+        self._remember_recent_session(self._active_session_root)
 
         self._develop_queue = [
             {
@@ -332,6 +504,7 @@ class SessionStateMixin:
             + self.tr("Raiz:") + f" {self._active_session_root}\n"
             + self.tr("Configuracion:") + f" {session_file_path(self._active_session_root)}"
         )
+        self._refresh_session_statistics()
         self._set_status(self.tr("Sesion activa:") + f" {session_name}")
         self._save_active_session(silent=True)
 
@@ -425,11 +598,13 @@ class SessionStateMixin:
         self._active_session_payload = saved
         self._active_session_root = root.resolve()
         self._settings.setValue("session/last_root", str(self._active_session_root))
+        self._remember_recent_session(self._active_session_root)
         self.session_active_label.setText(
             self.tr("Sesion activa:") + f" {saved['metadata']['name']}\n"
             + self.tr("Raiz:") + f" {self._active_session_root}\n"
             + self.tr("Configuracion:") + f" {session_file_path(self._active_session_root)}"
         )
+        self._refresh_session_statistics()
         if not silent:
             self._set_status(self.tr("Sesion guardada:") + f" {session_file_path(self._active_session_root)}")
         return True

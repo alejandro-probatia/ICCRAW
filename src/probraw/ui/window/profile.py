@@ -935,15 +935,114 @@ class ProfileWorkflowMixin:
             "validation_error_summary": qa.get("validation_error_summary"),
         }
 
-    def _update_chart_diagnostics(self, payload: dict[str, Any]) -> None:
+    def _chart_diagnostics_profile_from_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            return {}
+        profile = payload.get("profile")
+        if isinstance(profile, dict):
+            return profile
+        if isinstance(payload.get("patch_errors"), list) or isinstance(payload.get("error_summary"), dict):
+            return payload
+        metadata = payload.get("metadata")
+        if isinstance(metadata, dict):
+            patch_errors = metadata.get("diagnostic_matrix_patch_errors")
+            error_summary = metadata.get("diagnostic_matrix_error_summary")
+            if isinstance(patch_errors, list) or isinstance(error_summary, dict):
+                return {
+                    "patch_errors": patch_errors if isinstance(patch_errors, list) else [],
+                    "error_summary": error_summary if isinstance(error_summary, dict) else {},
+                }
+        return {}
+
+    def _chart_diagnostics_report_candidates(self) -> list[Path]:
+        candidates: list[Path] = []
+        seen: set[str] = set()
+
+        def add(value: Any) -> None:
+            path = self._session_stored_path(value)
+            if path is None:
+                return
+            try:
+                key = str(path.expanduser().resolve(strict=False))
+            except Exception:
+                key = str(path.expanduser())
+            if key in seen:
+                return
+            seen.add(key)
+            candidates.append(path.expanduser())
+
+        if hasattr(self, "profile_report_out"):
+            add(self.profile_report_out.text().strip())
+
+        active_development_id = str(getattr(self, "_active_development_profile_id", "") or "")
+        for profile in getattr(self, "_development_profiles", []) or []:
+            if isinstance(profile, dict) and str(profile.get("id") or "") == active_development_id:
+                add(profile.get("profile_report_path"))
+                break
+
+        active_icc = self._icc_profile_by_id(getattr(self, "_active_icc_profile_id", "")) if hasattr(self, "_icc_profile_by_id") else None
+        if isinstance(active_icc, dict):
+            add(active_icc.get("profile_report_path"))
+
+        for profile in getattr(self, "_development_profiles", []) or []:
+            if isinstance(profile, dict):
+                add(profile.get("profile_report_path"))
+        for profile in getattr(self, "_icc_profiles", []) or []:
+            if isinstance(profile, dict):
+                add(profile.get("profile_report_path"))
+
+        if getattr(self, "_active_session_root", None) is not None:
+            add(self._session_default_outputs()["profile_report"])
+
+        return candidates
+
+    def _load_chart_diagnostics_from_report(self, report_path: Path, *, focus: bool = False) -> bool:
+        try:
+            if not report_path.exists():
+                return False
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+        except Exception:
+            return False
+        if not isinstance(payload, dict):
+            return False
+
+        profile = self._chart_diagnostics_profile_from_payload(payload)
+        errors = profile.get("patch_errors") if isinstance(profile.get("patch_errors"), list) else []
+        summary = profile.get("error_summary") if isinstance(profile.get("error_summary"), dict) else {}
+        if not errors and not summary:
+            return False
+
+        normalized = dict(payload)
+        if not isinstance(normalized.get("profile"), dict):
+            normalized = {"profile": profile, "profile_report_path": str(report_path)}
+        else:
+            normalized.setdefault("profile_report_path", str(report_path))
+        self._update_chart_diagnostics(normalized, focus=focus)
+        if hasattr(self, "chart_diagnostics_summary"):
+            self.chart_diagnostics_summary.setToolTip(str(report_path))
+        return True
+
+    def _refresh_chart_diagnostics_from_session(self, _checked: bool = False, *, focus: bool = False) -> bool:
+        if not hasattr(self, "chart_diagnostics_table"):
+            return False
+        for report_path in self._chart_diagnostics_report_candidates():
+            if self._load_chart_diagnostics_from_report(report_path, focus=focus):
+                return True
+        self._populate_chart_diagnostics_table([])
+        self._update_chart_diagnostics_summary({}, [])
+        if hasattr(self, "chart_diagnostics_summary"):
+            self.chart_diagnostics_summary.setToolTip("")
+        return False
+
+    def _update_chart_diagnostics(self, payload: dict[str, Any], *, focus: bool = True) -> None:
         if not hasattr(self, "chart_diagnostics_table"):
             return
-        profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+        profile = self._chart_diagnostics_profile_from_payload(payload)
         errors = profile.get("patch_errors") if isinstance(profile.get("patch_errors"), list) else []
         summary = profile.get("error_summary") if isinstance(profile.get("error_summary"), dict) else {}
         self._populate_chart_diagnostics_table(errors)
         self._update_chart_diagnostics_summary(summary, errors)
-        if hasattr(self, "analysis_tabs"):
+        if focus and hasattr(self, "analysis_tabs"):
             self.analysis_tabs.setCurrentIndex(1)
 
     def _populate_chart_diagnostics_table(self, errors: list[Any]) -> None:
@@ -988,7 +1087,7 @@ class ProfileWorkflowMixin:
     def _update_chart_diagnostics_summary(self, summary: dict[str, Any], errors: list[Any]) -> None:
         if not hasattr(self, "chart_diagnostics_summary"):
             return
-        if not errors:
+        if not errors and not summary:
             self.chart_diagnostics_summary.setText(self.tr("Sin datos de carta"))
             return
         mean_de = self._coerce_float(summary.get("mean_delta_e2000"))
@@ -1005,8 +1104,9 @@ class ProfileWorkflowMixin:
             for item in worst
             if str(item.get("patch_id") or "")
         )
+        patch_count = len([e for e in errors if isinstance(e, dict)])
         parts = [
-            f"Parches: {len([e for e in errors if isinstance(e, dict)])}",
+            f"Parches: {patch_count}" if patch_count else self.tr("Resumen de carta sin tabla de parches"),
             f"DeltaE2000 media {mean_de:.2f}",
             f"mediana {median_de:.2f}",
             f"p95 {p95_de:.2f}",

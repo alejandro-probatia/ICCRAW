@@ -94,6 +94,23 @@ class PreviewRenderMixin:
                 ]
             )
         )
+        tone_channel_points = render_state.get("tone_curve_channel_points")
+        channel_sig_parts: list[str] = []
+        if isinstance(tone_channel_points, dict):
+            for channel in ("luminance", "red", "green", "blue"):
+                points = tone_channel_points.get(channel) or []
+                channel_points = normalize_tone_curve_points(
+                    [
+                        (p[0], p[1])
+                        for p in points
+                        if isinstance(p, (list, tuple)) and len(p) >= 2
+                    ]
+                )
+                channel_sig_parts.append(
+                    channel
+                    + "="
+                    + ",".join(f"{float(x):.4f}:{float(y):.4f}" for x, y in channel_points)
+                )
         source_key = self._last_loaded_preview_key or str(id(self._original_linear))
         return "|".join(
             [
@@ -115,6 +132,8 @@ class PreviewRenderMixin:
                 f"tb={float(render_state.get('tone_curve_black_point', 0.0)):.4f}",
                 f"tw={float(render_state.get('tone_curve_white_point', 1.0)):.4f}",
                 f"tp={tone_sig}",
+                f"tc={render_state.get('tone_curve_channel', 'luminance')}",
+                f"tcp={';'.join(channel_sig_parts)}",
             ]
         )
 
@@ -448,7 +467,10 @@ class PreviewRenderMixin:
             render_kwargs = self._render_adjustment_kwargs()
             histogram_key = self._last_loaded_preview_key or str(id(self._original_linear))
             if not interactive and self._tone_curve_histogram_key != histogram_key:
-                self.tone_curve_editor.set_histogram_from_image(self._original_linear)
+                self.tone_curve_editor.set_histogram_from_image(
+                    self._original_linear,
+                    channel=self._tone_curve_channel_key(),
+                )
                 self._tone_curve_histogram_key = histogram_key
 
             compare_enabled = bool(self.chk_compare.isChecked())

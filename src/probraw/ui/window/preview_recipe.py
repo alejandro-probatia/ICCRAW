@@ -140,7 +140,71 @@ class PreviewRecipeMixin:
     def _tone_curve_preset_key(self) -> str:
         return str(self.combo_tone_curve_preset.currentData() or "linear")
 
+    def _tone_curve_channel_key(self) -> str:
+        combo = getattr(self, "combo_tone_curve_channel", None)
+        key = str(combo.currentData() if combo is not None else self._tone_curve_active_channel)
+        return key if key in {"luminance", "red", "green", "blue"} else "luminance"
+
+    def _identity_tone_curve_points(self) -> list[tuple[float, float]]:
+        return [(0.0, 0.0), (1.0, 1.0)]
+
+    def _ensure_tone_curve_channel_state(self) -> None:
+        channels = ("luminance", "red", "green", "blue")
+        if not isinstance(getattr(self, "_tone_curve_channel_points", None), dict):
+            self._tone_curve_channel_points = {}
+        if not isinstance(getattr(self, "_tone_curve_channel_presets", None), dict):
+            self._tone_curve_channel_presets = {}
+        for channel in channels:
+            points = self._coerce_tone_curve_points(self._tone_curve_channel_points.get(channel))
+            self._tone_curve_channel_points[channel] = points or self._identity_tone_curve_points()
+            preset = str(self._tone_curve_channel_presets.get(channel) or "linear")
+            self._tone_curve_channel_presets[channel] = preset
+        if getattr(self, "_tone_curve_active_channel", "luminance") not in channels:
+            self._tone_curve_active_channel = "luminance"
+
+    def _save_visible_tone_curve_channel_state(self, channel: str | None = None) -> None:
+        self._ensure_tone_curve_channel_state()
+        target = channel or self._tone_curve_channel_key()
+        if target not in self._tone_curve_channel_points:
+            target = "luminance"
+        self._tone_curve_active_channel = target
+        self._tone_curve_channel_points[target] = normalize_tone_curve_points(self.tone_curve_editor.points())
+        self._tone_curve_channel_presets[target] = self._tone_curve_preset_key()
+
+    def _load_tone_curve_channel_into_editor(self, channel: str) -> None:
+        self._ensure_tone_curve_channel_state()
+        key = channel if channel in self._tone_curve_channel_points else "luminance"
+        self._tone_curve_active_channel = key
+        preset = str(self._tone_curve_channel_presets.get(key) or "linear")
+        points = self._tone_curve_channel_points.get(key) or self._tone_curve_preset_points(preset)
+        self.combo_tone_curve_preset.blockSignals(True)
+        self._set_combo_data(self.combo_tone_curve_preset, preset)
+        self.combo_tone_curve_preset.blockSignals(False)
+        self.tone_curve_editor.set_points(points, emit=False)
+        if self._original_linear is not None:
+            self.tone_curve_editor.set_histogram_from_image(self._original_linear, channel=key)
+            self._tone_curve_histogram_key = None
+
+    def _tone_curve_channel_points_state(self) -> dict[str, list[list[float]]]:
+        self._save_visible_tone_curve_channel_state()
+        return {
+            channel: [[float(x), float(y)] for x, y in normalize_tone_curve_points(points)]
+            for channel, points in self._tone_curve_channel_points.items()
+            if channel in {"luminance", "red", "green", "blue"}
+        }
+
+    def _coerce_tone_curve_channel_points(self, value: Any) -> dict[str, list[tuple[float, float]]]:
+        out: dict[str, list[tuple[float, float]]] = {}
+        if not isinstance(value, dict):
+            return out
+        for channel in ("luminance", "red", "green", "blue"):
+            points = self._coerce_tone_curve_points(value.get(channel))
+            if points is not None:
+                out[channel] = points
+        return out
+
     def _set_tone_curve_controls_enabled(self, enabled: bool) -> None:
+        self.combo_tone_curve_channel.setEnabled(bool(enabled))
         self.combo_tone_curve_preset.setEnabled(bool(enabled))
         self.label_tone_curve_black.setEnabled(bool(enabled))
         self.slider_tone_curve_black.setEnabled(bool(enabled))
@@ -300,10 +364,19 @@ class PreviewRecipeMixin:
         self._set_tone_curve_controls_enabled(enabled)
         self._on_render_control_change()
 
+    def _on_tone_curve_channel_changed(self, _index: int) -> None:
+        previous = getattr(self, "_tone_curve_active_channel", "luminance")
+        current = self._tone_curve_channel_key()
+        if previous != current:
+            self._save_visible_tone_curve_channel_state(previous)
+        self._load_tone_curve_channel_into_editor(current)
+        self._on_render_control_change()
+
     def _on_tone_curve_preset_changed(self, _index: int) -> None:
         key = self._tone_curve_preset_key()
         if key != "custom":
             self.tone_curve_editor.set_points(self._tone_curve_preset_points(key), emit=False)
+        self._save_visible_tone_curve_channel_state()
         self._on_render_control_change()
 
     def _on_tone_curve_range_changed(self, *_args) -> None:
@@ -324,6 +397,7 @@ class PreviewRecipeMixin:
             self.combo_tone_curve_preset.blockSignals(True)
             self._set_combo_data(self.combo_tone_curve_preset, "custom")
             self.combo_tone_curve_preset.blockSignals(False)
+        self._save_visible_tone_curve_channel_state()
         self._on_render_control_change()
 
     def _on_render_control_change(self) -> None:
@@ -332,6 +406,21 @@ class PreviewRecipeMixin:
 
     def _reset_tone_curve(self) -> None:
         self.check_tone_curve_enabled.setChecked(False)
+        self._tone_curve_channel_points = {
+            "luminance": self._identity_tone_curve_points(),
+            "red": self._identity_tone_curve_points(),
+            "green": self._identity_tone_curve_points(),
+            "blue": self._identity_tone_curve_points(),
+        }
+        self._tone_curve_channel_presets = {
+            "luminance": "linear",
+            "red": "linear",
+            "green": "linear",
+            "blue": "linear",
+        }
+        self._tone_curve_active_channel = "luminance"
+        if hasattr(self, "combo_tone_curve_channel"):
+            self._set_combo_data(self.combo_tone_curve_channel, "luminance")
         self._set_combo_data(self.combo_tone_curve_preset, "linear")
         self._set_tone_curve_range_controls(0.0, 1.0)
         self.tone_curve_editor.set_points(self._tone_curve_preset_points("linear"), emit=False)
@@ -456,10 +545,37 @@ class PreviewRecipeMixin:
             if hasattr(self, panel_name):
                 getattr(self, panel_name).clear_clip_overlay()
 
-    def _update_viewer_histogram(self, display_u8: np.ndarray | None) -> None:
+    def _preview_colorimetric_u8(self, fallback_u8: np.ndarray | None) -> np.ndarray | None:
+        source = getattr(self, "_preview_srgb", None)
+        if source is None:
+            return fallback_u8
+        try:
+            source_rgb = np.asarray(source)
+            if fallback_u8 is not None:
+                fallback = np.asarray(fallback_u8)
+                if source_rgb.shape[:2] != fallback.shape[:2]:
+                    return fallback_u8
+            return srgb_to_display_u8(source_rgb, None)
+        except Exception:
+            return fallback_u8
+
+    def _preview_histogram_source_label(self) -> str:
+        if (
+            hasattr(self, "chk_apply_profile")
+            and self.chk_apply_profile.isChecked()
+            and hasattr(self, "path_profile_active")
+            and self.path_profile_active.text().strip()
+        ):
+            return self.tr("Histograma: sRGB colorimétrico tras ICC de entrada, antes del ICC del monitor.")
+        return self.tr("Histograma: sRGB de preview, antes del ICC del monitor.")
+
+    def _update_viewer_histogram(self, colorimetric_u8: np.ndarray | None) -> None:
         if not hasattr(self, "viewer_histogram"):
             return
-        self.viewer_histogram.set_image_u8(display_u8)
+        self.viewer_histogram.set_image_u8(
+            colorimetric_u8,
+            source_label=self._preview_histogram_source_label() if colorimetric_u8 is not None else None,
+        )
         self._apply_histogram_clip_metrics(self.viewer_histogram.clip_metrics())
 
     def _clear_viewer_histogram(self) -> None:

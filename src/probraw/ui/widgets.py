@@ -204,7 +204,7 @@ if QtWidgets is not None:
             self._white_point = white
             self.update()
 
-        def set_histogram_from_image(self, image_linear_rgb: np.ndarray | None) -> None:
+        def set_histogram_from_image(self, image_linear_rgb: np.ndarray | None, *, channel: str = "luminance") -> None:
             if image_linear_rgb is None:
                 self._histogram = None
                 self.update()
@@ -219,9 +219,14 @@ if QtWidgets is not None:
                 stride = int(np.ceil(np.sqrt(count / float(VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS))))
                 rgb = rgb[::max(1, stride), ::max(1, stride), :3]
             rgb = np.clip(rgb.astype(np.float32, copy=False), 0.0, 1.0)
-            weights = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
-            luminance = np.sum(rgb[..., :3] * weights.reshape((1, 1, 3)), axis=2)
-            hist, _ = np.histogram(luminance, bins=64, range=(0.0, 1.0))
+            key = str(channel or "luminance").strip().lower()
+            channel_index = {"red": 0, "green": 1, "blue": 2}.get(key)
+            if channel_index is None:
+                weights = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
+                values = np.sum(rgb[..., :3] * weights.reshape((1, 1, 3)), axis=2)
+            else:
+                values = rgb[..., channel_index]
+            hist, _ = np.histogram(values, bins=64, range=(0.0, 1.0))
             hist = hist.astype(np.float32)
             maxv = float(np.max(hist)) if hist.size else 0.0
             self._histogram = hist / maxv if maxv > 0.0 else None
@@ -410,7 +415,7 @@ if QtWidgets is not None:
                 "highlight_any": float(np.max(self._clip_highlight)),
             }
 
-        def set_image_u8(self, image_rgb_u8: np.ndarray | None) -> None:
+        def set_image_u8(self, image_rgb_u8: np.ndarray | None, *, source_label: str | None = None) -> None:
             if image_rgb_u8 is None:
                 self.clear()
                 return
@@ -452,7 +457,10 @@ if QtWidgets is not None:
             ).astype(np.float32)
 
             metrics = self.clip_metrics()
-            self.setToolTip(
+            tooltip_parts = []
+            if source_label:
+                tooltip_parts.append(str(source_label))
+            tooltip_parts.append(
                 "Clipping sombras: "
                 f"R {metrics['shadow_r'] * 100.0:.2f}%  "
                 f"G {metrics['shadow_g'] * 100.0:.2f}%  "
@@ -462,6 +470,7 @@ if QtWidgets is not None:
                 f"G {metrics['highlight_g'] * 100.0:.2f}%  "
                 f"B {metrics['highlight_b'] * 100.0:.2f}%"
             )
+            self.setToolTip("\n".join(tooltip_parts))
             self.update()
 
         def paintEvent(self, _event) -> None:  # noqa: N802

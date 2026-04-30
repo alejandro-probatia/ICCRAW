@@ -169,6 +169,19 @@ if QtWidgets is not None:
             self._development_settings_clipboard: dict[str, Any] | None = None
             self._selected_chart_files: list[Path] = []
             self._manual_chart_detections: dict[str, dict[str, Any]] = {}
+            self._tone_curve_active_channel = "luminance"
+            self._tone_curve_channel_points: dict[str, list[tuple[float, float]]] = {
+                "luminance": [(0.0, 0.0), (1.0, 1.0)],
+                "red": [(0.0, 0.0), (1.0, 1.0)],
+                "green": [(0.0, 0.0), (1.0, 1.0)],
+                "blue": [(0.0, 0.0), (1.0, 1.0)],
+            }
+            self._tone_curve_channel_presets: dict[str, str] = {
+                "luminance": "linear",
+                "red": "linear",
+                "green": "linear",
+                "blue": "linear",
+            }
             self._update_check_last: dict[str, Any] | None = None
 
             self._original_linear: np.ndarray | None = None

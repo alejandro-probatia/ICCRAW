@@ -72,6 +72,29 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.3
+
+Release 0.3.3 consolidates the graphical session, adjustment and color
+management workflow:
+
+- statistics and recent sessions in `1. Sesión`,
+- third column organized by workflow: color/calibration, custom adjustments and
+  RAW/export,
+- compact horizontal viewer toolbar with icons and a button to focus/restore
+  side columns,
+- fixed colorimetric RGB histogram in `Ajustes personalizados`,
+- per-channel curves and automatic chart-data recovery from `profile_report.json`,
+- updated manuals and screenshots documenting the preview policy: input ICC to
+  interpret the image, monitor ICC only as the final display layer.
+
+Expected artifacts:
+
+- `probraw_0.3.3_amd64.deb`
+- `probraw_0.3.3_amd64.deb.sha256`
+- `probraw-0.3.3.tar.gz`
+- `probraw-0.3.3-py3-none-any.whl`
+- `probraw_0.3.3_python_artifacts.sha256`
+
 ## Release 0.3.2
 
 Release 0.3.2 fixes the application icon in Linux menus:

@@ -4,7 +4,7 @@ _Versión en español: [COLOR_PIPELINE.es.md](COLOR_PIPELINE.es.md)_
 
 ## Operational Status
 
-ProbRAW 0.3.0 implements the main ICC workflow and the session-based GUI. The
+ProbRAW 0.3.3 implements the main ICC workflow and the session-based GUI. The
 application is suitable for controlled testing and release validation, but it
 should not yet be presented as a certified scientific or forensic production
 system.
@@ -24,7 +24,7 @@ The pipeline separates:
 6. monitor ICC for display only;
 7. audit through backpacks, manifests, Proof and optional C2PA.
 
-DCP is not part of the active 0.2 pipeline.
+DCP is not part of the active 0.3 pipeline.
 
 ## Scientific Mode (`profiling_mode`)
 
@@ -77,7 +77,9 @@ activatable session profiles.
    a standard ICC is embedded and the output is declared `generic_output_icc`.
 10. On-screen display uses a display-only conversion to the configured monitor
     ICC profile.
-11. The 3D gamut diagnostic is a visual profile comparison; it does not modify
+11. The GUI histogram and clipping overlay are computed from the colorimetric
+    preview signal before applying the monitor ICC.
+12. The 3D gamut diagnostic is a visual profile comparison; it does not modify
     recipes, pixels, active profiles or manifests.
 
 ## Monitor Color Management
@@ -93,6 +95,24 @@ Detection:
 
 If the profile disappears or cannot be opened, ProbRAW logs the problem and uses
 sRGB as the visual fallback.
+
+## Preview and Histogram
+
+The GUI separates the analysis signal from the display signal:
+
+1. The RAW is developed or previewed as normalized linear RGB.
+2. Parametric adjustments are applied before output conversion.
+3. If a valid input ICC is active, preview uses that ICC to build a colorimetric
+   sRGB review signal.
+4. The colorimetric RGB histogram and clipping overlay read that pre-monitor
+   sRGB signal.
+5. Only after that, the monitor ICC is applied before pixels are sent to the
+   on-screen widget.
+
+This prevents a narrow, defective or machine-specific monitor profile from
+altering analysis data. At the same time, the user must calibrate the monitor
+and configure the correct ICC in the operating system for the visual appearance
+of the preview to be reliable.
 
 ## Profile Validity
 

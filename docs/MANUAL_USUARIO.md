@@ -10,11 +10,11 @@ settings, profiles, hashes and audit artifacts.
 
 ![ProbRAW: main development and profiling interface](assets/screenshots/probraw-portada.png)
 
-This manual covers the complete ProbRAW 0.3.2 workflow: session creation, color
+This manual covers the complete ProbRAW 0.3.3 workflow: session creation, color
 chart profiling, manual work without a chart, settings copy/paste, render queue,
 TIFF export, metadata, Proof, C2PA, 3D gamut diagnostics, chart reference
-management, global settings and the meaning of every visible option in the
-interface.
+management, session statistics, colorimetric histogram, global settings and the
+meaning of every visible option in the interface.
 
 ## 1. Installation and Startup
 
@@ -85,7 +85,9 @@ recommended base is scientific and reproducible:
 - without a chart: use a manual development profile and a real standard ICC
   output space (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`);
 - the monitor profile affects only on-screen viewing. It never changes TIFFs,
-  session profiles, hashes or manifests.
+  session profiles, hashes, manifests or the analysis histogram.
+- when a chart-generated input ICC exists, preview and the colorimetric
+  histogram should use that profile before monitor ICC conversion.
 
 Practical rule:
 
@@ -93,7 +95,8 @@ Practical rule:
 | --- | --- |
 | Valid chart available | TIFF in camera/session RGB with the generated input ICC embedded. |
 | No chart available | TIFF developed into the selected standard space with that standard ICC embedded. |
-| On-screen review | Monitor ICC applied only to the preview. |
+| On-screen review | Monitor ICC applied only to the preview as the final output layer. |
+| Analysis histogram | Colorimetric preview signal before monitor ICC conversion. |
 
 ## 3. Interface Map
 
@@ -141,6 +144,8 @@ In `1. Sesión`:
 | `Crear sesión` | Creates folders and a new `session.json`. |
 | `Abrir sesión` | Opens an existing session from its root. |
 | `Guardar sesión` | Saves metadata, interface state, selection, queue and persisted paths. |
+| `Sesiones recientes` | Reopens recently used sessions without browsing for the folder. |
+| `Resumen de sesión` | Shows RAW files, TIFFs, ICC profiles, development profiles, RAW sidecars and active queue size. |
 
 Minimal workflow:
 
@@ -150,9 +155,10 @@ Minimal workflow:
 4. Place RAW files and chart captures in `01_ORG/`.
 5. Go to `2. Ajustar / Aplicar`.
 
-## 5. Left Panel: Browsing, Viewer and Metadata
+## 5. Left Panel: Browsing, Diagnostics and Metadata
 
-In `2. Ajustar / Aplicar`, the left panel has vertical tabs.
+In `2. Ajustar / Aplicar`, the left panel has vertical tabs. The old `Visor`
+tab is gone: its actions moved to the central viewer toolbar to save space.
 
 ### Explorer
 
@@ -165,27 +171,14 @@ In `2. Ajustar / Aplicar`, the left panel has vertical tabs.
 Browsable files: RAW supported by the engine, DNG, TIFF, PNG, JPEG and JPG. For
 colorimetric references, use original RAW/DNG/TIFF captures, not derived outputs.
 
-### Viewer
+### Diagnostics
 
 | Option | Explanation |
 | --- | --- |
-| `Archivo actual` | Path of the selected file. |
-| `Comparar original / resultado` | Shows before/after view. When enabled, ProbRAW loads maximum-quality preview when needed. |
-| `Aplicar perfil ICC en resultado` | Applies the active ICC only to the result preview. It is off by default to avoid color casts when the ICC does not match the current camera, recipe and lighting. |
-| `-` / `+` | Zoom out or in. |
-| `1:1` | Display at real pixel size. |
-| `Girar izq.` / `Girar der.` | Rotate the view. This does not modify the RAW file. |
-| `Encajar` | Fit image to viewer. |
-| `Histograma RGB` | Shows RGB distribution for the active preview. |
-| `Testigos de clipping en sombras/luces` | Marks clipping in the histogram. |
-| `Overlay clipping en imagen` | Overlays blue for clipped shadows and red for clipped highlights. |
-| `Precache carpeta` | Computes normal previews for visible RAW files. |
-| `Precache 1:1` | Computes maximum-resolution previews for critical review. |
-
-### Analysis
-
-Shows a technical linear analysis of the preview: ranges, clipping and useful
-measurements for checking whether adjustments are stable.
+| `Imagen` | Technical linear preview analysis: ranges, clipping and useful measurements for checking whether adjustments are stable. |
+| `Carta` | Patch table with reference Lab, ICC-estimated Lab and DeltaE76/DeltaE2000. Filled after profile generation and restored from `profile_report.json` when reopening a session. |
+| Refresh button in `Carta` | Re-reads chart data from the active profile report or registered session reports. |
+| `Gamut 3D` | Pairwise visual comparison between session ICC, monitor, standard spaces or a custom ICC. |
 
 ### Metadata
 
@@ -209,6 +202,15 @@ Shows preview events, warnings, execution traces and workflow messages.
 
 | Option | Explanation |
 | --- | --- |
+| Top toolbar | Horizontal access to A/B comparison, ICC application, side-column focus, zoom, 1:1, rotation, fit and precache. |
+| `A/B` | Compares original/result. When enabled, ProbRAW loads maximum-quality preview when needed. |
+| ICC validation icon | Applies the active ICC only to the result preview. The ICC must match the current camera, recipe and lighting. |
+| Column icon | Hides/restores side columns for a larger image review area. |
+| `-` / `+` | Zoom out or in. |
+| Magnifier `1:1` | Display at real pixel size. |
+| Circular arrows | Rotate the view left or right. This does not modify the RAW file. |
+| Fit | Fit image to viewer. |
+| Cache icons | Compute normal or 1:1 previews for visible RAW files. |
 | `Resultado` viewer | RAW preview with current adjustments. |
 | `Antes` / `Después` view | Appears when original/result comparison is enabled. |
 | `Miniaturas` strip | Lists compatible files in the current directory. Supports multi-selection. |
@@ -232,7 +234,7 @@ This is the preferred workflow when objective colorimetric precision matters.
 2. Copy chart RAW files and scene RAW files to `01_ORG/`.
 3. In `2. Ajustar / Aplicar`, select the chart capture or captures.
 4. Press `Usar selección como referencias colorimétricas`.
-5. In `Gestión de color y calibración`, review `Referencia de carta`, `Tipo de
+5. In `Color / calibración`, review `Referencia de carta`, `Tipo de
    carta`, `Formato ICC`, `Tipo de perfil ICC` and `Calidad colprof`.
 6. In `RAW Global`, review demosaic and base RAW criteria. During advanced
    profiling, ProbRAW forces objective measurement settings: linear curve,
@@ -282,13 +284,19 @@ Best practices:
 - document the measurement source in `Fuente`;
 - press `Validar` before building the profile.
 
-### Session ICC Profiles and 3D Gamut Comparison
+### Chart Data, Session ICC Profiles and 3D Gamut Comparison
 
 Each generated ICC profile is registered in the session with name, path, status
 and source. This allows several versions of the same profile, for example matrix,
 cLUT, different references or different ArgyllCMS arguments, without losing
 history. The `Perfil ICC de sesión` selector activates any registered version for
 preview/export.
+
+The `Diagnóstico > Carta` tab shows chart data for the current session: patch
+identifier, reference Lab, estimated Lab after the generated ICC and DeltaE. If
+you reopen a session, ProbRAW searches for the `profile_report.json` associated
+with the active ICC or registered profiles and repopulates the table. The refresh
+button forces that lookup if reports were copied after the session was opened.
 
 The `Diagnóstico > Gamut 3D` tab always compares a pair of profiles, not every
 profile at once. Choose `Perfil A` and `Perfil B` from session profiles, the
@@ -308,7 +316,7 @@ objective, but still parametric and traceable.
 
 1. Select a representative image.
 2. Adjust `Brillo y contraste`, `Color`, `Nitidez` and, if needed, `RAW Global`.
-3. In `Gestión de color y calibración`, enter `Nombre del ajuste`.
+3. In `Color / calibración`, enter `Nombre del ajuste`.
 4. In `Espacio estándar sin carta`, choose the real output space: `sRGB
    estándar`, `Adobe RGB (1998) estándar` or `ProPhoto RGB estándar`.
 5. Press `Guardar perfil básico`.
@@ -389,6 +397,19 @@ configured.
 
 ## 11. Right Panel: Complete Settings Reference
 
+The right column of `2. Ajustar / Aplicar` guides the workflow:
+
+| Tab | Purpose |
+| --- | --- |
+| `Color / calibración` | References, development profiles, chart-based ICC generation and active ICC. |
+| `Ajustes personalizados` | Always-visible colorimetric histogram plus brightness, color, sharpness, noise and CA controls. |
+| `RAW / exportación` | Global RAW recipe and derived TIFF output. |
+
+The histogram in `Ajustes personalizados` is computed from the colorimetric
+signal before monitor ICC conversion. If the input ICC profile is active, it
+measures the preview produced by that profile; ProbRAW then applies the monitor
+profile only to display the image correctly on screen.
+
 ### Brightness and Contrast
 
 | Option | Range/values | Explanation |
@@ -399,6 +420,7 @@ configured.
 | `Contraste` | `-1.00` to `+1.00` | Global contrast adjustment. |
 | `Curva medios` | `0.50` to `2.00` | Changes midtone response. |
 | `Curva tonal avanzada` | on/off | Enables curve editor and range controls. |
+| `Canal curva` | Luminance, Red, Green, Blue | Selects which curve is edited. Luminance better preserves hue; channels modify RGB directly. |
 | `Preset curva` | Linear, Soft contrast, Film-like, Lift shadows, High contrast, Custom | Loads an editable curve shape. |
 | `Negro curva` | `0.000` to `0.950` | Internal black limit of the advanced curve. |
 | `Blanco curva` | `0.050` to `1.000` | Internal white limit of the advanced curve. |
@@ -432,7 +454,7 @@ configured.
 | `Sharpen modo receta` | off, mild, medium, strong | Compatibility recipe metadata. Does not modify pixels in the GUI. |
 | `Restablecer nitidez` | action | Resets sharpness, noise and CA. |
 
-### Color Management and Calibration
+### Color / Calibration
 
 #### Per-file Development Profiles
 
@@ -581,6 +603,17 @@ Monitor detection:
 - Windows: WCS/ICM.
 
 If no profile is found, ProbRAW uses sRGB as the visual fallback.
+
+Relevant points:
+
+- the monitor ICC must be correctly assigned in the operating system or selected
+  manually in ProbRAW;
+- monitor conversion changes only on-screen appearance, not the values used by
+  the colorimetric histogram;
+- a poorly profiled monitor can make the image look wrong even when the input
+  ICC and histogram are coherent;
+- for color review, generate or activate the session input ICC first and confirm
+  `Gestión ICC del monitor del sistema` is enabled.
 
 ## 13. Metadata, Proof and Traceability
 

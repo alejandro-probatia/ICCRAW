@@ -353,6 +353,7 @@ class SessionDevelopmentMixin:
             if hasattr(self, "chk_apply_profile"):
                 self.chk_apply_profile.setChecked(False)
             self._refresh_profile_management_views()
+            self._refresh_chart_diagnostics_from_session(focus=False)
             if save:
                 self._save_active_session(silent=True)
             return True
@@ -365,6 +366,7 @@ class SessionDevelopmentMixin:
         self.path_profile_active.setText(str(path))
         self.chk_apply_profile.setChecked(True)
         self._refresh_profile_management_views()
+        self._refresh_chart_diagnostics_from_session(focus=False)
         if refresh_preview:
             self._invalidate_preview_cache()
             self._schedule_preview_refresh()

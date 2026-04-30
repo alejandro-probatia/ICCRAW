@@ -100,6 +100,7 @@ class SessionQueueMixin:
         self.queue_status_label.setText(
             f"Elementos: {len(self._develop_queue)} | Pendientes: {pending} | OK: {done} | Error: {errors}"
         )
+        self._refresh_session_statistics()
 
     def _queue_process(self) -> None:
         if not self._develop_queue:

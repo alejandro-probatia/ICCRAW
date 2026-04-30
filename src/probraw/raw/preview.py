@@ -293,6 +293,7 @@ def apply_render_adjustments(
     contrast: float = 0.0,
     midtone: float = 1.0,
     tone_curve_points: list[tuple[float, float]] | None = None,
+    tone_curve_channel_points: dict[str, list[tuple[float, float]]] | None = None,
     tone_curve_black_point: float = 0.0,
     tone_curve_white_point: float = 1.0,
 ) -> np.ndarray:
@@ -305,7 +306,8 @@ def apply_render_adjustments(
     wp = float(np.clip(white_point, bp + 1e-4, 1.0))
     c = float(np.clip(contrast, -0.95, 2.0))
     m = float(np.clip(midtone, 0.25, 4.0))
-    tone_enabled = bool(tone_curve_points)
+    channel_curves = _normalize_channel_tone_curves(tone_curve_channel_points)
+    tone_enabled = bool(tone_curve_points) or bool(channel_curves)
     temperature_identity = abs(temp - neutral) <= 1e-6 and abs(tint_value) <= 1e-6
 
     if (
@@ -344,12 +346,20 @@ def apply_render_adjustments(
         out = np.power(np.clip(out, 0.0, 1.0), gamma)
 
     if tone_enabled:
-        out = apply_tone_curve(
-            out,
-            tone_curve_points,
-            black_point=tone_curve_black_point,
-            white_point=tone_curve_white_point,
-        )
+        if tone_curve_points:
+            out = apply_tone_curve(
+                out,
+                tone_curve_points,
+                black_point=tone_curve_black_point,
+                white_point=tone_curve_white_point,
+            )
+        if channel_curves:
+            out = apply_channel_tone_curves(
+                out,
+                channel_curves,
+                black_point=tone_curve_black_point,
+                white_point=tone_curve_white_point,
+            )
 
     return np.clip(out, 0.0, 1.0).astype(np.float32)
 
@@ -459,6 +469,74 @@ def apply_tone_curve(
     adjusted = out.copy()
     adjusted[..., :3] *= scale[..., None]
     return np.clip(adjusted, 0.0, 1.0).astype(np.float32)
+
+
+def apply_channel_tone_curves(
+    image_linear_rgb: np.ndarray,
+    channel_points: dict[str, list[tuple[float, float]]] | None,
+    *,
+    lut_size: int = 4096,
+    black_point: float = 0.0,
+    white_point: float = 1.0,
+) -> np.ndarray:
+    curves = _normalize_channel_tone_curves(channel_points)
+    out = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
+    if not curves:
+        return out.astype(np.float32)
+
+    adjusted = out.copy()
+    channel_indices = {"red": 0, "green": 1, "blue": 2}
+    for channel, points in curves.items():
+        index = channel_indices.get(channel)
+        if index is None:
+            continue
+        if _tone_curve_is_identity(points, black_point=black_point, white_point=white_point):
+            continue
+        _lut_x, lut_y = tone_curve_lut(
+            points,
+            lut_size=lut_size,
+            black_point=black_point,
+            white_point=white_point,
+        )
+        lut_size_actual = int(lut_y.size)
+        values = np.clip(adjusted[..., index], 0.0, 1.0)
+        indices = np.clip(np.rint(values * (lut_size_actual - 1)), 0, lut_size_actual - 1).astype(np.int32)
+        adjusted[..., index] = lut_y[indices]
+    return np.clip(adjusted, 0.0, 1.0).astype(np.float32)
+
+
+def _normalize_channel_tone_curves(
+    channel_points: dict[str, list[tuple[float, float]]] | None,
+) -> dict[str, list[tuple[float, float]]]:
+    if not isinstance(channel_points, dict):
+        return {}
+    out: dict[str, list[tuple[float, float]]] = {}
+    for channel in ("red", "green", "blue"):
+        points = channel_points.get(channel)
+        if not isinstance(points, (list, tuple)):
+            continue
+        normalized = normalize_tone_curve_points(points)
+        if not _tone_curve_is_identity(normalized):
+            out[channel] = normalized
+    return out
+
+
+def _tone_curve_is_identity(
+    points: list[tuple[float, float]] | tuple[tuple[float, float], ...],
+    *,
+    black_point: float = 0.0,
+    white_point: float = 1.0,
+) -> bool:
+    curve = normalize_tone_curve_points(points)
+    xs = np.asarray([p[0] for p in curve], dtype=np.float32)
+    ys = np.asarray([p[1] for p in curve], dtype=np.float32)
+    return (
+        len(curve) <= 2
+        and np.allclose(xs, [0.0, 1.0], atol=1e-6)
+        and np.allclose(ys, [0.0, 1.0], atol=1e-6)
+        and abs(float(black_point)) <= 1e-6
+        and abs(float(white_point) - 1.0) <= 1e-6
+    )
 
 
 def _monotone_cubic_interpolate(x: np.ndarray, y: np.ndarray, x_new: np.ndarray) -> np.ndarray:

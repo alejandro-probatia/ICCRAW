@@ -4,7 +4,7 @@ _English version: [COLOR_PIPELINE.md](COLOR_PIPELINE.md)_
 
 ## Estado Operativo
 
-ProbRAW 0.3.0 implementa el flujo ICC principal y la interfaz de trabajo por
+ProbRAW 0.3.3 implementa el flujo ICC principal y la interfaz de trabajo por
 sesión. La aplicación es apta para pruebas controladas y validación de release,
 pero todavía no debe presentarse como sistema certificado de producción
 científica/forense.
@@ -24,7 +24,7 @@ El pipeline separa:
 6. ICC de monitor solo para visualización;
 7. auditoría mediante mochilas, manifiestos, Proof y C2PA opcional.
 
-DCP no forma parte del pipeline activo de la serie 0.2.
+DCP no forma parte del pipeline activo de la serie 0.3.
 
 ## Modo Científico (`profiling_mode`)
 
@@ -78,7 +78,9 @@ registrados como perfiles de sesión activables.
    un ICC estándar y se declara `generic_output_icc`.
 10. La visualización en pantalla usa una conversión exclusiva hacia el perfil ICC
     del monitor configurado.
-11. El diagnóstico Gamut 3D es una comparación visual de perfiles; no modifica
+11. El histograma y el overlay de clipping de la GUI se calculan sobre la señal
+    colorimétrica de preview antes de aplicar el ICC del monitor.
+12. El diagnóstico Gamut 3D es una comparación visual de perfiles; no modifica
     recetas, píxeles, perfiles activos ni manifiestos.
 
 ## Gestión de Color del Monitor
@@ -94,6 +96,24 @@ Detección:
 
 Si el perfil desaparece o no puede abrirse, ProbRAW registra el problema y usa
 sRGB como fallback visual.
+
+## Previsualización e Histograma
+
+La GUI distingue entre señal de análisis y señal de pantalla:
+
+1. El RAW se revela o previsualiza como RGB lineal normalizado.
+2. Los ajustes paramétricos se aplican antes de la conversión de salida.
+3. Si hay un ICC de entrada activo y válido, la preview usa ese ICC para generar
+   una señal sRGB colorimétrica de revisión.
+4. El histograma RGB colorimétrico y el overlay de clipping leen esa señal sRGB
+   previa al monitor.
+5. Solo después se aplica el ICC del monitor para enviar píxeles corregidos al
+   widget de pantalla.
+
+Esto evita que un perfil de monitor estrecho, defectuoso o diferente entre
+equipos altere los datos de análisis. A la vez, exige que el usuario calibre el
+monitor y configure correctamente su ICC en el sistema operativo para que la
+apariencia visual de la preview sea fiable.
 
 ## Validez del Perfil
 

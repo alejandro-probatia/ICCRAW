@@ -105,12 +105,24 @@ class ControlPanelsMixin:
         self.check_tone_curve_enabled.toggled.connect(self._on_tone_curve_enabled_changed)
         grid.addWidget(self.check_tone_curve_enabled, 10, 0, 1, 3)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Preset curva")), 11, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Canal curva")), 11, 0)
+        self.combo_tone_curve_channel = QtWidgets.QComboBox()
+        for label, key in (
+            (self.tr("Luminosidad"), "luminance"),
+            (self.tr("Rojo"), "red"),
+            (self.tr("Verde"), "green"),
+            (self.tr("Azul"), "blue"),
+        ):
+            self.combo_tone_curve_channel.addItem(label, key)
+        self.combo_tone_curve_channel.currentIndexChanged.connect(self._on_tone_curve_channel_changed)
+        grid.addWidget(self.combo_tone_curve_channel, 11, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Preset curva")), 12, 0)
         self.combo_tone_curve_preset = QtWidgets.QComboBox()
         for label, key, _points in TONE_CURVE_PRESETS:
             self.combo_tone_curve_preset.addItem(self.tr(label), key)
         self.combo_tone_curve_preset.currentIndexChanged.connect(self._on_tone_curve_preset_changed)
-        grid.addWidget(self.combo_tone_curve_preset, 11, 1, 1, 2)
+        grid.addWidget(self.combo_tone_curve_preset, 12, 1, 1, 2)
 
         self.slider_tone_curve_black, self.label_tone_curve_black = self._slider(
             minimum=0,
@@ -119,8 +131,8 @@ class ControlPanelsMixin:
             on_change=self._on_tone_curve_range_changed,
             formatter=lambda v: self.tr("Negro curva") + f": {v / 1000:.3f}",
         )
-        grid.addWidget(self.label_tone_curve_black, 12, 0, 1, 3)
-        grid.addWidget(self.slider_tone_curve_black, 13, 0, 1, 3)
+        grid.addWidget(self.label_tone_curve_black, 13, 0, 1, 3)
+        grid.addWidget(self.slider_tone_curve_black, 14, 0, 1, 3)
 
         self.slider_tone_curve_white, self.label_tone_curve_white = self._slider(
             minimum=50,
@@ -129,17 +141,17 @@ class ControlPanelsMixin:
             on_change=self._on_tone_curve_range_changed,
             formatter=lambda v: self.tr("Blanco curva") + f": {v / 1000:.3f}",
         )
-        grid.addWidget(self.label_tone_curve_white, 14, 0, 1, 3)
-        grid.addWidget(self.slider_tone_curve_white, 15, 0, 1, 3)
+        grid.addWidget(self.label_tone_curve_white, 15, 0, 1, 3)
+        grid.addWidget(self.slider_tone_curve_white, 16, 0, 1, 3)
 
         self.tone_curve_editor = ToneCurveEditor()
         self.tone_curve_editor.pointsChanged.connect(self._on_tone_curve_points_changed)
         self.tone_curve_editor.interactionFinished.connect(self._on_render_control_change)
-        grid.addWidget(self.tone_curve_editor, 16, 0, 1, 3)
-        grid.addWidget(self._button(self.tr("Restablecer curva"), self._reset_tone_curve), 17, 0, 1, 3)
+        grid.addWidget(self.tone_curve_editor, 17, 0, 1, 3)
+        grid.addWidget(self._button(self.tr("Restablecer curva"), self._reset_tone_curve), 18, 0, 1, 3)
         self._set_tone_curve_controls_enabled(False)
 
-        grid.addWidget(self._button(self.tr("Restablecer brillo y contraste"), self._reset_tone_adjustments), 18, 0, 1, 3)
+        grid.addWidget(self._button(self.tr("Restablecer brillo y contraste"), self._reset_tone_adjustments), 19, 0, 1, 3)
         return tab
 
     def _build_tab_preview_settings(self) -> QtWidgets.QWidget:

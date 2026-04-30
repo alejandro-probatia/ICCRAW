@@ -10,7 +10,7 @@ Reproducible and auditable RAW/TIFF development for scientific, forensic and
 heritage photography, with session ICC profiling, per-file parametric settings
 and open AGPL traceability.
 
-![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.2-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.3-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![ProbRAW main interface](docs/assets/screenshots/probraw-portada.png)
 
@@ -27,23 +27,22 @@ The current workflow is intentionally ICC-centered:
 - without a chart, ProbRAW uses a manual development profile and a real standard
   output ICC (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`);
 - monitor ICC management affects only on-screen preview;
-- DCP support is not an active implementation target for the 0.2 line.
+- DCP support is not an active implementation target for the 0.3 line.
 
 ## Current Status
 
-ProbRAW 0.3.2 is suitable for controlled testing, method review and release
+ProbRAW 0.3.3 is suitable for controlled testing, method review and release
 candidate validation. It is not yet a certified scientific or forensic
 production system.
 
-The current version completes the product rename to ProbRAW, updates package and
-release artifacts, preserves compatibility with previous session sidecars and
-keeps the new chart-reference, session ICC and 3D gamut tools introduced in the
-previous iteration.
+The current version consolidates the session-oriented UI flow, the colorimetric
+histogram before monitor ICC conversion, per-channel curves and automatic chart
+diagnostic recovery from saved profile reports.
 
 The latest packaging validation passed with:
 
 ```text
-222 passed, 1 warning
+228 passed, 1 warning
 ```
 
 ## Documentation

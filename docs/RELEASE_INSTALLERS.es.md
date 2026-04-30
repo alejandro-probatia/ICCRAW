@@ -78,6 +78,31 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.3
+
+La release 0.3.3 consolida el flujo gráfico de sesión, ajustes y gestión de
+color:
+
+- estadísticas y sesiones recientes en `1. Sesión`,
+- tercera columna organizada por flujo: color/calibración, ajustes
+  personalizados y RAW/exportación,
+- barra de herramientas horizontal del visor con iconos compactos y botón para
+  enfocar/restaurar columnas laterales,
+- histograma RGB colorimétrico fijo en `Ajustes personalizados`,
+- curvas por canal y recuperación automática de datos de carta desde
+  `profile_report.json`,
+- manuales y capturas actualizados con la política de previsualización: ICC de
+  entrada para interpretar la imagen, ICC del monitor solo como última capa de
+  visualización.
+
+Artefactos esperados:
+
+- `probraw_0.3.3_amd64.deb`
+- `probraw_0.3.3_amd64.deb.sha256`
+- `probraw-0.3.3.tar.gz`
+- `probraw-0.3.3-py3-none-any.whl`
+- `probraw_0.3.3_python_artifacts.sha256`
+
 ## Release 0.3.2
 
 La release 0.3.2 corrige el icono de la aplicacion en menus Linux:

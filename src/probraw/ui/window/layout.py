@@ -93,6 +93,8 @@ class LayoutMixin:
 
     def _go_to_nitidez_tab(self) -> None:
         self.main_tabs.setCurrentIndex(1)
+        if hasattr(self, "right_workflow_tabs"):
+            self.right_workflow_tabs.setCurrentIndex(1)
         index = self.config_tabs.indexOf("Nitidez") if hasattr(self.config_tabs, "indexOf") else -1
         self.config_tabs.setCurrentIndex(index if index >= 0 else 3)
 
@@ -281,6 +283,42 @@ class LayoutMixin:
 
         outer.addWidget(session_box)
 
+        recent_box = QtWidgets.QGroupBox(self.tr("Sesiones recientes"))
+        recent_grid = QtWidgets.QGridLayout(recent_box)
+        self.recent_sessions_combo = QtWidgets.QComboBox()
+        self.recent_sessions_combo.setMinimumContentsLength(32)
+        recent_grid.addWidget(self.recent_sessions_combo, 0, 0, 1, 2)
+        recent_grid.addWidget(self._button(self.tr("Abrir reciente"), self._open_selected_recent_session), 0, 2)
+        recent_grid.addWidget(self._button(self.tr("Actualizar lista"), self._refresh_recent_sessions_combo), 1, 0, 1, 3)
+        outer.addWidget(recent_box)
+
+        stats_box = QtWidgets.QGroupBox(self.tr("Resumen de sesión"))
+        stats_grid = QtWidgets.QGridLayout(stats_box)
+        self.session_stats_labels: dict[str, QtWidgets.QLabel] = {}
+        for row_index, (key, label) in enumerate(
+            [
+                ("raw_images", self.tr("Imágenes RAW")),
+                ("tiff_images", self.tr("Imágenes TIFF")),
+                ("icc_profiles", self.tr("Perfiles ICC")),
+                ("development_profiles", self.tr("Perfiles de ajuste")),
+                ("raw_sidecars", self.tr("Mochilas RAW")),
+                ("queue_items", self.tr("Elementos en cola")),
+            ]
+        ):
+            value_label = QtWidgets.QLabel("0")
+            value_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            value_label.setStyleSheet("font-weight: 600; color: #111827;")
+            self.session_stats_labels[key] = value_label
+            stats_grid.addWidget(QtWidgets.QLabel(label), row_index, 0)
+            stats_grid.addWidget(value_label, row_index, 1)
+        self.session_stats_updated_label = QtWidgets.QLabel(self.tr("Sin sesión activa"))
+        self.session_stats_updated_label.setWordWrap(True)
+        self.session_stats_updated_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+        stats_grid.addWidget(self.session_stats_updated_label, 0, 2, 3, 1)
+        stats_grid.addWidget(self._button(self.tr("Actualizar estadísticas"), self._refresh_session_statistics), 3, 2)
+        stats_grid.setColumnStretch(2, 1)
+        outer.addWidget(stats_box)
+
         dirs_box = QtWidgets.QGroupBox(self.tr("Estructura persistente del proyecto"))
         dirs_grid = QtWidgets.QGridLayout(dirs_box)
 
@@ -306,6 +344,8 @@ class LayoutMixin:
 
         outer.addWidget(dirs_box)
 
+        self._refresh_recent_sessions_combo()
+        self._refresh_session_statistics()
         outer.addStretch(1)
         return tab
 
@@ -617,7 +657,6 @@ class LayoutMixin:
         self.left_tabs.setTabPosition(QtWidgets.QTabWidget.West)
         self.left_tabs.setDocumentMode(True)
         self.left_tabs.addTab(self._build_browser_panel(), self.tr("Explorador"))
-        self.left_tabs.addTab(self._build_viewer_controls_panel(), self.tr("Visor"))
         self.left_tabs.addTab(self._build_analysis_panel(), self.tr("Diagnóstico"))
         self.left_tabs.addTab(self._build_metadata_panel(), self.tr("Metadatos"))
         self.left_tabs.addTab(self._build_preview_log_panel(), self.tr("Log"))
@@ -692,70 +731,38 @@ class LayoutMixin:
         box_layout.addWidget(self.dir_tree, 1)
         return box
 
-    def _build_viewer_controls_panel(self) -> QtWidgets.QWidget:
-        panel = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(panel)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
-
-        layout.addWidget(QtWidgets.QLabel(self.tr("Archivo actual")))
-        self.selected_file_label = QtWidgets.QLabel(self.tr("Sin archivo seleccionado"))
-        self.selected_file_label.setWordWrap(True)
-        self.selected_file_label.setStyleSheet("font-size: 12px; color: #1f2937;")
-        layout.addWidget(self.selected_file_label)
-
-        self.chk_compare = QtWidgets.QCheckBox(self.tr("Comparar original / resultado"))
-        self.chk_compare.toggled.connect(self._toggle_compare)
-        layout.addWidget(self.chk_compare)
-
-        self.chk_apply_profile = QtWidgets.QCheckBox(self.tr("Aplicar perfil ICC en resultado"))
-        self.chk_apply_profile.setChecked(False)
-        self.chk_apply_profile.setToolTip(
-            self.tr(
-                "Desactivado por defecto para evitar dominantes si el perfil no corresponde "
-                "a camara + iluminacion + receta actuales."
-            )
-        )
-        self.chk_apply_profile.toggled.connect(lambda _v: self._schedule_preview_refresh())
-        layout.addWidget(self.chk_apply_profile)
-
-        zoom_grid = QtWidgets.QGridLayout()
-        zoom_grid.setHorizontalSpacing(6)
-        zoom_grid.setVerticalSpacing(6)
-        self.viewer_zoom_label = QtWidgets.QLabel(self.tr("100%"))
-        self.viewer_zoom_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.viewer_zoom_label.setMinimumWidth(52)
-        zoom_grid.addWidget(self._button(self.tr("-"), self._viewer_zoom_out), 0, 0)
-        zoom_grid.addWidget(self.viewer_zoom_label, 0, 1)
-        zoom_grid.addWidget(self._button(self.tr("+"), self._viewer_zoom_in), 0, 2)
-        zoom_grid.addWidget(self._button(self.tr("1:1"), self._viewer_zoom_100), 1, 0)
-        zoom_grid.addWidget(self._button(self.tr("Girar izq."), self._viewer_rotate_left), 1, 1)
-        zoom_grid.addWidget(self._button(self.tr("Girar der."), self._viewer_rotate_right), 1, 2)
-        zoom_grid.addWidget(self._button(self.tr("Encajar"), self._viewer_fit), 2, 0, 1, 3)
-        layout.addLayout(zoom_grid)
-
-        histogram_box = QtWidgets.QGroupBox(self.tr("Histograma RGB"))
+    def _build_histogram_header_panel(self) -> QtWidgets.QWidget:
+        histogram_box = QtWidgets.QGroupBox(self.tr("Histograma RGB colorimétrico"))
         histogram_layout = QtWidgets.QVBoxLayout(histogram_box)
         histogram_layout.setContentsMargins(6, 6, 6, 6)
         histogram_layout.setSpacing(4)
         self.viewer_histogram = RGBHistogramWidget()
+        self.viewer_histogram.setMaximumHeight(150)
         histogram_layout.addWidget(self.viewer_histogram, 1)
         self.check_histogram_clip_witness = QtWidgets.QCheckBox(
-            "Testigos de clipping en sombras/luces"
+            self.tr("Testigos clipping")
         )
         self.check_histogram_clip_witness.setChecked(
             self._settings_bool("view/histogram_clip_witness", True)
         )
+        self.check_histogram_clip_witness.setToolTip(self.tr("Marca clipping de sombras y luces sobre el histograma."))
         self.check_histogram_clip_witness.toggled.connect(self._on_histogram_clip_witness_toggled)
-        histogram_layout.addWidget(self.check_histogram_clip_witness)
         self.check_image_clip_overlay = QtWidgets.QCheckBox(
-            "Overlay clipping en imagen (azul sombras / rojo luces)"
+            self.tr("Overlay imagen")
         )
         self.check_image_clip_overlay.setChecked(
             self._settings_bool("view/image_clip_overlay", True)
         )
+        self.check_image_clip_overlay.setToolTip(
+            self.tr("Muestra clipping en la imagen: azul en sombras y rojo en luces.")
+        )
         self.check_image_clip_overlay.toggled.connect(self._on_image_clip_overlay_toggled)
-        histogram_layout.addWidget(self.check_image_clip_overlay)
+        toggles_row = QtWidgets.QHBoxLayout()
+        toggles_row.setContentsMargins(0, 0, 0, 0)
+        toggles_row.addWidget(self.check_histogram_clip_witness)
+        toggles_row.addWidget(self.check_image_clip_overlay)
+        toggles_row.addStretch(1)
+        histogram_layout.addLayout(toggles_row)
         clip_row = QtWidgets.QHBoxLayout()
         clip_row.setContentsMargins(0, 0, 0, 0)
         self.histogram_shadow_label = QtWidgets.QLabel(self.tr("Sombras: --"))
@@ -773,24 +780,354 @@ class LayoutMixin:
                 getattr(self, panel_name).set_clip_overlay_enabled(
                     bool(self.check_image_clip_overlay.isChecked())
                 )
-        layout.addWidget(histogram_box, 0)
+        return histogram_box
 
-        cache_row = QtWidgets.QHBoxLayout()
-        cache_row.addWidget(
-            self._button(
-                "Precache carpeta",
-                lambda: self._on_precache_visible_previews(full_resolution=False),
-            )
+    def _style_icon(self, standard_pixmap: str) -> QtGui.QIcon:
+        pixmap = getattr(QtWidgets.QStyle, standard_pixmap, None)
+        if pixmap is None:
+            return QtGui.QIcon()
+        return self.style().standardIcon(pixmap)
+
+    def _text_badge_icon(self, text: str) -> QtGui.QIcon:
+        pixmap = QtGui.QPixmap(56, 36)
+        pixmap.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        rect = QtCore.QRectF(3, 4, 50, 28)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#aeb5bf"), 1.2))
+        painter.setBrush(QtGui.QColor("#273449"))
+        painter.drawRoundedRect(rect, 4, 4)
+        font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.GeneralFont)
+        font.setBold(True)
+        font.setPointSize(13)
+        painter.setFont(font)
+        painter.setPen(QtGui.QColor("#f8fafc"))
+        painter.drawText(rect, QtCore.Qt.AlignCenter, text)
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
+    def _rotate_arrow_icon(self, *, clockwise: bool) -> QtGui.QIcon:
+        pixmap = QtGui.QPixmap(32, 32)
+        pixmap.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        rect = QtCore.QRectF(7, 7, 18, 18)
+        start_angle = 140.0 if clockwise else 40.0
+        span_angle = -285.0 if clockwise else 285.0
+        path = QtGui.QPainterPath()
+        path.arcMoveTo(rect, start_angle)
+        path.arcTo(rect, start_angle, span_angle)
+        pen = QtGui.QPen(QtGui.QColor("#f8fafc"), 2.2)
+        pen.setCapStyle(QtCore.Qt.RoundCap)
+        pen.setJoinStyle(QtCore.Qt.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(QtCore.Qt.NoBrush)
+        painter.drawPath(path)
+
+        end_angle = np.deg2rad(start_angle + span_angle)
+        cx = rect.center().x()
+        cy = rect.center().y()
+        rx = rect.width() / 2.0
+        ry = rect.height() / 2.0
+        tip = QtCore.QPointF(cx + rx * float(np.cos(end_angle)), cy - ry * float(np.sin(end_angle)))
+        tangent = np.asarray(
+            [float(np.sin(end_angle)), float(np.cos(end_angle))]
+            if clockwise
+            else [-float(np.sin(end_angle)), -float(np.cos(end_angle))],
+            dtype=np.float64,
         )
-        cache_row.addWidget(
-            self._button(
-                "Precache 1:1",
-                lambda: self._on_precache_visible_previews(full_resolution=True),
-            )
+        tangent = tangent / max(1e-6, float(np.linalg.norm(tangent)))
+        normal = np.asarray([-tangent[1], tangent[0]], dtype=np.float64)
+        back = 5.4
+        spread = 3.4
+        p1 = tip - QtCore.QPointF(
+            float(tangent[0] * back + normal[0] * spread),
+            float(tangent[1] * back + normal[1] * spread),
         )
-        layout.addLayout(cache_row)
-        layout.addStretch(1)
-        return panel
+        p2 = tip - QtCore.QPointF(
+            float(tangent[0] * back - normal[0] * spread),
+            float(tangent[1] * back - normal[1] * spread),
+        )
+        painter.setBrush(QtGui.QColor("#f8fafc"))
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawPolygon(QtGui.QPolygonF([tip, p1, p2]))
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
+    def _precache_icon(self, *, one_to_one: bool = False) -> QtGui.QIcon:
+        pixmap = QtGui.QPixmap(40, 32)
+        pixmap.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        tile_pen = QtGui.QPen(QtGui.QColor("#aeb5bf"), 1.1)
+        tile_fill = QtGui.QColor("#223047")
+        painter.setPen(tile_pen)
+        painter.setBrush(tile_fill)
+        for row in range(2):
+            for col in range(2):
+                painter.drawRoundedRect(QtCore.QRectF(4 + col * 10, 5 + row * 9, 8, 7), 1.5, 1.5)
+
+        bolt = QtGui.QPolygonF(
+            [
+                QtCore.QPointF(25.0, 4.0),
+                QtCore.QPointF(17.5, 18.0),
+                QtCore.QPointF(24.0, 18.0),
+                QtCore.QPointF(20.5, 29.0),
+                QtCore.QPointF(33.0, 13.5),
+                QtCore.QPointF(26.0, 13.5),
+            ]
+        )
+        painter.setPen(QtGui.QPen(QtGui.QColor("#fbbf24"), 1.0))
+        painter.setBrush(QtGui.QColor("#facc15"))
+        painter.drawPolygon(bolt)
+
+        if one_to_one:
+            badge_rect = QtCore.QRectF(20, 20, 18, 10)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#93c5fd"), 1.0))
+            painter.setBrush(QtGui.QColor("#172554"))
+            painter.drawRoundedRect(badge_rect, 2, 2)
+            font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.GeneralFont)
+            font.setBold(True)
+            font.setPointSize(6)
+            painter.setFont(font)
+            painter.setPen(QtGui.QColor("#dbeafe"))
+            painter.drawText(badge_rect, QtCore.Qt.AlignCenter, "1:1")
+
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
+    def _side_columns_icon(self, *, focused: bool = False) -> QtGui.QIcon:
+        pixmap = QtGui.QPixmap(40, 32)
+        pixmap.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        border = QtGui.QColor("#aeb5bf")
+        side_fill = QtGui.QColor("#223047")
+        center_fill = QtGui.QColor("#1e293b" if focused else "#273449")
+        painter.setPen(QtGui.QPen(border, 1.1))
+        painter.setBrush(side_fill)
+        painter.drawRoundedRect(QtCore.QRectF(4, 6, 7, 20), 1.6, 1.6)
+        painter.drawRoundedRect(QtCore.QRectF(29, 6, 7, 20), 1.6, 1.6)
+        painter.setBrush(center_fill)
+        painter.drawRoundedRect(QtCore.QRectF(13, 5, 14, 22), 2.0, 2.0)
+
+        arrow_pen = QtGui.QPen(QtGui.QColor("#f8fafc"), 1.8)
+        arrow_pen.setCapStyle(QtCore.Qt.RoundCap)
+        painter.setPen(arrow_pen)
+        painter.setBrush(QtGui.QColor("#f8fafc"))
+
+        if focused:
+            pairs = [
+                (QtCore.QPointF(17, 16), QtCore.QPointF(9, 16)),
+                (QtCore.QPointF(23, 16), QtCore.QPointF(31, 16)),
+            ]
+        else:
+            pairs = [
+                (QtCore.QPointF(8, 16), QtCore.QPointF(17, 16)),
+                (QtCore.QPointF(32, 16), QtCore.QPointF(23, 16)),
+            ]
+        for start, end in pairs:
+            painter.drawLine(start, end)
+            direction = np.asarray([end.x() - start.x(), end.y() - start.y()], dtype=np.float64)
+            direction = direction / max(1e-6, float(np.linalg.norm(direction)))
+            normal = np.asarray([-direction[1], direction[0]], dtype=np.float64)
+            back = 4.0
+            spread = 2.8
+            p1 = end - QtCore.QPointF(
+                float(direction[0] * back + normal[0] * spread),
+                float(direction[1] * back + normal[1] * spread),
+            )
+            p2 = end - QtCore.QPointF(
+                float(direction[0] * back - normal[0] * spread),
+                float(direction[1] * back - normal[1] * spread),
+            )
+            painter.drawPolygon(QtGui.QPolygonF([end, p1, p2]))
+
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
+    def _zoom_one_to_one_icon(self) -> QtGui.QIcon:
+        pixmap = QtGui.QPixmap(44, 32)
+        pixmap.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        lens_rect = QtCore.QRectF(5, 4, 18, 18)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#f8fafc"), 2.0))
+        painter.setBrush(QtGui.QColor("#223047"))
+        painter.drawEllipse(lens_rect)
+        painter.drawLine(QtCore.QPointF(19.5, 19.5), QtCore.QPointF(27.5, 27.5))
+
+        badge_rect = QtCore.QRectF(19, 5, 22, 13)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#93c5fd"), 1.0))
+        painter.setBrush(QtGui.QColor("#172554"))
+        painter.drawRoundedRect(badge_rect, 2, 2)
+        font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.GeneralFont)
+        font.setBold(True)
+        font.setPointSize(7)
+        painter.setFont(font)
+        painter.setPen(QtGui.QColor("#dbeafe"))
+        painter.drawText(badge_rect, QtCore.Qt.AlignCenter, "1:1")
+
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
+    def _toggle_side_columns_focus(self, checked: bool) -> None:
+        if not hasattr(self, "raw_splitter"):
+            return
+        left = self.raw_splitter.widget(0)
+        right = self.raw_splitter.widget(2)
+        if checked:
+            sizes = self.raw_splitter.sizes()
+            if len(sizes) == 3 and sizes[0] > 0 and sizes[2] > 0:
+                self._side_columns_saved_sizes = [int(v) for v in sizes]
+            left.hide()
+            right.hide()
+            self._action_side_columns_focus.setIcon(self._side_columns_icon(focused=True))
+            self._action_side_columns_focus.setToolTip(self.tr("Restaurar columnas laterales"))
+            self._action_side_columns_focus.setStatusTip(self.tr("Restaurar columnas laterales"))
+            return
+
+        left.show()
+        right.show()
+        saved = getattr(self, "_side_columns_saved_sizes", None)
+        if isinstance(saved, list) and len(saved) == 3:
+            self.raw_splitter.setSizes([max(40, int(v)) for v in saved])
+        else:
+            self._reset_layout_splitters()
+        self._action_side_columns_focus.setIcon(self._side_columns_icon(focused=False))
+        self._action_side_columns_focus.setToolTip(self.tr("Enfocar visor ocultando columnas laterales"))
+        self._action_side_columns_focus.setStatusTip(self.tr("Enfocar visor ocultando columnas laterales"))
+
+    def _viewer_action(
+        self,
+        text: str,
+        callback,
+        *,
+        icon: str | QtGui.QIcon | None = None,
+        checkable: bool = False,
+        checked: bool = False,
+        tooltip: str | None = None,
+    ) -> QtGui.QAction:
+        if isinstance(icon, QtGui.QIcon):
+            icon_obj = icon
+        else:
+            icon_obj = self._style_icon(icon) if icon else QtGui.QIcon()
+        action = QtGui.QAction(icon_obj, text, self)
+        action.setCheckable(bool(checkable))
+        if checkable:
+            action.setChecked(bool(checked))
+            action.toggled.connect(callback)
+        else:
+            action.triggered.connect(lambda _checked=False, cb=callback: cb())
+        hint = tooltip or text
+        action.setToolTip(hint)
+        action.setStatusTip(hint)
+        return action
+
+    def _viewer_action_button(
+        self,
+        action: QtGui.QAction,
+        *,
+        text: str | None = None,
+        icon_only: bool = True,
+    ) -> QtWidgets.QToolButton:
+        button = QtWidgets.QToolButton()
+        button.setDefaultAction(action)
+        button.setAutoRaise(True)
+        button.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly if icon_only else QtCore.Qt.ToolButtonTextBesideIcon)
+        button.setIconSize(QtCore.QSize(26, 22))
+        button.setFixedHeight(30)
+        button.setMinimumWidth(34)
+        if text is not None:
+            button.setText(text)
+            action.setText(text)
+            if not icon_only:
+                button.setMinimumWidth(42)
+        if action is getattr(self, "chk_compare", None):
+            button.setIconSize(QtCore.QSize(42, 28))
+            button.setMinimumWidth(48)
+        return button
+
+    def _build_viewer_toolbar(self) -> QtWidgets.QWidget:
+        toolbar = QtWidgets.QFrame()
+        toolbar.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        toolbar.setStyleSheet(
+            "QFrame { background-color: #15181d; border: 1px solid #2f353d; }"
+            "QLabel { color: #d1d5db; }"
+            "QToolButton { padding: 2px 5px; }"
+        )
+        layout = QtWidgets.QHBoxLayout(toolbar)
+        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setSpacing(3)
+
+        self.chk_compare = self._viewer_action(
+            self.tr("Comparar original / resultado"),
+            self._toggle_compare,
+            icon=self._text_badge_icon("A/B"),
+            checkable=True,
+        )
+        self.chk_apply_profile = self._viewer_action(
+            self.tr("Aplicar perfil ICC en resultado"),
+            lambda _checked: self._schedule_preview_refresh(),
+            icon="SP_DialogApplyButton",
+            checkable=True,
+            tooltip=self.tr(
+                "Desactivado por defecto para evitar dominantes si el perfil no corresponde "
+                "a camara + iluminacion + receta actuales."
+            ),
+        )
+        self._action_side_columns_focus = self._viewer_action(
+            self.tr("Enfocar visor"),
+            self._toggle_side_columns_focus,
+            icon=self._side_columns_icon(focused=False),
+            checkable=True,
+            tooltip=self.tr("Enfocar visor ocultando columnas laterales"),
+        )
+        actions = [
+            self.chk_compare,
+            self.chk_apply_profile,
+            self._action_side_columns_focus,
+            self._viewer_action(self.tr("Reducir"), self._viewer_zoom_out, icon="SP_ArrowDown"),
+            self._viewer_action(self.tr("Ampliar"), self._viewer_zoom_in, icon="SP_ArrowUp"),
+            self._viewer_action(self.tr("Zoom 1:1"), self._viewer_zoom_100, icon=self._zoom_one_to_one_icon()),
+            self._viewer_action(self.tr("Encajar"), self._viewer_fit, icon="SP_TitleBarMaxButton"),
+            self._viewer_action(self.tr("Girar izquierda"), self._viewer_rotate_left, icon=self._rotate_arrow_icon(clockwise=False)),
+            self._viewer_action(self.tr("Girar derecha"), self._viewer_rotate_right, icon=self._rotate_arrow_icon(clockwise=True)),
+            self._viewer_action(
+            self.tr("Precache carpeta"),
+            lambda: self._on_precache_visible_previews(full_resolution=False),
+            icon=self._precache_icon(one_to_one=False),
+            ),
+            self._viewer_action(
+            self.tr("Precache 1:1"),
+            lambda: self._on_precache_visible_previews(full_resolution=True),
+            icon=self._precache_icon(one_to_one=True),
+            ),
+        ]
+        for index, action in enumerate(actions):
+            if index in {3, 7, 9}:
+                separator = QtWidgets.QFrame()
+                separator.setFrameShape(QtWidgets.QFrame.VLine)
+                separator.setStyleSheet("color: #2f353d;")
+                layout.addWidget(separator)
+            layout.addWidget(self._viewer_action_button(action))
+
+        self.selected_file_label = QtWidgets.QLabel(self.tr("Sin archivo seleccionado"))
+        self.selected_file_label.setWordWrap(False)
+        self.selected_file_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.selected_file_label.setStyleSheet("font-size: 12px; color: #d1d5db; border: 0;")
+        layout.addWidget(self.selected_file_label, 1)
+
+        self.viewer_zoom_label = QtWidgets.QLabel(self.tr("100%"))
+        self.viewer_zoom_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.viewer_zoom_label.setMinimumWidth(52)
+        self.viewer_zoom_label.setStyleSheet("font-size: 12px; color: #cbd5e1; border: 0;")
+        layout.addWidget(self.viewer_zoom_label)
+        return toolbar
 
     def _build_analysis_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
@@ -814,10 +1151,22 @@ class LayoutMixin:
         chart_layout = QtWidgets.QVBoxLayout(chart_page)
         chart_layout.setContentsMargins(0, 0, 0, 0)
         chart_layout.setSpacing(6)
+        chart_header = QtWidgets.QHBoxLayout()
+        chart_header.setContentsMargins(0, 0, 0, 0)
+        chart_header.setSpacing(6)
         self.chart_diagnostics_summary = QtWidgets.QLabel(self.tr("Sin datos de carta"))
         self.chart_diagnostics_summary.setWordWrap(True)
         self.chart_diagnostics_summary.setStyleSheet("font-size: 12px; color: #d1d5db;")
-        chart_layout.addWidget(self.chart_diagnostics_summary)
+        chart_header.addWidget(self.chart_diagnostics_summary, 1)
+        self.chart_diagnostics_refresh_button = QtWidgets.QToolButton()
+        self.chart_diagnostics_refresh_button.setAutoRaise(True)
+        self.chart_diagnostics_refresh_button.setIcon(self._style_icon("SP_BrowserReload"))
+        self.chart_diagnostics_refresh_button.setToolTip(self.tr("Actualizar datos de carta desde el informe de perfil"))
+        self.chart_diagnostics_refresh_button.clicked.connect(
+            lambda _checked=False: self._refresh_chart_diagnostics_from_session(focus=True)
+        )
+        chart_header.addWidget(self.chart_diagnostics_refresh_button)
+        chart_layout.addLayout(chart_header)
         self.chart_diagnostics_table = QtWidgets.QTableWidget(0, 9)
         self.chart_diagnostics_table.setHorizontalHeaderLabels(
             [
@@ -1143,10 +1492,18 @@ class LayoutMixin:
         self.viewer_stack.addWidget(compare_page)
         self.viewer_stack.setCurrentIndex(0)
 
+        self.viewer_area = QtWidgets.QWidget()
+        viewer_area_layout = QtWidgets.QVBoxLayout(self.viewer_area)
+        viewer_area_layout.setContentsMargins(0, 0, 0, 0)
+        viewer_area_layout.setSpacing(4)
+        self.viewer_toolbar = self._build_viewer_toolbar()
+        viewer_area_layout.addWidget(self.viewer_toolbar, 0)
+        viewer_area_layout.addWidget(self.viewer_stack, 1)
+
         self.viewer_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self.viewer_splitter.setChildrenCollapsible(True)
         self.viewer_splitter.setHandleWidth(8)
-        self.viewer_splitter.addWidget(self.viewer_stack)
+        self.viewer_splitter.addWidget(self.viewer_area)
         self.viewer_splitter.addWidget(self._build_thumbnails_pane())
         self.viewer_splitter.setStretchFactor(0, 1)
         self.viewer_splitter.setStretchFactor(1, 0)
@@ -1161,14 +1518,33 @@ class LayoutMixin:
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
+        self.right_workflow_tabs = QtWidgets.QTabWidget()
+        self.right_workflow_tabs.setDocumentMode(True)
+
+        color_scroll = QtWidgets.QScrollArea()
+        color_scroll.setWidgetResizable(True)
+        color_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        color_scroll.setWidget(self._build_color_management_calibration_panel())
+        self.right_workflow_tabs.addTab(color_scroll, self.tr("Color / calibración"))
+
         self.config_tabs = CollapsibleToolPanel()
         self.config_tabs.addItem(self._build_tab_brightness_contrast(), self.tr("Brillo y contraste"), expanded=True)
         self.config_tabs.addItem(self._build_tab_color_adjustments(), self.tr("Color"), expanded=True)
         self.config_tabs.addItem(self._build_tab_preview_settings(), self.tr("Nitidez"), expanded=True)
-        self.config_tabs.addItem(self._build_color_management_calibration_panel(), self.tr("Gestión de color y calibración"), expanded=True)
+        personalized_page = QtWidgets.QWidget()
+        personalized_layout = QtWidgets.QVBoxLayout(personalized_page)
+        personalized_layout.setContentsMargins(0, 0, 0, 0)
+        personalized_layout.setSpacing(6)
+        personalized_layout.addWidget(self._build_histogram_header_panel(), 0)
+        personalized_layout.addWidget(self.config_tabs, 1)
+        self.right_workflow_tabs.addTab(personalized_page, self.tr("Ajustes personalizados"))
+
+        self.raw_export_tabs = CollapsibleToolPanel()
         self._advanced_raw_config = self._build_tab_raw_config(self.tr("Criterios RAW globales"))
-        self.config_tabs.addItem(self._advanced_raw_config, self.tr("RAW Global"), expanded=False)
-        self.config_tabs.addItem(self._build_tab_batch_config(), self.tr("Exportar derivados"), expanded=False)
-        layout.addWidget(self.config_tabs, 1)
+        self.raw_export_tabs.addItem(self._advanced_raw_config, self.tr("RAW Global"), expanded=True)
+        self.raw_export_tabs.addItem(self._build_tab_batch_config(), self.tr("Exportar derivados"), expanded=True)
+        self.right_workflow_tabs.addTab(self.raw_export_tabs, self.tr("RAW / exportación"))
+
+        layout.addWidget(self.right_workflow_tabs, 1)
 
         return pane

@@ -130,6 +130,23 @@ def test_apply_render_adjustments_uses_advanced_tone_curve():
     assert float(np.mean(out)) > float(np.mean(img))
 
 
+def test_apply_render_adjustments_uses_per_channel_tone_curves():
+    img = np.full((5, 6, 3), 0.25, dtype=np.float32)
+    out = apply_render_adjustments(
+        img,
+        tone_curve_channel_points={
+            "red": [(0.0, 0.0), (0.25, 0.6), (1.0, 1.0)],
+            "green": [(0.0, 0.0), (1.0, 1.0)],
+            "blue": [(0.0, 0.0), (0.25, 0.1), (1.0, 1.0)],
+        },
+    )
+
+    assert out.shape == img.shape
+    assert float(out[..., 0].mean()) > float(img[..., 0].mean())
+    assert np.allclose(out[..., 1], img[..., 1], atol=1e-6)
+    assert float(out[..., 2].mean()) < float(img[..., 2].mean())
+
+
 def test_tone_curve_lut_is_smooth_monotonic_and_honors_black_white_points():
     lut_x, lut_y = tone_curve_lut(
         [(0.0, 0.0), (0.25, 0.12), (0.55, 0.72), (1.0, 1.0)],
