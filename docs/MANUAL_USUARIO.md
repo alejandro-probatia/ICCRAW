@@ -10,11 +10,11 @@ settings, profiles, hashes and audit artifacts.
 
 ![ProbRAW: main development and profiling interface](assets/screenshots/probraw-portada.png)
 
-This manual covers the complete ProbRAW 0.3.3 workflow: session creation, color
+This manual covers the complete ProbRAW 0.3.4 workflow: session creation, color
 chart profiling, manual work without a chart, settings copy/paste, render queue,
 TIFF export, metadata, Proof, C2PA, 3D gamut diagnostics, chart reference
-management, session statistics, colorimetric histogram, global settings and the
-meaning of every visible option in the interface.
+management, session statistics, colorimetric histogram, MTF sharpness analysis,
+global settings and the meaning of every visible option in the interface.
 
 ## 1. Installation and Startup
 
@@ -402,10 +402,11 @@ The right column of `2. Ajustar / Aplicar` guides the workflow:
 | Tab | Purpose |
 | --- | --- |
 | `Color / calibración` | References, development profiles, chart-based ICC generation and active ICC. |
-| `Ajustes personalizados` | Always-visible colorimetric histogram plus brightness, color, sharpness, noise and CA controls. |
+| `Color y contraste` | Always-visible colorimetric histogram plus brightness, contrast and color controls. |
+| `Nitidez` | Acutance, sharpening radius, noise reduction and lateral chromatic aberration controls. |
 | `RAW / exportación` | Global RAW recipe and derived TIFF output. |
 
-The histogram in `Ajustes personalizados` is computed from the colorimetric
+The histogram in `Color y contraste` is computed from the colorimetric
 signal before monitor ICC conversion. If the input ICC profile is active, it
 measures the preview produced by that profile; ProbRAW then applies the monitor
 profile only to display the image correctly on screen.
@@ -441,6 +442,33 @@ profile only to display the image correctly on screen.
 
 ### Sharpness
 
+The top of the tab includes MTF analysis for a slanted edge. Press
+`Seleccionar borde`, drag an ROI over the photographed edge, and use the `ESF`,
+`LSF` and `MTF` subtabs to inspect the response. `Actualizar` recalculates the
+measurement; when `Actualizar MTF con los ajustes` is enabled, it recalculates
+as sharpness, noise or chromatic aberration controls change. `Ampliar` opens a
+larger graph window.
+
+The ROI, metrics and curves are saved in the RAW sidecar. When the capture is
+loaded again, ProbRAW restores the rectangle and the curves without requiring a
+new edge selection; `Actualizar` recalculates the curve with that same ROI. From
+two thumbnails with saved MTF data, use `Comparar MTF de selección` to inspect
+the numeric table plus overlaid `ESF`, `LSF` and `MTF` curves.
+
+MTF is not calculated from a thumbnail or downscaled preview: ProbRAW loads the
+real image at full resolution, applies the active adjustments without resizing,
+and maps the viewer ROI to analysis coordinates. The sidecar stores both the
+real ROI used for calculation and the viewer ROI used to redraw the rectangle.
+
+The primary metric is cycles/pixel. ProbRAW tries to fill `Tamaño de píxel (µm)`
+automatically from sensor-size metadata or focal-plane resolution metadata. If
+those tags are missing, enter `Sensor ancho (mm)` and, when known,
+`Sensor alto (mm)`; ProbRAW derives pixel pitch from the loaded image
+dimensions. You can also enter `Tamaño de píxel (µm)` directly if you already
+know it. With that value, ProbRAW also reports line pairs per millimetre
+(`lp/mm`): `lp/mm = cycles/pixel × 1000 / pixel_pitch_µm`. That conversion
+depends on the pixel size being correct for the analysed file.
+
 | Option | Range/values | Explanation |
 | --- | --- | --- |
 | `Nitidez (amount)` | `0.00` to `3.00` | Sharpening intensity. |
@@ -450,6 +478,8 @@ profile only to display the image correctly on screen.
 | `CA lateral rojo/cian` | factor near `1.0000` | Corrects red/cyan lateral chromatic aberration. |
 | `CA lateral azul/amarillo` | factor near `1.0000` | Corrects blue/yellow lateral chromatic aberration. |
 | `Modo precisión 1:1 para nitidez` | on/off | Uses real-resolution source during sharpness/noise/CA drags. Slower. |
+| `Sensor ancho (mm)` / `Sensor alto (mm)` | `0.000` to `200.000` | Physical sensor size used to derive pixel pitch when metadata does not provide it. |
+| `Tamaño de píxel (µm)` | `0.000` to `50.000` | Pitch used to convert cycles/pixel to `lp/mm`; it can be automatic, derived from manual sensor size, or entered directly. |
 | `Denoise modo receta` | off, mild, medium, strong | Compatibility recipe metadata. Does not modify pixels in the GUI. |
 | `Sharpen modo receta` | off, mild, medium, strong | Compatibility recipe metadata. Does not modify pixels in the GUI. |
 | `Restablecer nitidez` | action | Resets sharpness, noise and CA. |

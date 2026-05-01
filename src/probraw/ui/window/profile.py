@@ -1420,6 +1420,8 @@ class ProfileWorkflowMixin:
     def _begin_manual_chart_marking(self) -> None:
         if self._original_linear is None:
             return
+        if hasattr(self, "_set_mtf_roi_selection_active"):
+            self._set_mtf_roi_selection_active(False)
         self._set_neutral_picker_active(False)
         self._manual_chart_marking = True
         self._manual_chart_points = []

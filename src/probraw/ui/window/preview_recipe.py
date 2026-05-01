@@ -264,6 +264,8 @@ class PreviewRecipeMixin:
         self._on_render_control_change()
 
     def _set_neutral_picker_active(self, active: bool) -> None:
+        if active and hasattr(self, "_set_mtf_roi_selection_active"):
+            self._set_mtf_roi_selection_active(False)
         self._neutral_picker_active = bool(active)
         if hasattr(self, "btn_neutral_picker"):
             self.btn_neutral_picker.blockSignals(True)

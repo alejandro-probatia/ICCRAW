@@ -78,6 +78,30 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.4
+
+La release 0.3.4 publica el análisis MTF de nitidez persistente a resolución
+completa:
+
+- las curvas `ESF`, `LSF` y `MTF` de borde inclinado se guardan en la mochila
+  sidecar de cada RAW,
+- al reabrir una imagen se recuperan ROI y curvas sin seleccionar de nuevo el
+  borde,
+- el recálculo mapea la ROI del visor sobre la fuente real a resolución
+  completa, evitando mediciones sobre miniaturas o previews reducidas,
+- dos miniaturas seleccionadas con MTF guardada pueden compararse con curvas
+  superpuestas y tabla numérica,
+- actualizados el catálogo Qt en inglés y los manuales de usuario para las
+  nuevas herramientas.
+
+Artefactos esperados:
+
+- `probraw_0.3.4_amd64.deb`
+- `probraw_0.3.4_amd64.deb.sha256`
+- `probraw-0.3.4.tar.gz`
+- `probraw-0.3.4-py3-none-any.whl`
+- `probraw_0.3.4_python_artifacts.sha256`
+
 ## Release 0.3.3
 
 La release 0.3.3 consolida el flujo gráfico de sesión, ajustes y gestión de

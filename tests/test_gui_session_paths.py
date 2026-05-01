@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import time
 
+import cv2
 import pytest
 from PIL import Image, ImageCms
 
@@ -15,6 +17,7 @@ from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 import probraw.gui as gui_module  # noqa: E402
 from probraw.chart.sampling import ReferenceCatalog  # noqa: E402
 from probraw.core.models import Recipe  # noqa: E402
+from probraw.core.utils import write_tiff16  # noqa: E402
 from probraw.gui import ICCRawMainWindow  # noqa: E402
 from probraw.provenance.c2pa import C2PASignConfig  # noqa: E402
 from probraw.provenance.probraw_proof import ProbRawProofConfig, ProbRawProofResult  # noqa: E402
@@ -382,7 +385,9 @@ def test_raw_develop_layout_prioritizes_viewer_area(qapp):
         )
         assert hasattr(window, "thumbnail_size_slider")
         if hasattr(QtWidgets.QFileSystemModel, "DontWatchForChanges"):
-            assert not window._dir_model.testOption(QtWidgets.QFileSystemModel.DontWatchForChanges)
+            assert window._dir_model.testOption(QtWidgets.QFileSystemModel.DontWatchForChanges)
+        if os.name != "nt":
+            assert window._dir_model_root_path != "/"
     finally:
         window.close()
 
@@ -621,13 +626,53 @@ def test_image_thumbnail_payload_uses_real_preview(tmp_path: Path, qapp):
     assert rgb.shape[2] == 3
 
 
-def test_raw_thumbnail_payload_uses_fast_raw_fallback_when_embedded_preview_is_missing(tmp_path: Path, monkeypatch, qapp):
+def test_raw_thumbnail_payload_skips_raw_decode_during_folder_browsing(tmp_path: Path, monkeypatch, qapp):
+    import probraw.ui.window.browser as browser_module
+
     raw_path = tmp_path / "capture.NEF"
     raw_path.write_bytes(b"not a real raw but enough for the thumbnail test")
 
-    monkeypatch.setattr(gui_module, "extract_embedded_preview", lambda _path: None)
-    fallback = gui_module.np.full((80, 120, 3), (0.18, 0.36, 0.72), dtype=gui_module.np.float32)
-    monkeypatch.setattr(gui_module, "develop_image_array", lambda _path, _recipe, half_size=False: fallback)
+    monkeypatch.setattr(browser_module, "external_tool_path", lambda _name: None)
+    monkeypatch.setattr(
+        gui_module,
+        "develop_image_array",
+        lambda _path, _recipe, half_size=False: pytest.fail(
+            "RAW thumbnails must not demosaic during folder browsing"
+        ),
+    )
+
+    payloads = ICCRawMainWindow._build_thumbnail_payloads([raw_path], 64)
+
+    assert payloads == []
+
+
+def test_raw_thumbnail_payload_uses_exiftool_embedded_preview(tmp_path: Path, monkeypatch, qapp):
+    import probraw.ui.window.browser as browser_module
+
+    raw_path = tmp_path / "capture.NEF"
+    raw_path.write_bytes(b"not a real raw but enough for the thumbnail test")
+    preview_path = tmp_path / "embedded.jpg"
+    Image.new("RGB", (160, 90), (20, 120, 220)).save(preview_path, format="JPEG")
+    preview_bytes = preview_path.read_bytes()
+    calls: list[list[str]] = []
+
+    class Proc:
+        returncode = 0
+        stdout = preview_bytes
+
+    def fake_run_external(cmd, **_kwargs):
+        calls.append([str(part) for part in cmd])
+        return Proc()
+
+    monkeypatch.setattr(browser_module, "external_tool_path", lambda name: "exiftool" if name == "exiftool" else None)
+    monkeypatch.setattr(browser_module, "run_external", fake_run_external)
+    monkeypatch.setattr(
+        gui_module,
+        "develop_image_array",
+        lambda _path, _recipe, half_size=False: pytest.fail(
+            "RAW thumbnails must not demosaic during folder browsing"
+        ),
+    )
 
     payloads = ICCRawMainWindow._build_thumbnail_payloads([raw_path], 64)
 
@@ -635,6 +680,7 @@ def test_raw_thumbnail_payload_uses_fast_raw_fallback_when_embedded_preview_is_m
     raw_path_text, key, rgb = payloads[0]
     assert raw_path_text == str(raw_path)
     assert str(raw_path) in key
+    assert calls[0][1:3] == ["-b", "-PreviewImage"]
     assert rgb.dtype.name == "uint8"
     assert max(rgb.shape[:2]) <= gui_module.MAX_THUMBNAIL_SIZE
     assert rgb.shape[2] == 3
@@ -1639,6 +1685,56 @@ def test_startup_memory_ignores_stale_paths_and_falls_back_to_home(tmp_path: Pat
         window.close()
 
 
+def test_window_close_waits_for_running_task_thread(qapp):
+    window = ICCRawMainWindow()
+    thread = gui_module.TaskThread(lambda: QtCore.QThread.msleep(50))
+    window._threads.append(thread)
+    thread.start()
+    try:
+        window.close()
+
+        assert not window._threads
+        try:
+            assert not thread.isRunning()
+        except RuntimeError:
+            pass
+    finally:
+        if thread in getattr(window, "_threads", []):
+            window._threads.remove(thread)
+        try:
+            if thread.isRunning():
+                thread.wait(1000)
+        except RuntimeError:
+            pass
+
+
+def test_shutdown_background_threads_does_not_wait_forever(qapp):
+    window = ICCRawMainWindow()
+    thread = gui_module.TaskThread(lambda: QtCore.QThread.msleep(5000))
+    window._threads.append(thread)
+    thread.start()
+    started = time.monotonic()
+    try:
+        window._shutdown_background_threads(timeout_ms=10)
+
+        assert time.monotonic() - started < 2.0
+        assert not window._threads
+        try:
+            assert not thread.isRunning()
+        except RuntimeError:
+            pass
+    finally:
+        if thread in getattr(window, "_threads", []):
+            window._threads.remove(thread)
+        try:
+            if thread.isRunning():
+                thread.terminate()
+                thread.wait(1000)
+        except RuntimeError:
+            pass
+        window.close()
+
+
 def test_thumbnail_copy_paste_development_settings_writes_raw_sidecars(tmp_path: Path, qapp):
     root = tmp_path / "session"
     raw_dir = root / "01_ORG"
@@ -1719,7 +1815,8 @@ def test_raw_adjustment_groups_follow_editor_flow(qapp):
         ]
         assert workflow_labels == [
             "Color / calibración",
-            "Ajustes personalizados",
+            "Color y contraste",
+            "Nitidez",
             "RAW / exportación",
         ]
 
@@ -1727,7 +1824,6 @@ def test_raw_adjustment_groups_follow_editor_flow(qapp):
         assert panel_labels == [
             "Brillo y contraste",
             "Color",
-            "Nitidez",
         ]
         raw_export_labels = [
             window.raw_export_tabs.itemText(i)
@@ -1740,8 +1836,402 @@ def test_raw_adjustment_groups_follow_editor_flow(qapp):
         assert "Gestión de color y calibración" not in panel_labels
         assert "Calibrar sesión" not in panel_labels
         assert "Corrección básica" not in panel_labels
+        assert "Ajustes personalizados" not in workflow_labels
         assert isinstance(window._advanced_raw_config, QtWidgets.QGroupBox)
         assert window._advanced_raw_config.title() == "Criterios RAW globales"
+        mtf_tab_labels = [
+            window.mtf_graph_tabs.tabText(i)
+            for i in range(window.mtf_graph_tabs.count())
+        ]
+        assert mtf_tab_labels == ["ESF", "LSF", "MTF", "Métricas MTF", "Contexto técnico"]
+        assert isinstance(window.mtf_plot_mtf, gui_module.MTFPlotWidget)
+        assert window.mtf_result_tabs is window.mtf_graph_tabs
+
+        window._go_to_nitidez_tab()
+        assert window.main_tabs.currentIndex() == 1
+        assert window.right_workflow_tabs.tabText(window.right_workflow_tabs.currentIndex()) == "Nitidez"
+    finally:
+        window.close()
+
+
+def test_mtf_roi_analysis_updates_metrics_and_lpmm(tmp_path: Path, qapp):
+    size = 140
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.12
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, image)
+    try:
+        window._selected_file = image_path
+        window._original_linear = image
+        window._preview_srgb = image
+        window.spin_mtf_pixel_pitch_um.setValue(4.0)
+        window._on_mtf_roi_selected(20, 20, 100, 100)
+
+        assert window._mtf_roi == (20, 20, 100, 100)
+        assert window._mtf_last_result is not None
+        assert window.mtf_plot_mtf._result is window._mtf_last_result
+        assert "MTF50" not in window.mtf_metrics_label.text()
+        assert "lp/mm" in window.mtf_metrics_label.text()
+        metric_rows = {
+            window.mtf_metrics_table.item(row, 0).text(): window.mtf_metrics_table.item(row, 1).text()
+            for row in range(window.mtf_metrics_table.rowCount())
+        }
+        context_rows = {
+            window.mtf_context_table.item(row, 0).text(): window.mtf_context_table.item(row, 1).text()
+            for row in range(window.mtf_context_table.rowCount())
+        }
+        assert "MTF50" in metric_rows
+        assert "MTF30" in metric_rows
+        assert "MTF10" in metric_rows
+        assert "Nyquist" in metric_rows
+        assert "125.00 lp/mm" in metric_rows["Nyquist"]
+        assert "Post-Nyquist pico" in metric_rows
+        assert "Fuente" in context_rows
+        assert "ROI" in context_rows
+        payload = window._mtf_analysis_payload(include_curves=True)
+        assert payload is not None
+        assert payload["summary"]["nyquist_cycles_per_pixel"] == pytest.approx(0.5)
+        assert payload["summary"]["nyquist_lp_per_mm"] == pytest.approx(125.0)
+        assert payload["summary"]["post_nyquist"]["samples"] > 0
+        assert payload["summary"]["extended_frequency_range_cycles_per_pixel"][1] <= 1.0
+        assert payload["curves"]["mtf"]
+        assert payload["curves"]["mtf_extended"]
+        assert max(point["frequency_cycles_per_pixel"] for point in payload["curves"]["mtf_extended"]) <= 1.0
+        sidecar = load_raw_sidecar(image_path)
+        assert sidecar["mtf_analysis"]["summary"]["mtf50"] == pytest.approx(payload["summary"]["mtf50"])
+        assert sidecar["mtf_analysis"]["summary"]["mtf50_lp_per_mm"] == pytest.approx(payload["summary"]["mtf50_lp_per_mm"])
+        assert sidecar["mtf_analysis"]["curves"]["mtf_extended"]
+        assert "MTF guardada" in window._raw_sidecar_mtf_summary(image_path)
+        assert window._raw_sidecar_development_summary(image_path) == ""
+        csv_text = window._mtf_payload_to_csv(payload)
+        assert "section,index,x,y,key,value" in csv_text
+        assert "frequency_lp_per_mm" in csv_text
+        assert "mtf_extended" in csv_text
+        assert not window.btn_mtf_select_roi.isChecked()
+    finally:
+        window.close()
+
+
+def test_mtf_sidecar_restores_roi_and_curves_without_reselecting_edge(tmp_path: Path, qapp):
+    size = 140
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.12
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    measured = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    softer = cv2.GaussianBlur(edge, (0, 0), sigmaX=2.2, sigmaY=2.2)
+    measured_rgb = gui_module.np.repeat(measured[..., None], 3, axis=2)
+    softer_rgb = gui_module.np.repeat(softer[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, measured_rgb)
+    try:
+        window._selected_file = image_path
+        window._original_linear = measured_rgb
+        window._preview_srgb = measured_rgb
+        window.spin_mtf_pixel_pitch_um.setValue(4.0)
+        window._on_mtf_roi_selected(20, 20, 100, 100)
+        persisted = window._mtf_last_result
+        assert persisted is not None
+        persisted_mtf50 = persisted.mtf50
+        persisted_payload = load_raw_sidecar(image_path)["mtf_analysis"]
+        persisted_extended = [
+            point["modulation"]
+            for point in persisted_payload["curves"]["mtf_extended"]
+        ]
+
+        window._clear_mtf_roi_for_file_change()
+        window.spin_mtf_pixel_pitch_um.setValue(0.0)
+
+        window._selected_file = image_path
+        window._original_linear = measured_rgb
+        window._preview_srgb = measured_rgb
+        window._restore_persisted_mtf_analysis_for_selected(image_path)
+
+        restored = window._mtf_last_result
+        assert restored is not None
+        assert window._mtf_roi == (20, 20, 100, 100)
+        assert window.image_result_single._roi_rect == pytest.approx((20, 20, 100, 100))
+        assert restored.mtf50 == pytest.approx(persisted_mtf50)
+        assert restored.mtf_extended == pytest.approx(persisted_extended)
+        assert window.mtf_plot_mtf._result is restored
+        assert window.spin_mtf_pixel_pitch_um.value() == pytest.approx(4.0)
+        assert not window.btn_mtf_select_roi.isChecked()
+
+        window._original_linear = softer_rgb
+        window._preview_srgb = softer_rgb
+        write_tiff16(image_path, softer_rgb)
+        window._recalculate_mtf_analysis()
+
+        assert window._mtf_roi == (20, 20, 100, 100)
+        assert window._mtf_last_result is not restored
+        assert window._mtf_last_result.mtf50 < persisted_mtf50
+    finally:
+        window.close()
+
+
+def test_mtf_sidecar_restore_scales_roi_to_current_preview_size(tmp_path: Path, qapp):
+    size = 140
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.12
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    full_image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+    preview = cv2.resize(full_image, (70, 70), interpolation=cv2.INTER_AREA)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, full_image)
+    try:
+        window._selected_file = image_path
+        window._original_linear = full_image
+        window._preview_srgb = full_image
+        window._on_mtf_roi_selected(20, 20, 100, 100)
+        assert load_raw_sidecar(image_path)["mtf_analysis"]["summary"]["display_roi"] == [20, 20, 100, 100]
+
+        window._clear_mtf_roi_for_file_change()
+        window._selected_file = image_path
+        window._original_linear = preview
+        window._preview_srgb = preview
+        window._restore_persisted_mtf_analysis_for_selected(image_path)
+
+        assert window._mtf_roi == (10, 10, 50, 50)
+        assert window.image_result_single._roi_rect == pytest.approx((10, 10, 50, 50))
+
+        window._recalculate_mtf_analysis()
+
+        assert window._mtf_last_result is not None
+        assert window._mtf_last_result.roi == (20, 20, 100, 100)
+        payload = load_raw_sidecar(image_path)["mtf_analysis"]
+        assert payload["summary"]["display_dimensions_px"] == [70, 70]
+        assert payload["summary"]["display_roi"] == [10, 10, 50, 50]
+        assert payload["summary"]["roi"] == [20, 20, 100, 100]
+    finally:
+        window.close()
+
+
+def test_mtf_recalculation_scales_preview_roi_to_full_resolution_source(tmp_path: Path, qapp):
+    size = 140
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.12
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    full_image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+    preview = cv2.resize(full_image, (70, 70), interpolation=cv2.INTER_AREA)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, full_image)
+    try:
+        window._selected_file = image_path
+        window._original_linear = preview
+        window._preview_srgb = preview
+        window._on_mtf_roi_selected(10, 10, 50, 50)
+
+        assert window._mtf_roi == (10, 10, 50, 50)
+        assert window._mtf_last_result is not None
+        assert window._mtf_last_result.roi == (20, 20, 100, 100)
+        payload = load_raw_sidecar(image_path)["mtf_analysis"]
+        assert payload["summary"]["analysis_source"] == "full_resolution_image_data"
+        assert payload["summary"]["image_dimensions_px"] == [140, 140]
+        assert payload["summary"]["display_dimensions_px"] == [70, 70]
+        assert payload["summary"]["roi"] == [20, 20, 100, 100]
+        assert payload["summary"]["display_roi"] == [10, 10, 50, 50]
+    finally:
+        window.close()
+
+
+def test_mtf_persisted_comparison_rows(qapp):
+    window = ICCRawMainWindow()
+    try:
+        left = {
+            "summary": {
+                "measured_at": "2026-05-01T10:00:00+00:00",
+                "roi": [1, 2, 40, 50],
+                "mtf50": 0.20,
+                "mtf50_lp_per_mm": 40.0,
+                "mtf30": 0.32,
+                "mtf30_lp_per_mm": 64.0,
+                "mtf10": None,
+                "mtf10_lp_per_mm": None,
+                "nyquist_lp_per_mm": 100.0,
+                "acutance": 0.60,
+                "edge_angle_degrees": 5.0,
+                "edge_contrast": 0.70,
+                "overshoot": 0.01,
+                "undershoot": 0.02,
+                "post_nyquist": {"peak_frequency": 0.75, "peak_modulation": 0.04, "energy_ratio": 0.10},
+            }
+        }
+        right = {
+            "summary": {
+                "measured_at": "2026-05-01T10:02:00+00:00",
+                "roi": [3, 4, 40, 50],
+                "mtf50": 0.25,
+                "mtf50_lp_per_mm": 50.0,
+                "mtf30": 0.36,
+                "mtf30_lp_per_mm": 72.0,
+                "mtf10": 0.48,
+                "mtf10_lp_per_mm": 96.0,
+                "nyquist_lp_per_mm": 100.0,
+                "acutance": 0.66,
+                "edge_angle_degrees": 6.0,
+                "edge_contrast": 0.72,
+                "overshoot": 0.03,
+                "undershoot": 0.01,
+                "post_nyquist": {"peak_frequency": 0.82, "peak_modulation": 0.06, "energy_ratio": 0.12},
+            }
+        }
+
+        rows = window._mtf_comparison_rows(Path("a.NEF"), left, Path("b.NEF"), right)
+
+        by_label = {row[0]: row for row in rows}
+        assert by_label["MTF50 (c/p)"][1:] == ("0.200000 c/p", "0.250000 c/p", "+0.050000 c/p")
+        assert by_label["MTF50 (lp/mm)"][1:] == ("40.00 lp/mm", "50.00 lp/mm", "+10.00 lp/mm")
+        assert by_label["MTF10 (c/p)"][1:] == ("sin dato", "0.480000 c/p", "")
+        assert by_label["Sobreimpulso (%)"][1:] == ("1.000%", "3.000%", "+2.000%")
+        assert by_label["Post-Nyquist pico (c/p)"][2] == "0.820000 c/p"
+    finally:
+        window.close()
+
+
+def test_mtf_plot_displays_nyquist_range_and_coordinate_labels(qapp):
+    widget = gui_module.MTFPlotWidget("mtf")
+
+    class Result:
+        frequency = [0.0, 0.1, 0.2, 0.35, 0.5]
+        mtf = [1.0, 0.86, 0.62, 0.31, 0.08]
+        frequency_extended = [0.0, 0.25, 0.5, 0.75, 1.0]
+        mtf_extended = [1.0, 0.5, 0.1, 0.04, 0.02]
+
+    try:
+        x_values = gui_module.np.asarray([0.0, 0.2, 0.4], dtype=gui_module.np.float64)
+
+        assert widget._x_range(x_values) == (0.0, 0.5)
+        assert widget._x_range(gui_module.np.asarray([0.0, 0.75])) == (0.0, 1.0)
+        assert widget._x_range(gui_module.np.asarray([0.0, 2.0])) == (0.0, 1.0)
+        assert widget._axis_ticks(0.0, 0.5) == [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+        assert widget._axis_ticks(0.0, 1.0) == [0.0, 0.5, 1.0]
+        assert widget._coordinate_label(0.5, 0.75) == "x=0.5  y=0.75"
+        assert "post-Nyquist" in widget._coordinate_label(0.75, 0.2)
+        widget.resize(460, 300)
+        widget.set_result(Result())
+        widget._hover_pos = QtCore.QPointF(230, 120)
+        pixmap = widget.grab()
+        assert not pixmap.isNull()
+    finally:
+        widget.close()
+
+
+def test_mtf_comparison_plot_overlays_persisted_curves(qapp):
+    widget = gui_module.MTFComparisonPlotWidget("mtf")
+    left = {
+        "curves": {
+            "mtf_extended": [
+                {"frequency_cycles_per_pixel": 0.0, "modulation": 1.0},
+                {"frequency_cycles_per_pixel": 0.5, "modulation": 0.4},
+                {"frequency_cycles_per_pixel": 0.75, "modulation": 0.08},
+            ]
+        }
+    }
+    right = {
+        "curves": {
+            "mtf_extended": [
+                {"frequency_cycles_per_pixel": 0.0, "modulation": 1.0},
+                {"frequency_cycles_per_pixel": 0.5, "modulation": 0.3},
+                {"frequency_cycles_per_pixel": 0.75, "modulation": 0.04},
+            ]
+        }
+    }
+    try:
+        widget.set_payloads([("a.NEF", left), ("b.NEF", right)])
+
+        assert len(widget._series) == 2
+        assert widget._series[0][0] == "a.NEF"
+        assert widget._x_range(gui_module.np.concatenate([series[1] for series in widget._series])) == (0.0, 1.0)
+        widget.resize(620, 420)
+        pixmap = widget.grab()
+        assert not pixmap.isNull()
+    finally:
+        widget.close()
+
+
+def test_mtf_pixel_pitch_is_estimated_from_loaded_file_metadata(tmp_path: Path, monkeypatch, qapp):
+    import probraw.ui.window.mtf as mtf_module
+
+    image_path = tmp_path / "edge.tiff"
+    image_path.write_bytes(b"fake")
+    captured: dict[str, object] = {}
+
+    def fake_estimate(path: Path, *, image_dimensions=None):
+        captured["path"] = path
+        captured["dimensions"] = image_dimensions
+        return 4.88, "sensor_width"
+
+    monkeypatch.setattr(mtf_module, "estimate_pixel_pitch_um", fake_estimate)
+    window = ICCRawMainWindow()
+    try:
+        window._selected_file = image_path
+        window._original_linear = gui_module.np.zeros((30, 40, 3), dtype=gui_module.np.float32)
+        window._mtf_last_analysis_image_dimensions = (40, 30)
+
+        window._auto_update_mtf_pixel_pitch_from_file(image_path)
+
+        assert captured["path"] == image_path
+        assert captured["dimensions"] == (40, 30)
+        assert window.spin_mtf_pixel_pitch_um.value() == pytest.approx(4.88)
+        assert window._mtf_pixel_pitch_auto_source == "sensor_width"
+        assert "anchura de sensor" in window.mtf_pixel_pitch_source_label.text()
+    finally:
+        window.close()
+
+
+def test_mtf_pixel_pitch_resets_stale_auto_value_when_metadata_is_missing(tmp_path: Path, monkeypatch, qapp):
+    import probraw.ui.window.mtf as mtf_module
+
+    image_path = tmp_path / "edge.tiff"
+    image_path.write_bytes(b"fake")
+    monkeypatch.setattr(mtf_module, "estimate_pixel_pitch_um", lambda _path, *, image_dimensions=None: None)
+    window = ICCRawMainWindow()
+    try:
+        window._selected_file = image_path
+        window._original_linear = gui_module.np.zeros((30, 40, 3), dtype=gui_module.np.float32)
+        window.spin_mtf_pixel_pitch_um.setValue(4.88)
+        window._mtf_pixel_pitch_auto_source = "sensor_width"
+
+        window._auto_update_mtf_pixel_pitch_from_file(image_path)
+
+        assert window.spin_mtf_pixel_pitch_um.value() == pytest.approx(0.0)
+        assert window._mtf_pixel_pitch_auto_source is None
+        assert "no disponible" in window.mtf_pixel_pitch_source_label.text()
+    finally:
+        window.close()
+
+
+def test_mtf_manual_sensor_size_derives_pixel_pitch_when_metadata_is_missing(tmp_path: Path, monkeypatch, qapp):
+    import probraw.ui.window.mtf as mtf_module
+
+    image_path = tmp_path / "edge.tiff"
+    image_path.write_bytes(b"fake")
+    monkeypatch.setattr(mtf_module, "estimate_pixel_pitch_um", lambda _path, *, image_dimensions=None: None)
+    window = ICCRawMainWindow()
+    try:
+        window._selected_file = image_path
+        window._original_linear = gui_module.np.zeros((4000, 6000, 3), dtype=gui_module.np.float32)
+        window._mtf_last_analysis_image_dimensions = (6000, 4000)
+        window.spin_mtf_sensor_width_mm.setValue(36.0)
+        window.spin_mtf_sensor_height_mm.setValue(24.0)
+
+        window._auto_update_mtf_pixel_pitch_from_file(image_path)
+
+        assert window.spin_mtf_pixel_pitch_um.value() == pytest.approx(6.0)
+        assert window._mtf_pixel_pitch_auto_source == "manual_sensor_size"
+        assert "sensor manual" in window.mtf_pixel_pitch_source_label.text()
     finally:
         window.close()
 
@@ -1755,9 +2245,10 @@ def test_development_profile_controls_live_in_color_management_flow(qapp):
             for i in range(window.right_workflow_tabs.count())
         ]
         assert "Color / calibración" in workflow_labels
+        assert "Nitidez" in workflow_labels
         assert "Gestión de color y calibración" not in panel_labels
         assert "Perfiles de revelado" not in panel_labels
-        assert window.config_tabs.indexOf("Nitidez") == panel_labels.index("Nitidez")
+        assert "Nitidez" not in panel_labels
 
         def is_descendant(widget: QtWidgets.QWidget, ancestor: QtWidgets.QWidget) -> bool:
             parent = widget.parentWidget()
@@ -1768,7 +2259,9 @@ def test_development_profile_controls_live_in_color_management_flow(qapp):
             return False
 
         assert is_descendant(window.development_profile_combo, window.right_workflow_tabs.widget(0))
+        assert is_descendant(window.slider_sharpen, window.right_workflow_tabs.widget(2))
         assert not is_descendant(window.development_profile_combo, window.config_tabs)
+        assert not is_descendant(window.slider_sharpen, window.config_tabs)
         assert not is_descendant(window.development_profile_combo, window.main_tabs.widget(0))
     finally:
         window.close()
@@ -1824,7 +2317,12 @@ def test_global_configuration_dialog_owns_non_image_settings(qapp):
     window = ICCRawMainWindow()
     try:
         panel_labels = [window.config_tabs.itemText(i) for i in range(window.config_tabs.count())]
-        assert "Nitidez" in panel_labels
+        workflow_labels = [
+            window.right_workflow_tabs.tabText(i)
+            for i in range(window.right_workflow_tabs.count())
+        ]
+        assert "Nitidez" in workflow_labels
+        assert "Nitidez" not in panel_labels
         assert "Detalle" not in panel_labels
 
         global_tabs = [

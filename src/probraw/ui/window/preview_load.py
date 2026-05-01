@@ -24,6 +24,7 @@ class PreviewLoadMixin:
             self._selected_file = None
             self._last_loaded_preview_key = None
             self._clear_manual_chart_points_for_file_change()
+            self._clear_mtf_roi_for_file_change()
             self.selected_file_label.setText(self.tr("Sin archivo seleccionado"))
             self._clear_metadata_view()
             self._clear_viewer_histogram()
@@ -91,7 +92,10 @@ class PreviewLoadMixin:
             self._loaded_preview_fast_raw = bool(fast_raw)
             self._loaded_preview_source_max_side = int(max(self._original_linear.shape[0], self._original_linear.shape[1]))
             self._clear_adjustment_caches()
+            self._clear_mtf_roi_for_file_change()
+            self._auto_update_mtf_pixel_pitch_from_file(selected)
             self._refresh_preview()
+            self._restore_persisted_mtf_analysis_for_selected(selected)
             self._log_preview(f"Preview cargada desde cache: {selected.name}")
             self._set_status(self.tr("Preview en cache:") + f" {selected.name}")
             if self._manual_chart_marking_after_reload:
@@ -164,8 +168,11 @@ class PreviewLoadMixin:
                     max(self._original_linear.shape[0], self._original_linear.shape[1])
                 )
                 self._clear_adjustment_caches()
+                self._clear_mtf_roi_for_file_change()
+                self._auto_update_mtf_pixel_pitch_from_file(loaded_selected)
                 self._cache_preview_image(loaded_key, self._original_linear, selected=loaded_selected)
                 self._refresh_preview()
+                self._restore_persisted_mtf_analysis_for_selected(loaded_selected)
                 self._log_preview(msg)
                 self._set_status(self.tr("Preview cargada:") + f" {loaded_selected.name}")
                 if self._manual_chart_marking_after_reload:

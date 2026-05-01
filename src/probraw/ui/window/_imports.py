@@ -8,17 +8,21 @@ behavior while the implementation lives in smaller modules.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import csv
 from dataclasses import asdict
 from datetime import datetime, timezone
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import shlex
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
+import traceback
 from typing import Any
 
 import cv2
@@ -33,8 +37,10 @@ from ...chart.sampling import (
     reference_catalog_label,
     reference_catalog_template,
 )
+from ...analysis.mtf import MTFResult, analyze_slanted_edge_mtf
 from ...core.models import Recipe, to_json_dict, write_json
 from ...core.recipe import load_recipe, save_recipe
+from ...core.external import external_tool_path, run_external
 from ...core.utils import RAW_EXTENSIONS, read_image as _read_image, versioned_output_path, write_tiff16
 from ...display_color import (
     detect_system_display_profile as _detect_system_display_profile,
@@ -64,10 +70,12 @@ from ...qa_compare import compare_qa_reports
 from ...raw.pipeline import (
     develop_image_array as _develop_image_array,
     develop_standard_output_array,
+    is_standard_output_space,
     is_libraw_demosaic_supported,
     rawpy_feature_flags,
     unavailable_demosaic_reason,
 )
+from ...raw.metadata import estimate_pixel_pitch_um
 from ...raw.preview import (
     apply_adjustments as _apply_adjustments,
     apply_render_adjustments,
@@ -81,7 +89,12 @@ from ...raw.preview import (
 )
 from ...reporting import check_amaze_backend, check_external_tools
 from ...session import create_session, ensure_session_structure, load_session, save_session, session_file_path
-from ...sidecar import load_raw_sidecar, raw_sidecar_path, write_raw_sidecar as _write_raw_sidecar
+from ...sidecar import (
+    load_raw_sidecar,
+    raw_sidecar_path,
+    write_raw_mtf_analysis as _write_raw_mtf_analysis,
+    write_raw_sidecar as _write_raw_sidecar,
+)
 from ...update import auto_update, check_latest_release
 from ...version import __version__
 from ...workflow import (
@@ -93,6 +106,8 @@ from ..widgets import (
     CollapsibleToolPanel,
     Gamut3DWidget,
     ImagePanel,
+    MTFComparisonPlotWidget,
+    MTFPlotWidget,
     PersistentSideTabWidget,
     RGBHistogramWidget,
     ToneCurveEditor,
@@ -146,6 +161,10 @@ def load_image_for_preview(*args, **kwargs):
 
 def write_raw_sidecar(*args, **kwargs):
     return _gui_callable("write_raw_sidecar", _write_raw_sidecar)(*args, **kwargs)
+
+
+def write_raw_mtf_analysis(*args, **kwargs):
+    return _gui_callable("write_raw_mtf_analysis", _write_raw_mtf_analysis)(*args, **kwargs)
 
 
 def auto_generate_profile_from_charts(*args, **kwargs):

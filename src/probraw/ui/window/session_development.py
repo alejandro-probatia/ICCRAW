@@ -909,6 +909,8 @@ class SessionDevelopmentMixin:
             return f"{label}: {name}"
         if isinstance(payload.get("recipe"), dict):
             return f"{label} guardado"
+        if isinstance(payload.get("mtf_analysis"), dict):
+            return ""
         return f"Mochila ProbRAW: {status}" if status else ""
 
     def _has_raw_development_settings(self, path: Path) -> bool:

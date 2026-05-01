@@ -3,7 +3,9 @@ _fill_translations.py — Rellena las traducciones pendientes en locales/en.ts
 Uso: python scripts/_fill_translations.py
 """
 from __future__ import annotations
+import html
 import re
+import unicodedata
 from pathlib import Path
 
 TRANSLATIONS: dict[str, str] = {
@@ -144,6 +146,23 @@ TRANSLATIONS: dict[str, str] = {
     "Modo precision 1:1 para nitidez (mas lento)": "1:1 precision mode for sharpness (slower)",
     "Aplica ajustes de nitidez/ruido/CA sobre fuente a resolucion real durante el arrastre.": "Applies sharpness/noise/CA adjustments to the full-resolution source while dragging.",
     "Modo receta de denoise y sharpen para el revelado final. Se aplica al lote y al preview, no a la generación de perfil ICC.": "Recipe mode for denoise and sharpen in the final development. Applied to batch and preview, not to ICC profile generation.",
+    "Sensor ancho (mm)": "Sensor width (mm)",
+    "Sensor alto (mm)": "Sensor height (mm)",
+    "Pitch: manual": "Pitch: manual",
+    "Pitch calculado desde sensor manual": "Pitch calculated from manual sensor size",
+    "MTF recuperada del sidecar:": "MTF restored from sidecar:",
+    "Pitch recuperado de MTF guardada": "Pitch restored from saved MTF",
+    "MTF: cargando fuente a resolución real...": "MTF: loading full-resolution source...",
+    "MTF: no se pudo cargar la imagen a resolución real.": "MTF: could not load the full-resolution image.",
+    "Imagen análisis": "Analysis image",
+    "Imagen visor": "Viewer image",
+    "ROI visor": "Viewer ROI",
+    "No hay curvas MTF guardadas": "No saved MTF curves",
+    "Comparación MTF": "MTF comparison",
+    "Métricas MTF": "MTF metrics",
+    "manual": "manual",
+    "sensor manual": "manual sensor",
+    "sidecar": "sidecar",
     "Denoise modo receta": "Denoise recipe mode",
     "Sharpen modo receta": "Sharpen recipe mode",
     "Restablecer nitidez": "Reset sharpness",
@@ -426,25 +445,236 @@ TRANSLATIONS: dict[str, str] = {
 }
 
 
+TRANSLATIONS.update({
+    "Lote sin gestión de color": "Batch without color management",
+    "Comparar MTF de selección": "Compare selected MTF",
+    "Canal curva": "Curve channel",
+    "Luminosidad": "Luminance",
+    "Rojo": "Red",
+    "Verde": "Green",
+    "Azul": "Blue",
+    "Los filtros reales de nitidez, ruido y aberración cromática se aplican con los controles superiores. Los campos de receta quedan sólo como metadatos de compatibilidad.": "The real sharpness, noise, and chromatic-aberration filters are applied with the upper controls. The recipe fields remain only as compatibility metadata.",
+    "Metadato de receta; no modifica píxeles en la GUI.": "Recipe metadata; does not modify pixels in the GUI.",
+    "Working space (metadato)": "Working space (metadata)",
+    "Campo guardado en receta y pruebas de procedencia; el revelado actual usa el espacio de salida.": "Field saved in the recipe and provenance tests; current development uses the output space.",
+    "Input color assumption (metadato)": "Input color assumption (metadata)",
+    "Campo declarativo de receta; no aplica una transformación de color adicional.": "Declarative recipe field; does not apply an additional color transform.",
+    "Perfil ICC de sesión": "Session ICC profile",
+    "Perfiles ICC registrados en la sesión. Permite activar versiones generadas anteriormente.": "ICC profiles registered in the session. Allows activating previously generated versions.",
+    "Activar seleccionado": "Activate selected",
+    "Sin perfiles ICC de sesión": "No session ICC profiles",
+    "Siempre activo: usa el ICC de entrada si la salida es RGB de cámara, o un ICC estándar si la salida es sRGB/Adobe RGB/ProPhoto.": "Always active: uses the input ICC if the output is camera RGB, or a standard ICC if the output is sRGB/Adobe RGB/ProPhoto.",
+    "Sin datos de gamut 3D": "No 3D gamut data",
+    "Sesiones recientes": "Recent sessions",
+    "Abrir reciente": "Open recent",
+    "Actualizar lista": "Refresh list",
+    "Resumen de sesión": "Session summary",
+    "Imágenes RAW": "RAW images",
+    "Imágenes TIFF": "TIFF images",
+    "Perfiles ICC": "ICC profiles",
+    "Perfiles de ajuste": "Adjustment profiles",
+    "Mochilas RAW": "RAW sidecars",
+    "Elementos en cola": "Queued items",
+    "Actualizar estadísticas": "Refresh statistics",
+    "Referencia de carta": "Chart reference",
+    "Referencias incluidas y referencias personalizadas guardadas en la sesión.": "Built-in references and custom references saved in the session.",
+    "Importar JSON": "Import JSON",
+    "Nueva personalizada": "New custom",
+    "Editar tabla": "Edit table",
+    "Validar": "Validate",
+    "Referencia de carta no validada": "Chart reference not validated",
+    "Espacio estándar sin carta": "Standard space without chart",
+    "Diagnóstico": "Diagnostics",
+    "Histograma RGB colorimétrico": "Colorimetric RGB histogram",
+    "Testigos clipping": "Clipping indicators",
+    "Marca clipping de sombras y luces sobre el histograma.": "Marks shadow and highlight clipping on the histogram.",
+    "Overlay imagen": "Image overlay",
+    "Muestra clipping en la imagen: azul en sombras y rojo en luces.": "Shows clipping in the image: blue for shadows and red for highlights.",
+    "Restaurar columnas laterales": "Restore side columns",
+    "Enfocar visor ocultando columnas laterales": "Focus viewer by hiding side columns",
+    "Enfocar visor": "Focus viewer",
+    "Reducir": "Zoom out",
+    "Zoom 1:1": "Zoom 1:1",
+    "Girar izquierda": "Rotate left",
+    "Girar derecha": "Rotate right",
+    "Precache carpeta": "Precache folder",
+    "Precache 1:1": "Precache 1:1",
+    "Sin diagnóstico de imagen": "No image diagnostics",
+    "Imagen": "Image",
+    "Sin datos de carta": "No chart data",
+    "Actualizar datos de carta desde el informe de perfil": "Update chart data from profile report",
+    "Parche": "Patch",
+    "Carta": "Chart",
+    "Perfil A": "Profile A",
+    "Perfil B": "Profile B",
+    "ICC A": "ICC A",
+    "ICC B": "ICC B",
+    "Gamut 3D: sin perfil generado": "3D gamut: no generated profile",
+    "Gamut 3D": "3D gamut",
+    "ICC activo / salida actual": "Active ICC / current output",
+    "Monitor": "Monitor",
+    "ICC personalizado": "Custom ICC",
+    "Color / calibración": "Color / calibration",
+    "RAW / exportación": "RAW / export",
+    "Contexto técnico": "Technical context",
+    "Copiar datos": "Copy data",
+    "Exportar CSV": "Export CSV",
+    "Dato": "Data",
+    "Selección MTF desactivada": "MTF selection disabled",
+    "Sin medición MTF": "No MTF measurement",
+    "MTF50": "MTF50",
+    "MTF30": "MTF30",
+    "MTF10": "MTF10",
+    "Nyquist": "Nyquist",
+    "Ángulo de borde": "Edge angle",
+    "Contraste de borde": "Edge contrast",
+    "Sobreimpulso / subimpulso": "Overshoot / undershoot",
+    "Post-Nyquist rango": "Post-Nyquist range",
+    "Post-Nyquist pico": "Post-Nyquist peak",
+    "Post-Nyquist media": "Post-Nyquist mean",
+    "Post-Nyquist RMS": "Post-Nyquist RMS",
+    "Energía post/Nyquist": "Post/Nyquist energy",
+    "Post-Nyquist": "Post-Nyquist",
+    "sin muestras extendidas": "no extended samples",
+    "Fuente": "Source",
+    "preview actual": "current preview",
+    "ROI": "ROI",
+    "ROI muestras": "ROI samples",
+    "Pitch píxel": "Pixel pitch",
+    "Muestras ESF": "ESF samples",
+    "Muestras LSF": "LSF samples",
+    "Muestras MTF": "MTF samples",
+    "Muestras MTF extendida": "Extended MTF samples",
+    "Rango frecuencia MTF": "MTF frequency range",
+    "Rango frecuencia extendida": "Extended frequency range",
+    "Nota post-Nyquist": "Post-Nyquist note",
+    "diagnóstico exploratorio; no interpretar como resolución real por encima del límite de muestreo": "exploratory diagnostic; do not interpret as real resolution above the sampling limit",
+    "Advertencias": "Warnings",
+    "ninguna": "none",
+    "sin datos": "no data",
+    "MTF guardada en sidecar:": "MTF saved in sidecar:",
+    "MTF guardada": "Saved MTF",
+    "Comparar MTF": "Compare MTF",
+    "Selecciona exactamente dos miniaturas con datos MTF guardados.": "Select exactly two thumbnails with saved MTF data.",
+    "No hay MTF guardada para:": "No saved MTF for:",
+    "Diferencia segunda - primera": "Difference second - first",
+    "Medición": "Measurement",
+    "Subimpulso": "Undershoot",
+    "No hay medición MTF para copiar.": "No MTF measurement to copy.",
+    "Datos MTF copiados al portapapeles": "MTF data copied to the clipboard",
+    "No hay medición MTF para exportar.": "No MTF measurement to export.",
+    "Exportar MTF CSV": "Export MTF CSV",
+    "Datos MTF exportados:": "MTF data exported:",
+    "Revelado sin gestión de color": "Development without color management",
+    "Histograma: sRGB colorimétrico tras ICC de entrada, antes del ICC del monitor.": "Histogram: colorimetric sRGB after input ICC, before monitor ICC.",
+    "Histograma: sRGB de preview, antes del ICC del monitor.": "Histogram: preview sRGB, before monitor ICC.",
+    "Incluida:": "Included:",
+    "Sesión:": "Session:",
+    "Personalizada externa:": "External custom:",
+    "Referencia de carta no configurada": "Chart reference not configured",
+    "Referencia no válida:": "Invalid reference:",
+    "Referencia validada correctamente.": "Reference validated successfully.",
+    "Importar referencia de carta": "Import chart reference",
+    "Referencia no válida": "Invalid reference",
+    "Referencia de carta importada:": "Chart reference imported:",
+    "Editar referencia de carta": "Edit chart reference",
+    "Versión": "Version",
+    "Iluminante": "Illuminant",
+    "Observador": "Observer",
+    "Nombre": "Name",
+    "Añadir parche": "Add patch",
+    "Eliminar selección": "Remove selection",
+    "Referencia de carta guardada:": "Chart reference saved:",
+    "Resumen de carta sin tabla de parches": "Chart summary without patch table",
+    "Gamut 3D: calculando...": "3D gamut: calculating...",
+    "Diagnostico gamut 3D": "3D gamut diagnostics",
+    "Sin perfiles comparables": "No comparable profiles",
+    "ICC generado no encontrado": "Generated ICC not found",
+    "perfil de monitor no encontrado": "monitor profile not found",
+    "gamut ICC extremo:": "extreme ICC gamut:",
+    "omitidos:": "omitted:",
+    "Sin perfil ICC activo": "No active ICC profile",
+    "ninguno": "none",
+    "Perfil ICC activo desactivado": "Active ICC profile disabled",
+    "Los espacios de salida estándar requieren salida no lineal para incrustar un perfil ICC estándar. Vuelve a seleccionar sRGB, Adobe RGB o ProPhoto para sincronizar la receta.": "Standard output spaces require nonlinear output to embed a standard ICC profile. Select sRGB, Adobe RGB, or ProPhoto again to synchronize the recipe.",
+    "La receta está en RGB de cámara, pero no hay un perfil ICC de entrada activo. Genera o carga un ICC de sesión y activa 'Aplicar perfil ICC', o elige sRGB, Adobe RGB o ProPhoto como espacio estándar sin carta.": "The recipe is in camera RGB, but there is no active input ICC profile. Generate or load a session ICC and enable 'Apply ICC profile', or choose sRGB, Adobe RGB, or ProPhoto as the standard space without a chart.",
+    "No existe el perfil ICC de entrada activo:": "The active input ICC profile does not exist:",
+    "Espacio de salida no soportado para gestión ICC:": "Output space not supported for ICC management:",
+    "Gestión de color incompleta": "Incomplete color management",
+    "Los espacios estándar se exportan con salida no lineal e ICC estándar.": "Standard spaces are exported with nonlinear output and standard ICC.",
+    "RGB de cámara se mantiene lineal para el ICC de entrada de sesión.": "Camera RGB remains linear for the session input ICC.",
+    "No se pudo escribir mochila": "Could not write sidecar",
+    "Fallaron": "Failed",
+    "archivo(s). Primer error:": "file(s). First error:",
+    "Perfil de ajuste incompleto": "Incomplete adjustment profile",
+    "Perfil ICC estándar no disponible": "Standard ICC profile not available",
+    "No hay sesiones recientes": "No recent sessions",
+    "No hay una sesión reciente seleccionada.": "No recent session selected.",
+    "No se pudo abrir la sesión reciente:": "Could not open recent session:",
+    "Actualizado para:": "Updated for:",
+    "Cerrando tareas en segundo plano...": "Closing background tasks...",
+})
+
+
+def _fold_key(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(char for char in normalized if not unicodedata.combining(char)).lower()
+
+
+FOLDED_TRANSLATIONS = {_fold_key(source): translation for source, translation in TRANSLATIONS.items()}
+
+
+def _lookup_translation(source_text: str) -> str | None:
+    translation = TRANSLATIONS.get(source_text)
+    if translation is not None:
+        return translation
+    return FOLDED_TRANSLATIONS.get(_fold_key(source_text))
+
+
+def _escape_xml(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+
+
 def fill_translations(ts_path: Path) -> None:
     content = ts_path.read_text(encoding="utf-8")
 
-    def replace_unfinished(m: re.Match) -> str:
-        source_text = m.group(1)
-        translation = TRANSLATIONS.get(source_text)
+    def replace_unfinished_message(m: re.Match) -> str:
+        message = m.group(0)
+        source_match = re.search(r"<source>(.*?)</source>", message, flags=re.DOTALL)
+        translation_match = re.search(
+            r"<translation type=\"unfinished\">(.*?)</translation>",
+            message,
+            flags=re.DOTALL,
+        )
+        if source_match is None or translation_match is None:
+            return message
+
+        source_text = html.unescape(source_match.group(1))
+        current_xml = translation_match.group(1)
+        current_text = html.unescape(current_xml).strip()
+        translation = _lookup_translation(source_text)
         if translation is not None:
-            escaped = (translation
-                       .replace("&", "&amp;")
-                       .replace("<", "&lt;")
-                       .replace(">", "&gt;")
-                       .replace('"', "&quot;")
-                       .replace("'", "&apos;"))
-            return f"<source>{source_text}</source>\n        <translation>{escaped}</translation>"
-        return m.group(0)
+            replacement = f"<translation>{_escape_xml(translation)}</translation>"
+        elif current_text or source_text == "":
+            replacement = f"<translation>{current_xml}</translation>"
+        else:
+            return message
+
+        return (
+            message[: translation_match.start()]
+            + replacement
+            + message[translation_match.end() :]
+        )
 
     updated = re.sub(
-        r"<source>(.*?)</source>\s*<translation type=\"unfinished\"></translation>",
-        replace_unfinished,
+        r"<message>.*?</message>",
+        replace_unfinished_message,
         content,
         flags=re.DOTALL,
     )
@@ -452,6 +682,26 @@ def fill_translations(ts_path: Path) -> None:
     remaining = updated.count('type="unfinished"')
     filled = content.count('type="unfinished"') - remaining
     print(f"Filled: {filled}. Still unfinished: {remaining}")
+    if remaining:
+        print("Remaining empty unfinished sources:")
+        shown = 0
+        for message in re.findall(r"<message>.*?</message>", updated, flags=re.DOTALL):
+            if 'type="unfinished"' not in message:
+                continue
+            source_match = re.search(r"<source>(.*?)</source>", message, flags=re.DOTALL)
+            translation_match = re.search(
+                r"<translation type=\"unfinished\">(.*?)</translation>",
+                message,
+                flags=re.DOTALL,
+            )
+            if source_match is None or translation_match is None:
+                continue
+            if translation_match.group(1).strip():
+                continue
+            print(f"- {html.unescape(source_match.group(1)).replace(chr(10), ' ')[:180]}")
+            shown += 1
+            if shown >= 80:
+                break
 
 
 if __name__ == "__main__":

@@ -10,11 +10,12 @@ perfiles, hashes y artefactos de auditoría.
 
 ![ProbRAW: interfaz principal de revelado y perfilado](assets/screenshots/probraw-portada.png)
 
-Este manual cubre el flujo completo de ProbRAW 0.3.3: creación de sesión,
+Este manual cubre el flujo completo de ProbRAW 0.3.4: creación de sesión,
 perfilado con carta, perfil manual sin carta, copia de ajustes, cola de revelado,
 exportación TIFF, metadatos, Proof, C2PA, diagnóstico Gamut 3D, gestión de
 referencias de carta, estadísticas de sesión, histograma colorimétrico,
-configuración global y significado de todas las opciones visibles en la interfaz.
+análisis MTF de nitidez, configuración global y significado de todas las
+opciones visibles en la interfaz.
 
 ## 1. Instalación y arranque
 
@@ -410,10 +411,11 @@ La columna derecha de `2. Ajustar / Aplicar` induce el flujo de trabajo:
 | Pestaña | Uso |
 | --- | --- |
 | `Color / calibración` | Referencias, perfiles de ajuste, generación ICC con carta e ICC activo. |
-| `Ajustes personalizados` | Histograma colorimétrico siempre visible y controles de brillo, color, nitidez, ruido y CA. |
+| `Color y contraste` | Histograma colorimétrico siempre visible y controles de brillo, contraste y color. |
+| `Nitidez` | Controles de acutancia, radio de enfoque, reducción de ruido y corrección de aberración cromática lateral. |
 | `RAW / exportación` | Receta RAW global y salida de derivados TIFF. |
 
-El histograma de `Ajustes personalizados` se calcula sobre la señal
+El histograma de `Color y contraste` se calcula sobre la señal
 colorimétrica previa al ICC del monitor. Si el perfil ICC de entrada está
 activado, mide la preview resultante de ese perfil; después ProbRAW aplica el
 perfil del monitor solo para mostrar correctamente en pantalla.
@@ -449,6 +451,36 @@ perfil del monitor solo para mostrar correctamente en pantalla.
 
 ### Nitidez
 
+La parte superior de la pestaña incluye análisis MTF para un borde inclinado.
+Pulsa `Seleccionar borde`, arrastra una ROI sobre el borde fotografiado y usa
+las subpestañas `ESF`, `LSF` y `MTF` para revisar la respuesta. `Actualizar`
+recalcula la medida; si `Actualizar MTF con los ajustes` está activo, se
+recalcula al modificar nitidez, ruido o aberración cromática. `Ampliar` abre el
+gráfico en una ventana mayor.
+
+La ROI, las métricas y las curvas quedan guardadas en la mochila sidecar del
+RAW. Al volver a cargar la captura, ProbRAW recupera el rectángulo y las curvas
+sin tener que seleccionar de nuevo el borde; `Actualizar` recalcula la curva con
+esa misma ROI. Desde dos miniaturas con MTF guardada puedes usar `Comparar MTF
+de selección` para ver la tabla numérica y las curvas `ESF`, `LSF` y `MTF`
+superpuestas.
+
+El cálculo MTF no se hace sobre la miniatura ni sobre una preview reducida:
+ProbRAW carga la imagen real a resolución completa, aplica los ajustes activos
+sin reescalar y convierte la ROI del visor a coordenadas de análisis. El sidecar
+guarda tanto la ROI real usada para el cálculo como la ROI del visor empleada
+para redibujar el rectángulo.
+
+La métrica principal se expresa en ciclos/píxel. ProbRAW intenta rellenar
+automáticamente `Tamaño de píxel (µm)` a partir de metadatos de tamaño de sensor
+o resolución de plano focal. Si esos datos no existen, introduce `Sensor ancho
+(mm)` y, si lo conoces, `Sensor alto (mm)`; ProbRAW deriva el tamaño de píxel
+con las dimensiones de la imagen cargada. También puedes escribir directamente
+`Tamaño de píxel (µm)` si ya lo conoces. Con ese valor, ProbRAW añade la
+conversión a líneas por milímetro (`lp/mm`):
+`lp/mm = ciclos/píxel × 1000 / tamaño_píxel_µm`. La conversión depende de que el
+tamaño de píxel sea correcto para el archivo analizado.
+
 | Opción | Rango/valores | Explicación |
 | --- | --- | --- |
 | `Nitidez (amount)` | `0.00` a `3.00` | Intensidad de enfoque. |
@@ -458,6 +490,8 @@ perfil del monitor solo para mostrar correctamente en pantalla.
 | `CA lateral rojo/cian` | factor cercano a `1.0000` | Compensa aberración cromática lateral rojo/cian. |
 | `CA lateral azul/amarillo` | factor cercano a `1.0000` | Compensa aberración cromática lateral azul/amarillo. |
 | `Modo precisión 1:1 para nitidez` | activado/desactivado | Usa fuente a resolución real durante arrastres de nitidez/ruido/CA. Es más lento. |
+| `Sensor ancho (mm)` / `Sensor alto (mm)` | `0.000` a `200.000` | Tamaño físico del sensor para derivar el tamaño de píxel si los metadatos no lo indican. |
+| `Tamaño de píxel (µm)` | `0.000` a `50.000` | Pitch usado para convertir ciclos/píxel a `lp/mm`; puede ser automático, derivado del sensor manual o escrito directamente. |
 | `Denoise modo receta` | off, mild, medium, strong | Metadato de receta de compatibilidad. No modifica píxeles en la GUI. |
 | `Sharpen modo receta` | off, mild, medium, strong | Metadato de receta de compatibilidad. No modifica píxeles en la GUI. |
 | `Restablecer nitidez` | acción | Restaura nitidez, ruido y CA. |

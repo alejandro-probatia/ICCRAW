@@ -22,6 +22,36 @@ To maintain full traceability, each change must:
 
 No pending changes.
 
+## [0.3.4] - 2026-05-01
+
+### Added
+
+- The `Nitidez` tab now includes persistent slanted-edge MTF analysis with
+  `ESF`, `LSF` and `MTF` curves saved in each RAW sidecar.
+- Saved MTF measurements can be compared visually from two selected thumbnails,
+  with overlaid `ESF`, `LSF` and `MTF` curves plus the numeric metric table.
+- User manuals now document the sharpness-analysis workflow, persisted curves
+  and how ProbRAW maps viewer ROI coordinates to analysis coordinates.
+
+### Changed
+
+- MTF recalculation loads the selected source at full resolution and maps the
+  viewer ROI onto that real analysis image, avoiding measurements on thumbnails
+  or reduced previews.
+- Pixel-pitch and lp/mm reporting now use the analysis image dimensions, EXIF
+  metadata or the manual sensor-size controls instead of downscaled preview
+  dimensions.
+- The English Qt translation catalog was regenerated and completed for the new
+  session, color, chart, histogram and MTF controls.
+
+### Fixed
+
+- Reopening an image with saved MTF data restores the ROI and curves without
+  requiring the edge to be selected again, including when the current preview
+  size differs from the one used when the measurement was saved.
+- Updating MTF data in a RAW sidecar preserves existing development settings and
+  output history.
+
 ## [0.3.3] - 2026-04-30
 
 ### Added

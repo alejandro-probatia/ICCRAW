@@ -375,6 +375,513 @@ if QtWidgets is not None:
             return best_idx
 
 
+    class MTFPlotWidget(QtWidgets.QWidget):
+        EXTENDED_DISPLAY_MAX_FREQUENCY = 1.0
+
+        def __init__(self, curve: str = "mtf") -> None:
+            super().__init__()
+            self._curve = str(curve or "mtf").lower()
+            self._result: Any | None = None
+            self._hover_pos: QtCore.QPointF | None = None
+            self.setMouseTracking(True)
+            self.setMinimumHeight(260)
+            self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+        def set_result(self, result: Any | None) -> None:
+            self._result = result
+            self.update()
+
+        def clear(self) -> None:
+            self._result = None
+            self.update()
+
+        def paintEvent(self, _event) -> None:  # noqa: N802
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            painter.fillRect(self.rect(), QtGui.QColor("#20242b"))
+            plot = self.rect().adjusted(56, 22, -18, -44)
+            painter.fillRect(plot, QtGui.QColor("#15181d"))
+
+            x_values, y_values, title, x_label, y_label = self._curve_payload()
+            painter.setPen(QtGui.QPen(QtGui.QColor("#cbd5e1"), 1))
+            painter.drawText(self.rect().adjusted(8, 2, -8, -4), QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft, title)
+            painter.drawText(self.rect().adjusted(8, 0, -8, -8), QtCore.Qt.AlignBottom | QtCore.Qt.AlignHCenter, x_label)
+            painter.save()
+            painter.translate(14, self.rect().center().y())
+            painter.rotate(-90)
+            painter.drawText(QtCore.QRectF(-72, -8, 144, 16), QtCore.Qt.AlignCenter, y_label)
+            painter.restore()
+
+            if x_values.size < 2 or y_values.size < 2:
+                self._draw_empty_grid(painter, plot)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#94a3b8"), 1))
+                painter.drawText(plot, QtCore.Qt.AlignCenter, self.tr("Selecciona una ROI de borde inclinado"))
+                painter.end()
+                return
+
+            xmin, xmax = self._x_range(x_values)
+            ymin, ymax = self._y_range(y_values)
+            if xmax <= xmin or ymax <= ymin:
+                painter.end()
+                return
+
+            self._draw_axes(painter, plot, xmin, xmax, ymin, ymax)
+            if self._curve == "mtf":
+                self._draw_nyquist_marker(painter, plot, xmin, xmax)
+
+            if self._curve == "mtf":
+                self._draw_mtf_curve(painter, plot, x_values, y_values, xmin, xmax, ymin, ymax)
+                self._draw_mtf_reference_levels(painter, plot, ymin, ymax)
+            else:
+                self._draw_curve_path(painter, plot, x_values, y_values, xmin, xmax, ymin, ymax)
+            self._draw_hover_coordinates(painter, plot, xmin, xmax, ymin, ymax)
+            painter.end()
+
+        def mouseMoveEvent(self, event) -> None:  # noqa: N802
+            self._hover_pos = event.position()
+            self.update()
+            super().mouseMoveEvent(event)
+
+        def leaveEvent(self, event) -> None:  # noqa: N802
+            self._hover_pos = None
+            self.update()
+            super().leaveEvent(event)
+
+        def _curve_payload(self) -> tuple[np.ndarray, np.ndarray, str, str, str]:
+            result = self._result
+            if result is None:
+                return np.asarray([]), np.asarray([]), self._title(), "", ""
+            if self._curve == "esf":
+                return (
+                    np.asarray(getattr(result, "esf_distance", []), dtype=np.float64),
+                    np.asarray(getattr(result, "esf", []), dtype=np.float64),
+                    "ESF",
+                    self.tr("distancia al borde (px)"),
+                    self.tr("señal normalizada"),
+                )
+            if self._curve == "lsf":
+                return (
+                    np.asarray(getattr(result, "lsf_distance", []), dtype=np.float64),
+                    np.asarray(getattr(result, "lsf", []), dtype=np.float64),
+                    "LSF",
+                    self.tr("distancia al borde (px)"),
+                    self.tr("derivada"),
+                )
+            frequency = getattr(result, "frequency_extended", None)
+            mtf = getattr(result, "mtf_extended", None)
+            if frequency is None or len(frequency) == 0:
+                frequency = getattr(result, "frequency", [])
+            if mtf is None or len(mtf) == 0:
+                mtf = getattr(result, "mtf", [])
+            return (
+                np.asarray(frequency, dtype=np.float64),
+                np.asarray(mtf, dtype=np.float64),
+                "MTF",
+                self.tr("ciclos/píxel"),
+                self.tr("modulación"),
+            )
+
+        def _title(self) -> str:
+            return {"esf": "ESF", "lsf": "LSF"}.get(self._curve, "MTF")
+
+        def _x_range(self, values: np.ndarray) -> tuple[float, float]:
+            finite = np.asarray(values, dtype=np.float64)
+            finite = finite[np.isfinite(finite)]
+            if finite.size == 0:
+                return 0.0, 1.0
+            xmin = float(np.min(finite))
+            xmax = float(np.max(finite))
+            if self._curve == "mtf":
+                xmin = min(0.0, xmin)
+                xmax = max(0.5, xmax)
+                if xmax > 0.5:
+                    xmax = min(
+                        self.EXTENDED_DISPLAY_MAX_FREQUENCY,
+                        float(np.ceil(xmax / 0.5) * 0.5),
+                    )
+            if xmax <= xmin:
+                return xmin - 0.5, xmax + 0.5
+            return xmin, xmax
+
+        def _y_range(self, values: np.ndarray) -> tuple[float, float]:
+            if self._curve == "mtf":
+                return 0.0, max(1.0, float(np.nanmax(values)) * 1.05)
+            ymin = float(np.nanmin(values))
+            ymax = float(np.nanmax(values))
+            if ymax <= ymin:
+                return ymin - 0.5, ymax + 0.5
+            pad = (ymax - ymin) * 0.08
+            return ymin - pad, ymax + pad
+
+        def _draw_empty_grid(self, painter: QtGui.QPainter, plot: QtCore.QRect) -> None:
+            painter.setPen(QtGui.QPen(QtGui.QColor("#334155"), 1))
+            for i in range(5):
+                x = plot.left() + plot.width() * i / 4.0
+                y = plot.top() + plot.height() * i / 4.0
+                painter.drawLine(x, plot.top(), x, plot.bottom())
+                painter.drawLine(plot.left(), y, plot.right(), y)
+
+        def _draw_axes(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+        ) -> None:
+            painter.setPen(QtGui.QPen(QtGui.QColor("#334155"), 1))
+            font = painter.font()
+            font.setPointSize(max(7, font.pointSize() - 1))
+            painter.setFont(font)
+
+            for value in self._axis_ticks(xmin, xmax):
+                px, _py = self._data_to_plot(value, ymin, plot, xmin, xmax, ymin, ymax)
+                painter.drawLine(px, plot.top(), px, plot.bottom())
+                painter.setPen(QtGui.QPen(QtGui.QColor("#94a3b8"), 1))
+                label_rect = QtCore.QRectF(px - 28, plot.bottom() + 3, 56, 16)
+                painter.drawText(label_rect, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop, self._format_axis_value(value))
+                painter.setPen(QtGui.QPen(QtGui.QColor("#334155"), 1))
+
+            for value in self._axis_ticks(ymin, ymax):
+                _px, py = self._data_to_plot(xmin, value, plot, xmin, xmax, ymin, ymax)
+                painter.drawLine(plot.left(), py, plot.right(), py)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#94a3b8"), 1))
+                label_rect = QtCore.QRectF(plot.left() - 50, py - 8, 44, 16)
+                painter.drawText(label_rect, QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter, self._format_axis_value(value))
+                painter.setPen(QtGui.QPen(QtGui.QColor("#334155"), 1))
+
+            painter.setPen(QtGui.QPen(QtGui.QColor("#4b5563"), 1))
+            painter.drawRect(plot)
+
+        def _draw_nyquist_marker(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+        ) -> None:
+            if not (xmin <= 0.5 <= xmax):
+                return
+            px = plot.left() + (0.5 - xmin) / (xmax - xmin) * plot.width()
+            if xmax > 0.5:
+                post_rect = QtCore.QRectF(px, plot.top(), plot.right() - px, plot.height())
+                painter.fillRect(post_rect, QtGui.QColor(239, 68, 68, 18))
+            painter.setPen(QtGui.QPen(QtGui.QColor("#ef4444"), 1, QtCore.Qt.DashDotLine))
+            painter.drawLine(px, plot.top(), px, plot.bottom())
+
+        def _draw_curve_path(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            x_values: np.ndarray,
+            y_values: np.ndarray,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+            *,
+            pen: QtGui.QPen | None = None,
+        ) -> None:
+            path = QtGui.QPainterPath()
+            started = False
+            for x, y in zip(x_values, y_values, strict=True):
+                if not np.isfinite(x) or not np.isfinite(y):
+                    continue
+                if float(x) < xmin or float(x) > xmax:
+                    continue
+                px, py = self._data_to_plot(float(x), float(y), plot, xmin, xmax, ymin, ymax)
+                if not started:
+                    path.moveTo(px, py)
+                    started = True
+                else:
+                    path.lineTo(px, py)
+            if started:
+                painter.setPen(pen or QtGui.QPen(QtGui.QColor("#38bdf8"), 2))
+                painter.drawPath(path)
+
+        def _draw_mtf_curve(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            x_values: np.ndarray,
+            y_values: np.ndarray,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+        ) -> None:
+            x = np.asarray(x_values, dtype=np.float64)
+            y = np.asarray(y_values, dtype=np.float64)
+            in_band = x <= 0.5
+            post_band = x >= 0.5
+            self._draw_curve_path(
+                painter,
+                plot,
+                x[in_band],
+                y[in_band],
+                xmin,
+                xmax,
+                ymin,
+                ymax,
+                pen=QtGui.QPen(QtGui.QColor("#38bdf8"), 2),
+            )
+            self._draw_curve_path(
+                painter,
+                plot,
+                x[post_band],
+                y[post_band],
+                xmin,
+                xmax,
+                ymin,
+                ymax,
+                pen=QtGui.QPen(QtGui.QColor("#f97316"), 2, QtCore.Qt.DashLine),
+            )
+
+        def _draw_mtf_reference_levels(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            ymin: float,
+            ymax: float,
+        ) -> None:
+            painter.setPen(QtGui.QPen(QtGui.QColor("#f59e0b"), 1, QtCore.Qt.DashLine))
+            for level in (0.5, 0.3, 0.1):
+                py = plot.bottom() - (level - ymin) / (ymax - ymin) * plot.height()
+                if plot.top() <= py <= plot.bottom():
+                    painter.drawLine(plot.left(), py, plot.right(), py)
+
+        def _draw_hover_coordinates(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+        ) -> None:
+            pos = self._hover_pos
+            if pos is None or not plot.contains(pos.toPoint()):
+                return
+            x = xmin + (float(pos.x()) - plot.left()) / max(1.0, float(plot.width())) * (xmax - xmin)
+            y = ymax - (float(pos.y()) - plot.top()) / max(1.0, float(plot.height())) * (ymax - ymin)
+            x = float(np.clip(x, xmin, xmax))
+            y = float(np.clip(y, ymin, ymax))
+            px, py = self._data_to_plot(x, y, plot, xmin, xmax, ymin, ymax)
+
+            painter.setPen(QtGui.QPen(QtGui.QColor("#e2e8f0"), 1, QtCore.Qt.DotLine))
+            painter.drawLine(px, plot.top(), px, plot.bottom())
+            painter.drawLine(plot.left(), py, plot.right(), py)
+
+            label = self._coordinate_label(x, y)
+            metrics = painter.fontMetrics()
+            label_w = metrics.horizontalAdvance(label) + 14
+            label_h = metrics.height() + 8
+            lx = min(max(plot.left() + 4, px + 8), plot.right() - label_w - 4)
+            ly = max(plot.top() + 4, py - label_h - 8)
+            rect = QtCore.QRectF(lx, ly, label_w, label_h)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#334155"), 1))
+            painter.setBrush(QtGui.QColor(15, 23, 42, 230))
+            painter.drawRoundedRect(rect, 4, 4)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#f8fafc"), 1))
+            painter.drawText(rect.adjusted(7, 0, -7, 0), QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, label)
+
+        def _data_to_plot(
+            self,
+            x: float,
+            y: float,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+        ) -> tuple[float, float]:
+            px = plot.left() + (float(x) - xmin) / (xmax - xmin) * plot.width()
+            py = plot.bottom() - (float(y) - ymin) / (ymax - ymin) * plot.height()
+            return px, py
+
+        def _axis_ticks(self, minimum: float, maximum: float) -> list[float]:
+            if self._curve == "mtf" and minimum <= 0.0 and maximum >= 0.5:
+                if maximum <= 0.5:
+                    return [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+                top = float(np.ceil(float(maximum) / 0.5) * 0.5)
+                return [float(v) for v in np.arange(0.0, top + 0.25, 0.5)]
+            return [float(v) for v in np.linspace(float(minimum), float(maximum), 5)]
+
+        def _format_axis_value(self, value: float) -> str:
+            value = float(value)
+            if abs(value) >= 100.0:
+                text = f"{value:.0f}"
+            elif abs(value) >= 10.0:
+                text = f"{value:.1f}"
+            else:
+                text = f"{value:.3f}"
+            return text.rstrip("0").rstrip(".") if "." in text else text
+
+        def _coordinate_label(self, x: float, y: float) -> str:
+            suffix = " post-Nyquist" if self._curve == "mtf" and float(x) > 0.5 else ""
+            return f"x={self._format_axis_value(x)}  y={self._format_axis_value(y)}{suffix}"
+
+
+    class MTFComparisonPlotWidget(MTFPlotWidget):
+        SERIES_COLORS = ("#38bdf8", "#f97316", "#a78bfa", "#22c55e")
+
+        def __init__(self, curve: str = "mtf") -> None:
+            super().__init__(curve)
+            self._series: list[tuple[str, np.ndarray, np.ndarray]] = []
+            self.setMinimumHeight(360)
+            self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+
+        def set_payloads(self, payloads: list[tuple[str, dict[str, Any]]]) -> None:
+            series: list[tuple[str, np.ndarray, np.ndarray]] = []
+            for label, payload in payloads:
+                x_values, y_values = self._curve_from_payload(payload)
+                if x_values.size >= 2 and y_values.size >= 2:
+                    series.append((str(label), x_values, y_values))
+            self._series = series
+            self.update()
+
+        def clear(self) -> None:
+            self._series = []
+            self.update()
+
+        def paintEvent(self, _event) -> None:  # noqa: N802
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            painter.fillRect(self.rect(), QtGui.QColor("#20242b"))
+            plot = self.rect().adjusted(56, 22, -18, -48)
+            painter.fillRect(plot, QtGui.QColor("#15181d"))
+
+            title, x_label, y_label = self._comparison_labels()
+            painter.setPen(QtGui.QPen(QtGui.QColor("#cbd5e1"), 1))
+            painter.drawText(self.rect().adjusted(8, 2, -8, -4), QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft, title)
+            painter.drawText(self.rect().adjusted(8, 0, -8, -8), QtCore.Qt.AlignBottom | QtCore.Qt.AlignHCenter, x_label)
+            painter.save()
+            painter.translate(14, self.rect().center().y())
+            painter.rotate(-90)
+            painter.drawText(QtCore.QRectF(-72, -8, 144, 16), QtCore.Qt.AlignCenter, y_label)
+            painter.restore()
+
+            if not self._series:
+                self._draw_empty_grid(painter, plot)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#94a3b8"), 1))
+                painter.drawText(plot, QtCore.Qt.AlignCenter, self.tr("No hay curvas MTF guardadas"))
+                painter.end()
+                return
+
+            all_x = np.concatenate([values[1] for values in self._series])
+            all_y = np.concatenate([values[2] for values in self._series])
+            xmin, xmax = self._x_range(all_x)
+            ymin, ymax = self._y_range(all_y)
+            if xmax <= xmin or ymax <= ymin:
+                painter.end()
+                return
+
+            self._draw_axes(painter, plot, xmin, xmax, ymin, ymax)
+            if self._curve == "mtf":
+                self._draw_nyquist_marker(painter, plot, xmin, xmax)
+                self._draw_mtf_reference_levels(painter, plot, ymin, ymax)
+
+            for idx, (_label, x_values, y_values) in enumerate(self._series):
+                color = QtGui.QColor(self.SERIES_COLORS[idx % len(self.SERIES_COLORS)])
+                if self._curve == "mtf":
+                    in_band = x_values <= 0.5
+                    post_band = x_values >= 0.5
+                    self._draw_curve_path(
+                        painter,
+                        plot,
+                        x_values[in_band],
+                        y_values[in_band],
+                        xmin,
+                        xmax,
+                        ymin,
+                        ymax,
+                        pen=QtGui.QPen(color, 2),
+                    )
+                    self._draw_curve_path(
+                        painter,
+                        plot,
+                        x_values[post_band],
+                        y_values[post_band],
+                        xmin,
+                        xmax,
+                        ymin,
+                        ymax,
+                        pen=QtGui.QPen(color, 2, QtCore.Qt.DashLine),
+                    )
+                else:
+                    self._draw_curve_path(
+                        painter,
+                        plot,
+                        x_values,
+                        y_values,
+                        xmin,
+                        xmax,
+                        ymin,
+                        ymax,
+                        pen=QtGui.QPen(color, 2),
+                    )
+            self._draw_legend(painter, plot)
+            self._draw_hover_coordinates(painter, plot, xmin, xmax, ymin, ymax)
+            painter.end()
+
+        def _comparison_labels(self) -> tuple[str, str, str]:
+            if self._curve == "esf":
+                return "ESF", self.tr("distancia al borde (px)"), self.tr("señal normalizada")
+            if self._curve == "lsf":
+                return "LSF", self.tr("distancia al borde (px)"), self.tr("derivada")
+            return "MTF", self.tr("ciclos/píxel"), self.tr("modulación")
+
+        def _curve_from_payload(self, payload: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+            curves = payload.get("curves") if isinstance(payload, dict) else None
+            curves = curves if isinstance(curves, dict) else {}
+            if self._curve == "esf":
+                return self._extract_payload_points(curves.get("esf"), "distance_px", "signal")
+            if self._curve == "lsf":
+                return self._extract_payload_points(curves.get("lsf"), "distance_px", "derivative")
+            mtf_extended = curves.get("mtf_extended")
+            if isinstance(mtf_extended, list) and mtf_extended:
+                return self._extract_payload_points(mtf_extended, "frequency_cycles_per_pixel", "modulation")
+            return self._extract_payload_points(curves.get("mtf"), "frequency_cycles_per_pixel", "modulation")
+
+        def _extract_payload_points(self, points: Any, x_key: str, y_key: str) -> tuple[np.ndarray, np.ndarray]:
+            if not isinstance(points, list):
+                return np.asarray([], dtype=np.float64), np.asarray([], dtype=np.float64)
+            x_values: list[float] = []
+            y_values: list[float] = []
+            for point in points:
+                if not isinstance(point, dict):
+                    continue
+                try:
+                    x = float(point.get(x_key))
+                    y = float(point.get(y_key))
+                except (TypeError, ValueError):
+                    continue
+                if np.isfinite(x) and np.isfinite(y):
+                    x_values.append(x)
+                    y_values.append(y)
+            return np.asarray(x_values, dtype=np.float64), np.asarray(y_values, dtype=np.float64)
+
+        def _draw_legend(self, painter: QtGui.QPainter, plot: QtCore.QRect) -> None:
+            metrics = painter.fontMetrics()
+            row_h = metrics.height() + 6
+            legend_w = min(300, max(160, int(plot.width() * 0.44)))
+            legend_h = row_h * len(self._series) + 8
+            rect = QtCore.QRectF(plot.right() - legend_w - 8, plot.top() + 8, legend_w, legend_h)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#334155"), 1))
+            painter.setBrush(QtGui.QColor(15, 23, 42, 220))
+            painter.drawRoundedRect(rect, 4, 4)
+            for idx, (label, _x_values, _y_values) in enumerate(self._series):
+                color = QtGui.QColor(self.SERIES_COLORS[idx % len(self.SERIES_COLORS)])
+                y = rect.top() + 8 + idx * row_h + row_h / 2.0
+                painter.setPen(QtGui.QPen(color, 3))
+                painter.drawLine(rect.left() + 10, y, rect.left() + 34, y)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#e2e8f0"), 1))
+                text_rect = QtCore.QRectF(rect.left() + 42, rect.top() + 4 + idx * row_h, rect.width() - 50, row_h)
+                text = metrics.elidedText(str(label), QtCore.Qt.ElideMiddle, int(text_rect.width()))
+                painter.drawText(text_rect, QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, text)
+
+
     class RGBHistogramWidget(QtWidgets.QWidget):
         def __init__(self) -> None:
             super().__init__()
@@ -956,6 +1463,7 @@ if QtWidgets is not None:
 
     class ImagePanel(QtWidgets.QLabel):
         imageClicked = QtCore.Signal(float, float)
+        roiSelected = QtCore.Signal(float, float, float, float)
 
         def __init__(
             self,
@@ -974,6 +1482,10 @@ if QtWidgets is not None:
             self._background = str(background or IMAGE_PANEL_BACKGROUND)
             self._clip_overlay_pixmap: QtGui.QPixmap | None = None
             self._clip_overlay_enabled = False
+            self._roi_rect: tuple[float, float, float, float] | None = None
+            self._roi_selection_enabled = False
+            self._roi_drag_start_image: tuple[float, float] | None = None
+            self._roi_drag_current_image: tuple[float, float] | None = None
             self._pan = QtCore.QPointF(0.0, 0.0)
             self._drag_start: QtCore.QPointF | None = None
             self._drag_last: QtCore.QPointF | None = None
@@ -1023,6 +1535,20 @@ if QtWidgets is not None:
             self._overlay_points = list(points)
             self._refresh_scaled_pixmap()
 
+        def set_roi_selection_enabled(self, enabled: bool) -> None:
+            self._roi_selection_enabled = bool(enabled)
+            self._roi_drag_start_image = None
+            self._roi_drag_current_image = None
+            self._apply_idle_cursor()
+            self.update()
+
+        def set_roi_rect(self, rect: tuple[float, float, float, float] | None) -> None:
+            self._roi_rect = _normalize_rect(rect) if rect is not None else None
+            self._refresh_scaled_pixmap()
+
+        def clear_roi_rect(self) -> None:
+            self.set_roi_rect(None)
+
         def set_clip_overlay_enabled(self, enabled: bool) -> None:
             self._clip_overlay_enabled = bool(enabled)
             self._refresh_scaled_pixmap()
@@ -1064,6 +1590,18 @@ if QtWidgets is not None:
             self._apply_idle_cursor()
 
         def mousePressEvent(self, event) -> None:  # noqa: N802
+            if (
+                self._roi_selection_enabled
+                and event.button() == QtCore.Qt.LeftButton
+                and self._base_pixmap is not None
+            ):
+                mapped = self._map_widget_to_image(event.position())
+                if mapped is not None:
+                    self._roi_drag_start_image = mapped
+                    self._roi_drag_current_image = mapped
+                    self._roi_rect = _rect_from_points(mapped, mapped)
+                    self.update()
+                    return
             if event.button() == QtCore.Qt.LeftButton and self._base_pixmap is not None:
                 self._drag_start = event.position()
                 self._drag_last = event.position()
@@ -1076,6 +1614,13 @@ if QtWidgets is not None:
             super().mousePressEvent(event)
 
         def mouseMoveEvent(self, event) -> None:  # noqa: N802
+            if self._roi_selection_enabled and self._roi_drag_start_image is not None:
+                mapped = self._map_widget_to_image(event.position())
+                if mapped is not None:
+                    self._roi_drag_current_image = mapped
+                    self._roi_rect = _rect_from_points(self._roi_drag_start_image, mapped)
+                    self.update()
+                return
             if self._drag_last is not None and self._drag_start is not None:
                 delta = event.position() - self._drag_last
                 distance = event.position() - self._drag_start
@@ -1089,6 +1634,22 @@ if QtWidgets is not None:
             super().mouseMoveEvent(event)
 
         def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+            if (
+                self._roi_selection_enabled
+                and event.button() == QtCore.Qt.LeftButton
+                and self._roi_drag_start_image is not None
+            ):
+                mapped = self._map_widget_to_image(event.position()) or self._roi_drag_current_image
+                if mapped is not None:
+                    rect = _rect_from_points(self._roi_drag_start_image, mapped)
+                    self._roi_rect = rect
+                    if rect[2] >= 8.0 and rect[3] >= 8.0:
+                        self.roiSelected.emit(float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]))
+                self._roi_drag_start_image = None
+                self._roi_drag_current_image = None
+                self._apply_idle_cursor()
+                self.update()
+                return
             if event.button() == QtCore.Qt.LeftButton and self._drag_start is not None:
                 mapped = self._map_widget_to_image(event.position())
                 if mapped is not None and not self._drag_moved:
@@ -1144,6 +1705,21 @@ if QtWidgets is not None:
                     painter.drawEllipse(point, 6, 6)
                     painter.drawText(point + QtCore.QPointF(8, -8), str(idx))
 
+            if self._roi_rect is not None and self._image_size is not None:
+                x, y, w, h = self._roi_rect
+                corners = [
+                    self._map_image_to_widget(x, y, rect, scale, transform, bounds),
+                    self._map_image_to_widget(x + w, y, rect, scale, transform, bounds),
+                    self._map_image_to_widget(x + w, y + h, rect, scale, transform, bounds),
+                    self._map_image_to_widget(x, y + h, rect, scale, transform, bounds),
+                ]
+                painter.setRenderHint(QtGui.QPainter.Antialiasing)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#38bdf8"), 2))
+                painter.setBrush(QtGui.QColor(56, 189, 248, 34))
+                painter.drawPolygon(QtGui.QPolygonF(corners))
+                painter.setBrush(QtCore.Qt.NoBrush)
+                painter.drawText(corners[0] + QtCore.QPointF(6, -6), "MTF")
+
             if self._framed:
                 painter.setBrush(QtCore.Qt.NoBrush)
                 painter.setPen(QtGui.QPen(QtGui.QColor("#4b5563"), 1))
@@ -1154,7 +1730,9 @@ if QtWidgets is not None:
             self.update()
 
         def _apply_idle_cursor(self) -> None:
-            if self._interaction_cursor is not None:
+            if self._roi_selection_enabled:
+                self.setCursor(QtCore.Qt.CrossCursor)
+            elif self._interaction_cursor is not None:
                 self.setCursor(self._interaction_cursor)
             elif self._view_zoom > 1.0:
                 self.setCursor(QtCore.Qt.OpenHandCursor)
@@ -1235,15 +1813,43 @@ else:  # pragma: no cover - importable en entornos sin Qt
     PersistentSideTabWidget = None
     CollapsibleToolPanel = None
     ToneCurveEditor = None
+    MTFComparisonPlotWidget = None
+    MTFPlotWidget = None
     RGBHistogramWidget = None
     Gamut3DWidget = None
     ImagePanel = None
+
+
+def _rect_from_points(
+    a: tuple[float, float],
+    b: tuple[float, float],
+) -> tuple[float, float, float, float]:
+    x0, y0 = float(a[0]), float(a[1])
+    x1, y1 = float(b[0]), float(b[1])
+    x = min(x0, x1)
+    y = min(y0, y1)
+    return x, y, abs(x1 - x0), abs(y1 - y0)
+
+
+def _normalize_rect(rect: tuple[float, float, float, float] | None) -> tuple[float, float, float, float] | None:
+    if rect is None:
+        return None
+    x, y, w, h = [float(v) for v in rect]
+    if w < 0:
+        x += w
+        w = abs(w)
+    if h < 0:
+        y += h
+        h = abs(h)
+    return x, y, w, h
 
 
 __all__ = [
     "PersistentSideTabWidget",
     "CollapsibleToolPanel",
     "ToneCurveEditor",
+    "MTFComparisonPlotWidget",
+    "MTFPlotWidget",
     "RGBHistogramWidget",
     "Gamut3DWidget",
     "ImagePanel",

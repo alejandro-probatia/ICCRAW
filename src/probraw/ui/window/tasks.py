@@ -1,9 +1,105 @@
 from __future__ import annotations
 
+import warnings
+
 from ._imports import *  # noqa: F401,F403
 
 
+_SHUTDOWN_THREAD_GRAVEYARD: list[Any] = []
+
+
 class TaskStatusMixin:
+    def _shutdown_background_threads(self, *, timeout_ms: int = 8000) -> None:
+        if bool(getattr(self, "_background_threads_shutdown", False)):
+            return
+        self._background_threads_shutdown = True
+        self._stop_background_timers_for_shutdown()
+        self._clear_pending_background_work_for_shutdown()
+
+        threads = list(getattr(self, "_threads", []))
+        if not threads:
+            return
+
+        try:
+            self._set_status(self.tr("Cerrando tareas en segundo plano..."))
+        except Exception:
+            pass
+
+        deadline = time.monotonic() + max(0.1, float(timeout_ms) / 1000.0)
+        for thread in threads:
+            if thread is None:
+                continue
+            try:
+                for signal_name in ("succeeded", "failed"):
+                    signal = getattr(thread, signal_name, None)
+                    if signal is not None:
+                        try:
+                            with warnings.catch_warnings():
+                                warnings.simplefilter("ignore", RuntimeWarning)
+                                signal.disconnect()
+                        except Exception:
+                            pass
+                if thread.isRunning():
+                    remaining_ms = int(max(100.0, (deadline - time.monotonic()) * 1000.0))
+                    if not thread.wait(remaining_ms):
+                        try:
+                            thread.requestInterruption()
+                        except Exception:
+                            pass
+                        try:
+                            thread.quit()
+                        except Exception:
+                            pass
+                        if not thread.wait(250):
+                            try:
+                                thread.terminate()
+                                thread.wait(1000)
+                            except Exception:
+                                pass
+                if thread in self._threads:
+                    self._threads.remove(thread)
+                if not thread.isRunning():
+                    thread.deleteLater()
+                else:
+                    _SHUTDOWN_THREAD_GRAVEYARD.append(thread)
+            except RuntimeError:
+                if thread in self._threads:
+                    self._threads.remove(thread)
+            except Exception:
+                if thread in self._threads:
+                    self._threads.remove(thread)
+
+        self._threads.clear()
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
+
+    def _stop_background_timers_for_shutdown(self) -> None:
+        for name in (
+            "_selection_load_timer",
+            "_preview_refresh_timer",
+            "_thumbnail_timer",
+            "_metadata_timer",
+            "_mtf_refresh_timer",
+            "_session_root_update_timer",
+        ):
+            timer = getattr(self, name, None)
+            if timer is not None:
+                try:
+                    timer.stop()
+                except Exception:
+                    pass
+
+    def _clear_pending_background_work_for_shutdown(self) -> None:
+        self._pending_thumbnail_paths = []
+        self._thumbnail_scan_index = 0
+        self._metadata_pending_request = None
+        self._preview_load_pending_request = None
+        self._profile_preview_pending_request = None
+        self._interactive_preview_pending_request = None
+        self._profile_preview_expected_key = None
+        self._interactive_preview_expected_key = None
+
     def _start_background_task(self, label: str, task, on_success) -> None:
         self._set_status(self.tr("Ejecutando:") + f" {label}")
         task_row = self._monitor_task_start(label)

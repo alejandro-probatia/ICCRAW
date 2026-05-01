@@ -35,6 +35,8 @@ from .ui.widgets import (
     CollapsibleToolPanel,
     Gamut3DWidget,
     ImagePanel,
+    MTFComparisonPlotWidget,
+    MTFPlotWidget,
     PersistentSideTabWidget,
     RGBHistogramWidget,
     ToneCurveEditor,
@@ -45,6 +47,7 @@ from .ui.window import (
     ControlPanelsMixin,
     DisplayControlsMixin,
     LayoutMixin,
+    MTFAnalysisMixin,
     PreviewWorkflowMixin,
     ProfileWorkflowMixin,
     SessionWorkflowMixin,
@@ -62,6 +65,7 @@ from .ui.window._imports import (
     extract_embedded_preview,
     load_image_for_preview,
     read_image,
+    write_raw_mtf_analysis,
     write_raw_sidecar,
     write_signed_profiled_tiff,
 )
@@ -86,6 +90,7 @@ if QtWidgets is not None:
         ControlPanelsMixin,
         SettingsMixin,
         DisplayControlsMixin,
+        MTFAnalysisMixin,
         SessionWorkflowMixin,
         BrowserMetadataMixin,
         PreviewWorkflowMixin,
@@ -104,6 +109,7 @@ if QtWidgets is not None:
             self._settings = _make_app_settings()
 
             self._threads: list[TaskThread] = []
+            self._background_threads_shutdown = False
             self._thumb_cache: dict[str, QtGui.QIcon] = {}
             self._image_thumb_cache: dict[str, QtGui.QIcon] = {}
             self._file_items_by_key: dict[str, QtWidgets.QListWidgetItem] = {}
@@ -154,6 +160,13 @@ if QtWidgets is not None:
             self._manual_chart_points_source: Path | None = None
             self._manual_chart_marking_after_reload = False
             self._neutral_picker_active = False
+            self._mtf_roi_selection_active = False
+            self._mtf_roi: tuple[int, int, int, int] | None = None
+            self._mtf_last_result: Any | None = None
+            self._mtf_pixel_pitch_auto_source: str | None = None
+            self._mtf_last_analysis_image_dimensions: tuple[int, int] | None = None
+            self._mtf_last_display_dimensions: tuple[int, int] | None = None
+            self._mtf_last_display_roi: tuple[int, int, int, int] | None = None
             self._current_dir = self._startup_directory_from_settings()
             self._selected_file: Path | None = None
             self._storage_roots: list[Path] = []
@@ -214,9 +227,15 @@ if QtWidgets is not None:
             self._metadata_timer = QtCore.QTimer(self)
             self._metadata_timer.setSingleShot(True)
             self._metadata_timer.timeout.connect(self._load_metadata_from_timer)
+            self._mtf_refresh_timer = QtCore.QTimer(self)
+            self._mtf_refresh_timer.setSingleShot(True)
+            self._mtf_refresh_timer.timeout.connect(self._recalculate_mtf_analysis)
             self._session_root_update_timer = QtCore.QTimer(self)
             self._session_root_update_timer.setSingleShot(True)
             self._session_root_update_timer.timeout.connect(self._on_session_root_edited)
+            app = QtWidgets.QApplication.instance()
+            if app is not None:
+                app.aboutToQuit.connect(self._shutdown_background_threads)
 
             self._build_ui()
             self._setup_interactive_preview_status_widgets()

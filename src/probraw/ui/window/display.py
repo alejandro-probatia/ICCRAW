@@ -9,6 +9,7 @@ class DisplayControlsMixin:
         for option in (
             "DontResolveSymlinks",
             "DontUseCustomDirectoryIcons",
+            "DontWatchForChanges",
         ):
             if hasattr(QtWidgets.QFileSystemModel, option):
                 self._dir_model.setOption(getattr(QtWidgets.QFileSystemModel, option), True)
@@ -24,7 +25,31 @@ class DisplayControlsMixin:
     def _filesystem_model_root(self, folder: Path) -> str:
         if sys.platform.startswith("win"):
             return folder.anchor or str(folder)
-        return "/"
+        candidate = Path(folder).expanduser()
+        try:
+            candidate = candidate.resolve(strict=False)
+        except Exception:
+            pass
+
+        active_root = getattr(self, "_active_session_root", None)
+        if active_root is not None:
+            try:
+                active_root = Path(active_root).expanduser().resolve(strict=False)
+                candidate.relative_to(active_root)
+                return str(active_root)
+            except Exception:
+                pass
+
+        project_root = None
+        if hasattr(self, "_project_root_for_path"):
+            try:
+                project_root = self._project_root_for_path(candidate)
+            except Exception:
+                project_root = None
+        if project_root is not None:
+            return str(project_root)
+
+        return str(candidate)
 
     def _set_filesystem_model_root(self, folder: Path) -> None:
         root_path = self._filesystem_model_root(folder)
@@ -467,6 +492,10 @@ class DisplayControlsMixin:
             self.image_result_single.set_rgb_u8_image(display_u8)
             self._apply_clip_overlay_to_panel(self.image_result_single, colorimetric_u8)
         self._update_viewer_histogram(colorimetric_u8)
+        if hasattr(self, "_sync_mtf_roi_overlay"):
+            self._sync_mtf_roi_overlay()
+        if hasattr(self, "_maybe_update_mtf_after_preview"):
+            self._maybe_update_mtf_after_preview()
 
     def _ensure_original_compare_panel(self, *, bypass_profile: bool) -> None:
         if self._original_linear is None:

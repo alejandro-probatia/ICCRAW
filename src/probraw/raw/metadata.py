@@ -56,6 +56,30 @@ def raw_info(path: Path) -> RawMetadata:
         return _fallback_metadata(path, exif)
 
 
+def estimate_pixel_pitch_um(
+    path: Path,
+    *,
+    image_dimensions: tuple[int, int] | list[int] | None = None,
+) -> tuple[float, str] | None:
+    exif = _read_exif(path)
+    return estimate_pixel_pitch_um_from_exif(exif, image_dimensions=image_dimensions)
+
+
+def estimate_pixel_pitch_um_from_exif(
+    exif: dict[str, Any],
+    *,
+    image_dimensions: tuple[int, int] | list[int] | None = None,
+) -> tuple[float, str] | None:
+    dimensions = _extract_dimensions(exif) or _normalize_dimensions(image_dimensions)
+    pitch_from_sensor = _pixel_pitch_from_sensor_size(exif, dimensions)
+    if pitch_from_sensor is not None:
+        return pitch_from_sensor
+    pitch_from_focal_plane = _pixel_pitch_from_focal_plane_resolution(exif)
+    if pitch_from_focal_plane is not None:
+        return pitch_from_focal_plane
+    return _pixel_pitch_from_35mm_equivalent(exif, dimensions)
+
+
 def _read_exif(path: Path) -> dict:
     exiftool = external_tool_path("exiftool")
     if exiftool is None:
@@ -131,6 +155,233 @@ def _extract_dimensions(exif: dict[str, Any]) -> list[int] | None:
     )
     if width and height:
         return [int(width), int(height)]
+    return None
+
+
+def _normalize_dimensions(value: tuple[int, int] | list[int] | None) -> list[int] | None:
+    if not value or len(value) < 2:
+        return None
+    try:
+        width = int(value[0])
+        height = int(value[1])
+    except Exception:
+        return None
+    if width > 0 and height > 0:
+        return [width, height]
+    return None
+
+
+def _pixel_pitch_from_sensor_size(
+    exif: dict[str, Any],
+    dimensions: list[int] | None,
+) -> tuple[float, str] | None:
+    if not dimensions:
+        return None
+    width_px, height_px = int(dimensions[0]), int(dimensions[1])
+    sensor_width = _metadata_length_mm(
+        exif,
+        (
+            "SensorWidth",
+            "Sensor Width",
+            "SensorSizeWidth",
+            "SensorPhysicalWidth",
+            "FocalPlaneXSize",
+        ),
+    )
+    sensor_height = _metadata_length_mm(
+        exif,
+        (
+            "SensorHeight",
+            "Sensor Height",
+            "SensorSizeHeight",
+            "SensorPhysicalHeight",
+            "FocalPlaneYSize",
+        ),
+    )
+    candidates: list[float] = []
+    if sensor_width is not None and width_px > 0:
+        candidates.append(sensor_width * 1000.0 / float(width_px))
+    if sensor_height is not None and height_px > 0:
+        candidates.append(sensor_height * 1000.0 / float(height_px))
+    candidates = [v for v in candidates if 0.1 <= v <= 30.0]
+    if not candidates:
+        return None
+    pitch = float(sum(candidates) / len(candidates))
+    source = "sensor_size"
+    if sensor_width is not None and sensor_height is not None:
+        source = "sensor_width_height"
+    elif sensor_width is not None:
+        source = "sensor_width"
+    elif sensor_height is not None:
+        source = "sensor_height"
+    return pitch, source
+
+
+def _pixel_pitch_from_focal_plane_resolution(exif: dict[str, Any]) -> tuple[float, str] | None:
+    x_res = _metadata_number(
+        exif,
+        (
+            "FocalPlaneXResolution",
+            "Focal Plane X Resolution",
+            "FocalPlaneResolutionX",
+        ),
+    )
+    y_res = _metadata_number(
+        exif,
+        (
+            "FocalPlaneYResolution",
+            "Focal Plane Y Resolution",
+            "FocalPlaneResolutionY",
+        ),
+    )
+    unit_um = _focal_plane_resolution_unit_um(exif.get("FocalPlaneResolutionUnit") or exif.get("Focal Plane Resolution Unit"))
+    if unit_um is None:
+        return None
+    candidates = []
+    for value in (x_res, y_res):
+        if value is not None and value > 0:
+            candidates.append(unit_um / float(value))
+    candidates = [v for v in candidates if 0.1 <= v <= 30.0]
+    if not candidates:
+        return None
+    return float(sum(candidates) / len(candidates)), "focal_plane_resolution"
+
+
+def _pixel_pitch_from_35mm_equivalent(
+    exif: dict[str, Any],
+    dimensions: list[int] | None,
+) -> tuple[float, str] | None:
+    if not dimensions:
+        return None
+    width_px, height_px = int(dimensions[0]), int(dimensions[1])
+    if width_px <= 0 or height_px <= 0:
+        return None
+    scale = _metadata_number(
+        exif,
+        (
+            "ScaleFactor35efl",
+            "ScaleFactor35EFL",
+            "Scale Factor To 35 mm Equivalent",
+        ),
+    )
+    if scale is None or scale <= 0:
+        focal = _metadata_length_mm(exif, ("FocalLength", "Focal Length"))
+        focal_35 = _metadata_length_mm(
+            exif,
+            (
+                "FocalLengthIn35mmFormat",
+                "FocalLength35efl",
+                "FocalLength35EFL",
+                "Focal Length In 35mm Format",
+            ),
+        )
+        if focal is not None and focal_35 is not None and focal > 0 and focal_35 > 0:
+            scale = focal_35 / focal
+    if scale is None or scale <= 0:
+        return None
+
+    full_frame_diagonal_mm = 43.266615305567875
+    sensor_diagonal_mm = full_frame_diagonal_mm / float(scale)
+    aspect = float(width_px) / float(height_px)
+    sensor_height_mm = sensor_diagonal_mm / (aspect * aspect + 1.0) ** 0.5
+    sensor_width_mm = sensor_height_mm * aspect
+    pitch_w = sensor_width_mm * 1000.0 / float(width_px)
+    pitch_h = sensor_height_mm * 1000.0 / float(height_px)
+    candidates = [v for v in (pitch_w, pitch_h) if 0.1 <= v <= 30.0]
+    if not candidates:
+        return None
+    return float(sum(candidates) / len(candidates)), "35mm_equivalent"
+
+
+def _metadata_length_mm(exif: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        value = exif.get(key)
+        parsed = _parse_length_mm(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _metadata_number(exif: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        parsed = _parse_number(exif.get(key))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _parse_length_mm(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    number = _parse_number(text.split()[0])
+    if number is None:
+        return None
+    if "um" in text or "µm" in text:
+        return number / 1000.0
+    if "cm" in text:
+        return number * 10.0
+    if "in" in text or "inch" in text:
+        return number * 25.4
+    return number
+
+
+def _parse_number(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace(",", ".")
+    if not text:
+        return None
+    if "/" in text:
+        first = text.split()[0]
+        a, b = first.split("/", 1)
+        try:
+            return float(a) / float(b)
+        except Exception:
+            return None
+    try:
+        return float(text.split()[0])
+    except Exception:
+        return None
+
+
+def _focal_plane_resolution_unit_um(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        code = int(value)
+        if code == 2:
+            return 25400.0
+        if code == 3:
+            return 10000.0
+        if code == 4:
+            return 1000.0
+        if code == 5:
+            return 1.0
+        return None
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if "inch" in text or "inches" in text:
+        return 25400.0
+    if text in {"2"}:
+        return 25400.0
+    if "cm" in text or "centimeter" in text:
+        return 10000.0
+    if text in {"3"}:
+        return 10000.0
+    if text == "mm" or "millimeter" in text:
+        return 1000.0
+    if text in {"4"}:
+        return 1000.0
+    if text in {"um", "µm", "micrometer", "micrometre", "microns", "5"}:
+        return 1.0
     return None
 
 

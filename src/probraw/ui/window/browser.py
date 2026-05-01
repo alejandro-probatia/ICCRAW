@@ -450,6 +450,10 @@ class BrowserMetadataMixin:
         summary = self._raw_sidecar_development_summary(path)
         if summary:
             lines.append(summary)
+        if hasattr(self, "_raw_sidecar_mtf_summary"):
+            mtf_summary = self._raw_sidecar_mtf_summary(path)
+            if mtf_summary:
+                lines.append(mtf_summary)
         if self._is_color_reference_file(path):
             lines.append("Referencia colorimétrica seleccionada")
         return "\n".join(lines)
@@ -647,13 +651,7 @@ class BrowserMetadataMixin:
     def _thumbnail_array_for_path(path: Path, size: int) -> np.ndarray | None:
         suffix = path.suffix.lower()
         if suffix in RAW_EXTENSIONS:
-            image = extract_embedded_preview(path)
-            if image is not None:
-                return BrowserMetadataMixin._thumbnail_u8(linear_to_srgb_display(image), size)
-            image = BrowserMetadataMixin._raw_thumbnail_fallback(path)
-            if image is not None:
-                return BrowserMetadataMixin._thumbnail_u8(linear_to_srgb_display(image), size)
-            return None
+            return BrowserMetadataMixin._raw_embedded_thumbnail_array(path, size)
 
         try:
             with Image.open(path) as img:
@@ -672,36 +670,55 @@ class BrowserMetadataMixin:
             return BrowserMetadataMixin._thumbnail_u8(linear_to_srgb_display(image), size)
 
     @staticmethod
-    def _raw_thumbnail_fallback(path: Path) -> np.ndarray | None:
-        recipe = Recipe(
-            demosaic_algorithm="linear",
-            white_balance_mode="camera_metadata",
-            output_space="scene_linear_camera_rgb",
-            output_linear=True,
-            tone_curve="linear",
-            profiling_mode=False,
-        )
-        try:
-            image = develop_image_array(path, recipe, half_size=True)
-        except Exception:
+    def _raw_embedded_thumbnail_array(path: Path, size: int) -> np.ndarray | None:
+        exiftool = external_tool_path("exiftool")
+        if exiftool is None:
             return None
-        image = np.clip(np.asarray(image, dtype=np.float32), 0.0, 1.0)
-        if image.ndim != 3 or image.shape[2] < 3:
-            return None
-        return BrowserMetadataMixin._neutralize_camera_rgb_thumbnail(image[..., :3])
+
+        # Prefer already-small previews. JpgFromRaw can be much larger, but it is
+        # still only decoded as a JPEG thumbnail and never through LibRaw.
+        for tag in ("PreviewImage", "ThumbnailImage", "JpgFromRaw"):
+            try:
+                proc = run_external(
+                    [exiftool, "-b", f"-{tag}", str(path)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    timeout=6,
+                )
+            except subprocess.TimeoutExpired:
+                continue
+            except Exception:
+                continue
+            if proc.returncode != 0:
+                continue
+            data = proc.stdout if isinstance(proc.stdout, (bytes, bytearray)) else b""
+            if len(data) < 16:
+                continue
+            thumb = BrowserMetadataMixin._thumbnail_u8_from_encoded_bytes(bytes(data), size)
+            if thumb is not None:
+                return thumb
+        return None
 
     @staticmethod
-    def _neutralize_camera_rgb_thumbnail(image: np.ndarray) -> np.ndarray:
-        rgb = np.clip(np.asarray(image, dtype=np.float32), 0.0, 1.0)
-        means = np.mean(rgb, axis=(0, 1), dtype=np.float64)
-        if not np.all(np.isfinite(means)) or float(np.min(means)) <= 1e-6:
-            return rgb
-        if float(np.max(means) / np.min(means)) < 1.35:
-            return rgb
-        target = float(np.median(means))
-        gains = np.clip(target / means, 0.35, 2.8).astype(np.float32)
-        balanced = rgb * gains.reshape((1, 1, 3))
-        return np.clip(balanced, 0.0, 1.0).astype(np.float32)
+    def _thumbnail_u8_from_encoded_bytes(data: bytes, size: int) -> np.ndarray | None:
+        try:
+            with Image.open(io.BytesIO(data)) as img:
+                try:
+                    img.draft("RGB", (int(size), int(size)))
+                except Exception:
+                    pass
+                img = ImageOps.exif_transpose(img)
+                if "A" in img.getbands():
+                    rgba = img.convert("RGBA")
+                    base = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+                    base.alpha_composite(rgba)
+                    img = base.convert("RGB")
+                else:
+                    img = img.convert("RGB")
+                img.thumbnail((int(size), int(size)), Image.Resampling.LANCZOS)
+                return np.asarray(img, dtype=np.uint8).copy()
+        except Exception:
+            return None
 
     @staticmethod
     def _thumbnail_u8(image_rgb: np.ndarray, size: int) -> np.ndarray:
@@ -825,6 +842,8 @@ class BrowserMetadataMixin:
         paste_action.setEnabled(self._development_settings_clipboard is not None)
         menu.addSeparator()
         menu.addAction(self.tr("Usar como referencia colorimétrica"), self._use_selected_files_as_profile_charts)
+        compare_mtf_action = menu.addAction(self.tr("Comparar MTF de selección"), self._compare_mtf_for_selected_thumbnails)
+        compare_mtf_action.setEnabled(len(self.file_list.selectedItems()) == 2)
         menu.addAction(self.tr("Anadir a cola"), self._queue_add_selected)
         menu.exec(self.file_list.mapToGlobal(pos))
 

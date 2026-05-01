@@ -20,6 +20,38 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 Sin cambios pendientes.
 
+## [0.3.4] - 2026-05-01
+
+### Added
+
+- La pestaña `Nitidez` incluye ahora análisis MTF de borde inclinado persistente,
+  con curvas `ESF`, `LSF` y `MTF` guardadas en la mochila sidecar de cada RAW.
+- Las mediciones MTF guardadas pueden compararse visualmente desde dos
+  miniaturas seleccionadas, con curvas `ESF`, `LSF` y `MTF` superpuestas además
+  de la tabla numérica.
+- Los manuales documentan el flujo de análisis de nitidez, la persistencia de
+  curvas y cómo ProbRAW convierte coordenadas de ROI del visor a coordenadas de
+  análisis.
+
+### Changed
+
+- El recálculo MTF carga la fuente seleccionada a resolución completa y mapea la
+  ROI del visor sobre esa imagen real de análisis, evitando mediciones sobre
+  miniaturas o previews reducidas.
+- El pitch de píxel y el informe en lp/mm usan las dimensiones de la imagen de
+  análisis, metadatos EXIF o los controles manuales de tamaño de sensor en lugar
+  de dimensiones de preview reducida.
+- El catálogo Qt en inglés se regeneró y completó para los nuevos controles de
+  sesión, color, carta, histograma y MTF.
+
+### Fixed
+
+- Al reabrir una imagen con datos MTF guardados se recuperan ROI y curvas sin
+  seleccionar de nuevo el borde, incluso cuando el tamaño de preview actual es
+  distinto al usado al guardar la medición.
+- La actualización de datos MTF en la mochila RAW conserva los ajustes de
+  revelado y el historial de salidas existentes.
+
 ## [0.3.3] - 2026-04-30
 
 ### Added

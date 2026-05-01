@@ -94,9 +94,12 @@ class LayoutMixin:
     def _go_to_nitidez_tab(self) -> None:
         self.main_tabs.setCurrentIndex(1)
         if hasattr(self, "right_workflow_tabs"):
-            self.right_workflow_tabs.setCurrentIndex(1)
-        index = self.config_tabs.indexOf("Nitidez") if hasattr(self.config_tabs, "indexOf") else -1
-        self.config_tabs.setCurrentIndex(index if index >= 0 else 3)
+            index = -1
+            for i in range(self.right_workflow_tabs.count()):
+                if self.right_workflow_tabs.tabText(i) == self.tr("Nitidez"):
+                    index = i
+                    break
+            self.right_workflow_tabs.setCurrentIndex(index if index >= 0 else 2)
 
     def _menu_toggle_fullscreen(self, _checked: bool = False) -> None:
         if self.isFullScreen():
@@ -240,6 +243,8 @@ class LayoutMixin:
         return False
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        if hasattr(self, "_shutdown_background_threads"):
+            self._shutdown_background_threads()
         self._save_window_settings()
         super().closeEvent(event)
 
@@ -1437,6 +1442,7 @@ class LayoutMixin:
 
         self.image_result_single = ImagePanel(self.tr("Resultado"))
         self.image_result_single.imageClicked.connect(self._on_result_image_click)
+        self.image_result_single.roiSelected.connect(self._on_mtf_roi_selected)
         single_page = QtWidgets.QWidget()
         single_layout = QtWidgets.QVBoxLayout(single_page)
         single_layout.setContentsMargins(0, 0, 0, 0)
@@ -1446,6 +1452,7 @@ class LayoutMixin:
         self.image_original_compare = ImagePanel(self.tr(""), framed=False, background="#15181d")
         self.image_result_compare = ImagePanel(self.tr(""), framed=False, background="#15181d")
         self.image_result_compare.imageClicked.connect(self._on_result_image_click)
+        self.image_result_compare.roiSelected.connect(self._on_mtf_roi_selected)
         self.compare_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         self.compare_splitter.setChildrenCollapsible(True)
         self.compare_splitter.setHandleWidth(3)
@@ -1530,14 +1537,25 @@ class LayoutMixin:
         self.config_tabs = CollapsibleToolPanel()
         self.config_tabs.addItem(self._build_tab_brightness_contrast(), self.tr("Brillo y contraste"), expanded=True)
         self.config_tabs.addItem(self._build_tab_color_adjustments(), self.tr("Color"), expanded=True)
-        self.config_tabs.addItem(self._build_tab_preview_settings(), self.tr("Nitidez"), expanded=True)
         personalized_page = QtWidgets.QWidget()
         personalized_layout = QtWidgets.QVBoxLayout(personalized_page)
         personalized_layout.setContentsMargins(0, 0, 0, 0)
         personalized_layout.setSpacing(6)
         personalized_layout.addWidget(self._build_histogram_header_panel(), 0)
         personalized_layout.addWidget(self.config_tabs, 1)
-        self.right_workflow_tabs.addTab(personalized_page, self.tr("Ajustes personalizados"))
+        self.right_workflow_tabs.addTab(personalized_page, self.tr("Color y contraste"))
+
+        sharpness_page = QtWidgets.QWidget()
+        sharpness_layout = QtWidgets.QVBoxLayout(sharpness_page)
+        sharpness_layout.setContentsMargins(0, 0, 0, 0)
+        sharpness_layout.setSpacing(6)
+        sharpness_layout.addWidget(self._build_mtf_analysis_panel(), 0)
+        sharpness_scroll = QtWidgets.QScrollArea()
+        sharpness_scroll.setWidgetResizable(True)
+        sharpness_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        sharpness_scroll.setWidget(self._build_tab_preview_settings())
+        sharpness_layout.addWidget(sharpness_scroll, 1)
+        self.right_workflow_tabs.addTab(sharpness_page, self.tr("Nitidez"))
 
         self.raw_export_tabs = CollapsibleToolPanel()
         self._advanced_raw_config = self._build_tab_raw_config(self.tr("Criterios RAW globales"))

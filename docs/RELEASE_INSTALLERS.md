@@ -72,6 +72,27 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.4
+
+Release 0.3.4 publishes the persistent full-resolution MTF sharpness analysis:
+
+- slanted-edge `ESF`, `LSF` and `MTF` curves are stored in each RAW sidecar,
+- reopening an image restores the saved ROI and curves without reselecting the
+  edge,
+- recalculation maps the viewer ROI onto the real full-resolution source image,
+  avoiding thumbnail or reduced-preview measurements,
+- two selected thumbnails with saved MTF data can be compared with overlaid
+  curves and a numeric metric table,
+- English Qt translations and the user manuals were updated for the new tools.
+
+Expected artifacts:
+
+- `probraw_0.3.4_amd64.deb`
+- `probraw_0.3.4_amd64.deb.sha256`
+- `probraw-0.3.4.tar.gz`
+- `probraw-0.3.4-py3-none-any.whl`
+- `probraw_0.3.4_python_artifacts.sha256`
+
 ## Release 0.3.3
 
 Release 0.3.3 consolidates the graphical session, adjustment and color

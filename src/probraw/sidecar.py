@@ -54,6 +54,7 @@ def write_raw_sidecar(
     now = _utc_now_iso()
 
     outputs = list(existing.get("outputs") or []) if isinstance(existing.get("outputs"), list) else []
+    mtf_analysis = existing.get("mtf_analysis") if isinstance(existing.get("mtf_analysis"), dict) else None
     if output_tiff is not None:
         outputs.append(
             {
@@ -91,6 +92,54 @@ def write_raw_sidecar(
         ),
         "outputs": outputs,
     }
+    if mtf_analysis is not None:
+        payload["mtf_analysis"] = mtf_analysis
+    write_json(sidecar_path, payload)
+    return sidecar_path
+
+
+def write_raw_mtf_analysis(
+    source_path: Path,
+    mtf_payload: dict[str, Any],
+    *,
+    session_root: Path | None = None,
+    session_name: str | None = None,
+) -> Path:
+    source_path = Path(source_path).expanduser()
+    sidecar_path = raw_sidecar_path(source_path)
+    existing = _load_existing_payload(_existing_raw_sidecar_path(source_path))
+    now = _utc_now_iso()
+
+    payload = dict(existing) if existing else {}
+    payload["schema"] = RAW_SIDECAR_SCHEMA
+    payload["schema_version"] = 1
+    payload["software"] = {
+        "name": "ProbRAW",
+        "version": __version__,
+    }
+    payload["status"] = str(payload.get("status") or "configured")
+    payload["created_at"] = str(payload.get("created_at") or now)
+    payload["updated_at"] = now
+
+    session_payload = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    if session_name is not None:
+        session_payload["name"] = session_name
+    session_payload.setdefault("name", "")
+    if session_root is not None:
+        session_payload["root_path"] = str(Path(session_root).expanduser())
+    session_payload.setdefault("root_path", "")
+    payload["session"] = session_payload
+
+    source_payload = _source_payload(source_path, session_root, hash_file=False)
+    existing_source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
+    if existing_source.get("sha256"):
+        source_payload["sha256"] = existing_source.get("sha256")
+    payload["source"] = source_payload
+
+    if not isinstance(payload.get("outputs"), list):
+        payload["outputs"] = []
+    payload["mtf_analysis"] = mtf_payload
+
     write_json(sidecar_path, payload)
     return sidecar_path
 
@@ -121,7 +170,7 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _source_payload(source_path: Path, session_root: Path | None) -> dict[str, Any]:
+def _source_payload(source_path: Path, session_root: Path | None, *, hash_file: bool = True) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "basename": source_path.name,
         "path": _stored_path(source_path, session_root),
@@ -130,7 +179,8 @@ def _source_payload(source_path: Path, session_root: Path | None) -> dict[str, A
         "size_bytes": None,
     }
     if source_path.exists() and source_path.is_file():
-        payload["sha256"] = sha256_file(source_path)
+        if hash_file:
+            payload["sha256"] = sha256_file(source_path)
         payload["size_bytes"] = int(source_path.stat().st_size)
     return payload
 

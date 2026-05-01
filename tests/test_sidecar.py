@@ -4,7 +4,13 @@ import json
 from pathlib import Path
 
 from probraw.core.models import Recipe
-from probraw.sidecar import RAW_SIDECAR_SCHEMA, load_raw_sidecar, raw_sidecar_path, write_raw_sidecar
+from probraw.sidecar import (
+    RAW_SIDECAR_SCHEMA,
+    load_raw_sidecar,
+    raw_sidecar_path,
+    write_raw_mtf_analysis,
+    write_raw_sidecar,
+)
 
 
 def test_write_raw_sidecar_records_recipe_profile_and_output(tmp_path: Path):
@@ -63,6 +69,37 @@ def test_write_raw_sidecar_preserves_output_history(tmp_path: Path):
     payload = load_raw_sidecar(raw)
     assert [Path(item["tiff_path"]).name for item in payload["outputs"]] == ["first.tiff", "second.tiff"]
     assert payload["recipe"]["exposure_compensation"] == 0.5
+
+
+def test_write_raw_mtf_analysis_persists_and_survives_recipe_updates(tmp_path: Path):
+    raw = tmp_path / "capture.NEF"
+    raw.write_bytes(b"raw bytes")
+
+    mtf_payload = {
+        "summary": {
+            "measured_at": "2026-05-01T10:00:00+00:00",
+            "mtf50": 0.25,
+            "mtf50_lp_per_mm": 50.0,
+            "post_nyquist": {"peak_frequency": 0.75, "peak_modulation": 0.05},
+        },
+        "curves": {"mtf": [{"frequency_cycles_per_pixel": 0.25, "modulation": 0.5}]},
+    }
+
+    sidecar = write_raw_mtf_analysis(raw, mtf_payload, session_root=tmp_path, session_name="Sesion")
+
+    assert sidecar == raw_sidecar_path(raw)
+    payload = load_raw_sidecar(raw)
+    assert payload["schema"] == RAW_SIDECAR_SCHEMA
+    assert payload["session"]["name"] == "Sesion"
+    assert payload["source"]["relative_path"] == "capture.NEF"
+    assert payload["mtf_analysis"] == mtf_payload
+    assert "recipe" not in payload
+
+    write_raw_sidecar(raw, recipe=Recipe(exposure_compensation=0.5), status="configured")
+
+    updated = load_raw_sidecar(raw)
+    assert updated["recipe"]["exposure_compensation"] == 0.5
+    assert updated["mtf_analysis"] == mtf_payload
 
 
 def test_write_raw_sidecar_records_generic_output_icc_role(tmp_path: Path):
