@@ -532,6 +532,37 @@ class SessionDevelopmentMixin:
         self._set_status(self.tr("Gestión de color incompleta"))
         return False
 
+    @staticmethod
+    def _recipe_uses_identity_fixed_wb(recipe: Recipe) -> bool:
+        if str(recipe.white_balance_mode or "").strip().lower() != "fixed":
+            return False
+        values = [float(v) for v in (recipe.wb_multipliers or [])]
+        if len(values) < 3:
+            return False
+        return all(abs(v - 1.0) <= 1e-6 for v in values[:4])
+
+    def _visible_export_recipe_for_color_management(
+        self,
+        recipe: Recipe,
+        *,
+        input_profile_path: Path | None,
+    ) -> Recipe:
+        export_recipe = Recipe(**asdict(recipe))
+        if input_profile_path is None and not is_generic_output_space(export_recipe.output_space):
+            profile = generic_output_profile("prophoto_rgb")
+            export_recipe.output_space = profile.key
+            export_recipe.output_linear = False
+            export_recipe.tone_curve = f"gamma:{profile.gamma:.3g}"
+            export_recipe.profiling_mode = False
+
+        export_recipe = self._normalize_recipe_output_for_color_management(export_recipe)
+        if input_profile_path is None and is_generic_output_space(export_recipe.output_space):
+            if bool(getattr(export_recipe, "profiling_mode", False)):
+                export_recipe.profiling_mode = False
+            if self._recipe_uses_identity_fixed_wb(export_recipe):
+                export_recipe.white_balance_mode = "camera_metadata"
+        return export_recipe
+
     def _configured_color_profile_for_recipe(self, recipe: Recipe) -> tuple[Path | None, Path | None, str]:
         input_profile_path = self._active_session_icc_for_settings()
         issue = self._color_management_issue_for_recipe(
@@ -650,6 +681,15 @@ class SessionDevelopmentMixin:
         self.check_output_linear.blockSignals(True)
         self.check_output_linear.setChecked(False)
         self.check_output_linear.blockSignals(False)
+        if hasattr(self, "check_profiling_mode"):
+            self.check_profiling_mode.setChecked(False)
+        if (
+            hasattr(self, "combo_wb_mode")
+            and hasattr(self, "edit_wb_multipliers")
+            and str(self.combo_wb_mode.currentData() or "").strip().lower() == "fixed"
+            and self._recipe_uses_identity_fixed_wb(self._build_effective_recipe())
+        ):
+            self._set_combo_data(self.combo_wb_mode, "camera_metadata")
         if profile.key == "srgb":
             self._set_combo_data(self.combo_tone_curve, "srgb")
             self.spin_gamma.setValue(2.2)
@@ -773,6 +813,50 @@ class SessionDevelopmentMixin:
         if profile_id and self._development_profile_by_id(profile_id) is not None:
             return profile_id
         return ""
+
+    def _development_settings_from_raw_sidecar(self, path: Path) -> dict[str, Any] | None:
+        try:
+            payload = load_raw_sidecar(path)
+        except Exception:
+            return None
+        recipe = self._recipe_from_payload(payload.get("recipe"))
+        if recipe is None:
+            return None
+
+        detail_state = payload.get("detail_adjustments")
+        render_state = payload.get("render_adjustments")
+        profile = payload.get("development_profile") if isinstance(payload.get("development_profile"), dict) else {}
+        kind = str(profile.get("kind") or "manual")
+        profile_type = str(profile.get("profile_type") or "").strip().lower()
+        if profile_type not in {"advanced", "basic"}:
+            profile_type = self._adjustment_profile_type_for_kind(kind)
+
+        color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
+        icc_role = str(color.get("icc_profile_role") or "")
+        color_mode = str(color.get("mode") or "")
+        icc_path = self._session_stored_path(color.get("icc_profile_path")) if color else None
+        input_profile_path = (
+            icc_path
+            if icc_path is not None
+            and icc_path.exists()
+            and (
+                icc_role == "session_input_icc"
+                or color_mode == "camera_rgb_with_input_icc"
+                or self._is_camera_output_space(recipe.output_space)
+            )
+            else None
+        )
+        return {
+            "id": str(profile.get("id") or ""),
+            "name": str(profile.get("name") or raw_sidecar_path(path).name),
+            "kind": kind,
+            "profile_type": profile_type,
+            "recipe": recipe,
+            "detail_adjustments": detail_state if isinstance(detail_state, dict) else self._default_detail_adjustment_state(),
+            "render_adjustments": render_state if isinstance(render_state, dict) else self._default_render_adjustment_state(),
+            "icc_profile_path": input_profile_path,
+            "output_icc_profile_path": None,
+        }
 
     def _development_profile_payload_for_active_settings(self) -> dict[str, str]:
         profile_id = self._active_development_profile_id
@@ -1091,6 +1175,31 @@ class SessionDevelopmentMixin:
             )
         self._set_status(self.tr("Perfil de ajuste pegado en") + f" {written} " + self.tr("imagen(es)"))
 
+    def _default_unconfigured_recipe(self) -> Recipe:
+        recipe = Recipe(
+            white_balance_mode="camera_metadata",
+            output_space="prophoto_rgb",
+            profiling_mode=False,
+        )
+        return self._normalize_recipe_output_for_color_management(recipe)
+
+    def _clear_active_input_profile_for_unconfigured_file(self) -> None:
+        if hasattr(self, "path_profile_active"):
+            self.path_profile_active.clear()
+        if hasattr(self, "chk_apply_profile"):
+            self.chk_apply_profile.setChecked(False)
+        self._active_icc_profile_id = ""
+        self._refresh_profile_management_views()
+
+    def _reset_development_controls_for_unconfigured_file(self) -> None:
+        self._apply_recipe_to_controls(self._default_unconfigured_recipe())
+        self._apply_detail_adjustment_state(self._default_detail_adjustment_state())
+        self._apply_render_adjustment_state(self._default_render_adjustment_state())
+        self._active_development_profile_id = ""
+        self._refresh_development_profile_combo()
+        self._clear_active_input_profile_for_unconfigured_file()
+        self._invalidate_preview_cache()
+
     def _apply_raw_sidecar_to_controls(self, path: Path) -> bool:
         try:
             payload = load_raw_sidecar(path)
@@ -1100,30 +1209,48 @@ class SessionDevelopmentMixin:
             self._log_preview(f"Aviso: no se pudo leer mochila ProbRAW ({raw_sidecar_path(path).name}): {exc}")
             return False
 
-        recipe = self._recipe_from_payload(payload.get("recipe"))
-        if recipe is not None:
-            self._apply_recipe_to_controls(recipe)
+        color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
+        icc_path = self._session_stored_path(color.get("icc_profile_path")) if color else None
+        icc_role = str(color.get("icc_profile_role") or "") if color else ""
+        input_profile_for_recipe = (
+            icc_path
+            if icc_role == "session_input_icc"
+            and icc_path is not None
+            and icc_path.exists()
+            and self._profile_can_be_active(icc_path)
+            else None
+        )
+        recipe = self._recipe_from_payload(payload.get("recipe")) or self._default_unconfigured_recipe()
+        recipe = self._visible_export_recipe_for_color_management(
+            recipe,
+            input_profile_path=input_profile_for_recipe,
+        )
+        self._apply_recipe_to_controls(recipe)
         detail_state = payload.get("detail_adjustments")
-        if isinstance(detail_state, dict):
-            self._apply_detail_adjustment_state(detail_state)
+        self._apply_detail_adjustment_state(
+            detail_state if isinstance(detail_state, dict) else self._default_detail_adjustment_state()
+        )
         render_state = payload.get("render_adjustments")
-        if isinstance(render_state, dict):
-            self._apply_render_adjustment_state(render_state)
+        self._apply_render_adjustment_state(
+            render_state if isinstance(render_state, dict) else self._default_render_adjustment_state()
+        )
 
         profile = payload.get("development_profile") if isinstance(payload.get("development_profile"), dict) else {}
         profile_id = str(profile.get("id") or "")
         if profile_id and self._development_profile_by_id(profile_id) is not None:
             self._active_development_profile_id = profile_id
             self._refresh_development_profile_combo()
+        else:
+            self._active_development_profile_id = ""
+            self._refresh_development_profile_combo()
 
-        color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
-        icc_path = self._session_stored_path(color.get("icc_profile_path")) if color else None
-        icc_role = str(color.get("icc_profile_role") or "") if color else ""
         if icc_role == "session_input_icc" and icc_path is not None and icc_path.exists() and self._profile_can_be_active(icc_path):
             self.path_profile_active.setText(str(icc_path))
             self.chk_apply_profile.setChecked(True)
             self._sync_active_icc_profile_id_from_path()
             self._refresh_profile_management_views()
+        else:
+            self._clear_active_input_profile_for_unconfigured_file()
 
         self._invalidate_preview_cache()
         self._log_preview(f"Mochila ProbRAW aplicada: {raw_sidecar_path(path).name}")
@@ -1229,7 +1356,12 @@ class SessionDevelopmentMixin:
 
     def _apply_development_profile_to_controls(self, profile_id: str) -> None:
         settings = self._development_profile_settings(profile_id)
-        self._apply_recipe_to_controls(settings["recipe"])
+        input_profile = settings.get("icc_profile_path")
+        recipe = self._visible_export_recipe_for_color_management(
+            settings["recipe"],
+            input_profile_path=input_profile if isinstance(input_profile, Path) and input_profile.exists() else None,
+        )
+        self._apply_recipe_to_controls(recipe)
         profile = self._development_profile_by_id(profile_id) if profile_id else None
         recipe_path = self._session_stored_path(profile.get("recipe_path")) if profile else None
         if recipe_path is not None:

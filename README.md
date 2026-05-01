@@ -10,7 +10,7 @@ Reproducible and auditable RAW/TIFF development for scientific, forensic and
 heritage photography, with session ICC profiling, per-file parametric settings
 and open AGPL traceability.
 
-![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.4-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.5-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![ProbRAW main interface](docs/assets/screenshots/probraw-portada.png)
 
@@ -31,18 +31,19 @@ The current workflow is intentionally ICC-centered:
 
 ## Current Status
 
-ProbRAW 0.3.4 is suitable for controlled testing, method review and release
+ProbRAW 0.3.5 is suitable for controlled testing, method review and release
 candidate validation. It is not yet a certified scientific or forensic
 production system.
 
-The current version consolidates the session-oriented UI flow and adds
-persistent full-resolution MTF sharpness analysis, with saved curves and visual
-comparison from RAW sidecars.
+The current version improves professional-size RAW handling: cold MTF analysis
+uses cached full-resolution ROI workers, long preview/MTF operations publish a
+global progress estimate, and batch rendering now applies each RAW backpack's
+detail, color and contrast settings reliably.
 
 The latest packaging validation passed with:
 
 ```text
-249 passed, 1 warning
+276 passed, 1 warning
 ```
 
 ## Documentation

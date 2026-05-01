@@ -415,7 +415,7 @@ def test_signed_tiff_write_does_not_leave_unsigned_final_on_c2pa_failure(tmp_pat
             out,
             image,
             source_raw=raw,
-            recipe=Recipe(output_space="camera_rgb", output_linear=True),
+            recipe=Recipe(output_space="srgb", output_linear=False, tone_curve="srgb", profiling_mode=False),
             profile_path=None,
             c2pa_config=C2PASignConfig(cert_path=cert, key_path=key, client=FailingC2PAClient()),
             proof_config=_proof_config(tmp_path),

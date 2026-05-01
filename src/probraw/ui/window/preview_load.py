@@ -9,6 +9,135 @@ class PreviewLoadMixin:
             return
         self._on_load_selected(show_message=False)
 
+    def _preview_load_format_duration(self, seconds: float | None) -> str:
+        if seconds is None:
+            return "--"
+        value = max(0.0, float(seconds))
+        if value < 60.0:
+            return f"{value:.1f}s"
+        minutes = int(value // 60)
+        rest = int(round(value - minutes * 60))
+        return f"{minutes}m {rest:02d}s"
+
+    def _preview_load_settings_float(self, key: str, default: float) -> float:
+        try:
+            value = float(self._settings.value(key, default))
+        except Exception:
+            return float(default)
+        return value if np.isfinite(value) and value > 0.0 else float(default)
+
+    def _record_preview_load_timing(self, seconds: float) -> None:
+        value = float(seconds)
+        if not np.isfinite(value) or value <= 0.0:
+            return
+        key = "performance/preview_load_seconds_ewma"
+        try:
+            previous = float(self._settings.value(key, 0.0))
+        except Exception:
+            previous = 0.0
+        averaged = value if previous <= 0.0 else previous * 0.65 + value * 0.35
+        try:
+            self._settings.setValue(key, float(averaged))
+            self._settings.sync()
+        except Exception:
+            pass
+
+    def _preview_load_estimate_seconds(self, selected: Path, fast_raw: bool, max_preview_side: int) -> float:
+        if selected.suffix.lower() not in RAW_EXTENSIONS:
+            default = 0.6
+        elif int(max_preview_side) <= 0:
+            default = 3.0
+        elif bool(fast_raw):
+            default = 1.2
+        else:
+            default = 2.0
+        return self._preview_load_settings_float("performance/preview_load_seconds_ewma", default)
+
+    def _start_preview_load_progress(self, selected: Path, fast_raw: bool, max_preview_side: int) -> None:
+        estimate = self._preview_load_estimate_seconds(selected, fast_raw, max_preview_side)
+        self._preview_load_progress_started_at = time.perf_counter()
+        self._preview_load_progress_estimated_seconds = float(estimate)
+        self._preview_load_progress_label = self.tr("Preview: cargando") + f" {selected.name}"
+        self._preview_load_progress_visible = bool(estimate >= 1.0)
+        timer = getattr(self, "_preview_load_progress_timer", None)
+        if timer is not None and not timer.isActive():
+            timer.start()
+        self._update_preview_load_progress_status()
+
+    def _update_preview_load_progress_status(self) -> None:
+        started = getattr(self, "_preview_load_progress_started_at", None)
+        if started is None:
+            return
+        elapsed = max(0.0, time.perf_counter() - float(started))
+        estimate = getattr(self, "_preview_load_progress_estimated_seconds", None)
+        if not bool(getattr(self, "_preview_load_progress_visible", False)) and elapsed < 1.0:
+            return
+        self._preview_load_progress_visible = True
+        label = str(getattr(self, "_preview_load_progress_label", "") or self.tr("Preview: cargando"))
+        if estimate is not None and float(estimate) > 0.0:
+            remaining = max(0.0, float(estimate) - elapsed)
+            time_text = (
+                self.tr("Transcurrido")
+                + f" {self._preview_load_format_duration(elapsed)} | "
+                + self.tr("estimado")
+                + f" ~{self._preview_load_format_duration(float(estimate))} | "
+                + self.tr("restante")
+                + f" {self._preview_load_format_duration(remaining)}"
+            )
+            value = 95 if elapsed > float(estimate) else int(np.clip((elapsed / float(estimate)) * 90.0, 0.0, 90.0))
+            self._set_global_operation_progress(
+                "preview",
+                label,
+                time_text=time_text,
+                phase_text=self.tr("RAW/archivo: activo | Preview: pendiente | Caché: pendiente"),
+                minimum=0,
+                maximum=100,
+                value=value,
+            )
+        else:
+            self._set_global_operation_progress(
+                "preview",
+                label,
+                time_text=self.tr("Transcurrido") + f" {self._preview_load_format_duration(elapsed)}",
+                phase_text=self.tr("RAW/archivo: activo | Preview: pendiente | Caché: pendiente"),
+                minimum=0,
+                maximum=0,
+                value=0,
+            )
+
+    def _finish_preview_load_progress(self, *, success: bool, detail: str, elapsed_seconds: float | None = None) -> None:
+        timer = getattr(self, "_preview_load_progress_timer", None)
+        if timer is not None:
+            timer.stop()
+        started = getattr(self, "_preview_load_progress_started_at", None)
+        elapsed = (
+            float(elapsed_seconds)
+            if elapsed_seconds is not None
+            else (time.perf_counter() - float(started) if started is not None else None)
+        )
+        visible = bool(getattr(self, "_preview_load_progress_visible", False))
+        self._preview_load_progress_started_at = None
+        self._preview_load_progress_estimated_seconds = None
+        self._preview_load_progress_label = ""
+        self._preview_load_progress_visible = False
+        if elapsed is not None:
+            self._record_preview_load_timing(float(elapsed))
+        if visible:
+            self._set_global_operation_progress(
+                "preview",
+                detail,
+                time_text=self.tr("Total:") + f" {self._preview_load_format_duration(elapsed)}",
+                phase_text=(
+                    self.tr("RAW/archivo: listo | Preview: lista | Caché: actualizada")
+                    if success
+                    else self.tr("RAW/archivo: error | Preview: detenida | Caché: sin actualizar")
+                ),
+                minimum=0,
+                maximum=100,
+                value=100 if success else 0,
+            )
+            QtCore.QTimer.singleShot(1800, lambda: self._reset_global_operation_progress(owner="preview"))
+
     def _on_load_selected(self, _checked: bool = False, *, show_message: bool = True) -> None:
         if self._selected_file is None:
             self._clear_viewer_histogram()
@@ -127,16 +256,18 @@ class PreviewLoadMixin:
         selected, recipe, fast_raw, max_preview_side, cache_key = request
 
         def task():
+            started = time.perf_counter()
             image_linear, msg = load_image_for_preview(
                 selected,
                 recipe=recipe,
                 fast_raw=fast_raw,
                 max_preview_side=max_preview_side,
             )
-            return selected, cache_key, image_linear, msg
+            return selected, cache_key, image_linear, msg, float(time.perf_counter() - started)
 
         self._preview_load_task_active = True
         self._preview_load_inflight_key = cache_key
+        self._start_preview_load_progress(selected, fast_raw, max_preview_side)
         thread: TaskThread | None = None
 
         def cleanup() -> None:
@@ -153,8 +284,13 @@ class PreviewLoadMixin:
 
         def ok(payload) -> None:
             try:
-                loaded_selected, loaded_key, image_linear, msg = payload
+                loaded_selected, loaded_key, image_linear, msg, elapsed = payload
                 if self._selected_file != loaded_selected:
+                    self._finish_preview_load_progress(
+                        success=False,
+                        detail=self.tr("Preview descartada:") + f" {loaded_selected.name}",
+                        elapsed_seconds=elapsed,
+                    )
                     return
                 self._original_linear = np.asarray(image_linear, dtype=np.float32)
                 self._adjusted_linear = self._original_linear.copy()
@@ -175,6 +311,11 @@ class PreviewLoadMixin:
                 self._restore_persisted_mtf_analysis_for_selected(loaded_selected)
                 self._log_preview(msg)
                 self._set_status(self.tr("Preview cargada:") + f" {loaded_selected.name}")
+                self._finish_preview_load_progress(
+                    success=True,
+                    detail=self.tr("Preview cargada:") + f" {loaded_selected.name}",
+                    elapsed_seconds=elapsed,
+                )
                 if self._manual_chart_marking_after_reload:
                     self._manual_chart_marking_after_reload = False
                     self._begin_manual_chart_marking()
@@ -186,6 +327,10 @@ class PreviewLoadMixin:
                 self._log_preview(trace[-1200:])
                 if self._selected_file == selected:
                     self._set_status(self.tr("Error de preview:") + f" {selected.name}")
+                self._finish_preview_load_progress(
+                    success=False,
+                    detail=self.tr("Error de preview:") + f" {selected.name}",
+                )
             finally:
                 cleanup()
 

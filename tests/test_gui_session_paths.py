@@ -23,7 +23,7 @@ from probraw.provenance.c2pa import C2PASignConfig  # noqa: E402
 from probraw.provenance.probraw_proof import ProbRawProofConfig, ProbRawProofResult  # noqa: E402
 from probraw.raw import pipeline  # noqa: E402
 from probraw.session import create_session, load_session  # noqa: E402
-from probraw.sidecar import load_raw_sidecar, raw_sidecar_path  # noqa: E402
+from probraw.sidecar import load_raw_sidecar, raw_sidecar_path, write_raw_sidecar  # noqa: E402
 
 
 @pytest.fixture
@@ -485,6 +485,54 @@ def test_image_panels_use_neutral_gray_background(qapp):
         assert gui_module.IMAGE_PANEL_BACKGROUND == "#2b2b2b"
         assert "background-color: #2b2b2b" in stylesheet
         assert "#111827" not in stylesheet
+    finally:
+        window.close()
+
+
+def test_viewer_zoom_percentage_tracks_real_pixel_scale(qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((200, 400, 3), dtype=gui_module.np.uint8)
+        window.image_result_single.setFixedSize(200, 100)
+        window.image_result_single.set_rgb_u8_image(image)
+
+        window._viewer_fit()
+        assert window.viewer_zoom_label.text() == "50%"
+
+        window._viewer_zoom_100()
+        assert window.viewer_zoom_label.text() == "100%"
+        assert window.image_result_single.current_display_scale() == pytest.approx(1.0)
+    finally:
+        window.close()
+
+
+def test_viewer_zoom_actions_use_magnifier_icons_and_shortcuts(qapp):
+    window = ICCRawMainWindow()
+    try:
+        shortcuts_in = {shortcut.toString() for shortcut in window.action_viewer_zoom_in.shortcuts()}
+        shortcuts_out = {shortcut.toString() for shortcut in window.action_viewer_zoom_out.shortcuts()}
+
+        assert shortcuts_in & {"Ctrl++", "Ctrl+="}
+        assert "Ctrl+-" in shortcuts_out
+        assert not window.action_viewer_zoom_in.icon().isNull()
+        assert not window.action_viewer_zoom_out.icon().isNull()
+    finally:
+        window.close()
+
+
+def test_space_bar_enables_viewer_hand_pan_cursor(qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((200, 400, 3), dtype=gui_module.np.uint8)
+        window.image_result_single.setFixedSize(200, 100)
+        window.image_result_single.set_rgb_u8_image(image)
+        window._viewer_fit()
+
+        assert window.image_result_single.cursor().shape() != QtCore.Qt.OpenHandCursor
+        window._set_viewer_space_pan_active(True)
+        assert window.image_result_single.cursor().shape() == QtCore.Qt.OpenHandCursor
+        window._set_viewer_space_pan_active(False)
+        assert window.image_result_single.cursor().shape() != QtCore.Qt.OpenHandCursor
     finally:
         window.close()
 
@@ -1477,6 +1525,56 @@ def test_development_profile_applies_to_controls_and_queue(tmp_path: Path, qapp)
         window.close()
 
 
+def test_legacy_generic_development_profile_normalizes_visible_controls(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    payload = create_session(root, name="Sesion perfil legado")
+    manifest_path = root / "00_configuraciones" / "development_profiles" / "legacy" / "development_profile.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "id": "legacy",
+                "name": "Legacy ProPhoto",
+                "kind": "manual",
+                "profile_type": "basic",
+                "recipe": {
+                    "output_space": "prophoto_rgb",
+                    "output_linear": False,
+                    "tone_curve": "gamma:1.8",
+                    "white_balance_mode": "fixed",
+                    "wb_multipliers": [1.0, 1.0, 1.0, 1.0],
+                    "profiling_mode": True,
+                },
+                "detail_adjustments": {"sharpen": 40, "radius": 14, "noise_luma": 0, "noise_color": 0, "ca_red": 0, "ca_blue": 0},
+                "render_adjustments": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._register_development_profile(
+            {
+                "id": "legacy",
+                "name": "Legacy ProPhoto",
+                "kind": "manual",
+                "profile_type": "basic",
+                "manifest_path": window._session_relative_or_absolute(manifest_path),
+            },
+            activate=False,
+        )
+
+        window._apply_development_profile_to_controls("legacy")
+
+        assert window.combo_wb_mode.currentData() == "camera_metadata"
+        assert window.check_profiling_mode.isChecked() is False
+        assert window.slider_sharpen.value() == 40
+    finally:
+        window.close()
+
+
 def test_queue_assignment_writes_and_reuses_raw_sidecar(tmp_path: Path, qapp):
     root = tmp_path / "session"
     raw = root / "01_ORG" / "capture.NEF"
@@ -1507,6 +1605,324 @@ def test_queue_assignment_writes_and_reuses_raw_sidecar(tmp_path: Path, qapp):
         window._queue_add_files([raw])
         assert window._develop_queue[0]["development_profile_id"] == profile_id
     finally:
+        window.close()
+
+
+def test_queue_process_uses_inline_raw_sidecar_sharpening(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion cola mochila")
+    recipe = Recipe(
+        white_balance_mode="camera_metadata",
+        output_space="prophoto_rgb",
+        output_linear=False,
+        tone_curve="gamma:1.8",
+        profiling_mode=False,
+    )
+    write_raw_sidecar(
+        raw,
+        recipe=recipe,
+        development_profile={"id": "", "name": "Ajustes imagen", "kind": "manual", "profile_type": "basic"},
+        detail_adjustments={"sharpen": 72, "radius": 24, "noise_luma": 8, "noise_color": 3, "ca_red": 0, "ca_blue": 0},
+        render_adjustments={"brightness_ev": 0.18, "contrast": 0.11},
+        session_root=root,
+        status="configured",
+    )
+    captured: dict[str, Any] = {}
+
+    def run_task(_label, task, on_success):
+        on_success(task())
+
+    def fake_process_batch_files(**kwargs):
+        captured.update(kwargs)
+        src = kwargs["files"][0]
+        out_path = Path(kwargs["out_dir"]) / f"{src.stem}.tiff"
+        return {
+            "input_files": len(kwargs["files"]),
+            "output_dir": str(kwargs["out_dir"]),
+            "outputs": [{"source": str(src), "output": str(out_path)}],
+            "errors": [],
+        }
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._start_background_task = run_task
+        window._process_batch_files = fake_process_batch_files
+        monkeypatch.setattr(window, "_resolve_proof_config_for_gui", lambda: ProbRawProofConfig(private_key_path=None))
+        monkeypatch.setattr(window, "_resolve_c2pa_config_for_gui", lambda: None)
+        window.slider_sharpen.setValue(0)
+        window.slider_radius.setValue(10)
+        window.slider_brightness.setValue(0)
+
+        window._queue_add_files([raw])
+        assert window._develop_queue[0]["development_profile_id"] == ""
+
+        window._queue_process()
+
+        assert captured["files"] == [raw]
+        assert captured["apply_adjust"] is True
+        assert captured["sharpen_amount"] == pytest.approx(0.72)
+        assert captured["sharpen_radius"] == pytest.approx(2.4)
+        assert captured["denoise_luma"] == pytest.approx(0.08)
+        assert captured["render_adjustments"]["brightness_ev"] == pytest.approx(0.18)
+        assert captured["render_adjustments"]["contrast"] == pytest.approx(0.11)
+        assert captured["sidecar_detail_adjustments"]["sharpen"] == 72
+        assert captured["development_profile"]["name"] == "Ajustes imagen"
+        assert captured["development_profile"]["profile_type"] == "basic"
+        assert captured["recipe"].output_space == "prophoto_rgb"
+        assert window._develop_queue[0]["status"] == "done"
+    finally:
+        window.close()
+
+
+def test_raw_sidecar_without_registered_profile_clears_stale_active_profile(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion perfil basico")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
+        window.development_profile_name_edit.setText("Perfil anterior")
+        window.spin_exposure.setValue(-0.35)
+        window._save_current_development_profile()
+        stale_profile_id = window._active_development_profile_id
+        assert stale_profile_id
+
+        write_raw_sidecar(
+            raw,
+            recipe=Recipe(exposure_compensation=0.75),
+            development_profile={"id": "", "name": "Ajustes actuales", "kind": "manual", "profile_type": "basic"},
+            detail_adjustments={"sharpen": 30, "radius": 12, "noise_luma": 5, "noise_color": 7, "ca_red": 0, "ca_blue": 0},
+            render_adjustments={"brightness_ev": 0.22, "contrast": 0.18},
+            session_root=root,
+            status="configured",
+        )
+
+        assert window._apply_raw_sidecar_to_controls(raw) is True
+
+        assert window._active_development_profile_id == ""
+        assert window.spin_exposure.value() == pytest.approx(0.75)
+        assert window.slider_brightness.value() == 22
+        assert window.slider_contrast.value() == 18
+        settings = window._development_profile_settings(window._active_development_profile_id)
+        assert settings["render_adjustments"]["brightness_ev"] == pytest.approx(0.22)
+        assert settings["render_adjustments"]["contrast"] == pytest.approx(0.18)
+    finally:
+        window.close()
+
+
+def test_file_selection_without_sidecar_resets_previous_adjustment_controls(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_dir = root / "01_ORG"
+    adjusted = raw_dir / "adjusted.NEF"
+    unconfigured = raw_dir / "unconfigured.NEF"
+    raw_dir.mkdir(parents=True)
+    adjusted.write_bytes(b"adjusted raw")
+    unconfigured.write_bytes(b"unconfigured raw")
+    payload = create_session(root, name="Sesion cambio ajustes")
+    write_raw_sidecar(
+        adjusted,
+        recipe=Recipe(
+            exposure_compensation=0.85,
+            white_balance_mode="fixed",
+            wb_multipliers=[1.15, 1.0, 0.92, 1.0],
+            output_space="scene_linear_camera_rgb",
+            output_linear=True,
+            tone_curve="linear",
+            profiling_mode=True,
+        ),
+        development_profile={"id": "", "name": "Ajustes actuales", "kind": "manual", "profile_type": "basic"},
+        detail_adjustments={"sharpen": 55, "radius": 18, "noise_luma": 12, "noise_color": 9, "ca_red": 25, "ca_blue": -15},
+        render_adjustments={"brightness_ev": 0.31, "contrast": 0.22, "black_point": 0.04, "midtone": 1.12},
+        session_root=root,
+        status="configured",
+    )
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._set_current_directory(raw_dir)
+        items = {
+            Path(str(window.file_list.item(row).data(QtCore.Qt.UserRole))).name: window.file_list.item(row)
+            for row in range(window.file_list.count())
+        }
+
+        window.file_list.setCurrentItem(items[adjusted.name])
+        window._selection_load_timer.stop()
+        window._metadata_timer.stop()
+
+        assert window._selected_file == adjusted
+        assert window.spin_exposure.value() == pytest.approx(0.85)
+        assert window.slider_sharpen.value() == 55
+        assert window.slider_brightness.value() == 31
+        assert window.slider_contrast.value() == 22
+
+        _activate_fake_session_icc(window, root)
+        assert window.chk_apply_profile.isChecked()
+        window._active_development_profile_id = "stale-profile"
+        window.file_list.setCurrentItem(items[unconfigured.name])
+        window._selection_load_timer.stop()
+        window._metadata_timer.stop()
+
+        assert window._selected_file == unconfigured
+        assert window._active_development_profile_id == ""
+        assert window.path_profile_active.text() == ""
+        assert window.chk_apply_profile.isChecked() is False
+        assert window.spin_exposure.value() == pytest.approx(0.0)
+        assert window.combo_wb_mode.currentData() == "camera_metadata"
+        assert window.combo_output_space.currentText().strip() == "prophoto_rgb"
+        assert window.check_output_linear.isChecked() is False
+        assert window.check_profiling_mode.isChecked() is False
+        assert window.slider_sharpen.value() == 0
+        assert window.slider_radius.value() == 10
+        assert window.slider_noise_luma.value() == 0
+        assert window.slider_noise_color.value() == 0
+        assert window.slider_ca_red.value() == 0
+        assert window.slider_ca_blue.value() == 0
+        assert window.slider_brightness.value() == 0
+        assert window.slider_black_point.value() == 0
+        assert window.slider_contrast.value() == 0
+        assert window.slider_midtone.value() == 100
+    finally:
+        window._selection_load_timer.stop()
+        window._metadata_timer.stop()
+        window.close()
+
+
+def test_partial_raw_sidecar_resets_missing_adjustment_blocks(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "partial.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"partial raw")
+    payload = create_session(root, name="Sesion mochila parcial")
+    raw_sidecar_path(raw).write_text(
+        json.dumps(
+            {
+                "schema": "org.probatia.probraw.raw-sidecar.v1",
+                "recipe": {"exposure_compensation": -0.4},
+                "development_profile": {"id": "", "name": "", "kind": "", "profile_type": "basic"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window.slider_sharpen.setValue(80)
+        window.slider_radius.setValue(24)
+        window.slider_noise_luma.setValue(30)
+        window.slider_brightness.setValue(45)
+        window.slider_contrast.setValue(33)
+        window._active_development_profile_id = "stale-profile"
+        _activate_fake_session_icc(window, root)
+
+        assert window._apply_raw_sidecar_to_controls(raw) is True
+
+        assert window._active_development_profile_id == ""
+        assert window.path_profile_active.text() == ""
+        assert window.chk_apply_profile.isChecked() is False
+        assert window.spin_exposure.value() == pytest.approx(-0.4)
+        assert window.slider_sharpen.value() == 0
+        assert window.slider_radius.value() == 10
+        assert window.slider_noise_luma.value() == 0
+        assert window.slider_brightness.value() == 0
+        assert window.slider_contrast.value() == 0
+    finally:
+        window.close()
+
+
+def test_raw_sidecar_generic_output_normalizes_profile_mode_for_controls(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "generic.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"generic raw")
+    payload = create_session(root, name="Sesion prophoto visible")
+    write_raw_sidecar(
+        raw,
+        recipe=Recipe(
+            output_space="prophoto_rgb",
+            output_linear=False,
+            tone_curve="gamma:1.8",
+            white_balance_mode="fixed",
+            wb_multipliers=[1.0, 1.0, 1.0, 1.0],
+            profiling_mode=True,
+        ),
+        development_profile={"id": "", "name": "Ajustes antiguos", "kind": "manual", "profile_type": "basic"},
+        detail_adjustments={"sharpen": 10, "radius": 10, "noise_luma": 0, "noise_color": 0, "ca_red": 0, "ca_blue": 0},
+        render_adjustments={},
+        session_root=root,
+        status="configured",
+    )
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+
+        assert window._apply_raw_sidecar_to_controls(raw) is True
+
+        assert window.combo_output_space.currentText().strip() == "prophoto_rgb"
+        assert window.combo_wb_mode.currentData() == "camera_metadata"
+        assert window.check_profiling_mode.isChecked() is False
+        assert window.slider_sharpen.value() == 10
+    finally:
+        window.close()
+
+
+def test_file_selection_clears_stale_mtf_roi_before_sidecar_slider_updates(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_dir = root / "01_ORG"
+    first = raw_dir / "first.NEF"
+    second = raw_dir / "second.NEF"
+    raw_dir.mkdir(parents=True)
+    first.write_bytes(b"first raw")
+    second.write_bytes(b"second raw")
+    payload = create_session(root, name="Sesion cambio MTF")
+    write_raw_sidecar(
+        second,
+        recipe=Recipe(),
+        development_profile={"id": "", "name": "Ajustes actuales", "kind": "manual", "profile_type": "basic"},
+        detail_adjustments={"sharpen": 20, "radius": 10, "noise_luma": 0, "noise_color": 0, "ca_red": 0, "ca_blue": 0},
+        render_adjustments={"brightness_ev": 0.31, "contrast": 0.12},
+        session_root=root,
+        status="configured",
+    )
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._set_current_directory(raw_dir)
+        second_item = next(
+            window.file_list.item(row)
+            for row in range(window.file_list.count())
+            if window.file_list.item(row).data(QtCore.Qt.UserRole) == str(second)
+        )
+        image = gui_module.np.zeros((96, 96, 3), dtype=gui_module.np.float32)
+        window._selected_file = first
+        window._original_linear = image
+        window._preview_srgb = image
+        window._mtf_roi = (12, 12, 48, 48)
+        window.check_mtf_auto_update.setChecked(True)
+
+        window.file_list.setCurrentItem(second_item)
+        window._selection_load_timer.stop()
+        window._metadata_timer.stop()
+
+        assert window._selected_file == second
+        assert window._mtf_roi is None
+        assert not window._mtf_refresh_timer.isActive()
+        assert window.slider_brightness.value() == 31
+    finally:
+        window._selection_load_timer.stop()
+        window._metadata_timer.stop()
+        window._mtf_refresh_timer.stop()
         window.close()
 
 
@@ -1854,6 +2270,35 @@ def test_raw_adjustment_groups_follow_editor_flow(qapp):
         window.close()
 
 
+def test_about_dialog_opens_from_help_menu(qapp):
+    window = ICCRawMainWindow()
+    try:
+        closed = {"done": False}
+
+        def close_dialog():
+            dialog = QtWidgets.QApplication.instance().activeModalWidget()
+            assert dialog is not None
+            assert "Acerca de" in dialog.windowTitle()
+            label_texts = [
+                widget.text()
+                for widget in dialog.findChildren(QtWidgets.QLabel)
+            ]
+            joined = "\n".join(label_texts)
+            assert "PROBATIA" in joined
+            assert "AEICF" in joined
+            assert "Alejandro Maestre Gasteazi" in joined
+            assert "alejandro.maestre@imagencientifica.es" in joined
+            closed["done"] = True
+            dialog.accept()
+
+        QtCore.QTimer.singleShot(20, close_dialog)
+        window._menu_about()
+
+        assert closed["done"] is True
+    finally:
+        window.close()
+
+
 def test_mtf_roi_analysis_updates_metrics_and_lpmm(tmp_path: Path, qapp):
     size = 140
     yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
@@ -1956,7 +2401,11 @@ def test_mtf_sidecar_restores_roi_and_curves_without_reselecting_edge(tmp_path: 
         restored = window._mtf_last_result
         assert restored is not None
         assert window._mtf_roi == (20, 20, 100, 100)
+        assert window.image_result_single._roi_rect is None
+        window._go_to_nitidez_tab()
         assert window.image_result_single._roi_rect == pytest.approx((20, 20, 100, 100))
+        window.right_workflow_tabs.setCurrentIndex(1)
+        assert window.image_result_single._roi_rect is None
         assert restored.mtf50 == pytest.approx(persisted_mtf50)
         assert restored.mtf_extended == pytest.approx(persisted_extended)
         assert window.mtf_plot_mtf._result is restored
@@ -2001,6 +2450,8 @@ def test_mtf_sidecar_restore_scales_roi_to_current_preview_size(tmp_path: Path, 
         window._restore_persisted_mtf_analysis_for_selected(image_path)
 
         assert window._mtf_roi == (10, 10, 50, 50)
+        assert window.image_result_single._roi_rect is None
+        window._go_to_nitidez_tab()
         assert window.image_result_single._roi_rect == pytest.approx((10, 10, 50, 50))
 
         window._recalculate_mtf_analysis()
@@ -2042,6 +2493,376 @@ def test_mtf_recalculation_scales_preview_roi_to_full_resolution_source(tmp_path
         assert payload["summary"]["display_dimensions_px"] == [70, 70]
         assert payload["summary"]["roi"] == [20, 20, 100, 100]
         assert payload["summary"]["display_roi"] == [10, 10, 50, 50]
+    finally:
+        window.close()
+
+
+def test_mtf_reuses_cached_full_resolution_roi_for_adjustment_changes(tmp_path: Path, monkeypatch, qapp):
+    import probraw.ui.window.mtf as mtf_module
+
+    size = 360
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.12
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    full_image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    read_calls = {"count": 0}
+    adjustment_calls = {"count": 0, "shapes": []}
+    original_apply_adjustments = mtf_module.apply_adjustments
+
+    def fake_read_image(_path):
+        read_calls["count"] += 1
+        return full_image
+
+    def counted_apply_adjustments(image, **kwargs):
+        adjustment_calls["count"] += 1
+        adjustment_calls["shapes"].append(tuple(image.shape))
+        return original_apply_adjustments(image, **kwargs)
+
+    monkeypatch.setattr(mtf_module, "read_image", fake_read_image)
+    monkeypatch.setattr(mtf_module, "apply_adjustments", counted_apply_adjustments)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, full_image)
+    try:
+        window._selected_file = image_path
+        window._original_linear = full_image
+        window._preview_srgb = full_image
+        window._on_mtf_roi_selected(130, 130, 100, 100)
+
+        assert read_calls["count"] == 1
+        assert adjustment_calls["count"] == 0
+
+        window.slider_sharpen.blockSignals(True)
+        window.slider_sharpen.setValue(80)
+        window.slider_sharpen.blockSignals(False)
+        window._recalculate_mtf_analysis()
+
+        assert read_calls["count"] == 1
+        assert adjustment_calls["count"] == 1
+        assert adjustment_calls["shapes"][0][0] < size
+        assert adjustment_calls["shapes"][0][1] < size
+
+        window._recalculate_mtf_analysis()
+
+        assert read_calls["count"] == 1
+        assert adjustment_calls["count"] == 1
+
+        window.slider_noise_luma.blockSignals(True)
+        window.slider_noise_luma.setValue(25)
+        window.slider_noise_luma.blockSignals(False)
+        window.slider_sharpen.blockSignals(True)
+        window.slider_sharpen.setValue(120)
+        window.slider_sharpen.blockSignals(False)
+        window._recalculate_mtf_analysis()
+
+        assert read_calls["count"] == 1
+        assert adjustment_calls["count"] == 3
+        assert adjustment_calls["shapes"][1] == adjustment_calls["shapes"][0]
+        assert adjustment_calls["shapes"][2] == adjustment_calls["shapes"][0]
+
+        window.slider_sharpen.blockSignals(True)
+        window.slider_sharpen.setValue(160)
+        window.slider_sharpen.blockSignals(False)
+        window._recalculate_mtf_analysis()
+
+        assert read_calls["count"] == 1
+        assert adjustment_calls["count"] == 4
+        assert adjustment_calls["shapes"][3] == adjustment_calls["shapes"][0]
+    finally:
+        window.close()
+
+
+def test_mtf_roi_block_matches_full_resolution_adjustment_result(tmp_path: Path, qapp):
+    size = 360
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.12
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.0, sigmaY=1.0)
+    full_image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, full_image)
+    try:
+        window._selected_file = image_path
+        window._original_linear = full_image
+        window._preview_srgb = full_image
+        window.slider_sharpen.blockSignals(True)
+        window.slider_sharpen.setValue(120)
+        window.slider_sharpen.blockSignals(False)
+        window.slider_radius.blockSignals(True)
+        window.slider_radius.setValue(24)
+        window.slider_radius.blockSignals(False)
+        roi = (130, 130, 100, 100)
+
+        roi_info = window._mtf_full_resolution_analysis_roi_image(roi)
+        full_adjusted = window._mtf_full_resolution_analysis_image()
+
+        assert roi_info is not None
+        assert full_adjusted is not None
+        x, y, width, height = roi_info["analysis_roi"]
+        expected = full_adjusted[y : y + height, x : x + width, :3]
+        assert gui_module.np.allclose(roi_info["image"], expected, atol=2e-6)
+    finally:
+        window.close()
+
+
+def test_mtf_auto_update_is_scheduled_from_detail_slider_change(tmp_path: Path, qapp):
+    size = 180
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.15
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, image)
+    try:
+        window._selected_file = image_path
+        window._original_linear = image
+        window._preview_srgb = image
+        window._on_mtf_roi_selected(55, 55, 70, 70)
+        window._mtf_refresh_timer.stop()
+        window.check_mtf_auto_update.setChecked(True)
+
+        window.slider_sharpen.setSliderDown(True)
+        window.slider_sharpen.setValue(30)
+
+        assert window._mtf_refresh_timer.isActive()
+    finally:
+        window.slider_sharpen.setSliderDown(False)
+        window._mtf_refresh_timer.stop()
+        window.close()
+
+
+def test_mtf_auto_update_defers_when_restored_roi_cache_is_cold(tmp_path: Path, qapp):
+    size = 180
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.15
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, image)
+    try:
+        window._selected_file = image_path
+        window._original_linear = image
+        window._preview_srgb = image
+        window._on_mtf_roi_selected(55, 55, 70, 70)
+        assert window._mtf_has_hot_base_roi_cache(window._mtf_roi)
+
+        window._mtf_refresh_timer.stop()
+        window._clear_mtf_image_caches()
+        window.check_mtf_auto_update.setChecked(True)
+        window._schedule_mtf_refresh(interactive=False)
+
+        assert not window._mtf_refresh_timer.isActive()
+
+        window._mtf_full_resolution_base_roi(window._mtf_roi)
+        window._schedule_mtf_refresh(interactive=False)
+
+        assert window._mtf_refresh_timer.isActive()
+        window._clear_mtf_image_caches()
+        assert not window._mtf_refresh_timer.isActive()
+    finally:
+        window._mtf_refresh_timer.stop()
+        window.close()
+
+
+def test_mtf_cold_fullres_roi_is_queued_outside_ui(tmp_path: Path, monkeypatch, qapp):
+    size = 180
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.15
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, image)
+    queued: list[dict] = []
+    try:
+        window._selected_file = image_path
+        window._original_linear = image
+        window._preview_srgb = image
+        window._mtf_roi = (55, 55, 70, 70)
+        monkeypatch.setattr(window, "_run_mtf_analysis_inline", lambda: False)
+        monkeypatch.setattr(window, "_start_mtf_base_roi_worker", lambda request: queued.append(request))
+
+        window._recalculate_mtf_analysis()
+
+        assert queued
+        assert queued[0]["display_roi"] == [55, 55, 70, 70]
+        assert queued[0]["mode"] == "analysis"
+        assert window._mtf_last_result is None
+        assert "segundo plano" in window.mtf_metrics_label.text()
+    finally:
+        window._mtf_refresh_timer.stop()
+        window.close()
+
+
+def test_mtf_progress_panel_reports_elapsed_estimate_and_completion(qapp):
+    window = ICCRawMainWindow()
+    try:
+        assert window.mtf_progress_panel.isVisible() is False
+        assert window.mtf_progress_bar.isVisible() is False
+
+        window._start_mtf_progress(
+            "prepare",
+            detail="capture.NEF ROI 80x80",
+            estimate_seconds=8.0,
+        )
+        window._mtf_progress_started_at -= 2.0
+        window._update_mtf_progress_status()
+
+        assert "capture.NEF" in window.mtf_progress_label.text()
+        assert "Transcurrido" in window.mtf_progress_time_label.text()
+        assert "estimado" in window.mtf_progress_time_label.text()
+        assert window.mtf_progress_bar.value() > 0
+        assert "activo" in window.mtf_phase_label.text()
+        assert "capture.NEF" in window.global_status_label.text()
+        assert "estimado" in window.global_progress_time_label.text()
+        assert "activo" in window.global_progress_phase_label.text()
+        assert window.global_progress.value() == window.mtf_progress_bar.value()
+        assert window.mtf_progress_panel.isVisible() is False
+
+        window._set_mtf_progress_steps(3, 10, detail="combinación 3/10")
+
+        assert window.mtf_progress_bar.maximum() == 10
+        assert window.mtf_progress_bar.value() == 3
+        assert "3/10" in window.mtf_progress_time_label.text()
+        assert window.global_progress.maximum() == 10
+        assert window.global_progress.value() == 3
+
+        window._finish_mtf_progress("complete", detail="curvas listas", elapsed_seconds=2.4)
+
+        assert window.mtf_progress_bar.value() == 100
+        assert "curvas listas" in window.mtf_progress_label.text()
+        assert "2.4s" in window.mtf_progress_time_label.text()
+        assert "curvas listas" in window.global_status_label.text()
+        assert "2.4s" in window.global_progress_time_label.text()
+        assert window.global_progress.value() == 100
+    finally:
+        window.close()
+
+
+def test_global_progress_panel_tracks_preview_load_threshold(tmp_path: Path, qapp):
+    window = ICCRawMainWindow()
+    try:
+        raw_path = tmp_path / "capture.NEF"
+        raw_path.write_bytes(b"fake raw")
+        window._settings.setValue("performance/preview_load_seconds_ewma", 2.0)
+
+        window._start_preview_load_progress(raw_path, True, 2600)
+        window._preview_load_progress_started_at -= 1.2
+        window._update_preview_load_progress_status()
+
+        assert "Preview" in window.global_status_label.text()
+        assert "capture.NEF" in window.global_status_label.text()
+        assert "estimado" in window.global_progress_time_label.text()
+        assert "Preview: pendiente" in window.global_progress_phase_label.text()
+        assert window.global_progress.value() > 0
+
+        window._finish_preview_load_progress(
+            success=True,
+            detail="Preview cargada: capture.NEF",
+            elapsed_seconds=1.4,
+        )
+
+        assert "Preview cargada" in window.global_status_label.text()
+        assert "1.4s" in window.global_progress_time_label.text()
+        assert window.global_progress.value() == 100
+    finally:
+        window.close()
+
+
+def test_mtf_lateral_ca_roi_block_matches_full_resolution_adjustment(tmp_path: Path, monkeypatch, qapp):
+    size = 420
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.12
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.0, sigmaY=1.0)
+    full_image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, full_image)
+    try:
+        window._selected_file = image_path
+        window._original_linear = full_image
+        window._preview_srgb = full_image
+        window.slider_noise_luma.blockSignals(True)
+        window.slider_noise_luma.setValue(10)
+        window.slider_noise_luma.blockSignals(False)
+        window.slider_sharpen.blockSignals(True)
+        window.slider_sharpen.setValue(90)
+        window.slider_sharpen.blockSignals(False)
+        window.slider_radius.blockSignals(True)
+        window.slider_radius.setValue(18)
+        window.slider_radius.blockSignals(False)
+        window.slider_ca_red.blockSignals(True)
+        window.slider_ca_red.setValue(60)
+        window.slider_ca_red.blockSignals(False)
+        window.slider_ca_blue.blockSignals(True)
+        window.slider_ca_blue.setValue(-40)
+        window.slider_ca_blue.blockSignals(False)
+        roi = (150, 150, 100, 100)
+
+        full_adjusted = window._mtf_full_resolution_analysis_image()
+
+        def fail_full_image_path(*_args, **_kwargs):
+            raise AssertionError("MTF ROI path should not process the full adjusted image for lateral CA")
+
+        monkeypatch.setattr(window, "_mtf_full_resolution_analysis_image", fail_full_image_path)
+        roi_info = window._mtf_full_resolution_analysis_roi_image(roi)
+
+        assert roi_info is not None
+        assert full_adjusted is not None
+        x, y, width, height = roi_info["analysis_roi"]
+        expected = full_adjusted[y : y + height, x : x + width, :3]
+        assert gui_module.np.allclose(roi_info["image"], expected, atol=3e-4)
+    finally:
+        window.close()
+
+
+def test_mtf_auto_sharpening_updates_sliders_and_improves_roi_mtf(tmp_path: Path, qapp):
+    size = 260
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.12
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=2.4, sigmaY=2.4)
+    edge = 0.18 + 0.64 * edge
+    full_image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, full_image)
+    try:
+        window._selected_file = image_path
+        window._original_linear = full_image
+        window._preview_srgb = full_image
+        window._on_mtf_roi_selected(60, 60, 140, 140)
+        baseline = window._mtf_last_result
+        assert baseline is not None
+        assert baseline.mtf50 is not None
+
+        window._auto_optimize_mtf_sharpening()
+
+        optimized = window._mtf_last_result
+        assert optimized is not None
+        assert optimized.mtf50 is not None
+        assert window.slider_sharpen.value() > 0
+        assert optimized.mtf50 > baseline.mtf50
+        assert optimized.roi == baseline.roi
+        assert window._mtf_auto_sharpen_halo_metrics(optimized)["halo"] <= 0.025
+        payload = load_raw_sidecar(image_path)["mtf_analysis"]
+        assert payload["summary"]["mtf50"] == pytest.approx(optimized.mtf50)
     finally:
         window.close()
 
@@ -2629,6 +3450,7 @@ def test_process_batch_files_passes_gui_c2pa_config_to_signer(tmp_path: Path, mo
     def fake_write_signed_profiled_tiff(out_tiff, image_linear_rgb, **kwargs):
         captured["c2pa_config"] = kwargs["c2pa_config"]
         captured["source_raw"] = kwargs["source_raw"]
+        captured["recipe"] = kwargs["recipe"]
         captured["render_adjustments"] = kwargs["render_adjustments"]
         Path(out_tiff).parent.mkdir(parents=True, exist_ok=True)
         Path(out_tiff).write_bytes(b"signed tiff")
@@ -2647,7 +3469,7 @@ def test_process_batch_files_passes_gui_c2pa_config_to_signer(tmp_path: Path, mo
         payload = window._process_batch_files(
             files=[image_path],
             out_dir=out_dir,
-            recipe=Recipe(),
+            recipe=Recipe(output_space="srgb", output_linear=False),
             apply_adjust=False,
             use_profile=False,
             profile_path=None,
@@ -2666,6 +3488,141 @@ def test_process_batch_files_passes_gui_c2pa_config_to_signer(tmp_path: Path, mo
         assert len(payload["outputs"]) == 1
         assert captured["c2pa_config"] is c2pa_config
         assert captured["source_raw"] == image_path
+        assert captured["recipe"].output_space == "srgb"
         assert captured["render_adjustments"] == {"applied": False}
+    finally:
+        window.close()
+
+
+def test_process_batch_files_applies_sharpening_to_rendered_pixels(tmp_path: Path, monkeypatch, qapp):
+    image_path = tmp_path / "edge.png"
+    out_dir = tmp_path / "out"
+    Image.new("RGB", (32, 32), (128, 128, 128)).save(image_path)
+    x = gui_module.np.linspace(0.15, 0.85, 64, dtype=gui_module.np.float32)
+    base = gui_module.np.repeat(x[None, :, None], 48, axis=0)
+    base = gui_module.np.repeat(base, 3, axis=2)
+    base[:, 32:, :] += 0.08
+    base = gui_module.np.clip(base, 0.0, 1.0)
+    captured: dict[str, object] = {}
+
+    def fake_write_signed_profiled_tiff(out_tiff, image_linear_rgb, **kwargs):
+        captured["image"] = gui_module.np.asarray(image_linear_rgb).copy()
+        captured["detail_adjustments"] = kwargs["detail_adjustments"]
+        Path(out_tiff).parent.mkdir(parents=True, exist_ok=True)
+        Path(out_tiff).write_bytes(b"signed tiff")
+        return "standard_srgb_output_icc", ProbRawProofResult(
+            proof_path=str(Path(out_tiff).with_suffix(".proof.json")),
+            proof_sha256="proof-sha",
+            output_tiff_sha256="tiff-sha",
+            raw_sha256="raw-sha",
+            signer_public_key_sha256="pub-sha",
+        )
+
+    monkeypatch.setattr(gui_module, "read_image", lambda _path: base.copy())
+    monkeypatch.setattr(gui_module, "write_signed_profiled_tiff", fake_write_signed_profiled_tiff)
+
+    window = ICCRawMainWindow()
+    try:
+        payload = window._process_batch_files(
+            files=[image_path],
+            out_dir=out_dir,
+            recipe=Recipe(output_space="srgb", output_linear=False),
+            apply_adjust=True,
+            use_profile=False,
+            profile_path=None,
+            denoise_luma=0.0,
+            denoise_color=0.0,
+            sharpen_amount=1.0,
+            sharpen_radius=1.2,
+            lateral_ca_red_scale=1.0,
+            lateral_ca_blue_scale=1.0,
+            render_adjustments={},
+            c2pa_config=None,
+            proof_config=ProbRawProofConfig(private_key_path=None),
+        )
+
+        expected = window._apply_output_adjustments(
+            base,
+            denoise_luma=0.0,
+            denoise_color=0.0,
+            sharpen_amount=1.0,
+            sharpen_radius=1.2,
+            lateral_ca_red_scale=1.0,
+            lateral_ca_blue_scale=1.0,
+            render_adjustments={},
+        )
+        assert payload["errors"] == []
+        assert captured["detail_adjustments"]["sharpen_amount"] == pytest.approx(1.0)
+        assert not gui_module.np.allclose(captured["image"], base)
+        assert gui_module.np.allclose(captured["image"], expected)
+    finally:
+        window.close()
+
+
+def test_visible_export_recipe_defaults_camera_rgb_without_icc_to_prophoto(qapp):
+    window = ICCRawMainWindow()
+    try:
+        recipe = window._visible_export_recipe_for_color_management(
+            Recipe(
+                output_space="scene_linear_camera_rgb",
+                output_linear=True,
+                tone_curve="linear",
+                white_balance_mode="fixed",
+                wb_multipliers=[1.0, 1.0, 1.0, 1.0],
+                profiling_mode=True,
+            ),
+            input_profile_path=None,
+        )
+
+        assert recipe.output_space == "prophoto_rgb"
+        assert recipe.output_linear is False
+        assert recipe.tone_curve.startswith("gamma:")
+        assert recipe.white_balance_mode == "camera_metadata"
+        assert recipe.profiling_mode is False
+    finally:
+        window.close()
+
+
+def test_visible_export_recipe_normalizes_generic_output_without_icc(qapp):
+    window = ICCRawMainWindow()
+    try:
+        recipe = window._visible_export_recipe_for_color_management(
+            Recipe(
+                output_space="prophoto_rgb",
+                output_linear=False,
+                tone_curve="gamma:1.8",
+                white_balance_mode="fixed",
+                wb_multipliers=[1.0, 1.0, 1.0, 1.0],
+                profiling_mode=True,
+            ),
+            input_profile_path=None,
+        )
+
+        assert recipe.output_space == "prophoto_rgb"
+        assert recipe.white_balance_mode == "camera_metadata"
+        assert recipe.profiling_mode is False
+    finally:
+        window.close()
+
+
+def test_generic_output_space_change_updates_visible_controls_without_icc(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._apply_recipe_to_controls(
+            Recipe(
+                output_space="scene_linear_camera_rgb",
+                output_linear=True,
+                tone_curve="linear",
+                white_balance_mode="fixed",
+                wb_multipliers=[1.0, 1.0, 1.0, 1.0],
+                profiling_mode=True,
+            )
+        )
+
+        window._set_combo_text(window.combo_output_space, "prophoto_rgb")
+
+        assert window.combo_wb_mode.currentData() == "camera_metadata"
+        assert window.check_output_linear.isChecked() is False
+        assert window.check_profiling_mode.isChecked() is False
     finally:
         window.close()

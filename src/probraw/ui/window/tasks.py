@@ -77,10 +77,13 @@ class TaskStatusMixin:
     def _stop_background_timers_for_shutdown(self) -> None:
         for name in (
             "_selection_load_timer",
+            "_preview_load_progress_timer",
             "_preview_refresh_timer",
             "_thumbnail_timer",
             "_metadata_timer",
             "_mtf_refresh_timer",
+            "_mtf_persist_timer",
+            "_mtf_progress_timer",
             "_session_root_update_timer",
         ):
             timer = getattr(self, name, None)
@@ -97,6 +100,7 @@ class TaskStatusMixin:
         self._preview_load_pending_request = None
         self._profile_preview_pending_request = None
         self._interactive_preview_pending_request = None
+        self._mtf_base_roi_pending_request = None
         self._profile_preview_expected_key = None
         self._interactive_preview_expected_key = None
 
@@ -151,9 +155,15 @@ class TaskStatusMixin:
 
         self.monitor_status_label.setText(f"Ejecutando: {label}")
         self.monitor_progress.setRange(0, 0)
-        if hasattr(self, "global_status_label"):
-            self.global_status_label.setText(f"Ejecutando: {label}")
-            self.global_progress.setRange(0, 0)
+        self._set_global_operation_progress(
+            "task",
+            f"{self.tr('Ejecutando:')} {label}",
+            time_text=self.tr("En curso"),
+            phase_text=self.tr("Tarea en segundo plano"),
+            minimum=0,
+            maximum=0,
+            value=0,
+        )
         return row
 
     def _monitor_task_finish(self, row: int, status: str, detail: str) -> None:
@@ -166,16 +176,56 @@ class TaskStatusMixin:
             self.monitor_progress.setRange(0, 1)
             self.monitor_progress.setValue(1 if status == "Completado" else 0)
             self.monitor_status_label.setText(self.tr("Sin tareas en ejecucion"))
-            if hasattr(self, "global_status_label"):
-                self.global_progress.setRange(0, 1)
-                self.global_progress.setValue(1 if status == "Completado" else 0)
-                self.global_status_label.setText(f"{status}: {detail}")
-                QtCore.QTimer.singleShot(1800, self._reset_global_progress_if_idle)
+            self._set_global_operation_progress(
+                "task",
+                f"{status}: {detail}",
+                time_text=self.tr("Finalizado"),
+                phase_text=self.tr("Sin tareas en ejecución"),
+                minimum=0,
+                maximum=1,
+                value=1 if status == "Completado" else 0,
+            )
+            QtCore.QTimer.singleShot(1800, self._reset_global_progress_if_idle)
 
     def _reset_global_progress_if_idle(self) -> None:
-        if self._active_tasks != 0 or not hasattr(self, "global_status_label"):
+        self._reset_global_operation_progress(owner="task")
+
+    def _set_global_operation_progress(
+        self,
+        owner: str,
+        title: str,
+        *,
+        time_text: str = "",
+        phase_text: str = "",
+        minimum: int = 0,
+        maximum: int = 1,
+        value: int = 0,
+    ) -> None:
+        if not hasattr(self, "global_status_label"):
             return
+        self._global_progress_owner = str(owner or "task")
+        self.global_status_label.setText(str(title or self.tr("Procesando...")))
+        if hasattr(self, "global_progress_time_label"):
+            self.global_progress_time_label.setText(str(time_text or self.tr("Tiempo: --")))
+        if hasattr(self, "global_progress_phase_label"):
+            self.global_progress_phase_label.setText(str(phase_text or ""))
+        self.global_progress.setRange(int(minimum), int(maximum))
+        if int(minimum) != 0 or int(maximum) != 0:
+            self.global_progress.setValue(int(value))
+
+    def _reset_global_operation_progress(self, *, owner: str | None = None, force: bool = False) -> None:
+        if not force and self._active_tasks != 0:
+            return
+        if not hasattr(self, "global_status_label"):
+            return
+        if owner is not None and getattr(self, "_global_progress_owner", None) != owner:
+            return
+        self._global_progress_owner = None
         self.global_status_label.setText(self.tr("Listo"))
+        if hasattr(self, "global_progress_time_label"):
+            self.global_progress_time_label.setText(self.tr("Tiempo: --"))
+        if hasattr(self, "global_progress_phase_label"):
+            self.global_progress_phase_label.setText(self.tr("Sin operación en curso"))
         self.global_progress.setRange(0, 1)
         self.global_progress.setValue(0)
 

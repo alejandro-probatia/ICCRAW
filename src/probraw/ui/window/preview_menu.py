@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ._imports import *  # noqa: F401,F403
+from ...version import __version__
 
 
 class PreviewMenuMixin:
@@ -68,22 +69,34 @@ class PreviewMenuMixin:
         grid.setHorizontalSpacing(10)
         grid.setVerticalSpacing(6)
 
-        def add_row(row: int, label: str, value: str) -> QtWidgets.QLabel:
+        def add_row(row: int, label: str, value: str, *, rich: bool = False) -> QtWidgets.QLabel:
             k = QtWidgets.QLabel(label)
             k.setStyleSheet("font-weight: 600; color: #374151;")
             v = QtWidgets.QLabel(value)
-            v.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            if rich:
+                v.setTextFormat(QtCore.Qt.RichText)
+                v.setOpenExternalLinks(True)
+                v.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+            else:
+                v.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
             v.setWordWrap(True)
             grid.addWidget(k, row, 0)
             grid.addWidget(v, row, 1)
             return v
 
-        add_row(0, self.tr("Director del proyecto:"), PROJECT_DIRECTOR_NAME)
-        add_row(1, self.tr("Version en ejecucion:"), __version__)
-        add_row(2, self.tr("Backend:"), "LibRaw/rawpy + ArgyllCMS")
+        collaborators = " / ".join(
+            f'<a href="{url}">{name}</a>'
+            for name, url in PROJECT_COLLABORATORS
+        )
+        contact = f'<a href="mailto:{PROJECT_CONTACT_EMAIL}">{PROJECT_CONTACT_EMAIL}</a>'
+        add_row(0, self.tr("Entidades colaboradoras:"), collaborators, rich=True)
+        add_row(1, self.tr("Direccion y desarrollo:"), PROJECT_DIRECTOR_NAME)
+        add_row(2, self.tr("Contacto:"), contact, rich=True)
+        add_row(3, self.tr("Version en ejecucion:"), __version__)
+        add_row(4, self.tr("Backend:"), "LibRaw/rawpy + ArgyllCMS")
         amaze_info = self._amaze_status_summary()
-        add_row(3, self.tr("Soporte AMaZE:"), amaze_info)
-        latest_label = add_row(4, self.tr("Estado de version:"), self.tr("Sin comprobar"))
+        add_row(5, self.tr("Soporte AMaZE:"), amaze_info)
+        latest_label = add_row(6, self.tr("Estado de version:"), self.tr("Sin comprobar"))
 
         layout.addLayout(grid)
 

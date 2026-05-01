@@ -20,6 +20,44 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 Sin cambios pendientes.
 
+## [0.3.5] - 2026-05-02
+
+### Added
+
+- Visor global de progreso para operaciones largas de carga de preview RAW,
+  preparacion de ROI MTF y tareas de fondo, con tiempo transcurrido, estimacion,
+  tiempo restante y fase.
+- Cache persistente de ROI MTF a resolucion completa preparada por un proceso
+  externo, para que el analisis RAW frio no bloquee el hilo Qt de interfaz.
+- Documentacion de rendimiento con tiempos NEF reales, decision de
+  implementacion, alternativas evaluadas y referencias a Imatest, rawpy, LibRaw
+  y darktable.
+
+### Changed
+
+- El recalculo MTF frio se inicia explicitamente cuando la cache ROI full-res
+  esta fria; los refrescos automaticos usan datos calientes y ya no lanzan
+  trabajo RAW pesado durante la interaccion con sliders.
+- La pestaña `Nitidez` ya no duplica el panel local de progreso; el estado de
+  analisis largo se informa desde la barra global siempre visible.
+- La carga de preview RAW publica progreso global cuando se espera o se observa
+  una duracion aproximada superior a un segundo.
+
+### Fixed
+
+- El revelado de cola usa ahora la mochila de cada RAW cuando no hay id de
+  perfil de ajuste registrado, de modo que nitidez, ruido, aberracion cromatica,
+  color y contraste llegan al TIFF renderizado en vez de heredarse de los
+  sliders actuales.
+- Al seleccionar una imagen sin configurar se restablecen receta, detalle,
+  color, contraste y perfil ICC activo a la politica neutra
+  ProPhoto/balance-de-camara, en lugar de arrastrar ajustes del archivo previo.
+- Los espacios genericos sin carta desactivan `Profiling mode` y el balance fijo
+  identidad para el render visible/final, manteniendo alineada la politica de
+  color entre preview y TIFF.
+- La salida RGB de camara sin ICC de entrada activo se rechaza antes de escribir
+  TIFF, evitando archivos verdes/oscuros en visores externos.
+
 ## [0.3.4] - 2026-05-01
 
 ### Added

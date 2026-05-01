@@ -4,7 +4,7 @@ _Versión en español: [COLOR_PIPELINE.es.md](COLOR_PIPELINE.es.md)_
 
 ## Operational Status
 
-ProbRAW 0.3.4 implements the main ICC workflow and the session-based GUI. The
+ProbRAW 0.3.5 implements the main ICC workflow and the session-based GUI. The
 application is suitable for controlled testing and release validation, but it
 should not yet be presented as a certified scientific or forensic production
 system.

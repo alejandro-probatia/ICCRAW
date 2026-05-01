@@ -1,5 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
+from ...analysis.mtf_roi import (
+    build_full_resolution_base_roi,
+    clip_roi_to_dimensions,
+    normalize_full_resolution_image,
+    padded_roi as padded_mtf_roi,
+    read_base_roi_cache,
+    roi_for_analysis_dimensions,
+    write_base_roi_cache,
+)
 from ._imports import *  # noqa: F401,F403
 
 
@@ -36,6 +47,7 @@ class MTFAnalysisMixin:
         self.btn_mtf_select_roi.clicked.connect(self._toggle_mtf_roi_selection)
         tools.addWidget(self.btn_mtf_select_roi)
         tools.addWidget(self._button(self.tr("Actualizar"), self._recalculate_mtf_analysis))
+        tools.addWidget(self._button(self.tr("Auto nitidez"), self._auto_optimize_mtf_sharpening))
         tools.addWidget(self._button(self.tr("Ampliar"), self._show_mtf_expanded_dialog))
         tools.addWidget(self._button(self.tr("Copiar datos"), self._copy_mtf_analysis_data))
         tools.addWidget(self._button(self.tr("Exportar CSV"), self._export_mtf_analysis_csv))
@@ -75,14 +87,54 @@ class MTFAnalysisMixin:
         options.addWidget(self.spin_mtf_pixel_pitch_um, 3, 1)
         self.mtf_pixel_pitch_source_label = QtWidgets.QLabel(self.tr("Pitch: pendiente de metadatos"))
         self.mtf_pixel_pitch_source_label.setWordWrap(True)
-        self.mtf_pixel_pitch_source_label.setStyleSheet("font-size: 11px; color: #94a3b8;")
+        self.mtf_pixel_pitch_source_label.setStyleSheet("font-size: 11px; color: #4b5563;")
         options.addWidget(self.mtf_pixel_pitch_source_label, 4, 0, 1, 2)
         layout.addLayout(options)
 
+        self.mtf_progress_panel = self._build_mtf_progress_panel()
+        self.mtf_progress_panel.hide()
+
         self.mtf_metrics_label = QtWidgets.QLabel(self.tr("MTF: selecciona una ROI con un borde inclinado."))
         self.mtf_metrics_label.setWordWrap(True)
-        self.mtf_metrics_label.setStyleSheet("font-size: 12px; color: #cbd5e1;")
+        self.mtf_metrics_label.setStyleSheet("font-size: 12px; color: #374151;")
         layout.addWidget(self.mtf_metrics_label)
+        return panel
+
+    def _build_mtf_progress_panel(self) -> QtWidgets.QWidget:
+        panel = QtWidgets.QWidget()
+        panel.setObjectName("mtfProgressPanel")
+        panel.setStyleSheet(
+            "QWidget#mtfProgressPanel {"
+            " background-color: #f8fafc;"
+            " border: 1px solid #d1d5db;"
+            " border-radius: 4px;"
+            "}"
+        )
+        layout = QtWidgets.QVBoxLayout(panel)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(4)
+
+        self.mtf_progress_label = QtWidgets.QLabel(self.tr("MTF: esperando ROI"))
+        self.mtf_progress_label.setWordWrap(True)
+        self.mtf_progress_label.setStyleSheet("font-size: 12px; color: #111827; font-weight: 600;")
+        layout.addWidget(self.mtf_progress_label)
+
+        self.mtf_progress_time_label = QtWidgets.QLabel(self.tr("Tiempo: --"))
+        self.mtf_progress_time_label.setWordWrap(True)
+        self.mtf_progress_time_label.setStyleSheet("font-size: 11px; color: #374151;")
+
+        self.mtf_progress_bar = QtWidgets.QProgressBar()
+        self.mtf_progress_bar.setTextVisible(False)
+        self.mtf_progress_bar.setRange(0, 1)
+        self.mtf_progress_bar.setValue(0)
+        self.mtf_progress_bar.setMaximumHeight(8)
+        layout.addWidget(self.mtf_progress_bar)
+        layout.addWidget(self.mtf_progress_time_label)
+
+        self.mtf_phase_label = QtWidgets.QLabel(self._mtf_phase_text("idle"))
+        self.mtf_phase_label.setWordWrap(True)
+        self.mtf_phase_label.setStyleSheet("font-size: 11px; color: #4b5563;")
+        layout.addWidget(self.mtf_phase_label)
         return panel
 
     def _make_mtf_result_table(self) -> QtWidgets.QTableWidget:
@@ -95,6 +147,255 @@ class MTFAnalysisMixin:
         table.horizontalHeader().setStretchLastSection(True)
         table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
         return table
+
+    def _mtf_phase_text(self, stage: str) -> str:
+        key = str(stage or "idle")
+        if key in {"prepare", "queued"}:
+            return self.tr("ROI full-res: activo | MTF: pendiente | Caché: pendiente")
+        if key in {"analyze", "auto_sharpen"}:
+            return self.tr("ROI full-res: lista | MTF: activo | Caché: lista")
+        if key in {"complete", "auto_complete"}:
+            return self.tr("ROI full-res: lista | MTF: lista | Caché: lista")
+        if key in {"deferred"}:
+            return self.tr("ROI full-res: pendiente | MTF: pospuesta | Caché: pendiente")
+        if key in {"error"}:
+            return self.tr("ROI full-res: error | MTF: detenida | Caché: sin actualizar")
+        return self.tr("ROI full-res: pendiente | MTF: pendiente | Caché: pendiente")
+
+    def _mtf_stage_label(self, stage: str) -> str:
+        labels = {
+            "idle": self.tr("MTF: esperando ROI"),
+            "queued": self.tr("MTF: ROI full-res en cola"),
+            "prepare": self.tr("MTF: preparando ROI full-res"),
+            "analyze": self.tr("MTF: calculando curvas y métricas"),
+            "auto_sharpen": self.tr("Auto nitidez: evaluando combinaciones"),
+            "complete": self.tr("MTF: análisis completado"),
+            "auto_complete": self.tr("Auto nitidez completada"),
+            "deferred": self.tr("MTF: recálculo automático pospuesto"),
+            "error": self.tr("MTF: análisis detenido"),
+        }
+        return labels.get(str(stage or "idle"), str(stage or "MTF"))
+
+    def _mtf_format_duration(self, seconds: float | None) -> str:
+        if seconds is None:
+            return "--"
+        value = max(0.0, float(seconds))
+        if value < 60.0:
+            return f"{value:.1f}s"
+        minutes = int(value // 60)
+        rest = int(round(value - minutes * 60))
+        return f"{minutes}m {rest:02d}s"
+
+    def _mtf_settings_float(self, key: str, default: float) -> float:
+        try:
+            value = float(self._settings.value(key, default))
+        except Exception:
+            return float(default)
+        return value if np.isfinite(value) and value > 0.0 else float(default)
+
+    def _record_mtf_timing(self, key: str, seconds: float) -> None:
+        value = float(seconds)
+        if not np.isfinite(value) or value <= 0.0:
+            return
+        try:
+            previous_raw = self._settings.value(key, 0.0)
+            previous = float(previous_raw)
+        except Exception:
+            previous = 0.0
+        averaged = value if previous <= 0.0 else previous * 0.65 + value * 0.35
+        try:
+            self._settings.setValue(key, float(averaged))
+            self._settings.sync()
+        except Exception:
+            pass
+
+    def _mtf_worker_estimate_seconds(self, request: dict[str, Any] | None = None) -> float:
+        default = 6.0
+        if isinstance(request, dict):
+            path = Path(str(request.get("path") or ""))
+            if path.suffix.lower() not in RAW_EXTENSIONS:
+                default = 1.0
+        return self._mtf_settings_float("performance/mtf_fullres_roi_seconds_ewma", default)
+
+    def _mtf_analysis_estimate_seconds(self) -> float:
+        return self._mtf_settings_float("performance/mtf_analysis_seconds_ewma", 0.4)
+
+    def _mtf_auto_sharpen_estimate_seconds(self) -> float:
+        return self._mtf_settings_float("performance/mtf_auto_sharpen_seconds_ewma", 3.5)
+
+    def _start_mtf_progress(
+        self,
+        stage: str,
+        *,
+        detail: str = "",
+        estimate_seconds: float | None = None,
+        total_steps: int = 0,
+    ) -> None:
+        self._mtf_progress_started_at = time.perf_counter()
+        self._mtf_progress_estimated_seconds = float(estimate_seconds) if estimate_seconds is not None else None
+        self._mtf_progress_stage = str(stage)
+        self._mtf_progress_detail = str(detail or "")
+        self._mtf_progress_current_step = 0
+        self._mtf_progress_total_steps = max(0, int(total_steps))
+        if stage == "prepare":
+            self._mtf_progress_roi_elapsed_seconds = None
+        timer = getattr(self, "_mtf_progress_timer", None)
+        if timer is not None and not timer.isActive():
+            timer.start()
+        self._update_mtf_progress_status()
+
+    def _set_mtf_progress_steps(self, current: int, total: int, *, detail: str = "") -> None:
+        self._mtf_progress_current_step = max(0, int(current))
+        self._mtf_progress_total_steps = max(0, int(total))
+        if detail:
+            self._mtf_progress_detail = str(detail)
+        self._update_mtf_progress_status()
+
+    def _finish_mtf_progress(
+        self,
+        stage: str = "complete",
+        *,
+        detail: str = "",
+        elapsed_seconds: float | None = None,
+    ) -> None:
+        timer = getattr(self, "_mtf_progress_timer", None)
+        if timer is not None:
+            timer.stop()
+        started = getattr(self, "_mtf_progress_started_at", None)
+        elapsed = (
+            float(elapsed_seconds)
+            if elapsed_seconds is not None
+            else (time.perf_counter() - float(started) if started is not None else None)
+        )
+        self._mtf_progress_started_at = None
+        self._mtf_progress_stage = str(stage)
+        self._mtf_progress_detail = str(detail or "")
+        self._mtf_progress_current_step = 0
+        self._mtf_progress_total_steps = 0
+        if hasattr(self, "mtf_progress_label"):
+            suffix = f" - {detail}" if detail else ""
+            self.mtf_progress_label.setText(self._mtf_stage_label(stage) + suffix)
+        if hasattr(self, "mtf_progress_time_label"):
+            self.mtf_progress_time_label.setText(self.tr("Total:") + f" {self._mtf_format_duration(elapsed)}")
+        if hasattr(self, "mtf_progress_bar"):
+            self.mtf_progress_bar.setRange(0, 100)
+            self.mtf_progress_bar.setValue(100 if str(stage) not in {"error", "deferred"} else 0)
+        if hasattr(self, "mtf_phase_label"):
+            self.mtf_phase_label.setText(self._mtf_phase_text(stage))
+        self._set_global_operation_progress(
+            "mtf",
+            self._mtf_stage_label(stage) + (f" - {detail}" if detail else ""),
+            time_text=self.tr("Total:") + f" {self._mtf_format_duration(elapsed)}",
+            phase_text=self._mtf_phase_text(stage),
+            minimum=0,
+            maximum=100,
+            value=100 if str(stage) not in {"error", "deferred"} else 0,
+        )
+
+    def _fail_mtf_progress(self, detail: str = "") -> None:
+        self._finish_mtf_progress("error", detail=detail)
+
+    def _reset_mtf_progress(self) -> None:
+        timer = getattr(self, "_mtf_progress_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._mtf_progress_started_at = None
+        self._mtf_progress_estimated_seconds = None
+        self._mtf_progress_stage = "idle"
+        self._mtf_progress_detail = ""
+        self._mtf_progress_current_step = 0
+        self._mtf_progress_total_steps = 0
+        self._mtf_progress_roi_elapsed_seconds = None
+        if hasattr(self, "mtf_progress_label"):
+            self.mtf_progress_label.setText(self._mtf_stage_label("idle"))
+        if hasattr(self, "mtf_progress_time_label"):
+            self.mtf_progress_time_label.setText(self.tr("Tiempo: --"))
+        if hasattr(self, "mtf_progress_bar"):
+            self.mtf_progress_bar.setRange(0, 1)
+            self.mtf_progress_bar.setValue(0)
+        if hasattr(self, "mtf_phase_label"):
+            self.mtf_phase_label.setText(self._mtf_phase_text("idle"))
+        self._reset_global_operation_progress(owner="mtf")
+
+    def _update_mtf_progress_status(self) -> None:
+        if not hasattr(self, "mtf_progress_label"):
+            return
+        stage = str(getattr(self, "_mtf_progress_stage", "idle") or "idle")
+        detail = str(getattr(self, "_mtf_progress_detail", "") or "")
+        started = getattr(self, "_mtf_progress_started_at", None)
+        elapsed = max(0.0, time.perf_counter() - float(started)) if started is not None else 0.0
+        total_steps = int(getattr(self, "_mtf_progress_total_steps", 0) or 0)
+        current_step = int(getattr(self, "_mtf_progress_current_step", 0) or 0)
+        estimate = getattr(self, "_mtf_progress_estimated_seconds", None)
+        label = self._mtf_stage_label(stage)
+        if detail:
+            label = f"{label} - {detail}"
+        self.mtf_progress_label.setText(label)
+        phase_text = self._mtf_phase_text(stage)
+        if hasattr(self, "mtf_phase_label"):
+            self.mtf_phase_label.setText(phase_text)
+        progress_min = 0
+        progress_max = 1
+        progress_value = 0
+        if hasattr(self, "mtf_progress_bar"):
+            if total_steps > 0:
+                progress_max = total_steps
+                progress_value = int(np.clip(current_step, 0, total_steps))
+                self.mtf_progress_bar.setRange(progress_min, progress_max)
+                self.mtf_progress_bar.setValue(progress_value)
+            elif estimate is not None and estimate > 0:
+                progress_max = 100
+                progress_value = (
+                    95
+                    if elapsed > float(estimate)
+                    else int(np.clip((elapsed / float(estimate)) * 90.0, 0.0, 90.0))
+                )
+                self.mtf_progress_bar.setRange(progress_min, progress_max)
+                self.mtf_progress_bar.setValue(progress_value)
+            elif started is not None:
+                progress_min = 0
+                progress_max = 0
+                progress_value = 0
+                self.mtf_progress_bar.setRange(progress_min, progress_max)
+            else:
+                self.mtf_progress_bar.setRange(progress_min, progress_max)
+                self.mtf_progress_bar.setValue(progress_value)
+        time_text = self.tr("Tiempo: --")
+        if started is not None:
+            if total_steps > 0:
+                time_text = (
+                    self.tr("Paso")
+                    + f" {min(current_step, total_steps)}/{total_steps} | "
+                    + self.tr("transcurrido")
+                    + f" {self._mtf_format_duration(elapsed)}"
+                )
+            elif estimate is not None and estimate > 0:
+                remaining = max(0.0, float(estimate) - elapsed)
+                suffix = (
+                    self.tr("superando estimación")
+                    if elapsed > float(estimate) * 1.15
+                    else self.tr("restante")
+                    + f" {self._mtf_format_duration(remaining)}"
+                )
+                time_text = (
+                    self.tr("Transcurrido")
+                    + f" {self._mtf_format_duration(elapsed)} | "
+                    + self.tr("estimado")
+                    + f" ~{self._mtf_format_duration(float(estimate))} | {suffix}"
+                )
+            else:
+                time_text = self.tr("Transcurrido") + f" {self._mtf_format_duration(elapsed)}"
+        if hasattr(self, "mtf_progress_time_label"):
+            self.mtf_progress_time_label.setText(time_text)
+        self._set_global_operation_progress(
+            "mtf",
+            label,
+            time_text=time_text,
+            phase_text=phase_text,
+            minimum=progress_min,
+            maximum=progress_max,
+            value=progress_value,
+        )
 
     def _auto_update_mtf_pixel_pitch_from_file(self, path: Path | None = None) -> None:
         selected = path or getattr(self, "_selected_file", None)
@@ -260,6 +561,7 @@ class MTFAnalysisMixin:
             panel = getattr(self, panel_name, None)
             if panel is not None and hasattr(panel, "set_roi_selection_enabled"):
                 panel.set_roi_selection_enabled(self._mtf_roi_selection_active)
+        self._sync_mtf_roi_overlay()
 
     def _on_mtf_roi_selected(self, x: float, y: float, width: float, height: float) -> None:
         self._mtf_roi = (
@@ -273,10 +575,33 @@ class MTFAnalysisMixin:
         self._recalculate_mtf_analysis()
 
     def _sync_mtf_roi_overlay(self) -> None:
+        rect = self._mtf_roi if self._mtf_roi_overlay_should_be_visible() else None
         for panel_name in ("image_result_single", "image_result_compare"):
             panel = getattr(self, panel_name, None)
             if panel is not None and hasattr(panel, "set_roi_rect"):
-                panel.set_roi_rect(self._mtf_roi)
+                panel.set_roi_rect(rect)
+
+    def _mtf_roi_overlay_should_be_visible(self) -> bool:
+        if getattr(self, "_mtf_roi", None) is None:
+            return False
+        if bool(getattr(self, "_mtf_roi_selection_active", False)):
+            return True
+        main_tabs = getattr(self, "main_tabs", None)
+        right_tabs = getattr(self, "right_workflow_tabs", None)
+        if main_tabs is None or right_tabs is None:
+            return False
+        try:
+            if int(main_tabs.currentIndex()) != 1:
+                return False
+            return right_tabs.tabText(right_tabs.currentIndex()) == self.tr("Nitidez")
+        except Exception:
+            return False
+
+    def _on_mtf_context_visibility_changed(self, _index: int | None = None) -> None:
+        if not self._mtf_roi_overlay_should_be_visible() and bool(getattr(self, "_mtf_roi_selection_active", False)):
+            self._set_mtf_roi_selection_active(False)
+            return
+        self._sync_mtf_roi_overlay()
 
     def _clear_mtf_roi(self) -> None:
         self._mtf_roi = None
@@ -284,6 +609,8 @@ class MTFAnalysisMixin:
         self._mtf_last_analysis_image_dimensions = None
         self._mtf_last_display_dimensions = None
         self._mtf_last_display_roi = None
+        self._clear_mtf_image_caches()
+        self._reset_mtf_progress()
         self._set_mtf_roi_selection_active(False)
         for panel_name in ("image_result_single", "image_result_compare"):
             panel = getattr(self, panel_name, None)
@@ -292,6 +619,7 @@ class MTFAnalysisMixin:
         self._update_mtf_result_widgets()
 
     def _clear_mtf_roi_for_file_change(self) -> None:
+        self._clear_mtf_image_caches()
         if (
             getattr(self, "_mtf_roi", None) is not None
             or getattr(self, "_mtf_last_result", None) is not None
@@ -466,49 +794,577 @@ class MTFAnalysisMixin:
             return linear_to_srgb_display(self._original_linear)
         return None
 
-    def _mtf_full_resolution_base_image(self) -> np.ndarray | None:
+    def _clear_mtf_image_caches(self) -> None:
+        timer = getattr(self, "_mtf_refresh_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._mtf_base_roi_pending_request = None
+        self._mtf_roi_base_cache_key = None
+        self._mtf_roi_base_cache = None
+        self._mtf_roi_pre_sharpen_cache_key = None
+        self._mtf_roi_pre_sharpen_cache = None
+        self._mtf_roi_analysis_cache_key = None
+        self._mtf_roi_analysis_cache = None
+        self._mtf_result_cache_key = None
+        self._mtf_result_cache = None
+        self._mtf_deferred_auto_refresh_key = None
+        if hasattr(self, "_mtf_auto_candidate_cache"):
+            self._mtf_auto_candidate_cache.clear()
+        if hasattr(self, "_mtf_auto_candidate_cache_order"):
+            self._mtf_auto_candidate_cache_order.clear()
+
+    def _mtf_selected_source_context(self) -> tuple[Path, Recipe | None, str] | None:
         selected = getattr(self, "_selected_file", None)
         if selected is None:
             return None
         path = Path(selected).expanduser()
         if not path.exists() or not path.is_file():
             return None
+        recipe = self._build_effective_recipe() if path.suffix.lower() in RAW_EXTENSIONS else None
+        return path, recipe, self._mtf_full_resolution_source_key(path, recipe)
+
+    def _mtf_full_resolution_source_key(self, path: Path, recipe: Recipe | None) -> str:
+        try:
+            st = path.stat()
+            stamp = f"{st.st_mtime_ns}:{st.st_size}"
+        except Exception:
+            stamp = "nostat"
+        if recipe is None:
+            recipe_sig = "nonraw"
+        else:
+            try:
+                recipe_sig = json.dumps(to_json_dict(recipe), sort_keys=True, ensure_ascii=False, default=str)
+            except Exception:
+                recipe_sig = repr(recipe)
+        return f"{self._cache_path_identity(path)}|{stamp}|mtf-fullres-roi-v1|{recipe_sig}"
+
+    def _mtf_cache_token(self, value: Any) -> str:
+        return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str, separators=(",", ":"))
+
+    @staticmethod
+    def _run_mtf_analysis_inline() -> bool:
+        # Unit tests need deterministic results immediately after selecting a ROI.
+        return bool(
+            os.environ.get("PYTEST_CURRENT_TEST")
+            or os.environ.get("PROBRAW_SYNC_MTF")
+        )
+
+    def _mtf_base_roi_disk_cache_path(
+        self,
+        key: str,
+        *,
+        base_dir: Path | None = None,
+        path: Path | None = None,
+    ) -> Path:
+        return self._disk_cache_path(base_dir or self._disk_cache_dirs(path, "mtf-roi")[0], key, ".npz")
+
+    def _read_mtf_base_roi_from_disk_cache(
+        self,
+        key: str,
+        *,
+        path: Path | None = None,
+    ) -> dict[str, Any] | None:
+        for cache_dir in self._disk_cache_dirs(path, "mtf-roi"):
+            cache_path = self._mtf_base_roi_disk_cache_path(key, base_dir=cache_dir)
+            if not cache_path.is_file():
+                continue
+            try:
+                payload = read_base_roi_cache(cache_path)
+                try:
+                    os.utime(cache_path, None)
+                except Exception:
+                    pass
+                return payload
+            except Exception:
+                continue
+        return None
+
+    def _write_mtf_base_roi_to_disk_cache(
+        self,
+        key: str,
+        payload: dict[str, Any],
+        *,
+        path: Path | None = None,
+    ) -> None:
+        try:
+            cache_dir = self._disk_cache_dirs(path, "mtf-roi")[0]
+            cache_path = self._mtf_base_roi_disk_cache_path(key, base_dir=cache_dir)
+            write_base_roi_cache(cache_path, payload)
+            self._prune_disk_cache(
+                cache_dir,
+                pattern="*.npz",
+                max_entries=MTF_ROI_DISK_CACHE_MAX_ENTRIES,
+                max_bytes=MTF_ROI_DISK_CACHE_MAX_BYTES,
+            )
+        except Exception:
+            return
+
+    def _set_mtf_base_roi_cache(self, cache_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(payload)
+        normalized["image"] = np.ascontiguousarray(np.asarray(payload["image"], dtype=np.float32)[..., :3]).copy()
+        normalized["cache_key"] = cache_key
+        self._mtf_roi_base_cache_key = cache_key
+        self._mtf_roi_base_cache = normalized
+        self._mtf_roi_pre_sharpen_cache_key = None
+        self._mtf_roi_pre_sharpen_cache = None
+        self._mtf_roi_analysis_cache_key = None
+        self._mtf_roi_analysis_cache = None
+        self._mtf_result_cache_key = None
+        self._mtf_result_cache = None
+        self._mtf_deferred_auto_refresh_key = None
+        return normalized
+
+    def _mtf_normalize_full_resolution_image(self, image: np.ndarray) -> np.ndarray:
+        return normalize_full_resolution_image(image)
+
+    def _mtf_full_resolution_base_image(
+        self,
+        path: Path | None = None,
+        recipe: Recipe | None = None,
+    ) -> np.ndarray | None:
+        if path is None:
+            context = self._mtf_selected_source_context()
+            if context is None:
+                return None
+            path, recipe, _source_key = context
         if path.suffix.lower() in RAW_EXTENSIONS:
-            recipe = self._build_effective_recipe()
+            recipe = recipe or self._build_effective_recipe()
             if is_standard_output_space(recipe.output_space):
                 image = develop_standard_output_array(path, recipe, half_size=False)
             else:
                 image = develop_image_array(path, recipe, half_size=False)
         else:
             image = read_image(path)
-        image = np.asarray(image, dtype=np.float32)
-        if image.ndim == 2:
-            image = np.repeat(image[..., None], 3, axis=2)
-        if image.ndim != 3 or image.shape[2] < 3:
-            raise ValueError(f"Imagen inesperada para MTF: shape={image.shape}")
-        return np.clip(image[..., :3], 0.0, 1.0).astype(np.float32, copy=False)
+        return self._mtf_normalize_full_resolution_image(image)
 
-    def _mtf_full_resolution_analysis_image(self) -> np.ndarray | None:
-        base = self._mtf_full_resolution_base_image()
-        if base is None:
-            return None
+    def _mtf_detail_adjustment_kwargs(self) -> dict[str, float]:
+        if hasattr(self, "_detail_adjustment_state") and hasattr(self, "_detail_adjustment_kwargs_from_state"):
+            state = self._detail_adjustment_state()
+            detail = self._detail_adjustment_kwargs_from_state(state)
+            return {
+                "denoise_luminance": float(detail.get("denoise_luma", 0.0)),
+                "denoise_color": float(detail.get("denoise_color", 0.0)),
+                "sharpen_amount": float(detail.get("sharpen_amount", 0.0)),
+                "sharpen_radius": float(detail.get("sharpen_radius", 1.0)),
+                "lateral_ca_red_scale": float(detail.get("lateral_ca_red_scale", 1.0)),
+                "lateral_ca_blue_scale": float(detail.get("lateral_ca_blue_scale", 1.0)),
+            }
         nl = self.slider_noise_luma.value() / 100.0 if hasattr(self, "slider_noise_luma") else 0.0
         nc = self.slider_noise_color.value() / 100.0 if hasattr(self, "slider_noise_color") else 0.0
         sharpen = self.slider_sharpen.value() / 100.0 if hasattr(self, "slider_sharpen") else 0.0
         radius = self.slider_radius.value() / 10.0 if hasattr(self, "slider_radius") else 1.0
         ca_red, ca_blue = self._ca_scale_factors() if hasattr(self, "_ca_scale_factors") else (1.0, 1.0)
+        return {
+            "denoise_luminance": float(nl),
+            "denoise_color": float(nc),
+            "sharpen_amount": float(sharpen),
+            "sharpen_radius": float(radius),
+            "lateral_ca_red_scale": float(ca_red),
+            "lateral_ca_blue_scale": float(ca_blue),
+        }
+
+    def _mtf_effective_detail_cache_state(self) -> dict[str, Any]:
+        if hasattr(self, "_detail_adjustment_state"):
+            detail = dict(self._detail_adjustment_state())
+            if int(detail.get("sharpen", 0)) <= 0:
+                detail["radius"] = 0
+            return detail
+        detail_kwargs = dict(self._mtf_detail_adjustment_kwargs())
+        if float(detail_kwargs.get("sharpen_amount", 0.0)) <= 0.0:
+            detail_kwargs["sharpen_radius"] = 0.0
+        return detail_kwargs
+
+    def _mtf_adjustment_cache_state(self) -> dict[str, Any]:
+        return {
+            "detail": self._mtf_effective_detail_cache_state(),
+            "render": self._render_adjustment_state() if hasattr(self, "_render_adjustment_state") else {},
+        }
+
+    def _mtf_lateral_ca_adjustment_active(self, detail_kwargs: dict[str, float] | None = None) -> bool:
+        detail = detail_kwargs or self._mtf_detail_adjustment_kwargs()
+        return (
+            abs(float(detail.get("lateral_ca_red_scale", 1.0)) - 1.0) > 1e-5
+            or abs(float(detail.get("lateral_ca_blue_scale", 1.0)) - 1.0) > 1e-5
+        )
+
+    def _mtf_pre_sharpen_detail_active(self, detail_kwargs: dict[str, float]) -> bool:
+        return (
+            float(detail_kwargs.get("denoise_luminance", 0.0)) > 0.0
+            or float(detail_kwargs.get("denoise_color", 0.0)) > 0.0
+        )
+
+    def _mtf_sharpen_detail_active(self, detail_kwargs: dict[str, float]) -> bool:
+        return float(detail_kwargs.get("sharpen_amount", 0.0)) > 0.0
+
+    def _mtf_pre_sharpen_kwargs(self, detail_kwargs: dict[str, float]) -> dict[str, float]:
+        return {
+            "denoise_luminance": float(detail_kwargs.get("denoise_luminance", 0.0)),
+            "denoise_color": float(detail_kwargs.get("denoise_color", 0.0)),
+            "sharpen_amount": 0.0,
+            "sharpen_radius": 1.0,
+            "lateral_ca_red_scale": 1.0,
+            "lateral_ca_blue_scale": 1.0,
+        }
+
+    def _mtf_sharpen_kwargs(self, detail_kwargs: dict[str, float]) -> dict[str, float]:
+        return {
+            "denoise_luminance": 0.0,
+            "denoise_color": 0.0,
+            "sharpen_amount": float(detail_kwargs.get("sharpen_amount", 0.0)),
+            "sharpen_radius": float(detail_kwargs.get("sharpen_radius", 1.0)),
+            "lateral_ca_red_scale": 1.0,
+            "lateral_ca_blue_scale": 1.0,
+        }
+
+    def _mtf_roi_block_padding_px(self) -> int:
+        # Keep enough surrounding pixels so Gaussian denoise/sharpen matches
+        # the full-frame result inside the ROI. The floor also covers the
+        # current +/-1% lateral-CA slider range on large sensors.
+        radius_max = 8.0
+        if hasattr(self, "slider_radius"):
+            try:
+                radius_max = max(radius_max, float(self.slider_radius.maximum()) / 10.0)
+            except Exception:
+                pass
+        noise_luma_max = 0.2 + 3.2
+        noise_color_max = 0.2 + 3.8
+        filter_sigma = max(radius_max, noise_luma_max, noise_color_max)
+        return int(max(128, np.ceil(filter_sigma * 6.0) + 8))
+
+    def _mtf_clip_roi_to_dimensions(
+        self,
+        roi: tuple[int, int, int, int],
+        dimensions: tuple[int, int],
+    ) -> tuple[int, int, int, int]:
+        return clip_roi_to_dimensions(roi, dimensions)
+
+    def _mtf_padded_roi(
+        self,
+        roi: tuple[int, int, int, int],
+        dimensions: tuple[int, int],
+        *,
+        padding: int,
+    ) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
+        return padded_mtf_roi(roi, dimensions, padding=padding)
+
+    def _mtf_base_roi_cache_key(self, display_roi: tuple[int, int, int, int]) -> str | None:
+        context = self._mtf_selected_source_context()
+        if context is None:
+            return None
+        _path, _recipe, source_key = context
+        display_dimensions = self._mtf_current_image_dimensions()
+        padding = self._mtf_roi_block_padding_px()
+        return self._mtf_cache_token(
+            {
+                "source": source_key,
+                "display_dimensions": list(display_dimensions) if display_dimensions else None,
+                "display_roi": list(display_roi),
+                "padding": padding,
+            }
+        )
+
+    def _mtf_has_hot_base_roi_cache(self, display_roi: tuple[int, int, int, int]) -> bool:
+        cache_key = self._mtf_base_roi_cache_key(display_roi)
+        return bool(
+            cache_key is not None
+            and self._mtf_roi_base_cache_key == cache_key
+            and isinstance(getattr(self, "_mtf_roi_base_cache", None), dict)
+        )
+
+    def _mtf_full_resolution_base_roi(
+        self,
+        display_roi: tuple[int, int, int, int],
+    ) -> dict[str, Any] | None:
+        context = self._mtf_selected_source_context()
+        if context is None:
+            return None
+        path, recipe, source_key = context
+        display_dimensions = self._mtf_current_image_dimensions()
+        padding = self._mtf_roi_block_padding_px()
+        cache_key = self._mtf_base_roi_cache_key(display_roi)
+        if cache_key is None:
+            return None
+        cached = getattr(self, "_mtf_roi_base_cache", None)
+        if self._mtf_roi_base_cache_key == cache_key and isinstance(cached, dict):
+            return cached
+
+        disk_cached = self._read_mtf_base_roi_from_disk_cache(cache_key, path=path)
+        if disk_cached is not None:
+            return self._set_mtf_base_roi_cache(cache_key, disk_cached)
+
+        base = self._mtf_full_resolution_base_image(path, recipe)
+        if base is None:
+            return None
+        analysis_dimensions = (int(base.shape[1]), int(base.shape[0]))
+        analysis_roi = self._mtf_roi_for_analysis_dimensions(display_roi, display_dimensions, analysis_dimensions)
+        analysis_roi = self._mtf_clip_roi_to_dimensions(analysis_roi, analysis_dimensions)
+        padded_roi, relative_roi = self._mtf_padded_roi(analysis_roi, analysis_dimensions, padding=padding)
+        px, py, pw, ph = padded_roi
+        block = np.ascontiguousarray(base[py : py + ph, px : px + pw, :3]).copy()
+        payload: dict[str, Any] = {
+            "image": block,
+            "source_key": source_key,
+            "analysis_dimensions": analysis_dimensions,
+            "display_dimensions": display_dimensions,
+            "display_roi": display_roi,
+            "analysis_roi": analysis_roi,
+            "padded_roi": padded_roi,
+            "relative_roi": relative_roi,
+            "padding": padding,
+        }
+        self._write_mtf_base_roi_to_disk_cache(cache_key, payload, path=path)
+        return self._set_mtf_base_roi_cache(cache_key, payload)
+
+    def _mtf_pre_sharpen_base_roi(
+        self,
+        base_info: dict[str, Any],
+        detail_kwargs: dict[str, float],
+    ) -> dict[str, Any]:
+        cache_key = self._mtf_cache_token(
+            {
+                "mode": "roi-pre-sharpen-v1",
+                "base": self._mtf_roi_base_cache_key,
+                "pre_sharpen": self._mtf_pre_sharpen_kwargs(detail_kwargs),
+            }
+        )
+        cached = getattr(self, "_mtf_roi_pre_sharpen_cache", None)
+        if self._mtf_roi_pre_sharpen_cache_key == cache_key and isinstance(cached, dict):
+            return cached
+
+        base_image = np.asarray(base_info["image"], dtype=np.float32)
+        if self._mtf_pre_sharpen_detail_active(detail_kwargs):
+            image = apply_adjustments(
+                base_image,
+                **self._mtf_pre_sharpen_kwargs(detail_kwargs),
+            )
+        else:
+            image = np.clip(base_image, 0.0, 1.0).astype(np.float32, copy=False)
+
+        payload = dict(base_info)
+        payload["image"] = np.ascontiguousarray(image[..., :3]).copy()
+        payload["cache_key"] = cache_key
+        self._mtf_roi_pre_sharpen_cache_key = cache_key
+        self._mtf_roi_pre_sharpen_cache = payload
+        self._mtf_roi_analysis_cache_key = None
+        self._mtf_roi_analysis_cache = None
+        self._mtf_result_cache_key = None
+        self._mtf_result_cache = None
+        return payload
+
+    def _mtf_auto_candidate_cache_get(self, cache_key: str) -> MTFResult | None:
+        cache = getattr(self, "_mtf_auto_candidate_cache", None)
+        if not isinstance(cache, dict):
+            return None
+        result = cache.get(cache_key)
+        if result is None:
+            return None
+        order = getattr(self, "_mtf_auto_candidate_cache_order", None)
+        if isinstance(order, list):
+            try:
+                order.remove(cache_key)
+            except ValueError:
+                pass
+            order.append(cache_key)
+        return result
+
+    def _mtf_auto_candidate_cache_put(self, cache_key: str, result: MTFResult) -> None:
+        cache = getattr(self, "_mtf_auto_candidate_cache", None)
+        order = getattr(self, "_mtf_auto_candidate_cache_order", None)
+        if not isinstance(cache, dict) or not isinstance(order, list):
+            return
+        cache[cache_key] = result
+        try:
+            order.remove(cache_key)
+        except ValueError:
+            pass
+        order.append(cache_key)
+        while len(order) > 320:
+            old = order.pop(0)
+            cache.pop(old, None)
+
+    def _mtf_render_pre_sharpened_roi(
+        self,
+        prepared: dict[str, Any],
+        detail_kwargs: dict[str, float],
+    ) -> dict[str, Any]:
+        source = np.asarray(prepared["image"], dtype=np.float32)
+        if self._mtf_lateral_ca_adjustment_active(detail_kwargs):
+            source = self._mtf_apply_lateral_ca_to_padded_roi(source, prepared, detail_kwargs)
+        if self._mtf_sharpen_detail_active(detail_kwargs):
+            adjusted = apply_adjustments(
+                source,
+                **self._mtf_sharpen_kwargs(detail_kwargs),
+            )
+        else:
+            adjusted = source
+        render_kwargs = self._render_adjustment_kwargs() if hasattr(self, "_render_adjustment_kwargs") else {}
+        adjusted = apply_render_adjustments(adjusted, **render_kwargs)
+        srgb = linear_to_srgb_display(adjusted)
+        rx, ry, rw, rh = [int(v) for v in prepared["relative_roi"]]
+        roi_image = np.ascontiguousarray(srgb[ry : ry + rh, rx : rx + rw, :3]).copy()
+        payload = dict(prepared)
+        payload["image"] = roi_image
+        payload["relative_roi"] = (0, 0, int(rw), int(rh))
+        return payload
+
+    def _mtf_apply_lateral_ca_to_padded_roi(
+        self,
+        source: np.ndarray,
+        prepared: dict[str, Any],
+        detail_kwargs: dict[str, float],
+    ) -> np.ndarray:
+        image = np.clip(np.asarray(source, dtype=np.float32), 0.0, 1.0)
+        if image.ndim != 3 or image.shape[2] < 3:
+            return image
+        analysis_dimensions = prepared.get("analysis_dimensions")
+        padded_roi = prepared.get("padded_roi")
+        if (
+            not isinstance(analysis_dimensions, (list, tuple))
+            or len(analysis_dimensions) < 2
+            or not isinstance(padded_roi, (list, tuple))
+            or len(padded_roi) < 4
+        ):
+            return image
+        full_w, full_h = int(analysis_dimensions[0]), int(analysis_dimensions[1])
+        px, py, pw, ph = [int(v) for v in padded_roi]
+        if full_w <= 0 or full_h <= 0 or pw <= 0 or ph <= 0:
+            return image
+
+        out = image[..., :3].copy()
+        red_scale = float(detail_kwargs.get("lateral_ca_red_scale", 1.0))
+        blue_scale = float(detail_kwargs.get("lateral_ca_blue_scale", 1.0))
+        if abs(red_scale - 1.0) > 1e-5:
+            out[..., 0] = self._mtf_scale_channel_radially_roi(
+                out[..., 0],
+                red_scale,
+                (px, py, pw, ph),
+                (full_w, full_h),
+            )
+        if abs(blue_scale - 1.0) > 1e-5:
+            out[..., 2] = self._mtf_scale_channel_radially_roi(
+                out[..., 2],
+                blue_scale,
+                (px, py, pw, ph),
+                (full_w, full_h),
+            )
+        return np.clip(out, 0.0, 1.0).astype(np.float32, copy=False)
+
+    def _mtf_scale_channel_radially_roi(
+        self,
+        channel: np.ndarray,
+        scale: float,
+        padded_roi: tuple[int, int, int, int],
+        analysis_dimensions: tuple[int, int],
+    ) -> np.ndarray:
+        if scale <= 0.0 or abs(float(scale) - 1.0) <= 1e-5:
+            return channel.astype(np.float32, copy=False)
+        px, py, pw, ph = [int(v) for v in padded_roi]
+        full_w, full_h = [int(v) for v in analysis_dimensions]
+        y, x = np.indices((int(ph), int(pw)), dtype=np.float32)
+        global_x = x + float(px)
+        global_y = y + float(py)
+        cx = (float(full_w) - 1.0) / 2.0
+        cy = (float(full_h) - 1.0) / 2.0
+        map_x = (((global_x - cx) / float(scale)) + cx - float(px)).astype(np.float32)
+        map_y = (((global_y - cy) / float(scale)) + cy - float(py)).astype(np.float32)
+        return cv2.remap(
+            channel.astype(np.float32, copy=False),
+            map_x,
+            map_y,
+            interpolation=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REFLECT,
+        )
+
+    def _mtf_full_resolution_analysis_image(
+        self,
+        path: Path | None = None,
+        recipe: Recipe | None = None,
+    ) -> np.ndarray | None:
+        base = self._mtf_full_resolution_base_image(path, recipe)
+        if base is None:
+            return None
+        detail_kwargs = self._mtf_detail_adjustment_kwargs()
         adjusted = apply_adjustments(
             base,
-            denoise_luminance=float(nl),
-            denoise_color=float(nc),
-            sharpen_amount=float(sharpen),
-            sharpen_radius=float(radius),
-            lateral_ca_red_scale=float(ca_red),
-            lateral_ca_blue_scale=float(ca_blue),
+            **detail_kwargs,
         )
         render_kwargs = self._render_adjustment_kwargs() if hasattr(self, "_render_adjustment_kwargs") else {}
         adjusted = apply_render_adjustments(adjusted, **render_kwargs)
         return linear_to_srgb_display(adjusted)
+
+    def _mtf_full_resolution_analysis_roi_image(
+        self,
+        display_roi: tuple[int, int, int, int],
+    ) -> dict[str, Any] | None:
+        detail_kwargs = self._mtf_detail_adjustment_kwargs()
+        base_info = self._mtf_full_resolution_base_roi(display_roi)
+        if base_info is None:
+            return None
+        cache_key = self._mtf_cache_token(
+            {
+                "mode": "roi-block-v1",
+                "base": self._mtf_roi_base_cache_key,
+                "adjustments": self._mtf_adjustment_cache_state(),
+            }
+        )
+        cached = getattr(self, "_mtf_roi_analysis_cache", None)
+        if self._mtf_roi_analysis_cache_key == cache_key and isinstance(cached, dict):
+            return cached
+
+        prepared = self._mtf_pre_sharpen_base_roi(base_info, detail_kwargs)
+        payload = self._mtf_render_pre_sharpened_roi(prepared, detail_kwargs)
+        self._mtf_roi_analysis_cache_key = cache_key
+        self._mtf_roi_analysis_cache = payload
+        self._mtf_result_cache_key = None
+        self._mtf_result_cache = None
+        return payload
+
+    def _mtf_full_resolution_analysis_roi_image_from_full_image(
+        self,
+        display_roi: tuple[int, int, int, int],
+    ) -> dict[str, Any] | None:
+        context = self._mtf_selected_source_context()
+        if context is None:
+            return None
+        path, recipe, source_key = context
+        display_dimensions = self._mtf_current_image_dimensions()
+        cache_key = self._mtf_cache_token(
+            {
+                "mode": "full-image-ca-v1",
+                "source": source_key,
+                "display_dimensions": list(display_dimensions) if display_dimensions else None,
+                "display_roi": list(display_roi),
+                "adjustments": self._mtf_adjustment_cache_state(),
+            }
+        )
+        cached = getattr(self, "_mtf_roi_analysis_cache", None)
+        if self._mtf_roi_analysis_cache_key == cache_key and isinstance(cached, dict):
+            return cached
+
+        image = self._mtf_full_resolution_analysis_image(path, recipe)
+        if image is None:
+            return None
+        analysis_dimensions = (int(image.shape[1]), int(image.shape[0]))
+        analysis_roi = self._mtf_roi_for_analysis_dimensions(display_roi, display_dimensions, analysis_dimensions)
+        analysis_roi = self._mtf_clip_roi_to_dimensions(analysis_roi, analysis_dimensions)
+        x, y, width, height = analysis_roi
+        roi_image = np.ascontiguousarray(image[y : y + height, x : x + width, :3]).copy()
+        payload: dict[str, Any] = {
+            "image": roi_image,
+            "source_key": source_key,
+            "analysis_dimensions": analysis_dimensions,
+            "display_dimensions": display_dimensions,
+            "display_roi": display_roi,
+            "analysis_roi": analysis_roi,
+            "padded_roi": analysis_roi,
+            "relative_roi": (0, 0, width, height),
+            "padding": 0,
+        }
+        self._mtf_roi_analysis_cache_key = cache_key
+        self._mtf_roi_analysis_cache = payload
+        self._mtf_result_cache_key = None
+        self._mtf_result_cache = None
+        return payload
 
     def _mtf_roi_for_analysis_image(
         self,
@@ -516,21 +1372,15 @@ class MTFAnalysisMixin:
         analysis_dimensions: tuple[int, int],
     ) -> tuple[int, int, int, int]:
         display_dimensions = self._mtf_current_image_dimensions()
-        if display_dimensions is None or display_dimensions == analysis_dimensions:
-            return roi
-        display_w, display_h = display_dimensions
-        analysis_w, analysis_h = analysis_dimensions
-        if display_w <= 0 or display_h <= 0 or analysis_w <= 0 or analysis_h <= 0:
-            return roi
-        scale_x = float(analysis_w) / float(display_w)
-        scale_y = float(analysis_h) / float(display_h)
-        x, y, width, height = roi
-        return (
-            int(round(float(x) * scale_x)),
-            int(round(float(y) * scale_y)),
-            max(1, int(round(float(width) * scale_x))),
-            max(1, int(round(float(height) * scale_y))),
-        )
+        return self._mtf_roi_for_analysis_dimensions(roi, display_dimensions, analysis_dimensions)
+
+    def _mtf_roi_for_analysis_dimensions(
+        self,
+        roi: tuple[int, int, int, int],
+        display_dimensions: tuple[int, int] | None,
+        analysis_dimensions: tuple[int, int],
+    ) -> tuple[int, int, int, int]:
+        return roi_for_analysis_dimensions(roi, display_dimensions, analysis_dimensions)
 
     def _mtf_display_roi_from_analysis_roi(
         self,
@@ -554,44 +1404,693 @@ class MTFAnalysisMixin:
             max(1, int(round(float(height) * scale_y))),
         )
 
+    def _auto_optimize_mtf_sharpening(self) -> None:
+        if getattr(self, "_mtf_roi", None) is None:
+            self._update_mtf_result_widgets(error=self.tr("Auto nitidez: selecciona primero una ROI MTF."))
+            return
+        if not self._run_mtf_analysis_inline() and not self._mtf_try_activate_cached_base_roi(self._mtf_roi):
+            self._update_mtf_result_widgets(error=self.tr("Auto nitidez: preparando ROI full-res en segundo plano..."))
+            self._queue_mtf_base_roi_worker(self._mtf_roi, mode="auto_sharpen")
+            return
+        auto_started = time.perf_counter()
+        if getattr(self, "_mtf_progress_stage", "") != "auto_sharpen":
+            self._start_mtf_progress(
+                "auto_sharpen",
+                detail=self.tr("preparando candidatos"),
+                estimate_seconds=self._mtf_auto_sharpen_estimate_seconds(),
+            )
+        self._set_status(self.tr("Auto nitidez: evaluando ROI a resolución real..."))
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
+        try:
+            prepared = self._mtf_auto_sharpen_prepared_roi(self._mtf_roi)
+        except Exception as exc:
+            self._fail_mtf_progress(str(exc))
+            self._update_mtf_result_widgets(error=f"{self.tr('Auto nitidez')}: {exc}")
+            return
+        if prepared is None:
+            self._fail_mtf_progress(self.tr("No se pudo preparar la ROI."))
+            self._update_mtf_result_widgets(error=self.tr("Auto nitidez: no se pudo preparar la ROI."))
+            return
+
+        evaluated: list[dict[str, Any]] = []
+        candidates = self._mtf_auto_sharpen_candidates()
+        self._set_mtf_progress_steps(
+            0,
+            len(candidates),
+            detail=self.tr("evaluando combinaciones de nitidez"),
+        )
+        for index, (amount_slider, radius_slider) in enumerate(candidates):
+            self._set_mtf_progress_steps(
+                index + 1,
+                len(candidates),
+                detail=self.tr("combinación")
+                + f" {index + 1}/{len(candidates)}"
+                + f" (amount={float(amount_slider) / 100.0:.2f}, radius={float(radius_slider) / 10.0:.1f})",
+            )
+            if app is not None and index % 6 == 0:
+                app.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
+            try:
+                result = self._mtf_auto_sharpen_candidate_result(
+                    prepared,
+                    amount_slider=amount_slider,
+                    radius_slider=radius_slider,
+                )
+            except Exception:
+                continue
+            candidate = {
+                "amount_slider": int(amount_slider),
+                "radius_slider": int(radius_slider),
+                "result": result,
+                "score": self._mtf_auto_sharpen_score(
+                    result,
+                    amount=float(amount_slider) / 100.0,
+                    radius=float(radius_slider) / 10.0,
+                ),
+            }
+            candidate.update(self._mtf_auto_sharpen_halo_metrics(result))
+            evaluated.append(candidate)
+
+        best = self._mtf_auto_sharpen_select_best(evaluated)
+        if best is None:
+            self._fail_mtf_progress(self.tr("Sin combinación válida."))
+            self._update_mtf_result_widgets(error=self.tr("Auto nitidez: no se encontró una combinación válida."))
+            return
+        self._apply_mtf_auto_sharpening(best, prepared)
+        elapsed = time.perf_counter() - auto_started
+        self._record_mtf_timing("performance/mtf_auto_sharpen_seconds_ewma", elapsed)
+        roi_elapsed = getattr(self, "_mtf_progress_roi_elapsed_seconds", None)
+        total_elapsed = float(roi_elapsed) + elapsed if roi_elapsed is not None else elapsed
+        detail = (
+            self.tr("ROI")
+            + f" {self._mtf_format_duration(float(roi_elapsed))} + "
+            + self.tr("auto nitidez")
+            + f" {self._mtf_format_duration(elapsed)}"
+            if roi_elapsed is not None
+            else f"{len(evaluated)}/{len(candidates)} " + self.tr("combinaciones evaluadas")
+        )
+        self._mtf_progress_roi_elapsed_seconds = None
+        self._finish_mtf_progress("auto_complete", detail=detail, elapsed_seconds=total_elapsed)
+
+    def _mtf_auto_sharpen_prepared_roi(
+        self,
+        display_roi: tuple[int, int, int, int],
+    ) -> dict[str, Any] | None:
+        detail_kwargs = self._mtf_detail_adjustment_kwargs()
+        base_info = self._mtf_full_resolution_base_roi(display_roi)
+        if base_info is None:
+            return None
+        prepared = self._mtf_pre_sharpen_base_roi(base_info, detail_kwargs)
+        if not self._mtf_lateral_ca_adjustment_active(detail_kwargs):
+            return prepared
+        payload = dict(prepared)
+        payload["image"] = self._mtf_apply_lateral_ca_to_padded_roi(
+            np.asarray(prepared["image"], dtype=np.float32),
+            prepared,
+            detail_kwargs,
+        )
+        payload["cache_key"] = self._mtf_cache_token(
+            {
+                "mode": "auto-roi-ca-pre-sharpen-v1",
+                "prepared": str(prepared.get("cache_key") or id(prepared.get("image"))),
+                "ca": {
+                    "lateral_ca_red_scale": float(detail_kwargs.get("lateral_ca_red_scale", 1.0)),
+                    "lateral_ca_blue_scale": float(detail_kwargs.get("lateral_ca_blue_scale", 1.0)),
+                },
+            }
+        )
+        return payload
+
+    def _mtf_auto_sharpen_prepared_roi_from_full_image(
+        self,
+        display_roi: tuple[int, int, int, int],
+        fixed_kwargs: dict[str, float],
+        detail_kwargs: dict[str, float],
+    ) -> dict[str, Any] | None:
+        context = self._mtf_selected_source_context()
+        if context is None:
+            return None
+        path, recipe, source_key = context
+        base = self._mtf_full_resolution_base_image(path, recipe)
+        if base is None:
+            return None
+        display_dimensions = self._mtf_current_image_dimensions()
+        analysis_dimensions = (int(base.shape[1]), int(base.shape[0]))
+        analysis_roi = self._mtf_roi_for_analysis_dimensions(display_roi, display_dimensions, analysis_dimensions)
+        analysis_roi = self._mtf_clip_roi_to_dimensions(analysis_roi, analysis_dimensions)
+        padded_roi, relative_roi = self._mtf_padded_roi(
+            analysis_roi,
+            analysis_dimensions,
+            padding=self._mtf_roi_block_padding_px(),
+        )
+        fixed_full_kwargs = dict(fixed_kwargs)
+        fixed_full_kwargs["lateral_ca_red_scale"] = float(detail_kwargs.get("lateral_ca_red_scale", 1.0))
+        fixed_full_kwargs["lateral_ca_blue_scale"] = float(detail_kwargs.get("lateral_ca_blue_scale", 1.0))
+        preprocessed = apply_adjustments(base, **fixed_full_kwargs)
+        px, py, pw, ph = padded_roi
+        block = np.ascontiguousarray(preprocessed[py : py + ph, px : px + pw, :3]).copy()
+        cache_key = self._mtf_cache_token(
+            {
+                "mode": "auto-full-ca-pre-sharpen-v1",
+                "source": source_key,
+                "display_dimensions": list(display_dimensions) if display_dimensions else None,
+                "display_roi": list(display_roi),
+                "analysis_roi": list(analysis_roi),
+                "padded_roi": list(padded_roi),
+                "fixed": fixed_full_kwargs,
+            }
+        )
+        return {
+            "image": block,
+            "source_key": source_key,
+            "analysis_dimensions": analysis_dimensions,
+            "display_dimensions": display_dimensions,
+            "display_roi": display_roi,
+            "analysis_roi": analysis_roi,
+            "padded_roi": padded_roi,
+            "relative_roi": relative_roi,
+            "padding": self._mtf_roi_block_padding_px(),
+            "cache_key": cache_key,
+        }
+
+    def _mtf_auto_sharpen_candidates(self) -> list[tuple[int, int]]:
+        amount_slider = getattr(self, "slider_sharpen", None)
+        radius_slider = getattr(self, "slider_radius", None)
+        amount_min = int(amount_slider.minimum()) if amount_slider is not None else 0
+        amount_max = int(amount_slider.maximum()) if amount_slider is not None else 300
+        radius_min = int(radius_slider.minimum()) if radius_slider is not None else 1
+        radius_max = int(radius_slider.maximum()) if radius_slider is not None else 80
+        current_amount = int(amount_slider.value()) if amount_slider is not None else 0
+        current_radius = int(radius_slider.value()) if radius_slider is not None else 10
+        base_amounts = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 210, 240]
+        base_radii = [4, 6, 8, 10, 12, 15, 18, 22, 28, 35]
+        amounts = sorted({int(np.clip(v, amount_min, amount_max)) for v in [*base_amounts, current_amount]})
+        radii = sorted({int(np.clip(v, radius_min, radius_max)) for v in [*base_radii, current_radius]})
+        candidates: list[tuple[int, int]] = []
+        seen: set[tuple[int, int]] = set()
+        for amount in amounts:
+            radius_values = [int(np.clip(current_radius, radius_min, radius_max))] if amount <= 0 else radii
+            for radius in radius_values:
+                key = (int(amount), int(radius))
+                if key not in seen:
+                    seen.add(key)
+                    candidates.append(key)
+        return candidates
+
+    def _mtf_auto_sharpen_candidate_result(
+        self,
+        prepared: dict[str, Any],
+        *,
+        amount_slider: int,
+        radius_slider: int,
+    ) -> MTFResult:
+        render_state = self._render_adjustment_state() if hasattr(self, "_render_adjustment_state") else {}
+        cache_key = self._mtf_cache_token(
+            {
+                "mode": "auto-candidate-result-v1",
+                "prepared": str(prepared.get("cache_key") or id(prepared.get("image"))),
+                "analysis_roi": list(prepared["analysis_roi"]),
+                "amount": int(amount_slider),
+                "radius": int(radius_slider),
+                "render": render_state,
+            }
+        )
+        cached = self._mtf_auto_candidate_cache_get(cache_key)
+        if cached is not None:
+            return cached
+        source = np.asarray(prepared["image"], dtype=np.float32)
+        if int(amount_slider) > 0:
+            adjusted = apply_adjustments(
+                source,
+                denoise_luminance=0.0,
+                denoise_color=0.0,
+                sharpen_amount=float(amount_slider) / 100.0,
+                sharpen_radius=float(radius_slider) / 10.0,
+                lateral_ca_red_scale=1.0,
+                lateral_ca_blue_scale=1.0,
+            )
+        else:
+            adjusted = source
+        render_kwargs = self._render_adjustment_kwargs() if hasattr(self, "_render_adjustment_kwargs") else {}
+        adjusted = apply_render_adjustments(adjusted, **render_kwargs)
+        srgb = linear_to_srgb_display(adjusted)
+        rx, ry, rw, rh = [int(v) for v in prepared["relative_roi"]]
+        roi_image = np.ascontiguousarray(srgb[ry : ry + rh, rx : rx + rw, :3]).copy()
+        measured = analyze_slanted_edge_mtf(roi_image, None)
+        result = replace(measured, roi=prepared["analysis_roi"])
+        self._mtf_auto_candidate_cache_put(cache_key, result)
+        return result
+
+    def _mtf_auto_sharpen_score(self, result: MTFResult, *, amount: float, radius: float) -> float:
+        mtf50 = self._mtf_payload_optional_float(result.mtf50) or 0.0
+        mtf30 = self._mtf_payload_optional_float(result.mtf30) or 0.0
+        mtf10 = self._mtf_payload_optional_float(result.mtf10) or 0.0
+        acutance = float(np.clip(result.acutance, 0.0, 2.0))
+        halo_metrics = self._mtf_auto_sharpen_halo_metrics(result)
+        halo = float(halo_metrics["halo"])
+        hard_halo = max(0.0, halo - 0.025)
+        post = self._mtf_post_nyquist_metrics(result)
+        post_peak = float(post.get("peak_modulation", 0.0) or 0.0)
+        post_energy = float(post.get("energy_ratio", 0.0) or 0.0)
+        sharpness = 1.00 * mtf50 + 0.45 * mtf30 + 0.20 * mtf10 + 0.10 * acutance
+        penalty = 4.0 * halo + 24.0 * hard_halo
+        penalty += 0.10 * post_peak + 0.06 * post_energy
+        penalty += 0.020 * max(0.0, float(amount) - 1.20)
+        penalty += 0.004 * max(0.0, float(radius) - 1.50)
+        return float(sharpness - penalty)
+
+    def _mtf_auto_sharpen_halo_metrics(self, result: MTFResult) -> dict[str, float]:
+        overshoot = max(0.0, float(result.overshoot))
+        undershoot = max(0.0, float(result.undershoot))
+        esf = np.asarray(getattr(result, "esf", []) or [], dtype=np.float64)
+        bright_peak = 0.0
+        dark_dip = 0.0
+        if esf.size >= 12 and np.all(np.isfinite(esf)):
+            edge_count = max(4, int(esf.size) // 10)
+            low_level = float(np.median(esf[:edge_count]))
+            high_level = float(np.median(esf[-edge_count:]))
+            diffs = np.diff(esf)
+            if diffs.size:
+                edge_idx = int(np.argmax(diffs))
+                bright_side = esf[min(esf.size - 1, edge_idx + 1) :]
+                dark_side = esf[: max(1, edge_idx + 1)]
+                if bright_side.size:
+                    bright_peak = max(0.0, float(np.max(bright_side)) - high_level)
+                if dark_side.size:
+                    dark_dip = max(0.0, low_level - float(np.min(dark_side)))
+        bright_halo = max(overshoot, bright_peak)
+        dark_halo = max(undershoot, dark_dip)
+        return {
+            "bright_halo": float(bright_halo),
+            "dark_halo": float(dark_halo),
+            "halo": float(bright_halo + dark_halo),
+        }
+
+    def _mtf_auto_sharpen_select_best(self, candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+        if not candidates:
+            return None
+        baseline_candidates = [candidate for candidate in candidates if int(candidate["amount_slider"]) == 0]
+        baseline = min(
+            baseline_candidates or candidates,
+            key=lambda candidate: (
+                float(candidate.get("halo", 0.0)),
+                int(candidate["amount_slider"]),
+                int(candidate["radius_slider"]),
+            ),
+        )
+        baseline_halo = float(baseline.get("halo", 0.0))
+        baseline_bright = float(baseline.get("bright_halo", 0.0))
+        baseline_dark = float(baseline.get("dark_halo", 0.0))
+        allowed_halo = max(0.025, baseline_halo + 0.010)
+        allowed_bright = max(0.020, baseline_bright + 0.008)
+        allowed_dark = max(0.020, baseline_dark + 0.008)
+        acceptable = [
+            candidate
+            for candidate in candidates
+            if float(candidate.get("halo", 0.0)) <= allowed_halo
+            and float(candidate.get("bright_halo", 0.0)) <= allowed_bright
+            and float(candidate.get("dark_halo", 0.0)) <= allowed_dark
+        ]
+        pool = acceptable or candidates
+        return max(pool, key=lambda candidate: self._mtf_auto_sharpen_sort_key(candidate))
+
+    def _mtf_auto_sharpen_sort_key(self, candidate: dict[str, Any]) -> tuple[float, float, int, int]:
+        return (
+            float(candidate["score"]),
+            -float(candidate.get("halo", 0.0)),
+            -int(candidate["amount_slider"]),
+            -int(candidate["radius_slider"]),
+        )
+
+    def _apply_mtf_auto_sharpening(self, best: dict[str, Any], prepared: dict[str, Any]) -> None:
+        amount_slider = int(best["amount_slider"])
+        radius_slider = int(best["radius_slider"])
+        if hasattr(self, "slider_sharpen"):
+            self.slider_sharpen.setValue(amount_slider)
+        if hasattr(self, "slider_radius"):
+            self.slider_radius.setValue(radius_slider)
+        result = best["result"]
+        self._mtf_last_analysis_image_dimensions = prepared["analysis_dimensions"]
+        self._mtf_last_display_dimensions = prepared["display_dimensions"]
+        self._mtf_last_display_roi = prepared["display_roi"]
+        self._mtf_last_result = result
+        self._update_mtf_result_widgets()
+        self._persist_mtf_analysis_for_selected()
+        if hasattr(self, "_schedule_preview_refresh") and getattr(self, "_original_linear", None) is not None:
+            self._schedule_preview_refresh()
+        amount = float(amount_slider) / 100.0
+        radius = float(radius_slider) / 10.0
+        mtf50 = self._format_mtf_cycles(result.mtf50)
+        self._set_status(
+            self.tr("Auto nitidez aplicada")
+            + f": amount={amount:.2f}, radius={radius:.1f}, MTF50={mtf50}, halo={float(best.get('halo', 0.0)) * 100.0:.1f}%"
+        )
+
+    def _mtf_try_activate_cached_base_roi(self, display_roi: tuple[int, int, int, int]) -> bool:
+        cache_key = self._mtf_base_roi_cache_key(display_roi)
+        if cache_key is None:
+            return False
+        cached = getattr(self, "_mtf_roi_base_cache", None)
+        if self._mtf_roi_base_cache_key == cache_key and isinstance(cached, dict):
+            return True
+        context = self._mtf_selected_source_context()
+        if context is None:
+            return False
+        path, _recipe, _source_key = context
+        disk_cached = self._read_mtf_base_roi_from_disk_cache(cache_key, path=path)
+        if disk_cached is None:
+            return False
+        self._set_mtf_base_roi_cache(cache_key, disk_cached)
+        return True
+
+    def _mtf_base_roi_worker_request(
+        self,
+        display_roi: tuple[int, int, int, int],
+        *,
+        mode: str,
+    ) -> dict[str, Any] | None:
+        context = self._mtf_selected_source_context()
+        if context is None:
+            return None
+        path, recipe, source_key = context
+        cache_key = self._mtf_base_roi_cache_key(display_roi)
+        if cache_key is None:
+            return None
+        return {
+            "cache_key": cache_key,
+            "mode": str(mode),
+            "path": str(path),
+            "recipe": to_json_dict(recipe) if recipe is not None else None,
+            "source_key": source_key,
+            "display_dimensions": list(self._mtf_current_image_dimensions() or ()),
+            "display_roi": list(display_roi),
+            "padding": int(self._mtf_roi_block_padding_px()),
+        }
+
+    def _queue_mtf_base_roi_worker(
+        self,
+        display_roi: tuple[int, int, int, int],
+        *,
+        mode: str = "analysis",
+    ) -> bool:
+        request = self._mtf_base_roi_worker_request(display_roi, mode=mode)
+        if request is None:
+            return False
+        cache_key = str(request["cache_key"])
+        if bool(getattr(self, "_mtf_base_roi_task_active", False)):
+            if getattr(self, "_mtf_base_roi_inflight_key", None) == cache_key:
+                self._set_status(self.tr("MTF: ROI full-res ya se está preparando en segundo plano..."))
+                return True
+            self._mtf_base_roi_pending_request = request
+            self._start_mtf_progress(
+                "queued",
+                detail=self._mtf_request_progress_detail(request),
+                estimate_seconds=self._mtf_worker_estimate_seconds(request),
+            )
+            self._set_status(self.tr("MTF: ROI full-res encolada; se procesará al terminar la actual."))
+            return True
+        self._start_mtf_base_roi_worker(request)
+        return True
+
+    def _mtf_request_progress_detail(self, request: dict[str, Any]) -> str:
+        path = Path(str(request.get("path") or ""))
+        roi = request.get("display_roi")
+        roi_label = ""
+        if isinstance(roi, (list, tuple)) and len(roi) >= 4:
+            try:
+                roi_label = f" ROI {int(roi[2])}x{int(roi[3])}"
+            except Exception:
+                roi_label = ""
+        mode = str(request.get("mode") or "analysis")
+        mode_label = self.tr("auto nitidez") if mode == "auto_sharpen" else self.tr("análisis")
+        name = path.name or self.tr("archivo actual")
+        return f"{name}{roi_label} ({mode_label})"
+
+    def _start_mtf_base_roi_worker(self, request: dict[str, Any]) -> None:
+        label = self.tr("MTF ROI full-res")
+        self._set_status(self.tr("MTF: preparando ROI full-res en segundo plano..."))
+        task_row = self._monitor_task_start(label)
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
+        cache_key = str(request["cache_key"])
+        self._mtf_base_roi_task_active = True
+        self._mtf_base_roi_inflight_key = cache_key
+        self._start_mtf_progress(
+            "prepare",
+            detail=self._mtf_request_progress_detail(request),
+            estimate_seconds=self._mtf_worker_estimate_seconds(request),
+        )
+
+        def task():
+            started = time.perf_counter()
+            src_root = Path(__file__).resolve().parents[3]
+            env = dict(os.environ)
+            existing_pythonpath = env.get("PYTHONPATH", "")
+            env["PYTHONPATH"] = (
+                str(src_root)
+                if not existing_pythonpath
+                else str(src_root) + os.pathsep + existing_pythonpath
+            )
+            with tempfile.TemporaryDirectory(prefix="probraw-mtf-roi-") as tmp_dir:
+                tmp_root = Path(tmp_dir)
+                request_path = tmp_root / "request.json"
+                output_path = tmp_root / "base_roi.npz"
+                request_path.write_text(json.dumps(request, sort_keys=True, ensure_ascii=False), encoding="utf-8")
+                proc = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "probraw.analysis.mtf_roi",
+                        str(request_path),
+                        str(output_path),
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=300,
+                    env=env,
+                    cwd=str(Path.cwd()),
+                )
+                if proc.returncode != 0:
+                    detail = (proc.stderr or proc.stdout or "").strip()
+                    raise RuntimeError(detail or f"mtf_roi worker exited with {proc.returncode}")
+                payload = read_base_roi_cache(output_path)
+            return {
+                "cache_key": cache_key,
+                "request": dict(request),
+                "payload": payload,
+                "elapsed_seconds": float(time.perf_counter() - started),
+            }
+
+        thread = TaskThread(task)
+        self._threads.append(thread)
+
+        def cleanup() -> dict[str, Any] | None:
+            self._mtf_base_roi_task_active = False
+            self._mtf_base_roi_inflight_key = None
+            if thread in self._threads:
+                self._threads.remove(thread)
+            thread.deleteLater()
+            pending = self._mtf_base_roi_pending_request
+            self._mtf_base_roi_pending_request = None
+            return pending
+
+        def maybe_start_pending(pending: dict[str, Any] | None) -> None:
+            if pending is not None and not bool(getattr(self, "_background_threads_shutdown", False)):
+                self._start_mtf_base_roi_worker(pending)
+
+        def ok(result: dict[str, Any]) -> None:
+            pending = None
+            try:
+                pending = cleanup()
+                payload_request = result.get("request") if isinstance(result, dict) else {}
+                display_roi = tuple(int(v) for v in payload_request.get("display_roi", []))
+                current_key = self._mtf_base_roi_cache_key(display_roi) if len(display_roi) == 4 else None
+                result_key = str(result.get("cache_key") or "")
+                if current_key != result_key:
+                    self._monitor_task_finish(task_row, self.tr("Descartado"), self.tr("ROI MTF obsoleta"))
+                    return
+                payload = result.get("payload")
+                if not isinstance(payload, dict):
+                    raise RuntimeError("El worker MTF no devolvió una ROI válida.")
+                self._set_mtf_base_roi_cache(result_key, payload)
+                self._write_mtf_base_roi_to_disk_cache(result_key, payload, path=Path(str(payload_request.get("path"))))
+                elapsed = float(result.get("elapsed_seconds") or 0.0)
+                self._mtf_progress_roi_elapsed_seconds = elapsed
+                self._record_mtf_timing("performance/mtf_fullres_roi_seconds_ewma", elapsed)
+                self._monitor_task_finish(task_row, self.tr("Completado"), f"{elapsed:.2f}s")
+                self._start_mtf_progress(
+                    "analyze" if str(payload_request.get("mode") or "") != "auto_sharpen" else "auto_sharpen",
+                    detail=self.tr("ROI preparada; calculando resultado"),
+                    estimate_seconds=(
+                        self._mtf_analysis_estimate_seconds()
+                        if str(payload_request.get("mode") or "") != "auto_sharpen"
+                        else self._mtf_auto_sharpen_estimate_seconds()
+                    ),
+                )
+                self._set_status(self.tr("MTF: ROI full-res preparada; calculando métricas..."))
+                if str(payload_request.get("mode") or "") == "auto_sharpen":
+                    self._auto_optimize_mtf_sharpening()
+                else:
+                    self._recalculate_mtf_analysis()
+            except Exception as exc:
+                self._monitor_task_finish(task_row, self.tr("Error"), str(exc))
+                self._fail_mtf_progress(str(exc))
+                self._update_mtf_result_widgets(error=f"MTF: {exc}")
+            finally:
+                maybe_start_pending(pending)
+
+        def fail(trace: str) -> None:
+            pending = cleanup()
+            self._log_preview(trace[-1200:])
+            self._set_status(self.tr("Error preparando ROI MTF full-res"))
+            self._monitor_task_finish(
+                task_row,
+                self.tr("Error"),
+                trace.strip().splitlines()[-1] if trace.strip() else self.tr("Error"),
+            )
+            self._fail_mtf_progress(trace.strip().splitlines()[-1] if trace.strip() else self.tr("Error"))
+            self._update_mtf_result_widgets(error=self.tr("MTF: no se pudo preparar la ROI full-res."))
+            maybe_start_pending(pending)
+
+        thread.succeeded.connect(ok)
+        thread.failed.connect(fail)
+        thread.start()
+
     def _recalculate_mtf_analysis(self) -> None:
         if getattr(self, "_mtf_roi", None) is None:
             self._update_mtf_result_widgets(error=self.tr("MTF: selecciona una ROI de borde inclinado."))
             return
-        self._set_status(self.tr("MTF: cargando fuente a resolución real..."))
+        display_roi = self._mtf_roi
+        if not self._run_mtf_analysis_inline() and not self._mtf_try_activate_cached_base_roi(display_roi):
+            self._mtf_last_result = None
+            self._update_mtf_result_widgets(error=self.tr("MTF: preparando ROI full-res en segundo plano..."))
+            self._queue_mtf_base_roi_worker(display_roi, mode="analysis")
+            return
+        analysis_started = time.perf_counter()
+        if getattr(self, "_mtf_progress_stage", "") != "analyze":
+            self._start_mtf_progress(
+                "analyze",
+                detail=self.tr("calculando ESF/LSF/MTF"),
+                estimate_seconds=self._mtf_analysis_estimate_seconds(),
+            )
+        self._set_status(self.tr("MTF: preparando ROI a resolución real..."))
         app = QtWidgets.QApplication.instance()
         if app is not None:
             app.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
-        image = self._mtf_full_resolution_analysis_image()
-        if image is None:
+        analysis_info = self._mtf_full_resolution_analysis_roi_image(display_roi)
+        if analysis_info is None:
+            self._fail_mtf_progress(self.tr("No se pudo cargar la ROI."))
             self._update_mtf_result_widgets(error=self.tr("MTF: no se pudo cargar la imagen a resolución real."))
             return
-        analysis_dimensions = (int(image.shape[1]), int(image.shape[0]))
-        display_dimensions = self._mtf_current_image_dimensions()
-        display_roi = self._mtf_roi
-        analysis_roi = self._mtf_roi_for_analysis_image(display_roi, analysis_dimensions)
+        image = np.asarray(analysis_info["image"], dtype=np.float32)
+        analysis_dimensions = analysis_info["analysis_dimensions"]
+        display_dimensions = analysis_info["display_dimensions"]
+        analysis_roi = analysis_info["analysis_roi"]
         self._mtf_last_analysis_image_dimensions = analysis_dimensions
         self._mtf_last_display_dimensions = display_dimensions
         self._mtf_last_display_roi = display_roi
         if getattr(self, "_mtf_pixel_pitch_auto_source", None) in {None, "manual_sensor_size"}:
             self._apply_mtf_manual_sensor_size_pitch()
+        result_key = self._mtf_cache_token(
+            {
+                "mode": "mtf-result-v1",
+                "analysis": self._mtf_roi_analysis_cache_key,
+                "analysis_roi": list(analysis_roi),
+                "image_shape": list(image.shape),
+            }
+        )
+        cached_result = getattr(self, "_mtf_result_cache", None)
+        if self._mtf_result_cache_key == result_key and cached_result is not None:
+            result = cached_result
+            self._mtf_last_result = result
+            self._update_mtf_result_widgets()
+            self._persist_mtf_analysis_for_selected()
+            elapsed = time.perf_counter() - analysis_started
+            self._record_mtf_timing("performance/mtf_analysis_seconds_ewma", elapsed)
+            roi_elapsed = getattr(self, "_mtf_progress_roi_elapsed_seconds", None)
+            total_elapsed = float(roi_elapsed) + elapsed if roi_elapsed is not None else elapsed
+            detail = (
+                self.tr("ROI")
+                + f" {self._mtf_format_duration(float(roi_elapsed))} + "
+                + self.tr("análisis")
+                + f" {self._mtf_format_duration(elapsed)}"
+                if roi_elapsed is not None
+                else self.tr("resultado desde caché")
+            )
+            self._mtf_progress_roi_elapsed_seconds = None
+            self._finish_mtf_progress(
+                "complete",
+                detail=detail,
+                elapsed_seconds=total_elapsed,
+            )
+            return
         try:
-            result = analyze_slanted_edge_mtf(image, analysis_roi)
+            measured = analyze_slanted_edge_mtf(image, None)
+            result = replace(measured, roi=analysis_roi)
         except Exception as exc:
             self._mtf_last_result = None
+            self._fail_mtf_progress(str(exc))
             self._update_mtf_result_widgets(error=f"MTF: {exc}")
             return
+        self._mtf_result_cache_key = result_key
+        self._mtf_result_cache = result
         self._mtf_last_result = result
         self._update_mtf_result_widgets()
         self._persist_mtf_analysis_for_selected()
+        elapsed = time.perf_counter() - analysis_started
+        self._record_mtf_timing("performance/mtf_analysis_seconds_ewma", elapsed)
+        roi_elapsed = getattr(self, "_mtf_progress_roi_elapsed_seconds", None)
+        total_elapsed = float(roi_elapsed) + elapsed if roi_elapsed is not None else elapsed
+        detail = (
+            self.tr("ROI")
+            + f" {self._mtf_format_duration(float(roi_elapsed))} + "
+            + self.tr("análisis")
+            + f" {self._mtf_format_duration(elapsed)}"
+            if roi_elapsed is not None
+            else self.tr("curvas y métricas actualizadas")
+        )
+        self._mtf_progress_roi_elapsed_seconds = None
+        self._finish_mtf_progress(
+            "complete",
+            detail=detail,
+            elapsed_seconds=total_elapsed,
+        )
 
-    def _maybe_update_mtf_after_preview(self) -> None:
+    def _schedule_mtf_refresh(self, *, interactive: bool | None = None) -> None:
         if getattr(self, "_mtf_roi", None) is None:
             return
         if not hasattr(self, "check_mtf_auto_update") or not self.check_mtf_auto_update.isChecked():
             return
-        delay = 320 if self._is_preview_interaction_active() else 80
+        if not hasattr(self, "_mtf_refresh_timer"):
+            return
+        if not self._mtf_has_hot_base_roi_cache(self._mtf_roi):
+            deferred_key = self._mtf_base_roi_cache_key(self._mtf_roi) or "missing"
+            if getattr(self, "_mtf_deferred_auto_refresh_key", None) != deferred_key:
+                self._mtf_deferred_auto_refresh_key = deferred_key
+                if not bool(getattr(self, "_mtf_base_roi_task_active", False)):
+                    self._finish_mtf_progress(
+                        "deferred",
+                        detail=self.tr("pulsa Actualizar para preparar la ROI full-res"),
+                        elapsed_seconds=0.0,
+                    )
+                self._set_status(
+                    self.tr(
+                        "MTF: recálculo automático pospuesto; "
+                        "pulsa Actualizar para cargar la ROI a resolución real."
+                    )
+                )
+            return
+        active = bool(self._is_preview_interaction_active() if interactive is None else interactive)
+        delay = 140 if active else 45
         self._mtf_refresh_timer.start(delay)
+
+    def _maybe_update_mtf_after_preview(self) -> None:
+        if not hasattr(self, "_mtf_refresh_timer") or self._mtf_refresh_timer.isActive():
+            return
+        self._schedule_mtf_refresh(interactive=self._is_preview_interaction_active())
 
     def _update_mtf_result_widgets(self, *, error: str | None = None) -> None:
         result = getattr(self, "_mtf_last_result", None)
@@ -867,10 +2366,25 @@ class MTFAnalysisMixin:
         selected = getattr(self, "_selected_file", None)
         if selected is None:
             return
+        if hasattr(self, "_is_preview_interaction_active") and self._is_preview_interaction_active():
+            timer = getattr(self, "_mtf_persist_timer", None)
+            if timer is not None:
+                timer.start(600)
+            return
         payload = self._mtf_analysis_payload(include_curves=True)
         if payload is None:
             return
         session_name = self.session_name_edit.text().strip() if hasattr(self, "session_name_edit") else ""
+        payload_key = self._mtf_cache_token(
+            {
+                "path": self._normalized_path_key(Path(selected)) if hasattr(self, "_normalized_path_key") else str(Path(selected)),
+                "session_root": str(getattr(self, "_active_session_root", "") or ""),
+                "session_name": session_name,
+                "payload": payload,
+            }
+        )
+        if getattr(self, "_mtf_persisted_payload_key", None) == payload_key:
+            return
         try:
             write_raw_mtf_analysis(
                 Path(selected),
@@ -881,6 +2395,7 @@ class MTFAnalysisMixin:
         except Exception as exc:
             self._log_preview(f"Aviso: no se pudo guardar MTF en sidecar: {exc}")
             return
+        self._mtf_persisted_payload_key = payload_key
         self._refresh_mtf_sidecar_indicator_for_path(Path(selected))
         self._set_status(self.tr("MTF guardada en sidecar:") + f" {Path(selected).name}")
 

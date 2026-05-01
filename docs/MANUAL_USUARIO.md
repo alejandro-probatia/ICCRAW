@@ -10,7 +10,7 @@ settings, profiles, hashes and audit artifacts.
 
 ![ProbRAW: main development and profiling interface](assets/screenshots/probraw-portada.png)
 
-This manual covers the complete ProbRAW 0.3.4 workflow: session creation, color
+This manual covers the complete ProbRAW 0.3.5 workflow: session creation, color
 chart profiling, manual work without a chart, settings copy/paste, render queue,
 TIFF export, metadata, Proof, C2PA, 3D gamut diagnostics, chart reference
 management, session statistics, colorimetric histogram, MTF sharpness analysis,
@@ -74,6 +74,11 @@ stores the profile assigned to that specific image. Thumbnail markers indicate:
 - blue band: advanced profile created from a chart;
 - green band: basic profile created from manual adjustments;
 - no band: image without an assigned development profile.
+
+When the selected image changes, ProbRAW reads the backpack for that exact RAW.
+If no backpack exists, recipe, detail, sharpening, noise, chromatic aberration,
+color and contrast controls return to a neutral state; the preview is prepared
+as an unprofiled RAW using standard ProPhoto RGB and camera white balance.
 
 ### Color Policy
 
@@ -331,6 +336,10 @@ Expected result:
 - `RAW.probraw.json` backpack with the generic output space;
 - final TIFF in `02_DRV/` with the standard ICC embedded.
 
+When a standard no-chart output space is selected, ProbRAW disables `Profiling
+mode` for the visible/final render and uses camera white balance if fixed white
+balance was still identity. This keeps preview and TIFF color rules aligned.
+
 ## 9. Copy Settings and Backpacks
 
 ![Backpacks and settings copy](assets/screenshots/probraw-mochila-ajustes.png)
@@ -377,6 +386,11 @@ belongs to each file.
 
 If an output TIFF already exists, ProbRAW creates a new version:
 `capture.tiff`, `capture_v002.tiff`, `capture_v003.tiff`, etc.
+
+When rendering the queue, each RAW uses its registered profile or, when no
+registered profile is assigned, the backpack saved next to that RAW. Sharpening,
+noise, CA, color and contrast are not taken from another file or from the
+current sliders.
 
 ### `Exportar derivados` Panel
 

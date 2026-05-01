@@ -157,6 +157,21 @@ def test_write_profiled_tiff_assigns_input_profile_without_conversion(tmp_path: 
         assert bytes(tags[34675].value) == b"camera-profile-placeholder"
 
 
+def test_write_profiled_tiff_rejects_camera_rgb_without_input_profile(tmp_path: Path):
+    out = tmp_path / "camera_rgb_no_profile.tiff"
+    image = np.full((6, 8, 3), 0.25, dtype=np.float32)
+
+    with pytest.raises(RuntimeError, match="perfil ICC de entrada activo"):
+        write_profiled_tiff(
+            out,
+            image,
+            recipe=Recipe(output_space="scene_linear_camera_rgb", output_linear=True),
+            profile_path=None,
+        )
+
+    assert not out.exists()
+
+
 def test_batch_develop_keeps_linear_audit_separate_from_final_outputs(tmp_path: Path):
     raws = tmp_path / "inputs"
     out_dir = tmp_path / "out"

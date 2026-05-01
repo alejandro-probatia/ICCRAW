@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 import os
 import subprocess
@@ -7,6 +8,7 @@ import subprocess
 import cv2
 import numpy as np
 import colour
+from PIL import Image, ImageOps
 
 from ..core.external import external_tool_path, run_external
 from ..core.models import Recipe
@@ -45,7 +47,7 @@ def load_image_for_preview(
         recipe = load_recipe(recipe_path)
 
     if fast_raw:
-        image = _develop_raw_fast_preview(input_path, recipe)
+        image = _develop_raw_fast_preview(input_path, recipe, max_preview_side=max_preview_side)
         image = _downscale_for_preview(image, max_preview_side=max_preview_side)
         image = _camera_rgb_display_balance_if_needed(image, recipe)
         return image, f"RAW previsualizado en modo rapido: {input_path.name}"
@@ -64,8 +66,8 @@ def load_image_for_preview(
     return image, f"RAW revelado completo para preview de alta calidad: {input_path.name}"
 
 
-def _develop_raw_fast_preview(input_path: Path, recipe: Recipe) -> np.ndarray:
-    embedded = extract_embedded_preview(input_path)
+def _develop_raw_fast_preview(input_path: Path, recipe: Recipe, *, max_preview_side: int = 2600) -> np.ndarray:
+    embedded = extract_embedded_preview(input_path, max_preview_side=max_preview_side)
     if embedded is not None:
         return embedded
 
@@ -121,23 +123,21 @@ def _env_enabled(name: str, *, default: bool) -> bool:
     return bool(default)
 
 
-def extract_embedded_preview(input_path: Path) -> np.ndarray | None:
+def extract_embedded_preview(input_path: Path, *, max_preview_side: int = 0) -> np.ndarray | None:
     try:
         with open_rawpy(input_path) as raw:
+            raw_orientation = _rawpy_orientation(raw)
             thumb = raw.extract_thumb()
     except Exception:
         return None
 
     if thumb.format == rawpy.ThumbFormat.JPEG:
-        buf = np.frombuffer(thumb.data, dtype=np.uint8)
-        decoded = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
+        decoded = _decode_embedded_preview_jpeg(
+            bytes(thumb.data),
+            max_preview_side=max_preview_side,
+            raw_orientation=raw_orientation,
+        )
         if decoded is None:
-            return None
-        if decoded.ndim == 2:
-            decoded = cv2.cvtColor(decoded, cv2.COLOR_GRAY2RGB)
-        elif decoded.ndim == 3:
-            decoded = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
-        else:
             return None
     elif thumb.format == rawpy.ThumbFormat.BITMAP:
         decoded = np.asarray(thumb.data)
@@ -147,9 +147,10 @@ def extract_embedded_preview(input_path: Path) -> np.ndarray | None:
             decoded = decoded[..., :3]
         else:
             return None
+        decoded = _apply_orientation_array(decoded, raw_orientation)
+        decoded = _downscale_uint_preview(decoded, max_preview_side=max_preview_side)
     else:
         return None
-
 
     if np.issubdtype(decoded.dtype, np.integer):
         maxv = float(np.iinfo(decoded.dtype).max)
@@ -160,6 +161,145 @@ def extract_embedded_preview(input_path: Path) -> np.ndarray | None:
     # Embedded previews are generally display-referred (sRGB-encoded).
     # Convert to linear so the rest of the preview pipeline remains consistent.
     return srgb_to_linear_display(srgb)
+
+
+def extract_embedded_thumbnail(input_path: Path, *, max_side: int = 220) -> np.ndarray | None:
+    try:
+        with open_rawpy(input_path) as raw:
+            raw_orientation = _rawpy_orientation(raw)
+            thumb = raw.extract_thumb()
+    except Exception:
+        return None
+
+    if thumb.format == rawpy.ThumbFormat.JPEG:
+        decoded = _decode_embedded_preview_jpeg(
+            bytes(thumb.data),
+            max_preview_side=int(max_side),
+            raw_orientation=raw_orientation,
+        )
+        if decoded is None:
+            return None
+    elif thumb.format == rawpy.ThumbFormat.BITMAP:
+        decoded = np.asarray(thumb.data)
+        if decoded.ndim == 2:
+            decoded = np.repeat(decoded[..., None], 3, axis=2)
+        elif decoded.ndim == 3 and decoded.shape[2] >= 3:
+            decoded = decoded[..., :3]
+        else:
+            return None
+        decoded = _apply_orientation_array(decoded, raw_orientation)
+        decoded = _downscale_uint_preview(decoded, max_preview_side=int(max_side))
+    else:
+        return None
+    return _preview_array_to_u8(decoded)
+
+
+def _decode_embedded_preview_jpeg(
+    data: bytes,
+    *,
+    max_preview_side: int,
+    raw_orientation: int = 0,
+) -> np.ndarray | None:
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            target = int(max_preview_side)
+            if target > 0:
+                try:
+                    img.draft("RGB", (target, target))
+                except Exception:
+                    pass
+            embedded_orientation = _pil_orientation(img)
+            img = ImageOps.exif_transpose(img)
+            if embedded_orientation in {0, 1, None}:
+                img = _apply_orientation_image(img, raw_orientation)
+            img = img.convert("RGB")
+            if target > 0:
+                img.thumbnail((target, target), Image.Resampling.LANCZOS)
+            return np.asarray(img, dtype=np.uint8).copy()
+    except Exception:
+        return None
+
+
+def _rawpy_orientation(raw) -> int:
+    try:
+        return int(getattr(getattr(raw, "sizes", None), "flip", 0) or 0)
+    except Exception:
+        return 0
+
+
+def _pil_orientation(img: Image.Image) -> int | None:
+    try:
+        return int(img.getexif().get(274, 1))
+    except Exception:
+        return None
+
+
+def _apply_orientation_image(img: Image.Image, orientation: int) -> Image.Image:
+    transpose = {
+        2: Image.Transpose.FLIP_LEFT_RIGHT,
+        3: Image.Transpose.ROTATE_180,
+        4: Image.Transpose.FLIP_TOP_BOTTOM,
+        5: Image.Transpose.TRANSPOSE,
+        6: Image.Transpose.ROTATE_270,
+        7: Image.Transpose.TRANSVERSE,
+        8: Image.Transpose.ROTATE_90,
+    }.get(int(orientation or 0))
+    if transpose is None:
+        return img
+    return img.transpose(transpose)
+
+
+def _apply_orientation_array(image: np.ndarray, orientation: int) -> np.ndarray:
+    value = int(orientation or 0)
+    if value == 2:
+        return np.fliplr(image)
+    if value == 3:
+        return np.rot90(image, 2)
+    if value == 4:
+        return np.flipud(image)
+    if value == 5:
+        return np.transpose(image, (1, 0, *range(2, image.ndim))) if image.ndim > 2 else image.T
+    if value == 6:
+        return np.rot90(image, 3)
+    if value == 7:
+        return np.fliplr(np.rot90(image, 3))
+    if value == 8:
+        return np.rot90(image, 1)
+    return image
+
+
+def _preview_array_to_u8(image: np.ndarray) -> np.ndarray:
+    array = np.asarray(image)
+    if array.ndim == 2:
+        array = np.repeat(array[..., None], 3, axis=2)
+    elif array.ndim == 3 and array.shape[2] > 3:
+        array = array[..., :3]
+    if np.issubdtype(array.dtype, np.integer):
+        if array.dtype == np.uint8:
+            return np.ascontiguousarray(array[..., :3])
+        maxv = float(np.iinfo(array.dtype).max)
+        scaled = np.clip(array.astype(np.float32) / maxv, 0.0, 1.0)
+    else:
+        scaled = np.clip(array.astype(np.float32), 0.0, 1.0)
+    return np.ascontiguousarray(np.round(scaled[..., :3] * 255.0).astype(np.uint8))
+
+
+def _downscale_uint_preview(image: np.ndarray, *, max_preview_side: int) -> np.ndarray:
+    if max_preview_side <= 0:
+        return np.asarray(image).copy()
+    array = np.asarray(image)
+    if array.ndim < 2:
+        return array.copy()
+    h, w = int(array.shape[0]), int(array.shape[1])
+    if max(h, w) <= int(max_preview_side):
+        return array.copy()
+    scale = float(max_preview_side) / float(max(h, w))
+    resized = cv2.resize(
+        array,
+        (max(1, int(round(w * scale))), max(1, int(round(h * scale)))),
+        interpolation=cv2.INTER_AREA,
+    )
+    return np.asarray(resized).copy()
 
 
 def _downscale_for_preview(image: np.ndarray, *, max_preview_side: int) -> np.ndarray:

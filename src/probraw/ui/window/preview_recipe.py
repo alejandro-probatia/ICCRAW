@@ -467,18 +467,43 @@ class PreviewRecipeMixin:
                     rotation=self._viewer_rotation,
                 )
         if hasattr(self, "viewer_zoom_label"):
-            self.viewer_zoom_label.setText(f"{int(round(self._viewer_zoom * 100))}%")
+            scale = self._viewer_display_scale()
+            shown = scale if scale is not None else float(self._viewer_zoom)
+            self.viewer_zoom_label.setText(f"{int(round(float(shown) * 100))}%")
+
+    def _viewer_reference_panel(self) -> ImagePanel | None:
+        names = (
+            ("image_result_single",),
+            ("image_result_compare", "image_original_compare"),
+        )
+        stack = getattr(self, "viewer_stack", None)
+        active_names = names[1] if stack is not None and int(stack.currentIndex()) == 1 else names[0]
+        for panel_name in active_names:
+            panel = getattr(self, panel_name, None)
+            if panel is not None and hasattr(panel, "image_size") and panel.image_size() is not None:
+                return panel
+        return None
+
+    def _viewer_display_scale(self) -> float | None:
+        panel = self._viewer_reference_panel()
+        if panel is None or not hasattr(panel, "current_display_scale"):
+            return None
+        return panel.current_display_scale()
 
     def _viewer_zoom_in(self) -> None:
-        self._viewer_zoom = float(np.clip(self._viewer_zoom * 1.25, 0.2, 8.0))
+        self._viewer_zoom = float(np.clip(self._viewer_zoom * 1.25, 0.05, 64.0))
         self._sync_viewer_transform()
 
     def _viewer_zoom_out(self) -> None:
-        self._viewer_zoom = float(np.clip(self._viewer_zoom / 1.25, 0.2, 8.0))
+        self._viewer_zoom = float(np.clip(self._viewer_zoom / 1.25, 0.05, 64.0))
         self._sync_viewer_transform()
 
     def _viewer_zoom_100(self) -> None:
-        self._viewer_zoom = 1.0
+        panel = self._viewer_reference_panel()
+        if panel is not None and hasattr(panel, "view_zoom_for_display_scale"):
+            self._viewer_zoom = panel.view_zoom_for_display_scale(1.0)
+        else:
+            self._viewer_zoom = 1.0
         self._sync_viewer_transform()
 
     def _viewer_fit(self) -> None:

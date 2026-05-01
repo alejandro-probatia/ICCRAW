@@ -90,6 +90,10 @@ class BatchWorkflowMixin:
 
         if profile_path is not None and not profile_path.exists():
             raise RuntimeError(f"No existe perfil ICC activo: {profile_path}")
+        recipe = self._visible_export_recipe_for_color_management(
+            recipe,
+            input_profile_path=profile_path,
+        )
 
         detail_adjustments = {
             "applied": bool(apply_adjust),
@@ -255,8 +259,12 @@ class BatchWorkflowMixin:
             else None
         )
         use_profile = bool(embed_profile and profile_path is not None)
-        if not self._require_color_managed_recipe_for_ui(
+        recipe = self._visible_export_recipe_for_color_management(
             settings["recipe"],
+            input_profile_path=profile_path if use_profile else None,
+        )
+        if not self._require_color_managed_recipe_for_ui(
+            recipe,
             input_profile_path=profile_path if use_profile else None,
             title=self.tr("Lote sin gestión de color"),
         ):
@@ -272,7 +280,7 @@ class BatchWorkflowMixin:
             payload = self._process_batch_files(
                 files=files,
                 out_dir=out_dir,
-                recipe=settings["recipe"],
+                recipe=recipe,
                 apply_adjust=apply_adjust,
                 use_profile=use_profile,
                 profile_path=profile_path,

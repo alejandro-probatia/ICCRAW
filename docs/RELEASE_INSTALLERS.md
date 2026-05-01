@@ -72,6 +72,33 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.5
+
+Release 0.3.5 is a performance and reliability release for professional-size
+RAW workflows:
+
+- cold MTF analysis prepares a full-resolution ROI in an external worker process
+  and reuses a persistent ROI cache for later recalculations,
+- the top progress bar is now the single global viewer for long preview, MTF and
+  background operations, with elapsed time and ETA,
+- the `Nitidez` tab no longer duplicates a second local progress bar,
+- batch rendering applies each RAW backpack when no registered development
+  profile id is assigned, so sharpening, denoise, CA, color and contrast reach
+  the final TIFF,
+- switching to an unconfigured image resets development controls and active ICC
+  state to the neutral ProPhoto/camera-WB policy,
+- generic no-chart output disables profiling mode/identity WB for visible/final
+  rendering, and camera RGB without an input ICC is rejected before writing a
+  TIFF.
+
+Expected artifacts:
+
+- `probraw_0.3.5_amd64.deb`
+- `probraw_0.3.5_amd64.deb.sha256`
+- `probraw-0.3.5.tar.gz`
+- `probraw-0.3.5-py3-none-any.whl`
+- `probraw_0.3.5_python_artifacts.sha256`
+
 ## Release 0.3.4
 
 Release 0.3.4 publishes the persistent full-resolution MTF sharpness analysis:

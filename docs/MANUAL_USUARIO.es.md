@@ -10,7 +10,7 @@ perfiles, hashes y artefactos de auditoría.
 
 ![ProbRAW: interfaz principal de revelado y perfilado](assets/screenshots/probraw-portada.png)
 
-Este manual cubre el flujo completo de ProbRAW 0.3.4: creación de sesión,
+Este manual cubre el flujo completo de ProbRAW 0.3.5: creación de sesión,
 perfilado con carta, perfil manual sin carta, copia de ajustes, cola de revelado,
 exportación TIFF, metadatos, Proof, C2PA, diagnóstico Gamut 3D, gestión de
 referencias de carta, estadísticas de sesión, histograma colorimétrico,
@@ -75,6 +75,11 @@ perfil asignado a esa imagen concreta. Las miniaturas indican el estado:
 - banda azul: perfil avanzado creado desde carta;
 - banda verde: perfil básico creado desde ajustes manuales;
 - sin banda: imagen sin perfil de ajuste asignado.
+
+Al cambiar de imagen, ProbRAW lee la mochila de ese RAW concreto. Si no existe
+mochila, los controles de receta, detalle, nitidez, ruido, aberración cromática,
+color y contraste vuelven a un estado neutro; la preview se prepara como RAW sin
+perfil personalizado usando ProPhoto RGB estándar y balance de blancos de cámara.
 
 ### Política de color
 
@@ -340,6 +345,10 @@ Resultado esperado:
 - mochila `RAW.probraw.json` con el espacio de salida genérico;
 - TIFF final en `02_DRV/` con el ICC estándar incrustado.
 
+Al escoger un espacio estándar sin carta, ProbRAW desactiva `Profiling mode`
+para el revelado visible/final y usa balance de cámara si el balance fijo era
+identidad. Esto evita que la preview y el TIFF sigan reglas de color distintas.
+
 ## 9. Copiar ajustes y mochilas
 
 ![Mochilas y copia de ajustes](assets/screenshots/probraw-mochila-ajustes.png)
@@ -386,6 +395,10 @@ a cada archivo.
 
 Si el TIFF de salida ya existe, ProbRAW crea una versión nueva:
 `captura.tiff`, `captura_v002.tiff`, `captura_v003.tiff`, etc.
+
+Al revelar la cola, cada RAW usa su perfil registrado o, si no hay perfil
+registrado, la mochila guardada junto a ese RAW. La nitidez, ruido, CA, color y
+contraste no se toman de otro archivo ni de los sliders actuales.
 
 ### Panel `Exportar derivados`
 

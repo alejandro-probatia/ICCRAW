@@ -17,6 +17,7 @@ from probraw.raw.preview import (
     apply_render_adjustments,
     apply_tone_curve,
     estimate_temperature_tint_from_neutral_sample,
+    extract_embedded_thumbnail,
     linear_to_srgb_display,
     load_image_for_preview,
     normalize_tone_curve_points,
@@ -251,6 +252,46 @@ def test_load_image_for_preview_downscales_non_raw(tmp_path: Path):
     assert loaded.ndim == 3
     assert loaded.shape[2] == 3
     assert max(loaded.shape[0], loaded.shape[1]) <= 1000
+
+
+def test_extract_embedded_thumbnail_applies_raw_orientation(tmp_path: Path, monkeypatch):
+    raw_path = tmp_path / "rotated.nef"
+    raw_path.write_bytes(b"raw")
+    source = np.zeros((2, 4, 3), dtype=np.uint8)
+    source[:, :2] = [255, 0, 0]
+    source[:, 2:] = [0, 255, 0]
+
+    from PIL import Image
+    import io
+
+    encoded = io.BytesIO()
+    Image.fromarray(source, mode="RGB").save(encoded, format="JPEG")
+
+    class FakeSizes:
+        flip = 6
+
+    class FakeThumb:
+        format = preview_module.rawpy.ThumbFormat.JPEG
+        data = encoded.getvalue()
+
+    class FakeRaw:
+        sizes = FakeSizes()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def extract_thumb(self):
+            return FakeThumb()
+
+    monkeypatch.setattr(preview_module, "open_rawpy", lambda _path: FakeRaw())
+
+    thumb = extract_embedded_thumbnail(raw_path, max_side=100)
+
+    assert thumb is not None
+    assert thumb.shape[:2] == (4, 2)
 
 
 def test_load_image_for_preview_hq_uses_half_size_when_preview_is_smaller(tmp_path: Path, monkeypatch):

@@ -22,6 +22,43 @@ To maintain full traceability, each change must:
 
 No pending changes.
 
+## [0.3.5] - 2026-05-02
+
+### Added
+
+- Global long-operation progress viewer for RAW preview loading, MTF ROI
+  preparation and background tasks, with elapsed time, estimated duration,
+  remaining time and phase.
+- Persistent full-resolution MTF ROI cache prepared by an external worker
+  process, so cold RAW analysis does not block the Qt UI thread.
+- Performance documentation with real NEF timings, implementation decision,
+  alternatives evaluated and references to Imatest, rawpy, LibRaw and darktable.
+
+### Changed
+
+- Cold MTF recalculation now starts explicitly when the full-resolution ROI cache
+  is cold; automatic refreshes use hot ROI data and no longer launch expensive
+  RAW work during slider interaction.
+- The `Nitidez` tab no longer duplicates the local progress panel; long analysis
+  status is reported from the always-visible global bar.
+- RAW preview loading publishes global progress when a load is expected or
+  observed to take roughly more than one second.
+
+### Fixed
+
+- Batch rendering now uses each RAW backpack when there is no registered
+  development-profile id, so sharpening, denoise, chromatic aberration, color
+  and contrast settings reach the rendered TIFF instead of leaking from the
+  current sliders.
+- Selecting an unconfigured image resets recipe, detail, color, contrast and
+  active ICC controls to the neutral ProPhoto/camera-WB policy instead of
+  carrying adjustments from the previous file.
+- Generic no-chart output spaces disable profiling mode and identity fixed white
+  balance for visible/final rendering, keeping preview and TIFF color policy
+  aligned.
+- Camera RGB output without an active input ICC is rejected before writing a
+  TIFF, preventing green/dark files in external viewers.
+
 ## [0.3.4] - 2026-05-01
 
 ### Added

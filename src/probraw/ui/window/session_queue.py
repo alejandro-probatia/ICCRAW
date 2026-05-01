@@ -137,14 +137,28 @@ class SessionQueueMixin:
         apply_adjust = bool(self.batch_apply_adjustments.isChecked())
         embed_profile = bool(self.batch_embed_profile.isChecked())
         groups: dict[str, list[Path]] = {}
-        for item, src in valid_entries:
-            profile_id = str(item.get("development_profile_id") or "")
-            groups.setdefault(profile_id, []).append(src)
+        settings_by_group: dict[str, dict[str, Any]] = {}
         try:
-            settings_by_profile = {
-                profile_id: self._development_profile_settings(profile_id)
-                for profile_id in groups
-            }
+            for item, src in valid_entries:
+                profile_id = str(item.get("development_profile_id") or "")
+                if profile_id:
+                    group_key = f"profile:{profile_id}"
+                    groups.setdefault(group_key, []).append(src)
+                    if group_key not in settings_by_group:
+                        settings_by_group[group_key] = self._development_profile_settings(profile_id)
+                    continue
+
+                sidecar_settings = self._development_settings_from_raw_sidecar(src)
+                if sidecar_settings is not None:
+                    group_key = f"sidecar:{self._normalized_path_key(src)}"
+                    groups.setdefault(group_key, []).append(src)
+                    settings_by_group[group_key] = sidecar_settings
+                    continue
+
+                group_key = "current:"
+                groups.setdefault(group_key, []).append(src)
+                if group_key not in settings_by_group:
+                    settings_by_group[group_key] = self._development_profile_settings("")
         except Exception as exc:
             QtWidgets.QMessageBox.warning(self, self.tr("Perfil de ajuste no válido"), str(exc))
             return
@@ -157,11 +171,11 @@ class SessionQueueMixin:
 
         def task():
             combined = {"input_files": len(valid_entries), "output_dir": str(out_dir), "outputs": [], "errors": [], "profiles": []}
-            for profile_id, group_files in groups.items():
-                settings = settings_by_profile[profile_id]
+            for group_key, group_files in groups.items():
+                settings = settings_by_group[group_key]
                 detail = self._detail_adjustment_kwargs_from_state(settings["detail_adjustments"])
                 profile_path = settings.get("icc_profile_path")
-                use_profile = bool(embed_profile and isinstance(profile_path, Path) and str(profile_path))
+                use_profile = bool(embed_profile and isinstance(profile_path, Path) and profile_path.exists())
                 payload = self._process_batch_files(
                     files=group_files,
                     out_dir=out_dir,
@@ -180,11 +194,7 @@ class SessionQueueMixin:
                     sidecar_render_adjustments=settings["render_adjustments"],
                     c2pa_config=c2pa_config,
                     proof_config=proof_config,
-                    development_profile={
-                        "id": settings["id"],
-                        "name": settings["name"],
-                        "kind": str((self._development_profile_by_id(settings["id"]) or {}).get("kind") or ""),
-                    },
+                    development_profile=self._profile_payload_from_development_settings(settings),
                 )
                 combined["outputs"].extend(payload.get("outputs", []))
                 combined["errors"].extend(payload.get("errors", []))

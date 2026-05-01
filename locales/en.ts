@@ -590,7 +590,7 @@
     </message>
     <message>
         <location filename="../src/probraw/ui/window/layout.py" line="18"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="57"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="62"/>
         <source>Abrir carpeta...</source>
         <translation>Open folder...</translation>
     </message>
@@ -601,7 +601,7 @@
     </message>
     <message>
         <location filename="../src/probraw/ui/window/layout.py" line="20"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="86"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="91"/>
         <source>Pantalla completa</source>
         <translation>Full screen</translation>
     </message>
@@ -626,980 +626,980 @@
         <translation>3. Development Queue</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="52"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="613"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="57"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="662"/>
         <source>Archivo</source>
         <translation>File</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="53"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="58"/>
         <source>Crear sesión...</source>
         <translation>Create session...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="54"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="59"/>
         <source>Abrir sesión...</source>
         <translation>Open session...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="55"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="281"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="60"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="330"/>
         <source>Guardar sesión</source>
         <translation>Save session</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="58"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="63"/>
         <source>Guardar preview PNG</source>
         <translation>Save preview PNG</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="59"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="64"/>
         <source>Aplicar ajustes a selección</source>
         <translation>Apply adjustments to selection</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="61"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="66"/>
         <source>Salir</source>
         <translation>Quit</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="63"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="68"/>
         <source>Configuracion</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="64"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="69"/>
         <source>Cargar receta...</source>
         <translation>Load recipe...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="65"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="70"/>
         <source>Guardar receta...</source>
         <translation>Save recipe...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="66"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="71"/>
         <source>Receta por defecto</source>
         <translation>Default recipe</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="68"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="73"/>
         <source>Configuracion global...</source>
         <translation>Global settings...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="70"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="75"/>
         <source>Ir a pestaña Sesión</source>
         <translation>Go to Session tab</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="71"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="76"/>
         <source>Ir a pestaña Revelado</source>
         <translation>Go to Development tab</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="72"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="77"/>
         <source>Ir a pestaña Cola</source>
         <translation>Go to Queue tab</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="74"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="79"/>
         <source>Perfil ICC</source>
         <translation>ICC Profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="75"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="80"/>
         <source>Cargar perfil activo...</source>
         <translation>Load active profile...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="76"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="81"/>
         <source>Usar perfil generado</source>
         <translation>Use generated profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="77"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="82"/>
         <source>Comparar reportes QA...</source>
         <translation>Compare QA reports...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="79"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="84"/>
         <source>Vista</source>
         <translation>View</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="80"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="85"/>
         <source>Comparar original/resultado</source>
         <translation>Compare original/result</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="85"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="90"/>
         <source>Ir a Nitidez</source>
         <translation>Go to Sharpness</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="87"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="92"/>
         <source>Restablecer distribución</source>
         <translation>Reset layout</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="89"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="94"/>
         <source>Ayuda</source>
         <translation>Help</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="90"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="95"/>
         <source>Diagnóstico herramientas...</source>
         <translation>Tool diagnostics...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="91"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="96"/>
         <source>Buscar actualizaciones...</source>
         <translation>Check for updates...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="99"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="1558"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="104"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1644"/>
         <source>Nitidez</source>
         <translation>Sharpness</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="237"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="242"/>
         <source>No se pudo restaurar la ultima sesion:</source>
         <translation>Could not restore last session:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="257"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="306"/>
         <source>Gestión de sesión</source>
         <translation>Session management</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="261"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="310"/>
         <source>Directorio raíz de sesión</source>
         <translation>Session root directory</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="265"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="314"/>
         <source>Nombre de sesión</source>
         <translation>Session name</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="269"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="318"/>
         <source>Condiciones de iluminación</source>
         <translation>Lighting conditions</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="273"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="322"/>
         <source>Notas de toma</source>
         <translation>Capture notes</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="278"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="327"/>
         <source>Usar carpeta actual</source>
         <translation>Use current folder</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="279"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="328"/>
         <source>Crear sesión</source>
         <translation>Create session</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="280"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="329"/>
         <source>Abrir sesión</source>
         <translation>Open session</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="284"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="319"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="333"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="368"/>
         <source>Sin sesión activa</source>
         <translation>No active session</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="291"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="340"/>
         <source>Sesiones recientes</source>
         <translation>Recent sessions</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="296"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="345"/>
         <source>Abrir reciente</source>
         <translation>Open recent</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="297"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="346"/>
         <source>Actualizar lista</source>
         <translation>Refresh list</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="300"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="349"/>
         <source>Resumen de sesión</source>
         <translation>Session summary</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="305"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="354"/>
         <source>Imágenes RAW</source>
         <translation>RAW images</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="306"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="355"/>
         <source>Imágenes TIFF</source>
         <translation>TIFF images</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="307"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="356"/>
         <source>Perfiles ICC</source>
         <translation>ICC profiles</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="308"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="357"/>
         <source>Perfiles de ajuste</source>
         <translation>Adjustment profiles</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="309"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="358"/>
         <source>Mochilas RAW</source>
         <translation>RAW sidecars</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="310"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="359"/>
         <source>Elementos en cola</source>
         <translation>Queued items</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="323"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="372"/>
         <source>Actualizar estadísticas</source>
         <translation>Refresh statistics</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="327"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="376"/>
         <source>Estructura persistente del proyecto</source>
         <translation>Persistent project structure</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="343"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="392"/>
         <source>00_configuraciones</source>
         <translation>00_configurations</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="345"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="394"/>
         <source>01_ORG originales RAW</source>
         <translation>01_ORG original RAW</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="347"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="396"/>
         <source>02_DRV derivados</source>
         <translation>02_DRV derived</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="384"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="433"/>
         <source>Carta de color: perfil avanzado de ajuste + ICC de entrada</source>
         <translation>Color chart: advanced adjustment profile + input ICC</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="388"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="437"/>
         <source>Carpeta de referencias colorimétricas</source>
         <translation>Colorimetric reference folder</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="390"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="439"/>
         <source>Referencias colorimétricas: todas las compatibles de la carpeta indicada</source>
         <translation>Colorimetric references: all compatible ones in the specified folder</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="397"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="446"/>
         <source>Referencia de carta</source>
         <translation>Chart reference</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="400"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="449"/>
         <source>Referencias incluidas y referencias personalizadas guardadas en la sesión.</source>
         <translation>Built-in references and custom references saved in the session.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="406"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="455"/>
         <source>Importar JSON</source>
         <translation>Import JSON</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="407"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="456"/>
         <source>Nueva personalizada</source>
         <translation>New custom</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="408"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="457"/>
         <source>Editar tabla</source>
         <translation>Edit table</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="409"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="458"/>
         <source>Validar</source>
         <translation>Validate</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="412"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="461"/>
         <source>Referencia carta JSON</source>
         <translation>Chart reference JSON</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="415"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="464"/>
         <source>Referencia de carta no validada</source>
         <translation>Chart reference not validated</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="422"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="471"/>
         <source>Perfil ICC de entrada</source>
         <translation>Input ICC profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="425"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="474"/>
         <source>Reporte perfil JSON</source>
         <translation>Profile report JSON</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="428"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="477"/>
         <source>Directorio artefactos</source>
         <translation>Artifacts directory</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="431"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="480"/>
         <source>Perfil de ajuste avanzado JSON</source>
         <translation>Advanced adjustment profile JSON</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="434"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="483"/>
         <source>Receta calibrada</source>
         <translation>Calibrated recipe</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="436"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="485"/>
         <source>Tipo de carta</source>
         <translation>Chart type</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="441"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="490"/>
         <source>Confianza mínima</source>
         <translation>Minimum confidence</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="449"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="498"/>
         <source>Permitir fallback</source>
         <translation>Allow fallback</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="453"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="502"/>
         <source>Formato ICC</source>
         <translation>ICC format</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="458"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="507"/>
         <source>Tipo de perfil ICC</source>
         <translation>ICC profile type</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="464"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="513"/>
         <source>Calidad colprof</source>
         <translation>colprof quality</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="471"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="520"/>
         <source>Args extra colprof</source>
         <translation>Extra colprof args</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="473"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="522"/>
         <source>Ejemplo: -D &quot;Perfil Camara Museo&quot;</source>
         <translation>Example: -D &quot;Museum Camera Profile&quot;</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="476"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="525"/>
         <source>Cámara (opcional)</source>
         <translation>Camera (optional)</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="483"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="532"/>
         <source>Lente (opcional)</source>
         <translation>Lens (optional)</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="495"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="544"/>
         <source>Marcado manual de carta</source>
         <translation>Manual chart marking</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="498"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="547"/>
         <source>Marcar en visor</source>
         <translation>Mark in viewer</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="499"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="548"/>
         <source>Limpiar puntos</source>
         <translation>Clear points</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="500"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="549"/>
         <source>Guardar detección</source>
         <translation>Save detection</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="502"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="551"/>
         <source>Puntos: 0/4</source>
         <translation>Points: 0/4</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="509"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="558"/>
         <source>Generar perfil avanzado con carta</source>
         <translation>Generate advanced profile with chart</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="512"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="561"/>
         <source>Sin perfil avanzado generado</source>
         <translation>No advanced profile generated</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="519"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="568"/>
         <source>Resultado JSON de la generación de perfil</source>
         <translation>Profile generation JSON result</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="528"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="577"/>
         <source>Perfil de ajuste activo</source>
         <translation>Active adjustment profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="531"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="580"/>
         <source>Perfil de ajuste guardado. Al aplicarlo, sus parametros pasan a los controles de revelado del RAW.</source>
         <translation>Adjustment profile saved. When applied, its parameters are loaded into the RAW development controls.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="535"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="584"/>
         <source>Nombre del ajuste</source>
         <translation>Adjustment name</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="539"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="588"/>
         <source>Espacio estándar sin carta</source>
         <translation>Standard space without chart</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="543"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="592"/>
         <source>Para imágenes sin carta, revela el RAW en un espacio RGB estándar real (sRGB, Adobe RGB o ProPhoto RGB) e incrusta ese perfil ICC estándar. Con carta se mantiene RGB de cámara e ICC de entrada de sesión.</source>
         <translation>For images without a chart, develops the RAW in a real standard RGB space (sRGB, Adobe RGB or ProPhoto RGB) and embeds that standard ICC profile. With a chart, camera RGB and session input ICC are preserved.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="548"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="597"/>
         <source>Carta / RGB de cámara</source>
         <translation>Chart / Camera RGB</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="549"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="598"/>
         <source>sRGB estándar</source>
         <translation>Standard sRGB</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="550"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="599"/>
         <source>Adobe RGB (1998) estándar</source>
         <translation>Standard Adobe RGB (1998)</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="551"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="600"/>
         <source>ProPhoto RGB estándar</source>
         <translation>Standard ProPhoto RGB</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="556"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="605"/>
         <source>Guardar perfil básico</source>
         <translation>Save basic profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="557"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="606"/>
         <source>Aplicar a controles</source>
         <translation>Apply to controls</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="558"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="607"/>
         <source>Asignar activo a cola</source>
         <translation>Assign active to queue</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="561"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="610"/>
         <source>Sin perfiles de ajuste guardados</source>
         <translation>No saved adjustment profiles</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="575"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="624"/>
         <source>Perfiles de ajuste por archivo</source>
         <translation>Per-file adjustment profiles</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="583"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="632"/>
         <source>ICC activo para preview y exportación</source>
         <translation>Active ICC for preview and export</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="596"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="645"/>
         <source>Cola de imágenes para revelado</source>
         <translation>Image development queue</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="600"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="649"/>
         <source>Añadir selección</source>
         <translation>Add selection</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="601"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="650"/>
         <source>Añadir RAW de sesión</source>
         <translation>Add session RAW</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="602"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="651"/>
         <source>Asignar perfil activo</source>
         <translation>Assign active profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="603"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="652"/>
         <source>Quitar seleccionados</source>
         <translation>Remove selected</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="604"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="653"/>
         <source>Limpiar cola</source>
         <translation>Clear queue</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="605"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="654"/>
         <source>Revelar cola</source>
         <translation>Develop queue</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="608"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="657"/>
         <source>Cola vacía</source>
         <translation>Empty queue</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="613"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="662"/>
         <source>Perfil</source>
         <translation>Profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="613"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="637"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="662"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="686"/>
         <source>Estado</source>
         <translation>Status</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="613"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="662"/>
         <source>TIFF salida</source>
         <translation>Output TIFF</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="613"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="662"/>
         <source>Mensaje</source>
         <translation>Message</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="624"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="673"/>
         <source>Monitoreo de ejecución</source>
         <translation>Execution monitor</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="628"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="677"/>
         <source>Sin tareas en ejecución</source>
         <translation>No tasks running</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="637"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="686"/>
         <source>ID</source>
         <translation>ID</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="637"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="686"/>
         <source>Tarea</source>
         <translation>Task</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="637"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="686"/>
         <source>Detalle</source>
         <translation>Detail</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="646"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="695"/>
         <source>Eventos y trazas de flujo</source>
         <translation>Flow events and traces</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="664"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="713"/>
         <source>Explorador</source>
         <translation>Explorer</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="665"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="714"/>
         <source>Diagnóstico</source>
         <translation>Diagnostics</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="666"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="715"/>
         <source>Metadatos</source>
         <translation>Metadata</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="667"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="716"/>
         <source>Log</source>
         <translation>Log</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="716"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="765"/>
         <source>Explorador de unidades y carpetas</source>
         <translation>Drive and folder explorer</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="720"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="769"/>
         <source>Unidad / raiz</source>
         <translation>Drive / root</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="724"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="1242"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="773"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1328"/>
         <source>Actualizar</source>
         <translation>Refresh</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="727"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="1452"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="1453"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="776"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1538"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1539"/>
         <source></source>
         <translation></translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="740"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="789"/>
         <source>Histograma RGB colorimétrico</source>
         <translation>Colorimetric RGB histogram</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="748"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="797"/>
         <source>Testigos clipping</source>
         <translation>Clipping indicators</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="753"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="802"/>
         <source>Marca clipping de sombras y luces sobre el histograma.</source>
         <translation>Marks shadow and highlight clipping on the histogram.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="756"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="805"/>
         <source>Overlay imagen</source>
         <translation>Image overlay</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="762"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="811"/>
         <source>Muestra clipping en la imagen: azul en sombras y rojo en luces.</source>
         <translation>Shows clipping in the image: blue for shadows and red for highlights.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="773"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="822"/>
         <source>Sombras: --</source>
         <translation>Shadows: --</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="775"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="824"/>
         <source>Luces: --</source>
         <translation>Highlights: --</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="995"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="996"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1064"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1065"/>
         <source>Restaurar columnas laterales</source>
         <translation>Restore side columns</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1007"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="1008"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="1093"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1076"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1077"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1167"/>
         <source>Enfocar visor ocultando columnas laterales</source>
         <translation>Focus viewer by hiding side columns</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1073"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1147"/>
         <source>Comparar original / resultado</source>
         <translation>Compare original / result</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1079"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1153"/>
         <source>Aplicar perfil ICC en resultado</source>
         <translation>Apply ICC profile to result</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1084"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1158"/>
         <source>Desactivado por defecto para evitar dominantes si el perfil no corresponde a camara + iluminacion + receta actuales.</source>
         <translation>Disabled by default to avoid color casts if the profile does not match the current camera + lighting + recipe.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1089"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1163"/>
         <source>Enfocar visor</source>
         <translation>Focus viewer</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1099"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1170"/>
         <source>Reducir</source>
         <translation>Zoom out</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1100"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1176"/>
         <source>Ampliar</source>
         <translation>Enlarge</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1101"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1187"/>
         <source>Zoom 1:1</source>
         <translation>Zoom 1:1</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1102"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1188"/>
         <source>Encajar</source>
         <translation>Fit</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1103"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1189"/>
         <source>Girar izquierda</source>
         <translation>Rotate left</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1104"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1190"/>
         <source>Girar derecha</source>
         <translation>Rotate right</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1106"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1192"/>
         <source>Precache carpeta</source>
         <translation>Precache folder</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1111"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1197"/>
         <source>Precache 1:1</source>
         <translation>Precache 1:1</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1124"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="1279"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1210"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1365"/>
         <source>Sin archivo seleccionado</source>
         <translation>No file selected</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1130"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1216"/>
         <source>100%</source>
         <translation>100%</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1149"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1235"/>
         <source>Sin diagnóstico de imagen</source>
         <translation>No image diagnostics</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1153"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1239"/>
         <source>Imagen</source>
         <translation>Image</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1162"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1248"/>
         <source>Sin datos de carta</source>
         <translation>No chart data</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1169"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1255"/>
         <source>Actualizar datos de carta desde el informe de perfil</source>
         <translation>Update chart data from profile report</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1178"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1264"/>
         <source>Parche</source>
         <translation>Patch</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1198"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1284"/>
         <source>Carta</source>
         <translation>Chart</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1208"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1294"/>
         <source>Perfil A</source>
         <translation>Profile A</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1213"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1299"/>
         <source>Perfil B</source>
         <translation>Profile B</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1220"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1306"/>
         <source>ICC A</source>
         <translation>ICC A</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1221"/>
-        <location filename="../src/probraw/ui/window/layout.py" line="1228"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1307"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1314"/>
         <source>...</source>
         <translation>...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1227"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1313"/>
         <source>ICC B</source>
         <translation>ICC B</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1238"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1324"/>
         <source>Gamut 3D: sin perfil generado</source>
         <translation>3D gamut: no generated profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1246"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1332"/>
         <source>Gamut 3D</source>
         <translation>3D gamut</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1256"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1342"/>
         <source>ICC activo / salida actual</source>
         <translation>Active ICC / current output</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1257"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1343"/>
         <source>Monitor</source>
         <translation>Monitor</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1261"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1347"/>
         <source>ICC personalizado</source>
         <translation>Custom ICC</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1285"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1371"/>
         <source>Leer metadatos</source>
         <translation>Read metadata</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1286"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1372"/>
         <source>JSON completo</source>
         <translation>Full JSON</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1295"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1381"/>
         <source>Resumen</source>
         <translation>Summary</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1296"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1382"/>
         <source>EXIF</source>
         <translation>EXIF</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1297"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1383"/>
         <source>GPS</source>
         <translation>GPS</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1298"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1384"/>
         <source>C2PA</source>
         <translation>C2PA</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1299"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1385"/>
         <source>Todo</source>
         <translation>All</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1305"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1391"/>
         <source>Campo</source>
         <translation>Field</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1305"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1391"/>
         <source>Valor</source>
         <translation>Value</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1327"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1413"/>
         <source>Eventos y trazas de ejecucion</source>
         <translation>Execution events and traces</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1339"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1425"/>
         <source>Miniaturas</source>
         <translation>Thumbnails</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1394"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1480"/>
         <source>Usar selección como referencias colorimétricas</source>
         <translation>Use selection as colorimetric references</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1395"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1481"/>
         <source>Añadir selección a cola</source>
         <translation>Add selection to queue</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1399"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1485"/>
         <source>Guardar perfil básico en imagen</source>
         <translation>Save basic profile in image</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1400"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1486"/>
         <source>Copiar perfil de ajuste</source>
         <translation>Copy adjustment profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1401"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1487"/>
         <source>Pegar perfil de ajuste</source>
         <translation>Paste adjustment profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1443"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1529"/>
         <source>Resultado</source>
         <translation>Result</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1479"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1565"/>
         <source>Antes</source>
         <translation>Before</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1480"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1566"/>
         <source>Despues</source>
         <translation>After</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1535"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1621"/>
         <source>Color / calibración</source>
         <translation>Color / calibration</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1538"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1624"/>
         <source>Brillo y contraste</source>
         <translation>Brightness and contrast</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1539"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1625"/>
         <source>Color</source>
         <translation>Color</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1546"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1632"/>
         <source>Color y contraste</source>
         <translation>Color and contrast</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1561"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1647"/>
         <source>Criterios RAW globales</source>
         <translation>Global RAW criteria</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1562"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1648"/>
         <source>RAW Global</source>
         <translation>RAW Global</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1563"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1649"/>
         <source>Exportar derivados</source>
         <translation>Export derived</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/layout.py" line="1564"/>
+        <location filename="../src/probraw/ui/window/layout.py" line="1650"/>
         <source>RAW / exportación</source>
         <translation>RAW / export</translation>
     </message>
@@ -1607,521 +1607,556 @@
 <context>
     <name>MTFAnalysisMixin</name>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="26"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="974"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="28"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1648"/>
         <source>Métricas MTF</source>
         <translation>MTF metrics</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="27"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="29"/>
         <source>Contexto técnico</source>
         <translation>Technical context</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="34"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="36"/>
         <source>Seleccionar borde</source>
         <translation>Select edge</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="38"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="40"/>
         <source>Actualizar</source>
         <translation>Refresh</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="39"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="41"/>
+        <source>Auto nitidez</source>
+        <translation>Auto sharpen</translation>
+    </message>
+    <message>
+        <location filename="../src/probraw/ui/window/mtf.py" line="42"/>
         <source>Ampliar</source>
         <translation>Enlarge</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="40"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="43"/>
         <source>Copiar datos</source>
         <translation>Copy data</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="41"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="44"/>
         <source>Exportar CSV</source>
         <translation>Export CSV</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="42"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="45"/>
         <source>Limpiar</source>
         <translation>Clear</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="46"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="49"/>
         <source>Actualizar MTF con los ajustes</source>
         <translation>Update MTF with adjustments</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="50"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="53"/>
         <source>Sensor ancho (mm)</source>
         <translation>Sensor width (mm)</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="55"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="64"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="73"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="715"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="998"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="999"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1064"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1075"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="58"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="67"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="76"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1389"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1672"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1673"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1738"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1749"/>
         <source>sin dato</source>
         <translation>unknown</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="59"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="62"/>
         <source>Sensor alto (mm)</source>
         <translation>Sensor height (mm)</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="68"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="71"/>
         <source>Tamaño de píxel (µm)</source>
         <translation>Pixel size (µm)</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="76"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="153"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="166"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="79"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="156"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="169"/>
         <source>Pitch: pendiente de metadatos</source>
         <translation>Pitch: waiting for metadata</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="82"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="598"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="85"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1272"/>
         <source>MTF: selecciona una ROI con un borde inclinado.</source>
         <translation>MTF: select an ROI with a slanted edge.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="90"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="954"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="93"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1628"/>
         <source>Dato</source>
         <translation>Data</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="90"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="93"/>
         <source>Valor</source>
         <translation>Value</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="123"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="151"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="126"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="154"/>
         <source>Pitch: manual</source>
         <translation>Pitch: manual</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="132"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="135"/>
         <source>Pitch: no disponible en metadatos</source>
         <translation>Pitch: unavailable in metadata</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="143"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="146"/>
         <source>Pitch estimado desde metadatos</source>
         <translation>Pitch estimated from metadata</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="193"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="196"/>
         <source>Pitch calculado desde sensor manual</source>
         <translation>Pitch calculated from manual sensor size</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="227"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="230"/>
         <source>tamaño de sensor</source>
         <translation>sensor size</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="228"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="231"/>
         <source>anchura de sensor</source>
         <translation>sensor width</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="229"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="232"/>
         <source>altura de sensor</source>
         <translation>sensor height</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="230"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="233"/>
         <source>resolución de plano focal</source>
         <translation>focal-plane resolution</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="231"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="234"/>
         <source>equivalencia 35 mm</source>
         <translation>35 mm equivalence</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="232"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="235"/>
         <source>manual</source>
         <translation>manual</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="233"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="236"/>
         <source>sensor manual</source>
         <translation>manual sensor</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="234"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="237"/>
         <source>sidecar</source>
         <translation>sidecar</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="241"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1094"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1105"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="244"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1768"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1779"/>
         <source>Info</source>
         <translation>Info</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="241"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="244"/>
         <source>Carga primero una imagen en el visor.</source>
         <translation>Load an image in the viewer first.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="249"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="252"/>
         <source>MTF: arrastra un rectángulo alrededor de un borde inclinado</source>
         <translation>MTF: drag a rectangle around a slanted edge</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="251"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="254"/>
         <source>Selección MTF desactivada</source>
         <translation>MTF selection disabled</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="327"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="298"/>
+        <source>Nitidez</source>
+        <translation>Sharpness</translation>
+    </message>
+    <message>
+        <location filename="../src/probraw/ui/window/mtf.py" line="367"/>
         <source>MTF recuperada del sidecar:</source>
         <translation>MTF restored from sidecar:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="382"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="422"/>
         <source>Pitch recuperado de MTF guardada</source>
         <translation>Pitch restored from saved MTF</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="548"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="935"/>
+        <source>Auto nitidez: selecciona primero una ROI MTF.</source>
+        <translation>Auto sharpen: select an MTF ROI first.</translation>
+    </message>
+    <message>
+        <location filename="../src/probraw/ui/window/mtf.py" line="937"/>
+        <source>Auto nitidez: evaluando ROI a resolución real...</source>
+        <translation>Auto sharpen: evaluating full-resolution ROI...</translation>
+    </message>
+    <message>
+        <location filename="../src/probraw/ui/window/mtf.py" line="947"/>
+        <source>Auto nitidez: no se pudo preparar la ROI.</source>
+        <translation>Auto sharpen: could not prepare the ROI.</translation>
+    </message>
+    <message>
+        <location filename="../src/probraw/ui/window/mtf.py" line="978"/>
+        <source>Auto nitidez: no se encontró una combinación válida.</source>
+        <translation>Auto sharpen: no valid combination found.</translation>
+    </message>
+    <message>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1189"/>
+        <source>Auto nitidez aplicada</source>
+        <translation>Auto sharpen applied</translation>
+    </message>
+    <message>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1195"/>
         <source>MTF: selecciona una ROI de borde inclinado.</source>
         <translation>MTF: select a slanted-edge ROI.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="550"/>
-        <source>MTF: cargando fuente a resolución real...</source>
-        <translation>MTF: loading full-resolution source...</translation>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1197"/>
+        <source>MTF: preparando ROI a resolución real...</source>
+        <translation>MTF: preparing full-resolution ROI...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="556"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1204"/>
         <source>MTF: no se pudo cargar la imagen a resolución real.</source>
         <translation>MTF: could not load the full-resolution image.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="603"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1277"/>
         <source>lp/mm válido solo si la ROI está a escala 1:1.</source>
         <translation>lp/mm is valid only if the ROI is at 1:1 scale.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="610"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="620"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1284"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1294"/>
         <source>no cruza</source>
         <translation>no crossing</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="647"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="651"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1321"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1325"/>
         <source>Estado</source>
         <translation>Status</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="651"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1325"/>
         <source>Sin medición MTF</source>
         <translation>No MTF measurement</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="674"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1010"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1011"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1348"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1684"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1685"/>
         <source>MTF50</source>
         <translation>MTF50</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="675"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1012"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1013"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1349"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1686"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1687"/>
         <source>MTF30</source>
         <translation>MTF30</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="676"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1014"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1015"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1350"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1688"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1689"/>
         <source>MTF10</source>
         <translation>MTF10</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="677"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1016"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1351"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1690"/>
         <source>Nyquist</source>
         <translation>Nyquist</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="678"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1017"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1352"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1691"/>
         <source>Acutancia</source>
         <translation>Acutance</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="679"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1018"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1353"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1692"/>
         <source>Ángulo de borde</source>
         <translation>Edge angle</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="680"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1019"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1354"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1693"/>
         <source>Contraste de borde</source>
         <translation>Edge contrast</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="681"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1355"/>
         <source>Sobreimpulso / subimpulso</source>
         <translation>Overshoot / undershoot</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="687"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1361"/>
         <source>Post-Nyquist rango</source>
         <translation>Post-Nyquist range</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="691"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1022"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1023"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1365"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1696"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1697"/>
         <source>Post-Nyquist pico</source>
         <translation>Post-Nyquist peak</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="694"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1368"/>
         <source>Post-Nyquist media</source>
         <translation>Post-Nyquist mean</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="695"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1369"/>
         <source>Post-Nyquist RMS</source>
         <translation>Post-Nyquist RMS</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="696"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1024"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1370"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1698"/>
         <source>Energía post/Nyquist</source>
         <translation>Post/Nyquist energy</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="700"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1374"/>
         <source>Post-Nyquist</source>
         <translation>Post-Nyquist</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="700"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1374"/>
         <source>sin muestras extendidas</source>
         <translation>no extended samples</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="710"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1384"/>
         <source>Fuente</source>
         <translation>Source</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="710"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1384"/>
         <source>preview actual</source>
         <translation>current preview</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="711"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1385"/>
         <source>Imagen análisis</source>
         <translation>Analysis image</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="711"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="712"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1385"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1386"/>
         <source>no disponible</source>
         <translation>not available</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="712"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1386"/>
         <source>Imagen visor</source>
         <translation>Viewer image</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="713"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1003"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1387"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1677"/>
         <source>ROI</source>
         <translation>ROI</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="714"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1388"/>
         <source>ROI muestras</source>
         <translation>ROI samples</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="715"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1389"/>
         <source>Pitch píxel</source>
         <translation>Pixel pitch</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="716"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1390"/>
         <source>Muestras ESF</source>
         <translation>ESF samples</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="717"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1391"/>
         <source>Muestras LSF</source>
         <translation>LSF samples</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="718"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1392"/>
         <source>Muestras MTF</source>
         <translation>MTF samples</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="719"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1393"/>
         <source>Muestras MTF extendida</source>
         <translation>Extended MTF samples</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="720"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1394"/>
         <source>Rango frecuencia MTF</source>
         <translation>MTF frequency range</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="721"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1395"/>
         <source>Rango frecuencia extendida</source>
         <translation>Extended frequency range</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="722"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1396"/>
         <source>Nota post-Nyquist</source>
         <translation>Post-Nyquist note</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="722"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1396"/>
         <source>diagnóstico exploratorio; no interpretar como resolución real por encima del límite de muestreo</source>
         <translation>exploratory diagnostic; do not interpret as real resolution above the sampling limit</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="723"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1397"/>
         <source>Advertencias</source>
         <translation>Warnings</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="723"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1397"/>
         <source>ninguna</source>
         <translation>none</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="728"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1402"/>
         <source>ROI visor</source>
         <translation>Viewer ROI</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="734"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="740"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1408"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1414"/>
         <source>sin datos</source>
         <translation>no data</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="874"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1548"/>
         <source>MTF guardada en sidecar:</source>
         <translation>MTF saved in sidecar:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="901"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1575"/>
         <source>MTF guardada</source>
         <translation>Saved MTF</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="919"/>
-        <location filename="../src/probraw/ui/window/mtf.py" line="934"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1593"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1608"/>
         <source>Comparar MTF</source>
         <translation>Compare MTF</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="920"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1594"/>
         <source>Selecciona exactamente dos miniaturas con datos MTF guardados.</source>
         <translation>Select exactly two thumbnails with saved MTF data.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="935"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1609"/>
         <source>No hay MTF guardada para:</source>
         <translation>No saved MTF for:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="948"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1622"/>
         <source>Comparación MTF</source>
         <translation>MTF comparison</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="957"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1631"/>
         <source>Diferencia segunda - primera</source>
         <translation>Difference second - first</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="995"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1669"/>
         <source>Archivo</source>
         <translation>File</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="997"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1671"/>
         <source>Medición</source>
         <translation>Measurement</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1020"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1694"/>
         <source>Sobreimpulso</source>
         <translation>Overshoot</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1021"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1695"/>
         <source>Subimpulso</source>
         <translation>Undershoot</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1094"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1768"/>
         <source>No hay medición MTF para copiar.</source>
         <translation>No MTF measurement to copy.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1100"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1774"/>
         <source>Datos MTF copiados al portapapeles</source>
         <translation>MTF data copied to the clipboard</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1105"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1779"/>
         <source>No hay medición MTF para exportar.</source>
         <translation>No MTF measurement to export.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1110"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1784"/>
         <source>Exportar MTF CSV</source>
         <translation>Export MTF CSV</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1118"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1792"/>
         <source>Datos MTF exportados:</source>
         <translation>MTF data exported:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1165"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1839"/>
         <source>Sugerencia: reduce acutancia o radio; hay halo/sobreimpulso.</source>
         <translation>Suggestion: reduce acutance or radius; halo/overshoot is present.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1167"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1841"/>
         <source>Sugerencia: puedes probar más acutancia con radio bajo.</source>
         <translation>Suggestion: you can try more acutance with a low radius.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1168"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1842"/>
         <source>Sugerencia: ajuste equilibrado para esta ROI.</source>
         <translation>Suggestion: balanced adjustment for this ROI.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/mtf.py" line="1173"/>
+        <location filename="../src/probraw/ui/window/mtf.py" line="1847"/>
         <source>Análisis MTF</source>
         <translation>MTF analysis</translation>
     </message>
@@ -2308,241 +2343,255 @@ Continue?</translation>
 <context>
     <name>PreviewMenuMixin</name>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="37"/>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="41"/>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="44"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="38"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="42"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="45"/>
         <source>Actualizaciones</source>
         <translation>Updates</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="48"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="49"/>
         <source>Acerca de </source>
         <translation>About </translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="61"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="62"/>
         <source>Revelado RAW tecnico, trazable y reproducible para entornos cientificos.</source>
         <translation>Technical, traceable and reproducible RAW development for scientific environments.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="81"/>
         <source>Director del proyecto:</source>
-        <translation>Project director:</translation>
+        <translation type="vanished">Project director:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="82"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="92"/>
+        <source>Entidades colaboradoras:</source>
+        <translation>Collaborating organizations:</translation>
+    </message>
+    <message>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="93"/>
+        <source>Direccion y desarrollo:</source>
+        <translation>Direction and development:</translation>
+    </message>
+    <message>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="94"/>
+        <source>Contacto:</source>
+        <translation>Contact:</translation>
+    </message>
+    <message>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="95"/>
         <source>Version en ejecucion:</source>
         <translation>Running version:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="83"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="96"/>
         <source>Backend:</source>
         <translation>Backend:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="85"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="98"/>
         <source>Soporte AMaZE:</source>
         <translation>AMaZE support:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="86"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="99"/>
         <source>Estado de version:</source>
         <translation>Version status:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="86"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="99"/>
         <source>Sin comprobar</source>
         <translation>Not checked</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="91"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="104"/>
         <source>La comprobacion usa GitHub Releases; la actualizacion automatica descarga y ejecuta el instalador.</source>
         <translation>The check uses GitHub Releases; automatic update downloads and runs the installer.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="98"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="111"/>
         <source>Comprobar ultima version</source>
         <translation>Check latest version</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="99"/>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="162"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="112"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="175"/>
         <source>Actualizar automaticamente</source>
         <translation>Update automatically</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="100"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="113"/>
         <source>Abrir releases</source>
         <translation>Open releases</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="101"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="114"/>
         <source>Cerrar</source>
         <translation>Close</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="126"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="139"/>
         <source>Comprobando version mas reciente...</source>
         <translation>Checking latest version...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="145"/>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="148"/>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="151"/>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="156"/>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="198"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="158"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="161"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="164"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="169"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="211"/>
         <source>Actualizacion</source>
         <translation>Update</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="145"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="158"/>
         <source>Primero comprueba la ultima version.</source>
         <translation>First check the latest version.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="151"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="164"/>
         <source>Ya estas en la ultima version.</source>
         <translation>You are already on the latest version.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="157"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="170"/>
         <source>No hay instalador automatico para esta plataforma en la release detectada.</source>
         <translation>No automatic installer available for this platform in the detected release.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="163"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="176"/>
         <source>Se descargara el instalador mas reciente y se ejecutara en modo silencioso.
 Deseas continuar?</source>
         <translation>The latest installer will be downloaded and run in silent mode.
 Do you want to continue?</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="172"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="185"/>
         <source>Descargando e iniciando actualizacion...</source>
         <translation>Downloading and starting update...</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="186"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="199"/>
         <source>Instalador lanzado correctamente.</source>
         <translation>Installer launched successfully.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="189"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="202"/>
         <source>Actualizacion iniciada</source>
         <translation>Update started</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="190"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="203"/>
         <source>Se ha iniciado el instalador de actualizacion:</source>
         <translation>The update installer has been started:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="191"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="204"/>
         <source>Cierra ProbRAW cuando el instalador lo solicite.</source>
         <translation>Close ProbRAW when the installer requests it.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="197"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="210"/>
         <source>No se pudo iniciar la actualizacion automatica.</source>
         <translation>Could not start the automatic update.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="274"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="287"/>
         <source>Diagnostico herramientas: faltan</source>
         <translation>Tool diagnostics: missing</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="277"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="290"/>
         <source>Diagnostico herramientas: entorno externo completo</source>
         <translation>Tool diagnostics: complete external environment</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="281"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="294"/>
         <source>Diagnostico herramientas</source>
         <translation>Tool diagnostics</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="282"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="295"/>
         <source>Faltan herramientas requeridas en PATH:</source>
         <translation>Required tools missing from PATH:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="284"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="297"/>
         <source>Faltan herramientas externas requeridas</source>
         <translation>Required external tools missing</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="286"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="299"/>
         <source>Herramientas externas disponibles</source>
         <translation>External tools available</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="291"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="304"/>
         <source>Selecciona perfil ICC</source>
         <translation>Select ICC profile</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="299"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="312"/>
         <source>no disponible</source>
         <translation>not available</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="302"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="315"/>
         <source>Perfil no activable</source>
         <translation>Profile cannot be activated</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="303"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="316"/>
         <source>No se activa el perfil porque su estado QA es</source>
         <translation>The profile is not activated because its QA status is</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="304"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="317"/>
         <source>Regenera el perfil con referencias RAW/DNG originales.</source>
         <translation>Regenerate the profile with original RAW/DNG references.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="322"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="335"/>
         <source>Perfil activo:</source>
         <translation>Active profile:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="329"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="342"/>
         <source>Comparar reportes QA de sesion</source>
         <translation>Compare session QA reports</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="338"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="351"/>
         <source>Comparacion QA</source>
         <translation>QA comparison</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="343"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="356"/>
         <source>Comparados</source>
         <translation>Compared</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="343"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="356"/>
         <source>reportes QA</source>
         <translation>QA reports</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="379"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="392"/>
         <source>Receta cargada:</source>
         <translation>Recipe loaded:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="386"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="399"/>
         <source>Guardar receta</source>
         <translation>Save recipe</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="402"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="415"/>
         <source>Receta guardada:</source>
         <translation>Recipe saved:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_menu.py" line="407"/>
+        <location filename="../src/probraw/ui/window/preview_menu.py" line="420"/>
         <source>Receta restablecida a valores por defecto</source>
         <translation>Recipe reset to default values</translation>
     </message>
@@ -2600,32 +2649,32 @@ Do you want to continue?</translation>
         <translation>Neutral point: no sample</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_recipe.py" line="571"/>
+        <location filename="../src/probraw/ui/window/preview_recipe.py" line="596"/>
         <source>Histograma: sRGB colorimétrico tras ICC de entrada, antes del ICC del monitor.</source>
         <translation>Histogram: colorimetric sRGB after input ICC, before monitor ICC.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_recipe.py" line="572"/>
+        <location filename="../src/probraw/ui/window/preview_recipe.py" line="597"/>
         <source>Histograma: sRGB de preview, antes del ICC del monitor.</source>
         <translation>Histogram: preview sRGB, before monitor ICC.</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_recipe.py" line="593"/>
+        <location filename="../src/probraw/ui/window/preview_recipe.py" line="618"/>
         <source>Sombras: --</source>
         <translation>Shadows: --</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_recipe.py" line="594"/>
+        <location filename="../src/probraw/ui/window/preview_recipe.py" line="619"/>
         <source>Luces: --</source>
         <translation>Highlights: --</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_recipe.py" line="601"/>
+        <location filename="../src/probraw/ui/window/preview_recipe.py" line="626"/>
         <source>Sombras:</source>
         <translation>Shadows:</translation>
     </message>
     <message>
-        <location filename="../src/probraw/ui/window/preview_recipe.py" line="602"/>
+        <location filename="../src/probraw/ui/window/preview_recipe.py" line="627"/>
         <source>Luces:</source>
         <translation>Highlights:</translation>
     </message>
@@ -2633,7 +2682,7 @@ Do you want to continue?</translation>
 <context>
     <name>PreviewRenderMixin</name>
     <message>
-        <location filename="../src/probraw/ui/window/preview_render.py" line="593"/>
+        <location filename="../src/probraw/ui/window/preview_render.py" line="597"/>
         <source>Aviso</source>
         <translation>Warning</translation>
     </message>
@@ -2641,7 +2690,7 @@ Do you want to continue?</translation>
 <context>
     <name>ProbRawMainWindow</name>
     <message>
-        <location filename="../src/probraw/gui.py" line="253"/>
+        <location filename="../src/probraw/gui.py" line="261"/>
         <source>Listo</source>
         <translation>Ready</translation>
     </message>

@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
+import probraw.analysis.mtf as mtf_module
 from probraw.analysis.mtf import analyze_slanted_edge_mtf
 
 
@@ -37,6 +38,23 @@ def test_slanted_edge_mtf_reports_curve_and_metrics():
     assert 0.05 < result.mtf50 < 0.5
     assert result.edge_contrast > 0.6
     assert abs(result.esf[-1] - result.esf[-5]) < 0.05
+
+
+def test_slanted_edge_mtf_converts_luminance_after_roi_crop(monkeypatch):
+    image = _slanted_edge_image(blur_sigma=1.2, size=220)
+    seen_shapes: list[tuple[int, int]] = []
+    original_luminance = mtf_module._luminance_image
+
+    def wrapped_luminance(image_rgb):
+        seen_shapes.append(tuple(image_rgb.shape[:2]))
+        return original_luminance(image_rgb)
+
+    monkeypatch.setattr(mtf_module, "_luminance_image", wrapped_luminance)
+
+    result = analyze_slanted_edge_mtf(image, roi=(40, 45, 120, 110))
+
+    assert result.roi == (40, 45, 120, 110)
+    assert seen_shapes == [(110, 120)]
 
 
 def test_slanted_edge_mtf_detects_blur_difference():

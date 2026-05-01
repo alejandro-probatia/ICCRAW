@@ -7,10 +7,14 @@ class PreviewRenderMixin:
     def _on_slider_change(self) -> None:
         if self._original_linear is not None:
             self._schedule_preview_refresh()
+        if hasattr(self, "_schedule_mtf_refresh"):
+            self._schedule_mtf_refresh(interactive=self._is_preview_interaction_active())
 
     def _on_slider_release(self) -> None:
         if self._original_linear is not None:
             self._schedule_preview_refresh()
+        if hasattr(self, "_schedule_mtf_refresh"):
+            self._schedule_mtf_refresh(interactive=False)
 
     def _is_preview_interaction_active(self) -> bool:
         slider_names = (

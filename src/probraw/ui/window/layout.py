@@ -20,17 +20,44 @@ class LayoutMixin:
         header.addWidget(self._button(self.tr("Pantalla completa"), self._menu_toggle_fullscreen))
         root_layout.addLayout(header)
 
-        task_bar = QtWidgets.QHBoxLayout()
+        task_panel = QtWidgets.QWidget()
+        task_panel.setObjectName("globalProgressPanel")
+        task_panel.setStyleSheet(
+            "QWidget#globalProgressPanel {"
+            " background-color: #1b1f24;"
+            " border: 1px solid #3f4652;"
+            " border-radius: 4px;"
+            "}"
+        )
+        task_bar = QtWidgets.QVBoxLayout(task_panel)
+        task_bar.setContentsMargins(8, 5, 8, 5)
+        task_bar.setSpacing(3)
+
+        task_top = QtWidgets.QHBoxLayout()
+        task_top.setContentsMargins(0, 0, 0, 0)
+        task_top.setSpacing(8)
         self.global_status_label = QtWidgets.QLabel(self.tr("Listo"))
-        self.global_status_label.setStyleSheet("font-size: 12px; color: #374151;")
+        self.global_status_label.setWordWrap(True)
+        self.global_status_label.setStyleSheet("font-size: 12px; color: #f3f4f6; font-weight: 600;")
+        self.global_progress_time_label = QtWidgets.QLabel(self.tr("Tiempo: --"))
+        self.global_progress_time_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.global_progress_time_label.setStyleSheet("font-size: 11px; color: #cbd5e1;")
+        task_top.addWidget(self.global_status_label, 2)
+        task_top.addWidget(self.global_progress_time_label, 1)
+        task_bar.addLayout(task_top)
+
         self.global_progress = QtWidgets.QProgressBar()
         self.global_progress.setRange(0, 1)
         self.global_progress.setValue(0)
         self.global_progress.setTextVisible(False)
         self.global_progress.setMaximumHeight(8)
-        task_bar.addWidget(self.global_status_label, 1)
-        task_bar.addWidget(self.global_progress, 2)
-        root_layout.addLayout(task_bar)
+        task_bar.addWidget(self.global_progress)
+
+        self.global_progress_phase_label = QtWidgets.QLabel(self.tr("Sin operación en curso"))
+        self.global_progress_phase_label.setWordWrap(True)
+        self.global_progress_phase_label.setStyleSheet("font-size: 11px; color: #9ca3af;")
+        task_bar.addWidget(self.global_progress_phase_label)
+        root_layout.addWidget(task_panel)
 
         self.main_tabs = QtWidgets.QTabWidget()
         session_tab = self._build_tab_session()
@@ -40,10 +67,15 @@ class LayoutMixin:
         self.main_tabs.addTab(session_tab, self.tr("1. Sesión"))
         self.main_tabs.addTab(raw_tab, self.tr("2. Ajustar / Aplicar"))
         self.main_tabs.addTab(queue_tab, self.tr("3. Cola de Revelado"))
+        self.main_tabs.currentChanged.connect(self._on_mtf_context_visibility_changed)
 
         root_layout.addWidget(self.main_tabs, 1)
 
         self.setCentralWidget(root)
+        app = QtWidgets.QApplication.instance()
+        if app is not None and not bool(getattr(self, "_viewer_space_event_filter_installed", False)):
+            app.installEventFilter(self)
+            self._viewer_space_event_filter_installed = True
         self._build_global_settings_dialog()
 
     def _build_menu_bar(self) -> None:
@@ -243,10 +275,54 @@ class LayoutMixin:
         return False
 
     def closeEvent(self, event) -> None:  # noqa: N802
+        app = QtWidgets.QApplication.instance()
+        if app is not None and bool(getattr(self, "_viewer_space_event_filter_installed", False)):
+            app.removeEventFilter(self)
+            self._viewer_space_event_filter_installed = False
         if hasattr(self, "_shutdown_background_threads"):
             self._shutdown_background_threads()
         self._save_window_settings()
         super().closeEvent(event)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if event.type() not in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
+            return False
+        if event.key() != QtCore.Qt.Key_Space:
+            return False
+        widget = obj if isinstance(obj, QtWidgets.QWidget) else None
+        if widget is not None and widget.window() is not self:
+            return False
+        active = event.type() == QtCore.QEvent.KeyPress
+        if not active and bool(getattr(self, "_viewer_space_pan_active", False)):
+            if not event.isAutoRepeat():
+                self._set_viewer_space_pan_active(False)
+            return True
+        if not self.isActiveWindow() or self._viewer_space_pan_ignores_focus():
+            return False
+        if not event.isAutoRepeat():
+            self._set_viewer_space_pan_active(active)
+        return True
+
+    def _viewer_space_pan_ignores_focus(self) -> bool:
+        focus = QtWidgets.QApplication.focusWidget()
+        if focus is None:
+            return False
+        ignored_types = (
+            QtWidgets.QLineEdit,
+            QtWidgets.QTextEdit,
+            QtWidgets.QPlainTextEdit,
+            QtWidgets.QAbstractSpinBox,
+            QtWidgets.QComboBox,
+            QtWidgets.QAbstractButton,
+        )
+        return isinstance(focus, ignored_types)
+
+    def _set_viewer_space_pan_active(self, active: bool) -> None:
+        self._viewer_space_pan_active = bool(active)
+        for panel_name in ("image_result_single", "image_original_compare", "image_result_compare"):
+            panel = getattr(self, panel_name, None)
+            if panel is not None and hasattr(panel, "set_space_pan_active"):
+                panel.set_space_pan_active(self._viewer_space_pan_active)
 
     def _build_tab_session(self) -> QtWidgets.QWidget:
         tab = QtWidgets.QWidget()
@@ -980,6 +1056,26 @@ class LayoutMixin:
         painter.end()
         return QtGui.QIcon(pixmap)
 
+    def _zoom_magnifier_icon(self, sign: str) -> QtGui.QIcon:
+        pixmap = QtGui.QPixmap(36, 32)
+        pixmap.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        lens_rect = QtCore.QRectF(5, 4, 18, 18)
+        painter.setPen(QtGui.QPen(QtGui.QColor("#f8fafc"), 2.0))
+        painter.setBrush(QtGui.QColor("#223047"))
+        painter.drawEllipse(lens_rect)
+        painter.drawLine(QtCore.QPointF(19.5, 19.5), QtCore.QPointF(28.0, 28.0))
+
+        painter.setPen(QtGui.QPen(QtGui.QColor("#dbeafe"), 2.0))
+        painter.drawLine(QtCore.QPointF(10.5, 13.0), QtCore.QPointF(17.5, 13.0))
+        if str(sign) == "+":
+            painter.drawLine(QtCore.QPointF(14.0, 9.5), QtCore.QPointF(14.0, 16.5))
+
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
     def _toggle_side_columns_focus(self, checked: bool) -> None:
         if not hasattr(self, "raw_splitter"):
             return
@@ -1016,6 +1112,7 @@ class LayoutMixin:
         checkable: bool = False,
         checked: bool = False,
         tooltip: str | None = None,
+        shortcuts: list[str] | None = None,
     ) -> QtGui.QAction:
         if isinstance(icon, QtGui.QIcon):
             icon_obj = icon
@@ -1031,6 +1128,10 @@ class LayoutMixin:
         hint = tooltip or text
         action.setToolTip(hint)
         action.setStatusTip(hint)
+        if shortcuts:
+            action.setShortcuts([QtGui.QKeySequence(shortcut) for shortcut in shortcuts])
+            action.setShortcutContext(QtCore.Qt.ApplicationShortcut)
+            self.addAction(action)
         return action
 
     def _viewer_action_button(
@@ -1092,12 +1193,24 @@ class LayoutMixin:
             checkable=True,
             tooltip=self.tr("Enfocar visor ocultando columnas laterales"),
         )
+        self.action_viewer_zoom_out = self._viewer_action(
+            self.tr("Reducir"),
+            self._viewer_zoom_out,
+            icon=self._zoom_magnifier_icon("-"),
+            shortcuts=["Ctrl+-"],
+        )
+        self.action_viewer_zoom_in = self._viewer_action(
+            self.tr("Ampliar"),
+            self._viewer_zoom_in,
+            icon=self._zoom_magnifier_icon("+"),
+            shortcuts=["Ctrl++", "Ctrl+="],
+        )
         actions = [
             self.chk_compare,
             self.chk_apply_profile,
             self._action_side_columns_focus,
-            self._viewer_action(self.tr("Reducir"), self._viewer_zoom_out, icon="SP_ArrowDown"),
-            self._viewer_action(self.tr("Ampliar"), self._viewer_zoom_in, icon="SP_ArrowUp"),
+            self.action_viewer_zoom_out,
+            self.action_viewer_zoom_in,
             self._viewer_action(self.tr("Zoom 1:1"), self._viewer_zoom_100, icon=self._zoom_one_to_one_icon()),
             self._viewer_action(self.tr("Encajar"), self._viewer_fit, icon="SP_TitleBarMaxButton"),
             self._viewer_action(self.tr("Girar izquierda"), self._viewer_rotate_left, icon=self._rotate_arrow_icon(clockwise=False)),
@@ -1564,5 +1677,6 @@ class LayoutMixin:
         self.right_workflow_tabs.addTab(self.raw_export_tabs, self.tr("RAW / exportación"))
 
         layout.addWidget(self.right_workflow_tabs, 1)
+        self.right_workflow_tabs.currentChanged.connect(self._on_mtf_context_visibility_changed)
 
         return pane

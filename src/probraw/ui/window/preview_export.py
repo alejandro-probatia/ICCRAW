@@ -39,6 +39,10 @@ class PreviewExportMixin:
         in_path = self._selected_file
         recipe = self._build_effective_recipe()
         profile_path = self._active_session_icc_for_settings()
+        recipe = self._visible_export_recipe_for_color_management(
+            recipe,
+            input_profile_path=profile_path,
+        )
         if not self._require_color_managed_recipe_for_ui(
             recipe,
             input_profile_path=profile_path,

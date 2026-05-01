@@ -140,7 +140,89 @@ Operational conclusion: the demosaic scales well by processes, but the selection
 automatic should be limited by RAM. In real batch each worker needs more margin
 than the isolated demosaic because it also generates linear and final TIFF.
 
-## Changes applied- Preview histograms and analysis panel downsample before converting
+## RAW MTF Strategy And Global Operation Viewer
+
+Detected problem: cold MTF analysis on RAW files needs a real-resolution image.
+`rawpy.postprocess()` does not provide a documented Python crop parameter, so
+developing the full RAW inside the UI thread blocked the application and could
+consume large temporary memory on professional-size files.
+
+Research applied:
+
+- Imatest SFR works from slanted-edge ROIs/crops; the ROI is the natural unit of
+  the MTF calculation, not the whole image.
+- `rawpy` exposes full-image `postprocess()` and embedded `extract_thumb()`, but
+  no documented crop parameter for postprocessing.
+- LibRaw documents `cropbox` and crop-related structures, but that path is not
+  portably exposed through `rawpy` and has format-specific implications.
+- darktable separates thumbnails/previews/cache by resolution levels and uses
+  persistent cache to avoid repeating expensive work.
+
+Implemented decision:
+
+- MTF analysis is limited to the selected ROI plus padding around the edge. The
+  full image is developed only when the full-resolution ROI is cold.
+- Full-resolution ROI preparation runs in an external process
+  (`python -m probraw.analysis.mtf_roi`) to isolate CPU/RAM and keep the UI
+  responsive if LibRaw needs temporary memory.
+- The full-resolution ROI is stored as a small `.npz` block in persistent cache,
+  keyed by RAW, recipe, dimensions and ROI. Later ESF/LSF/MTF recalculations use
+  that block.
+- Automatic MTF recalculation is deferred when the full-resolution ROI is cold;
+  the user explicitly starts the expensive work with `Actualizar`.
+- ProbRAW's top bar is now a global long-operation viewer. MTF, RAW preview
+  loading and background tasks can publish status, elapsed time, estimate,
+  remaining time and phase. The operational rule is to use it for work expected
+  or observed to take roughly more than one second. The `Nitidez` tab no longer
+  duplicates a second local progress bar.
+
+Visual samples from the global viewer:
+
+![RAW preview load with global estimate](assets/screenshots/probraw-global-operation-preview.png)
+
+![Full-res MTF ROI preparation with global estimate](assets/screenshots/probraw-global-operation-mtf.png)
+
+Local measurements with 11 NEF test files:
+
+| Case | Result |
+| --- | ---: |
+| Cold RAW thumbnails, 11 files | ~1.10 s |
+| RAW preview `DSC_0312.NEF` after optimization | ~2.95 s, peak ~957 MB |
+| Cold MTF: click return | ~0.08-0.13 s |
+| Cold MTF: full-res ROI worker | ~6.3-6.7 s |
+| Hot MTF from ROI cache | ~0.07-0.11 s |
+
+Real cold MTF run:
+
+```text
+call_return_seconds: 0.125
+worker_wait_seconds: 6.718
+mtf50: 0.117308
+```
+
+Alternatives evaluated:
+
+- Direct Bayer ROI with local OpenCV demosaic: around 0.13 s on one ROI, but
+  MTF50 differed from the full-resolution pipeline (`~0.106` vs `~0.117`). It
+  remains a future candidate for a draft/provisional mode, not the canonical
+  result.
+- True RAW crop via `rawpy`: deferred because the documented API does not expose
+  `postprocess()` cropping and a direct C++ LibRaw integration would increase
+  maintenance cost.
+
+References:
+
+- Imatest SFR instructions: https://www.imatest.com/docs/sfr_instructions2/
+- Imatest Bayer RAW SFR notes: https://imatest.atlassian.net/wiki/spaces/KB/pages/10882547817/SFR%2Bresults%2Bfrom%2BBayer%2Braw%2Bimages/
+- rawpy `RawPy.postprocess()` / `extract_thumb()`: https://letmaik.github.io/rawpy/api/rawpy.RawPy.html
+- rawpy `Params`: https://letmaik.github.io/rawpy/api/rawpy.Params.html
+- LibRaw API notes, memory and buffers: https://www.libraw.org/docs/API-notes.html
+- LibRaw data structures, `cropbox`: https://www.libraw.org/docs/API-datastruct.html
+- darktable thumbnail cache: https://docs.darktable.org/usermanual/3.6/en/special-topics/program-invocation/darktable-generate-cache/
+
+## Changes Applied
+
+- Preview histograms and analysis panel downsample before converting
   and trim large arrays. This reduces temporary copies when working with
   1:1 previews without touching the canonical render.
 - Basic diagnostic external calls (`exiftool`, `git rev-parse`)
@@ -153,3 +235,8 @@ than the isolated demosaic because it also generates linear and final TIFF.
   repeat LibRaw when only later settings change.
 - The TIFF16 script uses fewer temporary intermediates than the expression
   `round(clip(x) * 65535).astype(uint16)`.
+- Cold MTF analysis now runs through an external worker with persistent
+  full-resolution ROI cache, and timings are published to the global operation
+  viewer.
+- RAW preview loading publishes global progress when the estimate or actual
+  duration is roughly above one second.

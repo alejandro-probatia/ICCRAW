@@ -125,6 +125,10 @@ if QtWidgets is not None:
             self._preview_load_task_active = False
             self._preview_load_inflight_key: str | None = None
             self._preview_load_pending_request: tuple[Path, Recipe, bool, int, str] | None = None
+            self._preview_load_progress_started_at: float | None = None
+            self._preview_load_progress_estimated_seconds: float | None = None
+            self._preview_load_progress_label = ""
+            self._preview_load_progress_visible = False
             self._loaded_preview_base_signature: str | None = None
             self._loaded_preview_fast_raw: bool | None = None
             self._loaded_preview_source_max_side: int = 0
@@ -167,11 +171,34 @@ if QtWidgets is not None:
             self._mtf_last_analysis_image_dimensions: tuple[int, int] | None = None
             self._mtf_last_display_dimensions: tuple[int, int] | None = None
             self._mtf_last_display_roi: tuple[int, int, int, int] | None = None
+            self._mtf_roi_base_cache_key: str | None = None
+            self._mtf_roi_base_cache: dict[str, Any] | None = None
+            self._mtf_roi_pre_sharpen_cache_key: str | None = None
+            self._mtf_roi_pre_sharpen_cache: dict[str, Any] | None = None
+            self._mtf_roi_analysis_cache_key: str | None = None
+            self._mtf_roi_analysis_cache: dict[str, Any] | None = None
+            self._mtf_result_cache_key: str | None = None
+            self._mtf_result_cache: Any | None = None
+            self._mtf_auto_candidate_cache: dict[str, Any] = {}
+            self._mtf_auto_candidate_cache_order: list[str] = []
+            self._mtf_persisted_payload_key: str | None = None
+            self._mtf_deferred_auto_refresh_key: str | None = None
+            self._mtf_base_roi_task_active = False
+            self._mtf_base_roi_inflight_key: str | None = None
+            self._mtf_base_roi_pending_request: dict[str, Any] | None = None
+            self._mtf_progress_started_at: float | None = None
+            self._mtf_progress_estimated_seconds: float | None = None
+            self._mtf_progress_stage = ""
+            self._mtf_progress_detail = ""
+            self._mtf_progress_current_step = 0
+            self._mtf_progress_total_steps = 0
+            self._mtf_progress_roi_elapsed_seconds: float | None = None
             self._current_dir = self._startup_directory_from_settings()
             self._selected_file: Path | None = None
             self._storage_roots: list[Path] = []
             self._task_counter = 0
             self._active_tasks = 0
+            self._global_progress_owner: str | None = None
             self._active_session_root: Path | None = None
             self._active_session_payload: dict[str, Any] | None = None
             self._develop_queue: list[dict[str, str]] = []
@@ -218,6 +245,9 @@ if QtWidgets is not None:
             self._selection_load_timer = QtCore.QTimer(self)
             self._selection_load_timer.setSingleShot(True)
             self._selection_load_timer.timeout.connect(self._load_selected_from_timer)
+            self._preview_load_progress_timer = QtCore.QTimer(self)
+            self._preview_load_progress_timer.setInterval(250)
+            self._preview_load_progress_timer.timeout.connect(self._update_preview_load_progress_status)
             self._preview_refresh_timer = QtCore.QTimer(self)
             self._preview_refresh_timer.setSingleShot(True)
             self._preview_refresh_timer.timeout.connect(self._refresh_preview)
@@ -230,6 +260,12 @@ if QtWidgets is not None:
             self._mtf_refresh_timer = QtCore.QTimer(self)
             self._mtf_refresh_timer.setSingleShot(True)
             self._mtf_refresh_timer.timeout.connect(self._recalculate_mtf_analysis)
+            self._mtf_persist_timer = QtCore.QTimer(self)
+            self._mtf_persist_timer.setSingleShot(True)
+            self._mtf_persist_timer.timeout.connect(self._persist_mtf_analysis_for_selected)
+            self._mtf_progress_timer = QtCore.QTimer(self)
+            self._mtf_progress_timer.setInterval(250)
+            self._mtf_progress_timer.timeout.connect(self._update_mtf_progress_status)
             self._session_root_update_timer = QtCore.QTimer(self)
             self._session_root_update_timer.setSingleShot(True)
             self._session_root_update_timer.timeout.connect(self._on_session_root_edited)

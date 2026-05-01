@@ -24,9 +24,14 @@ PROJECT_DIRECTOR_NAME = (
     (
         os.environ.get("PROBRAW_PROJECT_DIRECTOR")
         or os.environ.get("NEXORAW_PROJECT_DIRECTOR")
-        or "Probatia Forensics SL / AEICF"
+        or "Alejandro Maestre Gasteazi"
     ).strip()
-    or "Probatia Forensics SL / AEICF"
+    or "Alejandro Maestre Gasteazi"
+)
+PROJECT_CONTACT_EMAIL = (os.environ.get("PROBRAW_CONTACT_EMAIL") or "alejandro.maestre@imagencientifica.es").strip()
+PROJECT_COLLABORATORS = (
+    ("PROBATIA", "https://probatia.com"),
+    ("AEICF", "https://imagencientifica.es"),
 )
 
 DEFAULT_THUMBNAIL_SIZE = 132
@@ -42,6 +47,8 @@ THUMBNAIL_DISK_CACHE_MAX_BYTES = 512 * 1024 * 1024
 THUMBNAIL_DISK_PRUNE_INTERVAL_WRITES = 512
 THUMBNAIL_BATCH_SIZE = 48
 THUMBNAIL_PREFETCH_MARGIN_PAGES = 2
+MTF_ROI_DISK_CACHE_MAX_ENTRIES = 256
+MTF_ROI_DISK_CACHE_MAX_BYTES = 1024 * 1024 * 1024
 
 PREVIEW_REFRESH_DEBOUNCE_MS = 120
 PREVIEW_REFRESH_THROTTLE_MS = 65

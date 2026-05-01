@@ -153,4 +153,6 @@ class PreviewCacheMixin:
         self._profile_preview_cache.clear()
         self._profile_preview_cache_order.clear()
         self._clear_adjustment_caches()
+        if hasattr(self, "_clear_mtf_image_caches"):
+            self._clear_mtf_image_caches()
         self._set_interactive_preview_busy(False)

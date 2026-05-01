@@ -69,8 +69,8 @@ def analyze_slanted_edge_mtf(
     pixel distances to that edge, differentiate into an LSF, then transform the
     LSF into an MTF curve up to Nyquist.
     """
-    gray_full = _luminance_image(image_rgb)
-    crop, normalized_roi = _crop_roi(gray_full, roi)
+    crop_rgb, normalized_roi = _crop_image_roi(image_rgb, roi)
+    crop = _luminance_image(crop_rgb)
     h, w = crop.shape[:2]
     if h < int(min_size) or w < int(min_size):
         raise ValueError(f"La ROI MTF debe medir al menos {min_size}x{min_size} píxeles.")
@@ -157,16 +157,19 @@ def _luminance_image(image_rgb: np.ndarray) -> np.ndarray:
     return np.clip(gray, 0.0, 1.0)
 
 
-def _crop_roi(gray: np.ndarray, roi: tuple[int, int, int, int] | None) -> tuple[np.ndarray, tuple[int, int, int, int]]:
-    h, w = gray.shape[:2]
+def _crop_image_roi(image: np.ndarray, roi: tuple[int, int, int, int] | None) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    array = np.asarray(image)
+    if array.ndim < 2:
+        raise ValueError(f"Imagen inesperada para MTF: shape={array.shape}")
+    h, w = array.shape[:2]
     if roi is None:
-        return gray.copy(), (0, 0, int(w), int(h))
+        return array, (0, 0, int(w), int(h))
     x, y, rw, rh = [int(round(v)) for v in roi]
     x0 = int(np.clip(x, 0, max(0, w - 1)))
     y0 = int(np.clip(y, 0, max(0, h - 1)))
     x1 = int(np.clip(x + max(1, rw), x0 + 1, w))
     y1 = int(np.clip(y + max(1, rh), y0 + 1, h))
-    return gray[y0:y1, x0:x1].copy(), (x0, y0, x1 - x0, y1 - y0)
+    return array[y0:y1, x0:x1], (x0, y0, x1 - x0, y1 - y0)
 
 
 def _fit_edge(gray: np.ndarray) -> dict[str, np.ndarray | float]:
@@ -221,13 +224,15 @@ def _edge_spread_function(
     d = distances.reshape(-1)
     low = math.floor(float(np.min(d)) / bin_width) * bin_width
     high = math.ceil(float(np.max(d)) / bin_width) * bin_width
-    edges = np.arange(low, high + bin_width, bin_width, dtype=np.float64)
-    if len(edges) < 8:
+    n_bins = max(0, int(math.ceil((high - low) / bin_width)))
+    if n_bins < 7:
         raise ValueError("La ROI no ofrece rango suficiente alrededor del borde.")
-    sums, _ = np.histogram(d, bins=edges, weights=values)
-    counts, _ = np.histogram(d, bins=edges)
+    bin_indices = np.floor((d - low) / bin_width).astype(np.int64, copy=False)
+    bin_indices = np.clip(bin_indices, 0, n_bins - 1)
+    sums = np.bincount(bin_indices, weights=values, minlength=n_bins)
+    counts = np.bincount(bin_indices, minlength=n_bins)
     valid = counts > 0
-    centers = (edges[:-1] + edges[1:]) / 2.0
+    centers = low + (np.arange(n_bins, dtype=np.float64) + 0.5) * bin_width
     if int(np.count_nonzero(valid)) < 12:
         raise ValueError("No hay suficientes bins MTF válidos; aumenta la ROI.")
     return centers[valid], sums[valid] / np.maximum(1, counts[valid])

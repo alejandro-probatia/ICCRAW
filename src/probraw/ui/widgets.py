@@ -1491,6 +1491,7 @@ if QtWidgets is not None:
             self._drag_last: QtCore.QPointF | None = None
             self._drag_moved = False
             self._interaction_cursor: QtCore.Qt.CursorShape | None = None
+            self._space_pan_active = False
             self.setAlignment(QtCore.Qt.AlignCenter)
             self.setMinimumSize(220, 160)
             self.setMouseTracking(True)
@@ -1529,6 +1530,10 @@ if QtWidgets is not None:
 
         def set_interaction_cursor(self, cursor: QtCore.Qt.CursorShape | None) -> None:
             self._interaction_cursor = cursor
+            self._apply_idle_cursor()
+
+        def set_space_pan_active(self, active: bool) -> None:
+            self._space_pan_active = bool(active)
             self._apply_idle_cursor()
 
         def set_overlay_points(self, points: list[tuple[float, float]]) -> None:
@@ -1582,19 +1587,32 @@ if QtWidgets is not None:
             self._refresh_scaled_pixmap()
 
         def set_view_transform(self, *, zoom: float, rotation: int) -> None:
-            self._view_zoom = float(np.clip(zoom, 0.2, 8.0))
+            self._view_zoom = float(np.clip(zoom, 0.05, 64.0))
             self._view_rotation = int(rotation) % 360
-            if self._view_zoom <= 1.0:
+            if not self._image_can_pan():
                 self._pan = QtCore.QPointF(0.0, 0.0)
             self._refresh_scaled_pixmap()
             self._apply_idle_cursor()
 
+        def current_display_scale(self) -> float | None:
+            geometry = self._display_geometry()
+            if geometry is None:
+                return None
+            _pixmap, _rect, scale, _transform, _bounds = geometry
+            return float(scale)
+
+        def view_zoom_for_display_scale(self, scale: float) -> float:
+            fit = self._display_fit_scale()
+            return float(np.clip(float(scale) / max(1e-6, fit), 0.05, 64.0))
+
         def mousePressEvent(self, event) -> None:  # noqa: N802
-            if (
-                self._roi_selection_enabled
-                and event.button() == QtCore.Qt.LeftButton
-                and self._base_pixmap is not None
-            ):
+            if event.button() == QtCore.Qt.LeftButton and self._base_pixmap is not None and self._space_pan_active:
+                self._drag_start = event.position()
+                self._drag_last = event.position()
+                self._drag_moved = False
+                self.setCursor(QtCore.Qt.ClosedHandCursor)
+                return
+            if self._roi_selection_enabled and event.button() == QtCore.Qt.LeftButton and self._base_pixmap is not None:
                 mapped = self._map_widget_to_image(event.position())
                 if mapped is not None:
                     self._roi_drag_start_image = mapped
@@ -1606,7 +1624,7 @@ if QtWidgets is not None:
                 self._drag_start = event.position()
                 self._drag_last = event.position()
                 self._drag_moved = False
-                if self._view_zoom > 1.0:
+                if self._image_can_pan():
                     self.setCursor(QtCore.Qt.ClosedHandCursor)
                 else:
                     self._apply_idle_cursor()
@@ -1624,7 +1642,7 @@ if QtWidgets is not None:
             if self._drag_last is not None and self._drag_start is not None:
                 delta = event.position() - self._drag_last
                 distance = event.position() - self._drag_start
-                if self._view_zoom > 1.0 and (abs(distance.x()) > 3.0 or abs(distance.y()) > 3.0):
+                if self._image_can_pan() and (abs(distance.x()) > 3.0 or abs(distance.y()) > 3.0):
                     self._pan += delta
                     self._drag_moved = True
                     self._refresh_scaled_pixmap()
@@ -1730,11 +1748,13 @@ if QtWidgets is not None:
             self.update()
 
         def _apply_idle_cursor(self) -> None:
-            if self._roi_selection_enabled:
+            if self._space_pan_active and self._base_pixmap is not None:
+                self.setCursor(QtCore.Qt.OpenHandCursor)
+            elif self._roi_selection_enabled:
                 self.setCursor(QtCore.Qt.CrossCursor)
             elif self._interaction_cursor is not None:
                 self.setCursor(self._interaction_cursor)
-            elif self._view_zoom > 1.0:
+            elif self._image_can_pan():
                 self.setCursor(QtCore.Qt.OpenHandCursor)
             else:
                 self.unsetCursor()
@@ -1779,7 +1799,7 @@ if QtWidgets is not None:
             )
             pw = max(1.0, float(pixmap.width()))
             ph = max(1.0, float(pixmap.height()))
-            fit = min(max(1.0, self.width()) / pw, max(1.0, self.height()) / ph)
+            fit = self._display_fit_scale(pixmap=pixmap)
             scale = fit * self._view_zoom
             draw_w = pw * scale
             draw_h = ph * scale
@@ -1795,6 +1815,29 @@ if QtWidgets is not None:
                 draw_h,
             )
             return pixmap, rect, scale, transform, bounds
+
+        def _display_fit_scale(self, *, pixmap: QtGui.QPixmap | None = None) -> float:
+            if pixmap is None:
+                if self._base_pixmap is None:
+                    return 1.0
+                pixmap = (
+                    self._base_pixmap
+                    if self._view_rotation == 0
+                    else self._base_pixmap.transformed(
+                        QtGui.QTransform().rotate(self._view_rotation),
+                        QtCore.Qt.SmoothTransformation,
+                    )
+                )
+            pw = max(1.0, float(pixmap.width()))
+            ph = max(1.0, float(pixmap.height()))
+            return float(min(max(1.0, self.width()) / pw, max(1.0, self.height()) / ph))
+
+        def _image_can_pan(self) -> bool:
+            geometry = self._display_geometry()
+            if geometry is None:
+                return False
+            _pixmap, rect, _scale, _transform, _bounds = geometry
+            return rect.width() > self.width() + 1.0 or rect.height() > self.height() + 1.0
 
         def _map_image_to_widget(
             self,

@@ -109,6 +109,7 @@ class BrowserMetadataMixin:
         self._metadata_pending_request = None
         self._selected_file = None
         self._clear_manual_chart_points_for_file_change()
+        self._clear_mtf_roi_for_file_change()
         self._last_loaded_preview_key = None
         self.selected_file_label.setText(self.tr("Sin archivo seleccionado"))
         self._clear_metadata_view()
@@ -645,7 +646,7 @@ class BrowserMetadataMixin:
             identity = str(path.expanduser().resolve(strict=False))
         except Exception:
             identity = str(path)
-        return f"{identity}|{stamp}|thumb-v4"
+        return f"{identity}|{stamp}|thumb-v5"
 
     @staticmethod
     def _thumbnail_array_for_path(path: Path, size: int) -> np.ndarray | None:
@@ -671,6 +672,15 @@ class BrowserMetadataMixin:
 
     @staticmethod
     def _raw_embedded_thumbnail_array(path: Path, size: int) -> np.ndarray | None:
+        try:
+            from ...raw.preview import extract_embedded_thumbnail
+
+            thumb = extract_embedded_thumbnail(path, max_side=int(size))
+            if thumb is not None:
+                return thumb
+        except Exception:
+            pass
+
         exiftool = external_tool_path("exiftool")
         if exiftool is None:
             return None
@@ -792,6 +802,7 @@ class BrowserMetadataMixin:
         if item is None:
             self._selected_file = None
             self._clear_manual_chart_points_for_file_change()
+            self._clear_mtf_roi_for_file_change()
             self.selected_file_label.setText(self.tr("Sin archivo seleccionado"))
             self._selection_load_timer.stop()
             self._metadata_timer.stop()
@@ -802,6 +813,7 @@ class BrowserMetadataMixin:
         if not raw_path:
             self._selected_file = None
             self._clear_manual_chart_points_for_file_change()
+            self._clear_mtf_roi_for_file_change()
             self._selection_load_timer.stop()
             self._metadata_timer.stop()
             self._clear_metadata_view()
@@ -816,9 +828,11 @@ class BrowserMetadataMixin:
             self._update_file_item_path(item, selected)
         if self._selected_file is None or self._normalized_path_key(self._selected_file) != self._normalized_path_key(selected):
             self._clear_manual_chart_points_for_file_change()
+            self._clear_mtf_roi_for_file_change()
         self._selected_file = selected
         self.selected_file_label.setText(str(self._selected_file))
-        self._apply_raw_sidecar_to_controls(self._selected_file)
+        if not self._apply_raw_sidecar_to_controls(self._selected_file):
+            self._reset_development_controls_for_unconfigured_file()
         self._queue_metadata_load(self._selected_file, include_c2pa=False)
         if self._selected_file.suffix.lower() in BROWSABLE_EXTENSIONS:
             self._set_status(self.tr("Seleccionado:") + f" {self._selected_file.name}. " + self.tr("Cargando preview..."))

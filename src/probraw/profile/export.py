@@ -482,8 +482,12 @@ def write_profiled_tiff(
             space = generic_output_profile(recipe.output_space).key
             write_tiff16(out_tiff, image_linear_rgb, icc_profile=output_profile.read_bytes())
             return f"standard_{space}_output_icc"
-        write_tiff16(out_tiff, image_linear_rgb)
-        return "no_profile"
+        raise RuntimeError(
+            f"output_space={recipe.output_space} requiere un perfil ICC de entrada activo. "
+            "No se escribe TIFF RGB de camara sin perfil porque se vera verde/oscuro en visores externos. "
+            "Genera o carga un ICC de sesion, o usa un espacio estandar como sRGB, Adobe RGB o ProPhoto "
+            "con output_linear=false."
+        )
 
     if not profile_path.exists():
         raise FileNotFoundError(f"No existe perfil ICC: {profile_path}")

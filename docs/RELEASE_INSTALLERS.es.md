@@ -78,6 +78,33 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.5
+
+La release 0.3.5 es una release de rendimiento y fiabilidad para flujos RAW de
+tamaño profesional:
+
+- el analisis MTF frio prepara una ROI a resolucion completa en un proceso
+  externo y reutiliza una cache ROI persistente para recalculos posteriores,
+- la barra superior de progreso es ahora el visor global unico para operaciones
+  largas de preview, MTF y tareas de fondo, con tiempo transcurrido y ETA,
+- la pestaña `Nitidez` ya no duplica una segunda barra local de progreso,
+- el revelado de cola aplica la mochila de cada RAW cuando no hay id de perfil
+  de ajuste registrado, de modo que nitidez, ruido, CA, color y contraste llegan
+  al TIFF final,
+- cambiar a una imagen sin configurar restablece controles de revelado y estado
+  ICC activo a la politica neutra ProPhoto/balance-de-camara,
+- los espacios genericos sin carta desactivan profiling mode/WB identidad para
+  el render visible/final, y RGB de camara sin ICC de entrada se rechaza antes
+  de escribir TIFF.
+
+Artefactos esperados:
+
+- `probraw_0.3.5_amd64.deb`
+- `probraw_0.3.5_amd64.deb.sha256`
+- `probraw-0.3.5.tar.gz`
+- `probraw-0.3.5-py3-none-any.whl`
+- `probraw_0.3.5_python_artifacts.sha256`
+
 ## Release 0.3.4
 
 La release 0.3.4 publica el análisis MTF de nitidez persistente a resolución
