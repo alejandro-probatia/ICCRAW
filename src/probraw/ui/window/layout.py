@@ -457,7 +457,7 @@ class LayoutMixin:
         outer.setContentsMargins(8, 8, 8, 8)
         outer.setSpacing(8)
 
-        box = QtWidgets.QGroupBox(self.tr("Carta de color: perfil avanzado de ajuste + ICC de entrada"))
+        box = QtWidgets.QGroupBox(self.tr("Generar ICC con carta de color"))
         grid = QtWidgets.QGridLayout(box)
 
         self.profile_charts_dir = QtWidgets.QLineEdit(str(self._current_dir))
@@ -582,10 +582,10 @@ class LayoutMixin:
         outer.addWidget(manual_box)
 
         row_generate = QtWidgets.QHBoxLayout()
-        row_generate.addWidget(self._button(self.tr("Generar perfil avanzado con carta"), self._on_generate_profile))
+        row_generate.addWidget(self._button(self.tr("Generar ICC con carta"), self._on_generate_profile))
         outer.addLayout(row_generate)
 
-        self.profile_summary_label = QtWidgets.QLabel(self.tr("Sin perfil avanzado generado"))
+        self.profile_summary_label = QtWidgets.QLabel(self.tr("Sin ICC generado"))
         self.profile_summary_label.setWordWrap(True)
         self.profile_summary_label.setStyleSheet("font-size: 12px; color: #374151;")
         outer.addWidget(self.profile_summary_label)
@@ -648,18 +648,15 @@ class LayoutMixin:
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(10)
 
-        profile_box = QtWidgets.QGroupBox(self.tr("Perfiles de ajuste por archivo"))
-        profile_layout = QtWidgets.QVBoxLayout(profile_box)
-        profile_layout.addWidget(self._build_development_profiles_panel())
-        layout.addWidget(profile_box)
+        layout.addWidget(self._build_icc_workflow_decision_panel())
+        layout.addWidget(self._build_icc_profile_information_panel())
 
-        layout.addWidget(self._build_tab_profile_generation())
+        self._icc_profile_generation_section = self._build_tab_profile_generation()
+        layout.addWidget(self._icc_profile_generation_section)
 
-        self._advanced_profile_config = self._build_tab_profile_config()
-        icc_box = QtWidgets.QGroupBox(self.tr("ICC activo para preview y exportación"))
-        icc_layout = QtWidgets.QVBoxLayout(icc_box)
-        icc_layout.addWidget(self._advanced_profile_config)
-        layout.addWidget(icc_box)
+        self._advanced_profile_config = None
+        self._icc_active_profile_section = None
+        self._on_icc_workflow_choice_changed()
         layout.addStretch(1)
         return tab
 
@@ -1177,13 +1174,14 @@ class LayoutMixin:
             checkable=True,
         )
         self.chk_apply_profile = self._viewer_action(
-            self.tr("Aplicar perfil ICC en resultado"),
+            self.tr("Perfil ICC de la imagen"),
             lambda _checked: self._schedule_preview_refresh(),
             icon="SP_DialogApplyButton",
             checkable=True,
+            checked=True,
             tooltip=self.tr(
-                "Desactivado por defecto para evitar dominantes si el perfil no corresponde "
-                "a camara + iluminacion + receta actuales."
+                "La vista usa siempre el ICC elegido para la imagen; el monitor se corrige "
+                "despues con el perfil ICC del sistema."
             ),
         )
         self._action_side_columns_focus = self._viewer_action(
@@ -1207,7 +1205,6 @@ class LayoutMixin:
         )
         actions = [
             self.chk_compare,
-            self.chk_apply_profile,
             self._action_side_columns_focus,
             self.action_viewer_zoom_out,
             self.action_viewer_zoom_in,
@@ -1227,7 +1224,7 @@ class LayoutMixin:
             ),
         ]
         for index, action in enumerate(actions):
-            if index in {3, 7, 9}:
+            if index in {2, 6, 8}:
                 separator = QtWidgets.QFrame()
                 separator.setFrameShape(QtWidgets.QFrame.VLine)
                 separator.setStyleSheet("color: #2f353d;")
@@ -1366,7 +1363,7 @@ class LayoutMixin:
         current_key = str(combo.currentData() or default_key)
         items = [
             *self._managed_gamut_profile_items(),
-            (self.tr("ICC activo / salida actual"), "generated"),
+            (self.tr("ICC elegido / salida actual"), "generated"),
             (self.tr("Monitor"), "monitor"),
             ("sRGB", "standard:srgb"),
             ("Adobe RGB (1998)", "standard:adobe_rgb"),
@@ -1472,7 +1469,7 @@ class LayoutMixin:
         self.file_list.setMovement(QtWidgets.QListView.Static)
         self.file_list.setSpacing(2)
         self.file_list.setWordWrap(False)
-        self.file_list.setUniformItemSizes(True)
+        self.file_list.setUniformItemSizes(False)
         self.file_list.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
         self.file_list.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
         self.file_list.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
@@ -1502,17 +1499,6 @@ class LayoutMixin:
         self.file_list.horizontalScrollBar().valueChanged.connect(self._on_thumbnail_scroll_changed)
         self._apply_thumbnail_size(thumbnail_size)
         layout.addWidget(self.file_list, 1)
-
-        row = QtWidgets.QHBoxLayout()
-        row.addWidget(self._button(self.tr("Usar selección como referencias colorimétricas"), self._use_selected_files_as_profile_charts))
-        row.addWidget(self._button(self.tr("Añadir selección a cola"), self._queue_add_selected))
-        layout.addLayout(row)
-
-        profile_row = QtWidgets.QHBoxLayout()
-        profile_row.addWidget(self._button(self.tr("Guardar perfil básico en imagen"), self._save_current_development_settings_to_selected))
-        profile_row.addWidget(self._button(self.tr("Copiar perfil de ajuste"), self._copy_development_settings_from_selected))
-        profile_row.addWidget(self._button(self.tr("Pegar perfil de ajuste"), self._paste_development_settings_to_selected))
-        layout.addLayout(profile_row)
         return pane
 
     def _thumbnail_size_from_settings(self) -> int:
@@ -1525,15 +1511,13 @@ class LayoutMixin:
 
     def _apply_thumbnail_size(self, size: int) -> None:
         size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
-        thumb_h = size
-        thumb_w = size
-        self.file_list.setIconSize(QtCore.QSize(thumb_w, thumb_h))
-        grid_size = QtCore.QSize(thumb_w + 4, thumb_h + 4)
-        self.file_list.setGridSize(grid_size)
+        badge_h = self._thumbnail_badge_strip_height(size) if hasattr(self, "_thumbnail_badge_strip_height") else 0
+        self.file_list.setIconSize(QtCore.QSize(size, size + badge_h))
+        self.file_list.setGridSize(QtCore.QSize())
         for row in range(self.file_list.count()):
             item = self.file_list.item(row)
             if item is not None and item.flags() != QtCore.Qt.NoItemFlags:
-                item.setSizeHint(grid_size)
+                self._apply_thumbnail_item_size_hint(item)
         if hasattr(self, "thumbnail_size_label"):
             self.thumbnail_size_label.setText(f"{size}px")
 
@@ -1673,6 +1657,7 @@ class LayoutMixin:
         self.raw_export_tabs = CollapsibleToolPanel()
         self._advanced_raw_config = self._build_tab_raw_config(self.tr("Criterios RAW globales"))
         self.raw_export_tabs.addItem(self._advanced_raw_config, self.tr("RAW Global"), expanded=True)
+        self.raw_export_tabs.addItem(self._build_development_profiles_panel(), self.tr("Perfiles completos"), expanded=False)
         self.raw_export_tabs.addItem(self._build_tab_batch_config(), self.tr("Exportar derivados"), expanded=True)
         self.right_workflow_tabs.addTab(self.raw_export_tabs, self.tr("RAW / exportación"))
 

@@ -22,6 +22,7 @@ from probraw.raw.preview import (
     load_image_for_preview,
     normalize_tone_curve_points,
     preview_analysis_text,
+    standard_profile_to_srgb_display,
     srgb_to_linear_display,
     tone_curve_lut,
 )
@@ -183,6 +184,26 @@ def test_srgb_linear_roundtrip_stability():
     restored = srgb_to_linear_display(srgb)
     assert restored.shape == linear.shape
     assert np.allclose(restored, linear, atol=2e-3)
+
+
+def test_standard_profile_to_srgb_display_keeps_srgb_encoded_values():
+    encoded = np.asarray([[[0.5, 0.25, 0.75], [0.05, 0.8, 1.0]]], dtype=np.float32)
+
+    out = standard_profile_to_srgb_display(encoded, "srgb")
+
+    assert out.shape == encoded.shape
+    assert np.allclose(out, encoded, atol=1e-7)
+
+
+def test_standard_profile_to_srgb_display_converts_prophoto_neutral_without_cast():
+    encoded = np.full((2, 3, 3), 0.5, dtype=np.float32)
+
+    out = standard_profile_to_srgb_display(encoded, "prophoto_rgb")
+
+    assert out.shape == encoded.shape
+    assert np.isfinite(out).all()
+    assert float(np.max(np.abs(out[..., 0] - out[..., 1]))) < 0.01
+    assert float(np.max(np.abs(out[..., 1] - out[..., 2]))) < 0.01
 
 
 def test_preview_analysis_text_includes_global_stats():

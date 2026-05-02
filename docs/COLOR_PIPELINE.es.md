@@ -101,19 +101,30 @@ sRGB como fallback visual.
 
 La GUI distingue entre señal de análisis y señal de pantalla:
 
-1. El RAW se revela o previsualiza como RGB lineal normalizado.
+1. El RAW se revela o previsualiza como RGB normalizado en el espacio elegido
+   para la imagen: RGB de camara lineal cuando hay ICC de sesion, o un espacio
+   RGB estandar real cuando se usa sRGB/Adobe RGB/ProPhoto RGB.
 2. Los ajustes paramétricos se aplican antes de la conversión de salida.
-3. Si hay un ICC de entrada activo y válido, la preview usa ese ICC para generar
-   una señal sRGB colorimétrica de revisión.
-4. El histograma RGB colorimétrico y el overlay de clipping leen esa señal sRGB
-   previa al monitor.
-5. Solo después se aplica el ICC del monitor para enviar píxeles corregidos al
-   widget de pantalla.
+3. Si hay un ICC fuente activo, los pixeles que llegan al widget se convierten
+   directamente desde ese ICC fuente al ICC del monitor configurado.
+4. La senal sRGB interna queda limitada a histograma RGB, overlay de clipping,
+   diagnostico y fallback si la CMM no puede abrir algun perfil.
+5. El ICC del monitor nunca se mezcla con los datos de analisis, recetas ni
+   TIFF exportados.
 
 Esto evita que un perfil de monitor estrecho, defectuoso o diferente entre
 equipos altere los datos de análisis. A la vez, exige que el usuario calibre el
 monitor y configure correctamente su ICC en el sistema operativo para que la
 apariencia visual de la preview sea fiable.
+
+## Nota de rendimiento de preview ICC
+
+Para evitar aplicar ICC sobre una preview embebida que no corresponde al RAW
+revelado, las vistas con ICC de sesion o perfil generico evitan la miniatura
+embebida y usan revelado LibRaw. La preview normal se mantiene acotada por
+`PREVIEW_AUTO_BASE_MAX_SIDE`; solo precision 1:1, comparar y marcado de carta
+fuerzan resolucion completa. Las interacciones de curva usan una fuente reducida
+cacheada y la preview final pesada se ejecuta en worker asincrono.
 
 ## Validez del Perfil
 

@@ -40,7 +40,7 @@ class TaskStatusMixin:
                         except Exception:
                             pass
                 if thread.isRunning():
-                    remaining_ms = int(max(100.0, (deadline - time.monotonic()) * 1000.0))
+                    remaining_ms = int(max(1.0, (deadline - time.monotonic()) * 1000.0))
                     if not thread.wait(remaining_ms):
                         try:
                             thread.requestInterruption()
@@ -50,10 +50,15 @@ class TaskStatusMixin:
                             thread.quit()
                         except Exception:
                             pass
-                        if not thread.wait(250):
+                        remaining_ms = int(max(1.0, (deadline - time.monotonic()) * 1000.0))
+                        if not thread.wait(min(250, remaining_ms)):
                             try:
                                 thread.terminate()
-                                thread.wait(1000)
+                            except Exception:
+                                pass
+                            remaining_ms = int(max(1.0, (deadline - time.monotonic()) * 1000.0))
+                            try:
+                                thread.wait(min(100, remaining_ms))
                             except Exception:
                                 pass
                 if thread in self._threads:
@@ -72,7 +77,12 @@ class TaskStatusMixin:
         self._threads.clear()
         app = QtWidgets.QApplication.instance()
         if app is not None:
-            app.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
+            event_budget_ms = int(max(0.0, min(50.0, (deadline - time.monotonic()) * 1000.0)))
+            if event_budget_ms > 0:
+                try:
+                    app.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents, event_budget_ms)
+                except TypeError:
+                    app.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
 
     def _stop_background_timers_for_shutdown(self) -> None:
         for name in (

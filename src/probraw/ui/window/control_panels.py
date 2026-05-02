@@ -4,6 +4,45 @@ from ._imports import *  # noqa: F401,F403
 
 
 class ControlPanelsMixin:
+    def _build_named_adjustment_profile_panel(self, category: str, default_name: str) -> QtWidgets.QWidget:
+        box = QtWidgets.QGroupBox(self.tr("Perfiles guardados"))
+        grid = QtWidgets.QGridLayout(box)
+        combo = QtWidgets.QComboBox()
+        name_edit = QtWidgets.QLineEdit(default_name)
+        status = QtWidgets.QLabel(self.tr("Sin perfiles guardados"))
+        status.setWordWrap(True)
+        status.setStyleSheet("font-size: 12px; color: #374151;")
+
+        if category == "color_contrast":
+            self.color_contrast_profile_combo = combo
+            self.color_contrast_profile_name_edit = name_edit
+            self.color_contrast_profile_status_label = status
+        elif category == "detail":
+            self.detail_profile_combo = combo
+            self.detail_profile_name_edit = name_edit
+            self.detail_profile_status_label = status
+        elif category == "raw_export":
+            self.raw_export_profile_combo = combo
+            self.raw_export_profile_name_edit = name_edit
+            self.raw_export_profile_status_label = status
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Perfil")), 0, 0)
+        grid.addWidget(combo, 0, 1, 1, 2)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Nombre")), 1, 0)
+        grid.addWidget(name_edit, 1, 1, 1, 2)
+
+        buttons = QtWidgets.QGridLayout()
+        buttons.addWidget(self._button(self.tr("Guardar"), lambda _checked=False, c=category: self._save_named_adjustment_profile(c)), 0, 0)
+        buttons.addWidget(self._button(self.tr("Aplicar a controles"), lambda _checked=False, c=category: self._activate_selected_named_adjustment_profile(c)), 0, 1)
+        buttons.addWidget(self._button(self.tr("Aplicar a seleccion"), lambda _checked=False, c=category: self._apply_selected_named_adjustment_profile_to_selected(c)), 1, 0, 1, 2)
+        buttons.addWidget(self._button(self.tr("Copiar de imagen"), lambda _checked=False, c=category: self._copy_named_adjustment_profile_from_selected(c)), 2, 0)
+        buttons.addWidget(self._button(self.tr("Pegar a imagen"), lambda _checked=False, c=category: self._paste_named_adjustment_profile_to_selected(c)), 2, 1)
+        grid.addLayout(buttons, 2, 0, 1, 3)
+        grid.addWidget(status, 3, 0, 1, 3)
+        combo.currentIndexChanged.connect(lambda _index, c=category: self._activate_selected_named_adjustment_profile(c))
+        self._refresh_named_adjustment_profile_combo(category)
+        return box
+
     def _build_tab_color_adjustments(self) -> QtWidgets.QWidget:
         tab = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(tab)
@@ -152,6 +191,13 @@ class ControlPanelsMixin:
         self._set_tone_curve_controls_enabled(False)
 
         grid.addWidget(self._button(self.tr("Restablecer brillo y contraste"), self._reset_tone_adjustments), 19, 0, 1, 3)
+        grid.addWidget(
+            self._build_named_adjustment_profile_panel("color_contrast", self.tr("Color y contraste")),
+            20,
+            0,
+            1,
+            3,
+        )
         return tab
 
     def _build_tab_preview_settings(self) -> QtWidgets.QWidget:
@@ -258,6 +304,13 @@ class ControlPanelsMixin:
         grid.addWidget(self.combo_recipe_sharpen, 15, 1, 1, 2)
 
         grid.addWidget(self._button(self.tr("Restablecer nitidez"), self._reset_adjustments), 16, 0, 1, 3)
+        grid.addWidget(
+            self._build_named_adjustment_profile_panel("detail", self.tr("Nitidez")),
+            17,
+            0,
+            1,
+            3,
+        )
         return tab
 
     def _build_tab_raw_config(self, title: str | None = None) -> QtWidgets.QWidget:
@@ -387,35 +440,140 @@ class ControlPanelsMixin:
         scientific_note.setWordWrap(True)
         scientific_note.setStyleSheet("font-size: 12px; color: #6b7280; padding-top: 6px;")
         grid.addWidget(scientific_note, 17, 0, 1, 3)
+        grid.addWidget(
+            self._build_named_adjustment_profile_panel("raw_export", self.tr("Exportacion RAW")),
+            18,
+            0,
+            1,
+            3,
+        )
         return tab
 
     def _build_tab_profile_config(self) -> QtWidgets.QWidget:
         tab = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(tab)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Perfil ICC de sesión")), 0, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("ICC especifico")), 0, 0)
         self.icc_profile_combo = QtWidgets.QComboBox()
         self.icc_profile_combo.setToolTip(
-            self.tr("Perfiles ICC registrados en la sesión. Permite activar versiones generadas anteriormente.")
+            self.tr("Perfiles ICC registrados en la sesion. Permite activar perfiles generados en el proyecto.")
         )
         grid.addWidget(self.icc_profile_combo, 0, 1, 1, 2)
 
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self._button(self.tr("Activar seleccionado"), self._activate_selected_icc_profile))
-        row.addWidget(self._button(self.tr("Cargar perfil activo"), self._menu_load_profile))
-        row.addWidget(self._button(self.tr("Usar perfil generado"), self._use_generated_profile_as_active))
+        row.addWidget(self._button(self.tr("Cargar ICC de camara..."), self._menu_load_profile))
+        row.addWidget(self._button(self.tr("Usar ICC generado"), self._use_generated_profile_as_active))
         grid.addLayout(row, 1, 0, 1, 3)
 
+        assign_row = QtWidgets.QHBoxLayout()
+        assign_row.addWidget(self._button(self.tr("Aplicar ICC a seleccion"), self._assign_active_icc_profile_to_selected))
+        assign_row.addWidget(self._button(self.tr("Aplicar ICC a sesion"), self._assign_active_icc_profile_to_session_raws))
+        grid.addLayout(assign_row, 2, 0, 1, 3)
+
         self.path_profile_active = QtWidgets.QLineEdit("/tmp/camera_profile.icc")
-        self._add_path_row(grid, 2, self.tr("Perfil ICC de entrada activo"), self.path_profile_active, file_mode=True, save_mode=False, dir_mode=False)
+        self._add_path_row(grid, 3, self.tr("Perfil ICC de la imagen"), self.path_profile_active, file_mode=True, save_mode=False, dir_mode=False)
 
         self.icc_profile_status_label = QtWidgets.QLabel(self.tr("Sin perfiles ICC de sesión"))
         self.icc_profile_status_label.setWordWrap(True)
         self.icc_profile_status_label.setStyleSheet("font-size: 12px; color: #d1d5db;")
-        grid.addWidget(self.icc_profile_status_label, 3, 0, 1, 3)
+        grid.addWidget(self.icc_profile_status_label, 4, 0, 1, 3)
 
         self._refresh_icc_profile_combo()
         return tab
+
+    def _build_icc_workflow_decision_panel(self) -> QtWidgets.QWidget:
+        box = QtWidgets.QGroupBox(self.tr("Perfil ICC de la imagen"))
+        grid = QtWidgets.QGridLayout(box)
+        self.path_profile_active = QtWidgets.QLineEdit("")
+        self.path_profile_active.hide()
+
+        self.radio_icc_generic = QtWidgets.QRadioButton(self.tr("Perfil ICC RGB estandar"))
+        self.radio_icc_existing = QtWidgets.QRadioButton(self.tr("Perfiles ICC de la sesion"))
+        self.radio_icc_generate = QtWidgets.QRadioButton(self.tr("Generar perfil ICC"))
+        self.radio_icc_custom = self.radio_icc_existing
+        self.radio_icc_generic.setChecked(True)
+        grid.addWidget(self.radio_icc_generic, 0, 0, 1, 3)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Espacio RGB estandar")), 1, 0)
+        self.combo_generic_icc_space = QtWidgets.QComboBox()
+        self.combo_generic_icc_space.setToolTip(
+            self.tr("Perfil ICC RGB estandar. ProPhoto RGB se usa por defecto si no eliges otro.")
+        )
+        for label, value in (
+            (self.tr("sRGB"), "srgb"),
+            (self.tr("Adobe RGB"), "adobe_rgb"),
+            (self.tr("ProPhoto RGB"), "prophoto_rgb"),
+        ):
+            self.combo_generic_icc_space.addItem(label, value)
+        self.combo_generic_icc_space.setCurrentIndex(2)
+        grid.addWidget(self.combo_generic_icc_space, 1, 1, 1, 2)
+
+        grid.addWidget(self.radio_icc_existing, 2, 0, 1, 3)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Perfil de sesion")), 3, 0)
+        self.icc_profile_combo = QtWidgets.QComboBox()
+        self.icc_profile_combo.setToolTip(
+            self.tr("Perfiles ICC generados o registrados en esta sesion. Al elegir uno queda activo en la imagen.")
+        )
+        grid.addWidget(self.icc_profile_combo, 3, 1, 1, 2)
+
+        self.icc_existing_availability_label = QtWidgets.QLabel("")
+        self.icc_existing_availability_label.setWordWrap(True)
+        self.icc_existing_availability_label.setStyleSheet("font-size: 12px; color: #6b7280; padding-left: 18px;")
+        grid.addWidget(self.icc_existing_availability_label, 4, 0, 1, 3)
+
+        self.icc_profile_status_label = QtWidgets.QLabel(self.tr("Sin perfiles ICC de sesion"))
+        self.icc_profile_status_label.setWordWrap(True)
+        self.icc_profile_status_label.setStyleSheet("font-size: 12px; color: #374151; padding-left: 18px;")
+        grid.addWidget(self.icc_profile_status_label, 5, 0, 1, 3)
+
+        grid.addWidget(self.radio_icc_generate, 6, 0, 1, 3)
+        self.icc_workflow_decision_label = QtWidgets.QLabel("")
+        self.icc_workflow_decision_label.setWordWrap(True)
+        self.icc_workflow_decision_label.setStyleSheet("font-size: 12px; color: #374151;")
+        grid.addWidget(self.icc_workflow_decision_label, 7, 0, 1, 3)
+
+        self.radio_icc_generic.toggled.connect(lambda _checked: self._on_icc_workflow_choice_changed())
+        self.radio_icc_existing.toggled.connect(lambda _checked: self._on_icc_workflow_choice_changed())
+        self.radio_icc_generate.toggled.connect(lambda _checked: self._on_icc_workflow_choice_changed())
+        self.radio_icc_generic.toggled.connect(lambda checked: self._apply_generic_icc_workflow_to_controls() if checked else None)
+        self.icc_profile_combo.currentIndexChanged.connect(lambda _index: self._on_session_icc_profile_selected())
+        self.combo_generic_icc_space.currentIndexChanged.connect(lambda _index: self._apply_generic_icc_workflow_to_controls())
+        self._refresh_icc_profile_combo()
+        self._on_icc_workflow_choice_changed()
+        return box
+
+    def _build_icc_profile_information_panel(self) -> QtWidgets.QWidget:
+        box = QtWidgets.QGroupBox(self.tr("Estado ICC"))
+        layout = QtWidgets.QVBoxLayout(box)
+        self.icc_selected_file_info_label = QtWidgets.QLabel(self.tr("Imagen seleccionada: ninguna"))
+        self.icc_selected_file_info_label.setWordWrap(True)
+        self.icc_selected_file_info_label.setStyleSheet(
+            "font-size: 12px; color: #111827; background-color: #f8fafc; "
+            "border: 1px solid #d1d5db; border-radius: 4px; padding: 6px;"
+        )
+        layout.addWidget(self.icc_selected_file_info_label)
+
+        self.icc_session_info_label = QtWidgets.QLabel(self.tr("Perfiles ICC de sesion: 0 | Activo: ninguno"))
+        self.icc_session_info_label.setWordWrap(True)
+        self.icc_session_info_label.setStyleSheet("font-size: 12px; color: #374151;")
+        layout.addWidget(self.icc_session_info_label)
+
+        note = QtWidgets.QLabel(
+            self.tr(
+                "El ICC elegido aqui se usa como perfil de la imagen para visualizar y exportar. "
+                "Si no eliges un ICC de sesion, se usa un perfil ICC RGB estandar; ProPhoto RGB "
+                "es el valor predeterminado. "
+                "La correccion final de pantalla usa aparte el perfil ICC del monitor detectado "
+                "por el sistema operativo. Los perfiles de ajuste de color/contraste se guardan "
+                "en la pestana Color y contraste."
+            )
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("font-size: 12px; color: #6b7280;")
+        layout.addWidget(note)
+        self._refresh_selected_icc_profile_info()
+        return box
 
     def _build_tab_batch_config(self) -> QtWidgets.QWidget:
         tab = QtWidgets.QWidget()

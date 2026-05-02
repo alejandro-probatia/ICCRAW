@@ -8,6 +8,8 @@ from probraw.display_color import (
     _parse_colord_profile_filename,
     _parse_xprop_icc_profile_bytes,
     display_profile_label,
+    profiled_float_to_display_u8,
+    profiled_u8_to_display_u8,
     srgb_float_to_u8,
     srgb_to_display_u8,
     srgb_u8_to_display_u8,
@@ -43,6 +45,34 @@ def test_srgb_to_display_u8_with_srgb_monitor_profile_is_stable(tmp_path: Path):
     assert out.shape == rgb.shape
     assert np.max(np.abs(out.astype(np.int16) - rgb.astype(np.int16))) <= 1
     assert display_profile_label(profile)
+
+
+def test_profiled_display_direct_srgb_to_srgb_is_stable(tmp_path: Path):
+    source = tmp_path / "source_srgb.icc"
+    monitor = tmp_path / "monitor_srgb.icc"
+    srgb_profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
+    source.write_bytes(srgb_profile.tobytes())
+    monitor.write_bytes(srgb_profile.tobytes())
+    image = np.asarray([[[0.0, 0.5, 1.0], [0.25, 0.75, 0.1]]], dtype=np.float32)
+
+    out = profiled_float_to_display_u8(image, source, monitor)
+
+    assert out.dtype == np.uint8
+    assert out.shape == image.shape
+    assert np.max(np.abs(out.astype(np.int16) - srgb_float_to_u8(image).astype(np.int16))) <= 1
+
+
+def test_profiled_u8_without_monitor_profile_converts_to_srgb(tmp_path: Path):
+    source = tmp_path / "source_srgb.icc"
+    srgb_profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
+    source.write_bytes(srgb_profile.tobytes())
+    rgb = np.asarray([[[12, 128, 240], [255, 64, 0]]], dtype=np.uint8)
+
+    out = profiled_u8_to_display_u8(rgb, source, None)
+
+    assert out.dtype == np.uint8
+    assert out.shape == rgb.shape
+    assert np.max(np.abs(out.astype(np.int16) - rgb.astype(np.int16))) <= 1
 
 
 def test_colord_parser_prefers_primary_enabled_display():

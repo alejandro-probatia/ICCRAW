@@ -247,6 +247,10 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     s = sub.add_parser("check-display-profile")
     s.add_argument("--out", default=None, help="JSON de salida opcional")
 
+    s = sub.add_parser("mtf-roi-worker", help=argparse.SUPPRESS)
+    s.add_argument("request", help=argparse.SUPPRESS)
+    s.add_argument("output", help=argparse.SUPPRESS)
+
     s = sub.add_parser("verify-c2pa")
     s.add_argument("input", help="TIFF final firmado")
     s.add_argument("--raw", required=True, help="RAW fuente para verificar SHA-256 declarado")
@@ -513,6 +517,11 @@ def main(argv: list[str] | None = None) -> int:
                 write_json(Path(args.out), result)
             print(json.dumps(result, indent=2, ensure_ascii=False))
             return 0
+
+        if args.command == "mtf-roi-worker":
+            from .analysis import mtf_roi
+
+            return int(mtf_roi.main([args.request, args.output]))
 
         if args.command == "verify-c2pa":
             result = verify_c2pa_raw_link(

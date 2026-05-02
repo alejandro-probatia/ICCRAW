@@ -100,19 +100,29 @@ sRGB as the visual fallback.
 
 The GUI separates the analysis signal from the display signal:
 
-1. The RAW is developed or previewed as normalized linear RGB.
+1. The RAW is developed or previewed as normalized RGB in the image-selected
+   space: linear camera RGB when a session ICC is active, or a real standard
+   RGB space when using sRGB/Adobe RGB/ProPhoto RGB.
 2. Parametric adjustments are applied before output conversion.
-3. If a valid input ICC is active, preview uses that ICC to build a colorimetric
-   sRGB review signal.
-4. The colorimetric RGB histogram and clipping overlay read that pre-monitor
-   sRGB signal.
-5. Only after that, the monitor ICC is applied before pixels are sent to the
-   on-screen widget.
+3. If a source ICC is active, pixels sent to the widget are converted directly
+   from that source ICC to the configured monitor ICC.
+4. The internal sRGB signal is limited to RGB histogram, clipping overlay,
+   diagnostics and fallback when the CMM cannot open a profile.
+5. The monitor ICC is never mixed into analysis data, recipes or exported TIFFs.
 
 This prevents a narrow, defective or machine-specific monitor profile from
 altering analysis data. At the same time, the user must calibrate the monitor
 and configure the correct ICC in the operating system for the visual appearance
 of the preview to be reliable.
+
+## ICC Preview Performance Note
+
+To avoid applying ICC profiles to embedded previews that do not represent the
+developed RAW, views with a session ICC or generic profile avoid the embedded
+thumbnail and use LibRaw development. Normal preview remains bounded by
+`PREVIEW_AUTO_BASE_MAX_SIDE`; only 1:1 precision, compare and chart marking
+force full resolution. Curve interactions use a cached reduced source and heavy
+final preview runs in an asynchronous worker.
 
 ## Profile Validity
 

@@ -261,11 +261,12 @@ class SessionDevelopmentMixin:
 
     def _refresh_icc_profile_combo(self) -> None:
         if not hasattr(self, "icc_profile_combo"):
+            self._refresh_selected_icc_profile_info()
             return
         current = self._active_icc_profile_id
         self.icc_profile_combo.blockSignals(True)
         self.icc_profile_combo.clear()
-        self.icc_profile_combo.addItem(self.tr("Sin perfil ICC activo"), "")
+        self.icc_profile_combo.addItem(self.tr("Sin perfil ICC elegido"), "")
         for profile in self._icc_profiles:
             profile_id = str(profile.get("id") or "")
             if not profile_id:
@@ -280,6 +281,241 @@ class SessionDevelopmentMixin:
             self.icc_profile_status_label.setText(
                 f"Perfiles ICC de sesión: {len(self._icc_profiles)} | Activo: {active_label}"
             )
+
+        self._refresh_selected_icc_profile_info()
+
+    def _refresh_selected_icc_profile_info(self) -> None:
+        self._refresh_existing_icc_availability_label()
+        self._sync_icc_workflow_choice_from_state()
+        active = self._icc_profile_by_id(getattr(self, "_active_icc_profile_id", ""))
+        active_label = self._icc_profile_combo_label(active) if active is not None else self.tr("ninguno")
+        session_text = f"Perfiles ICC de sesion: {len(getattr(self, '_icc_profiles', []) or [])} | Activo: {active_label}"
+        if hasattr(self, "icc_session_info_label"):
+            self.icc_session_info_label.setText(session_text)
+
+        label = getattr(self, "icc_selected_file_info_label", None)
+        if label is None:
+            return
+        selected = getattr(self, "_selected_file", None)
+        if selected is None:
+            label.setText(self.tr("Imagen seleccionada: ninguna") + "\n" + self.tr("No hay imagen activa para comprobar ICC."))
+            return
+        path = Path(selected)
+        if path.suffix.lower() not in RAW_EXTENSIONS:
+            label.setText(
+                self.tr("Imagen seleccionada:")
+                + f" {path.name}\n"
+                + self.tr("No es un RAW gestionado con mochila ProbRAW; no hay ICC de entrada asignable.")
+            )
+            return
+        try:
+            payload = load_raw_sidecar(path)
+        except FileNotFoundError:
+            label.setText(
+                self.tr("Imagen seleccionada:")
+                + f" {path.name}\n"
+                + self.tr("Sin mochila ProbRAW. Esta imagen todavia no tiene perfil ICC asignado.")
+            )
+            return
+        except Exception as exc:
+            label.setText(
+                self.tr("Imagen seleccionada:")
+                + f" {path.name}\n"
+                + self.tr("No se pudo leer la mochila ICC:")
+                + f" {exc}"
+            )
+            return
+
+        profiles = payload.get("adjustment_profiles") if isinstance(payload.get("adjustment_profiles"), dict) else {}
+        icc_profile = profiles.get("icc") if isinstance(profiles, dict) else {}
+        icc_name = str(icc_profile.get("name") or icc_profile.get("id") or "").strip() if isinstance(icc_profile, dict) else ""
+        color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
+        raw_icc_path = str(color.get("icc_profile_path") or "").strip()
+        icc_path = self._session_stored_path(raw_icc_path) if raw_icc_path else None
+        if not icc_name and icc_path is not None:
+            profile = self._icc_profile_by_path(icc_path)
+            icc_name = self._icc_profile_combo_label(profile) if profile is not None else icc_path.name
+        if not icc_name:
+            label.setText(
+                self.tr("Imagen seleccionada:")
+                + f" {path.name}\n"
+                + self.tr("Sin perfil ICC aplicado a esta imagen.")
+            )
+            return
+        role = str(color.get("icc_profile_role") or "").strip()
+        detail = self.tr("ICC aplicado:") + f" {icc_name}"
+        if icc_path is not None:
+            detail += f"\n{self.tr('Archivo ICC:')} {icc_path}"
+        if role:
+            detail += f"\n{self.tr('Rol:')} {role}"
+        label.setText(self.tr("Imagen seleccionada:") + f" {path.name}\n" + detail)
+
+    def _refresh_existing_icc_availability_label(self) -> None:
+        label = getattr(self, "icc_existing_availability_label", None)
+        if label is None:
+            return
+        count = len(getattr(self, "_icc_profiles", []) or [])
+        if count:
+            label.setText(
+                self.tr("Perfiles ICC disponibles en esta sesion:")
+                + f" {count}. "
+                + self.tr("Seleccionar uno lo activa en la imagen actual.")
+            )
+        else:
+            label.setText(
+                self.tr("Esta sesion todavia no tiene ICC generados. Usa la opcion Generar perfil ICC o deja ProPhoto RGB por defecto.")
+            )
+
+    def _sync_icc_workflow_choice_from_state(self) -> None:
+        generic = getattr(self, "radio_icc_generic", None)
+        existing = getattr(self, "radio_icc_existing", None)
+        generate = getattr(self, "radio_icc_generate", None)
+        if generic is None or existing is None or generate is None:
+            return
+        has_active_icc = bool(str(getattr(self, "_active_icc_profile_id", "") or "").strip())
+        if not has_active_icc and hasattr(self, "path_profile_active"):
+            raw_path = self.path_profile_active.text().strip()
+            if raw_path:
+                path = Path(raw_path).expanduser()
+                has_active_icc = path.exists() and self._profile_can_be_active(path)
+        generic.blockSignals(True)
+        existing.blockSignals(True)
+        generate.blockSignals(True)
+        keep_generate = bool(generate.isChecked()) and not has_active_icc
+        generate.setChecked(keep_generate)
+        existing.setChecked(has_active_icc)
+        generic.setChecked(not has_active_icc and not keep_generate)
+        generic.blockSignals(False)
+        existing.blockSignals(False)
+        generate.blockSignals(False)
+        self._on_icc_workflow_choice_changed()
+
+    def _on_icc_workflow_choice_changed(self) -> None:
+        generic = bool(getattr(getattr(self, "radio_icc_generic", None), "isChecked", lambda: True)())
+        generate = bool(getattr(getattr(self, "radio_icc_generate", None), "isChecked", lambda: False)())
+        existing = bool(getattr(getattr(self, "radio_icc_existing", None), "isChecked", lambda: False)())
+        combo = getattr(self, "combo_generic_icc_space", None)
+        if combo is not None:
+            combo.setEnabled(generic)
+        session_combo = getattr(self, "icc_profile_combo", None)
+        if session_combo is not None:
+            session_combo.setEnabled(existing)
+        status_label = getattr(self, "icc_profile_status_label", None)
+        if status_label is not None:
+            status_label.setEnabled(existing)
+        generation_section = getattr(self, "_icc_profile_generation_section", None)
+        if generation_section is not None:
+            generation_section.setEnabled(generate)
+        active_section = getattr(self, "_icc_active_profile_section", None)
+        if active_section is not None:
+            active_section.setEnabled(existing or generate)
+        label = getattr(self, "icc_workflow_decision_label", None)
+        if label is not None:
+            if generic:
+                label.setText(
+                    self.tr(
+                        "Perfil ICC RGB estandar: sRGB, Adobe RGB o ProPhoto RGB. "
+                        "ProPhoto RGB se usa por defecto si no eliges otro perfil."
+                    )
+                )
+            elif existing:
+                count = len(getattr(self, "_icc_profiles", []) or [])
+                if count:
+                    label.setText(
+                        self.tr(
+                            "Perfiles de sesion: selecciona un ICC generado o registrado "
+                            "en esta sesion para activarlo en la imagen."
+                        )
+                    )
+                else:
+                    label.setText(
+                        self.tr(
+                            "No hay ICC de sesion todavia. Mientras tanto se usa ProPhoto RGB "
+                            "como perfil ICC RGB estandar."
+                        )
+                    )
+            else:
+                label.setText(
+                    self.tr(
+                        "Generar perfil ICC: selecciona la carta de color y crea un ICC "
+                        "que quedara disponible en los perfiles de la sesion."
+                    )
+                )
+
+    def _on_session_icc_profile_selected(self) -> None:
+        combo = getattr(self, "icc_profile_combo", None)
+        if combo is None:
+            return
+        profile_id = str(combo.currentData() or "")
+        if not profile_id:
+            return
+        existing = getattr(self, "radio_icc_existing", None)
+        if existing is not None and not existing.isChecked():
+            existing.setChecked(True)
+        if not self._activate_icc_profile_id(profile_id, save=True, refresh_preview=True):
+            self._refresh_icc_profile_combo()
+            return
+        self._auto_apply_current_icc_choice_to_selected_image()
+        profile = self._icc_profile_by_id(profile_id)
+        self._set_status(self.tr("Perfil ICC de sesion activo:") + f" {self._icc_profile_combo_label(profile) if profile else profile_id}")
+
+    def _apply_generic_icc_workflow_to_controls(self) -> None:
+        combo = getattr(self, "combo_generic_icc_space", None)
+        output_space = str(combo.currentData() or "prophoto_rgb") if combo is not None else "prophoto_rgb"
+        self._invalidate_preview_cache()
+        output_change_handled = False
+        if hasattr(self, "combo_output_space"):
+            self.combo_output_space.blockSignals(True)
+            self._set_combo_text(self.combo_output_space, output_space)
+            self.combo_output_space.blockSignals(False)
+            self._on_output_space_changed()
+            output_change_handled = True
+        self._clear_active_input_profile_for_unconfigured_file()
+        if hasattr(self, "radio_icc_generic"):
+            self.radio_icc_generic.setChecked(True)
+        if not output_change_handled:
+            self._reload_preview_source_for_color_management()
+        self._auto_apply_current_icc_choice_to_selected_image()
+        self._set_status(self.tr("Perfil ICC RGB estandar activo:") + f" {output_space}")
+
+    def _set_camera_rgb_output_for_session_icc(self) -> None:
+        if not hasattr(self, "combo_output_space"):
+            return
+        self.combo_output_space.blockSignals(True)
+        self._set_combo_text(self.combo_output_space, "scene_linear_camera_rgb")
+        self.combo_output_space.blockSignals(False)
+        self._sync_development_output_space_combo("scene_linear_camera_rgb")
+        self._apply_output_space_defaults_to_controls("scene_linear_camera_rgb")
+
+    def _reload_preview_source_for_color_management(self) -> None:
+        if getattr(self, "_original_linear", None) is None:
+            return
+        selected = getattr(self, "_selected_file", None)
+        if selected is None or Path(selected).suffix.lower() not in RAW_EXTENSIONS:
+            self._schedule_preview_refresh()
+            return
+        self._last_loaded_preview_key = None
+        self._on_load_selected(show_message=False)
+
+    def _auto_apply_current_icc_choice_to_selected_image(self) -> int:
+        selected = getattr(self, "_selected_file", None)
+        if selected is None:
+            return 0
+        path = Path(selected)
+        if path.suffix.lower() not in RAW_EXTENSIONS:
+            return 0
+        try:
+            if self._active_session_icc_for_settings() is not None:
+                return self._assign_active_icc_profile_to_raw_files([path])
+            sidecar = self._write_current_development_settings_to_raw(path, status="configured")
+        except Exception as exc:
+            self._log_preview(f"No se pudo aplicar ICC a {path.name}: {exc}")
+            return 0
+        if sidecar is not None:
+            self._save_active_session(silent=True)
+            return 1
+        return 0
+
 
     def _managed_gamut_profile_items(self) -> list[tuple[str, str]]:
         return [
@@ -365,11 +601,12 @@ class SessionDevelopmentMixin:
         self._active_icc_profile_id = profile_id
         self.path_profile_active.setText(str(path))
         self.chk_apply_profile.setChecked(True)
+        self._set_camera_rgb_output_for_session_icc()
         self._refresh_profile_management_views()
         self._refresh_chart_diagnostics_from_session(focus=False)
         if refresh_preview:
             self._invalidate_preview_cache()
-            self._schedule_preview_refresh()
+            self._reload_preview_source_for_color_management()
         if save:
             self._save_active_session(silent=True)
         return True
@@ -378,7 +615,7 @@ class SessionDevelopmentMixin:
         profile_id = str(self.icc_profile_combo.currentData() or "") if hasattr(self, "icc_profile_combo") else ""
         if not profile_id:
             self._activate_icc_profile_id("", save=True)
-            self._set_status(self.tr("Perfil ICC activo desactivado"))
+            self._set_status(self.tr("Perfil ICC elegido desactivado"))
             return
         profile = self._icc_profile_by_id(profile_id)
         path = self._session_stored_path(profile.get("path")) if profile else None
@@ -502,7 +739,7 @@ class SessionDevelopmentMixin:
             if input_profile_path is None:
                 return self.tr(
                     "La receta está en RGB de cámara, pero no hay un perfil ICC de entrada "
-                    "activo. Genera o carga un ICC de sesión y activa 'Aplicar perfil ICC', "
+                    "elegido. Genera o carga un ICC de sesión para la imagen, "
                     "o elige sRGB, Adobe RGB o ProPhoto como espacio estándar sin carta."
                 )
             if not input_profile_path.exists():
@@ -638,7 +875,7 @@ class SessionDevelopmentMixin:
         self.combo_output_space.blockSignals(False)
         self._apply_output_space_defaults_to_controls(output_space)
         if self._original_linear is not None:
-            self._schedule_preview_refresh()
+            self._reload_preview_source_for_color_management()
 
     def _on_output_space_changed(self) -> None:
         if not hasattr(self, "combo_output_space"):
@@ -647,7 +884,7 @@ class SessionDevelopmentMixin:
         self._sync_development_output_space_combo(output_space)
         self._apply_output_space_defaults_to_controls(output_space)
         if self._original_linear is not None:
-            self._schedule_preview_refresh()
+            self._reload_preview_source_for_color_management()
 
     def _on_output_linear_toggled(self, checked: bool) -> None:
         if not hasattr(self, "combo_output_space"):
@@ -730,6 +967,459 @@ class SessionDevelopmentMixin:
             self._active_development_profile_id = profile_id
         self._refresh_development_profile_combo()
         self._save_active_session(silent=True)
+
+    def _named_adjustment_profile_attrs(self, category: str) -> tuple[str, str, str, str, str]:
+        mapping = {
+            "color_contrast": (
+                "_color_contrast_profiles",
+                "_active_color_contrast_profile_id",
+                "color_contrast_profile_combo",
+                "color_contrast_profile_name_edit",
+                "color_contrast_profile_status_label",
+            ),
+            "detail": (
+                "_detail_profiles",
+                "_active_detail_profile_id",
+                "detail_profile_combo",
+                "detail_profile_name_edit",
+                "detail_profile_status_label",
+            ),
+            "raw_export": (
+                "_raw_export_profiles",
+                "_active_raw_export_profile_id",
+                "raw_export_profile_combo",
+                "raw_export_profile_name_edit",
+                "raw_export_profile_status_label",
+            ),
+        }
+        if category not in mapping:
+            raise RuntimeError(f"Tipo de perfil de ajuste no soportado: {category}")
+        return mapping[category]
+
+    def _named_adjustment_profile_title(self, category: str) -> str:
+        if category == "color_contrast":
+            return self.tr("Color y contraste")
+        if category == "detail":
+            return self.tr("Nitidez")
+        if category == "raw_export":
+            return self.tr("Exportacion RAW")
+        return category
+
+    def _named_adjustment_profile_collection(self, category: str) -> list[dict[str, Any]]:
+        collection_attr, _active_attr, _combo_attr, _name_attr, _status_attr = self._named_adjustment_profile_attrs(category)
+        collection = getattr(self, collection_attr, None)
+        if not isinstance(collection, list):
+            collection = []
+            setattr(self, collection_attr, collection)
+        return collection
+
+    def _active_named_adjustment_profile_id(self, category: str) -> str:
+        _collection_attr, active_attr, _combo_attr, _name_attr, _status_attr = self._named_adjustment_profile_attrs(category)
+        return str(getattr(self, active_attr, "") or "")
+
+    def _set_active_named_adjustment_profile_id(self, category: str, profile_id: str) -> None:
+        _collection_attr, active_attr, _combo_attr, _name_attr, _status_attr = self._named_adjustment_profile_attrs(category)
+        setattr(self, active_attr, str(profile_id or ""))
+
+    def _named_adjustment_profile_by_id(self, category: str, profile_id: str) -> dict[str, Any] | None:
+        for profile in self._named_adjustment_profile_collection(category):
+            if str(profile.get("id") or "") == profile_id:
+                return profile
+        return None
+
+    def _unique_named_adjustment_profile_id(self, category: str, name: str) -> str:
+        base = self._slug_for_development_profile(name)
+        existing = {str(profile.get("id") or "") for profile in self._named_adjustment_profile_collection(category)}
+        if base not in existing:
+            return base
+        index = 2
+        while f"{base}-{index}" in existing:
+            index += 1
+        return f"{base}-{index}"
+
+    def _named_adjustment_profile_dir(self, category: str, profile_id: str) -> Path:
+        root = self._active_session_root or Path(self.session_root_path.text().strip() or Path.cwd())
+        return self._session_paths_from_root(root)["config"] / "adjustment_profiles" / category / profile_id
+
+    def _named_adjustment_profile_manifest(self, profile: dict[str, Any]) -> dict[str, Any]:
+        manifest_path = self._session_stored_path(profile.get("manifest_path"))
+        if manifest_path is None or not manifest_path.exists():
+            return {}
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            return payload if isinstance(payload, dict) else {}
+        except Exception:
+            return {}
+
+    def _named_adjustment_profile_state(self, category: str, profile: dict[str, Any]) -> Any:
+        manifest = self._named_adjustment_profile_manifest(profile)
+        if category == "color_contrast":
+            state = manifest.get("render_adjustments")
+            return state if isinstance(state, dict) else self._default_render_adjustment_state()
+        if category == "detail":
+            state = manifest.get("detail_adjustments")
+            return state if isinstance(state, dict) else self._default_detail_adjustment_state()
+        if category == "raw_export":
+            recipe = self._recipe_from_payload(manifest.get("recipe"))
+            return recipe or self._build_effective_recipe()
+        raise RuntimeError(f"Tipo de perfil de ajuste no soportado: {category}")
+
+    def _current_named_adjustment_profiles_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        for category in ("color_contrast", "detail", "raw_export"):
+            profile_id = self._active_named_adjustment_profile_id(category)
+            profile = self._named_adjustment_profile_by_id(category, profile_id) if profile_id else None
+            payload[category] = {
+                "id": profile_id if profile else "",
+                "name": str(profile.get("name") or profile_id) if profile else "",
+                "kind": category,
+            }
+        if getattr(self, "_active_icc_profile_id", ""):
+            profile = self._icc_profile_by_id(str(self._active_icc_profile_id))
+            payload["icc"] = {
+                "id": str(self._active_icc_profile_id),
+                "name": str(profile.get("name") or self._active_icc_profile_id) if profile else str(self._active_icc_profile_id),
+                "kind": "icc",
+            }
+        return payload
+
+    def _refresh_named_adjustment_profile_combo(self, category: str) -> None:
+        _collection_attr, _active_attr, combo_attr, _name_attr, status_attr = self._named_adjustment_profile_attrs(category)
+        combo = getattr(self, combo_attr, None)
+        if combo is None:
+            return
+        current = self._active_named_adjustment_profile_id(category)
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem(self.tr("Ajustes actuales"), "")
+        for profile in self._named_adjustment_profile_collection(category):
+            profile_id = str(profile.get("id") or "").strip()
+            if profile_id:
+                combo.addItem(str(profile.get("name") or profile_id), profile_id)
+        index = combo.findData(current)
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        combo.blockSignals(False)
+        status = getattr(self, status_attr, None)
+        if status is not None:
+            active = current or self.tr("actuales")
+            status.setText(
+                f"{self._named_adjustment_profile_title(category)}: "
+                f"{len(self._named_adjustment_profile_collection(category))} | Activo: {active}"
+            )
+
+    def _refresh_named_adjustment_profile_combos(self) -> None:
+        for category in ("color_contrast", "detail", "raw_export"):
+            self._refresh_named_adjustment_profile_combo(category)
+
+    def _register_named_adjustment_profile(self, category: str, descriptor: dict[str, Any], *, activate: bool = True) -> None:
+        profile_id = str(descriptor.get("id") or "").strip()
+        if not profile_id:
+            return
+        now = self._profile_timestamp()
+        descriptor = dict(descriptor)
+        descriptor["category"] = category
+        descriptor.setdefault("created_at", now)
+        descriptor["updated_at"] = now
+        collection = self._named_adjustment_profile_collection(category)
+        for idx, existing in enumerate(collection):
+            if str(existing.get("id") or "") == profile_id:
+                merged = dict(existing)
+                merged.update(descriptor)
+                collection[idx] = merged
+                break
+        else:
+            collection.append(descriptor)
+        collection.sort(key=lambda item: str(item.get("name") or item.get("id") or ""))
+        if activate:
+            self._set_active_named_adjustment_profile_id(category, profile_id)
+        self._refresh_named_adjustment_profile_combo(category)
+        self._save_active_session(silent=True)
+
+    def _save_named_adjustment_profile(self, category: str) -> None:
+        if self._active_session_root is None:
+            self._on_create_session()
+            if self._active_session_root is None:
+                return
+        _collection_attr, _active_attr, _combo_attr, name_attr, _status_attr = self._named_adjustment_profile_attrs(category)
+        name_widget = getattr(self, name_attr)
+        name = name_widget.text().strip() or self._named_adjustment_profile_title(category)
+        profile_id = self._unique_named_adjustment_profile_id(category, name)
+        profile_dir = self._named_adjustment_profile_dir(category, profile_id)
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = profile_dir / "profile.json"
+        manifest: dict[str, Any] = {
+            "id": profile_id,
+            "name": name,
+            "category": category,
+            "created_at": self._profile_timestamp(),
+        }
+        if category == "color_contrast":
+            manifest["render_adjustments"] = self._render_adjustment_state()
+        elif category == "detail":
+            manifest["detail_adjustments"] = self._detail_adjustment_state()
+        elif category == "raw_export":
+            recipe = self._build_effective_recipe()
+            recipe_path = profile_dir / "recipe.yml"
+            save_recipe(recipe, recipe_path)
+            manifest["recipe_path"] = self._session_relative_or_absolute(recipe_path)
+            manifest["recipe"] = asdict(recipe)
+        else:
+            raise RuntimeError(f"Tipo de perfil de ajuste no soportado: {category}")
+        write_json(manifest_path, manifest)
+        descriptor = {
+            "id": profile_id,
+            "name": name,
+            "category": category,
+            "manifest_path": self._session_relative_or_absolute(manifest_path),
+        }
+        if category == "raw_export":
+            descriptor["recipe_path"] = manifest.get("recipe_path", "")
+        self._register_named_adjustment_profile(category, descriptor, activate=True)
+        self._set_status(self._named_adjustment_profile_title(category) + self.tr(" guardado:") + f" {name}")
+
+    def _activate_selected_named_adjustment_profile(self, category: str) -> None:
+        _collection_attr, _active_attr, combo_attr, _name_attr, _status_attr = self._named_adjustment_profile_attrs(category)
+        combo = getattr(self, combo_attr)
+        self._apply_named_adjustment_profile_to_controls(category, str(combo.currentData() or ""))
+
+    def _apply_named_adjustment_profile_to_controls(self, category: str, profile_id: str) -> None:
+        if not profile_id:
+            self._set_active_named_adjustment_profile_id(category, "")
+            self._refresh_named_adjustment_profile_combo(category)
+            return
+        profile = self._named_adjustment_profile_by_id(category, profile_id)
+        if profile is None:
+            QtWidgets.QMessageBox.warning(self, self.tr("Perfil no valido"), self.tr("No existe el perfil seleccionado."))
+            return
+        state = self._named_adjustment_profile_state(category, profile)
+        if category == "color_contrast":
+            self._apply_render_adjustment_state(state)
+        elif category == "detail":
+            self._apply_detail_adjustment_state(state)
+        elif category == "raw_export":
+            input_profile = self._active_session_icc_for_settings()
+            recipe = self._visible_export_recipe_for_color_management(state, input_profile_path=input_profile)
+            self._apply_recipe_to_controls(recipe)
+            recipe_path = self._session_stored_path(profile.get("recipe_path"))
+            if recipe_path is not None:
+                self.path_recipe.setText(str(recipe_path))
+        self._set_active_named_adjustment_profile_id(category, profile_id)
+        self._refresh_named_adjustment_profile_combo(category)
+        self._invalidate_preview_cache()
+        if self._original_linear is not None:
+            self._schedule_preview_refresh()
+        self._save_active_session(silent=True)
+        self._set_status(self._named_adjustment_profile_title(category) + self.tr(" aplicado:") + f" {profile.get('name') or profile_id}")
+
+    def _sidecar_bundle_for_category_write(self, path: Path) -> dict[str, Any]:
+        try:
+            payload = load_raw_sidecar(path)
+        except Exception:
+            payload = {}
+        recipe = self._recipe_from_payload(payload.get("recipe")) or self._build_effective_recipe()
+        detail = payload.get("detail_adjustments") if isinstance(payload.get("detail_adjustments"), dict) else self._detail_adjustment_state()
+        render = payload.get("render_adjustments") if isinstance(payload.get("render_adjustments"), dict) else self._render_adjustment_state()
+        profile = payload.get("development_profile") if isinstance(payload.get("development_profile"), dict) else self._development_profile_payload_for_active_settings()
+        adjustment_profiles = (
+            dict(payload.get("adjustment_profiles"))
+            if isinstance(payload.get("adjustment_profiles"), dict)
+            else self._current_named_adjustment_profiles_payload()
+        )
+        color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
+        mode = str(color.get("mode") or "")
+        profile_path = self._session_stored_path(color.get("icc_profile_path")) if color else None
+        if profile_path is None or not profile_path.exists():
+            try:
+                _input_profile, profile_path, mode = self._configured_color_profile_for_recipe(recipe)
+            except Exception:
+                profile_path = None
+                mode = "no_profile"
+        return {
+            "recipe": recipe,
+            "detail_adjustments": detail,
+            "render_adjustments": render,
+            "development_profile": profile,
+            "adjustment_profiles": adjustment_profiles,
+            "profile_path": profile_path,
+            "color_management_mode": mode,
+        }
+
+    def _profile_summary_payload(self, category: str, profile: dict[str, Any]) -> dict[str, str]:
+        return {
+            "id": str(profile.get("id") or ""),
+            "name": str(profile.get("name") or profile.get("id") or ""),
+            "kind": category,
+        }
+
+    def _apply_named_adjustment_profile_to_raw_files(self, category: str, profile_id: str, files: list[Path]) -> int:
+        profile = self._named_adjustment_profile_by_id(category, profile_id)
+        if profile is None:
+            return 0
+        state = self._named_adjustment_profile_state(category, profile)
+        written = 0
+        errors: list[tuple[Path, Exception]] = []
+        for path in files:
+            if path.suffix.lower() not in RAW_EXTENSIONS:
+                continue
+            try:
+                bundle = self._sidecar_bundle_for_category_write(path)
+                if category == "color_contrast":
+                    bundle["render_adjustments"] = state
+                elif category == "detail":
+                    bundle["detail_adjustments"] = state
+                elif category == "raw_export":
+                    bundle["recipe"] = state
+                    _input_profile, rendered_profile, mode = self._configured_color_profile_for_recipe(state)
+                    bundle["profile_path"] = rendered_profile
+                    bundle["color_management_mode"] = mode
+                bundle["adjustment_profiles"][category] = self._profile_summary_payload(category, profile)
+                sidecar = self._write_raw_settings_sidecar(path, status="configured", **bundle)
+                if sidecar is not None:
+                    written += 1
+            except Exception as exc:
+                errors.append((path, exc))
+        if errors:
+            first_path, first_error = errors[0]
+            QtWidgets.QMessageBox.warning(
+                self,
+                self.tr("No se pudo escribir mochila"),
+                self.tr("Fallaron") + f" {len(errors)} " + self.tr("archivo(s). Primer error:")
+                + f"\n{first_path}\n{first_error}",
+            )
+        if written:
+            self._refresh_color_reference_thumbnail_markers()
+            self._save_active_session(silent=True)
+        return written
+
+    def _assign_active_icc_profile_to_raw_files(self, files: list[Path]) -> int:
+        icc_path = self._active_session_icc_for_settings()
+        if icc_path is None:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Activa primero un perfil ICC de sesion."))
+            return 0
+        icc_profile = self._icc_profile_by_path(icc_path)
+        icc_payload = {
+            "id": str(icc_profile.get("id") or self._active_icc_profile_id) if icc_profile else str(self._active_icc_profile_id or ""),
+            "name": str(icc_profile.get("name") or icc_path.stem) if icc_profile else icc_path.stem,
+            "kind": "icc",
+        }
+        written = 0
+        for path in files:
+            if path.suffix.lower() not in RAW_EXTENSIONS:
+                continue
+            bundle = self._sidecar_bundle_for_category_write(path)
+            recipe = self._visible_export_recipe_for_color_management(
+                bundle["recipe"],
+                input_profile_path=icc_path,
+            )
+            bundle["recipe"] = recipe
+            bundle["profile_path"] = icc_path
+            bundle["color_management_mode"] = "camera_rgb_with_input_icc"
+            bundle["adjustment_profiles"]["icc"] = icc_payload
+            if self._write_raw_settings_sidecar(path, status="configured", **bundle) is not None:
+                written += 1
+        if written:
+            self._refresh_color_reference_thumbnail_markers()
+            self._save_active_session(silent=True)
+        return written
+
+    def _assign_active_icc_profile_to_selected(self) -> None:
+        files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
+        if not files:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona uno o mas RAW de destino."))
+            return
+        written = self._assign_active_icc_profile_to_raw_files(files)
+        if self._selected_file is not None and any(self._normalized_path_key(self._selected_file) == self._normalized_path_key(p) for p in files):
+            self._apply_raw_sidecar_to_controls(self._selected_file)
+        self._set_status(self.tr("Perfil ICC aplicado a") + f" {written} " + self.tr("imagen(es)"))
+
+    def _assign_active_icc_profile_to_session_raws(self) -> None:
+        if self._active_session_root is None:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Abre o crea primero una sesion."))
+            return
+        raw_dir = self._session_paths_from_root(self._active_session_root)["raw"]
+        files = [p for p in sorted(raw_dir.iterdir()) if p.is_file() and p.suffix.lower() in RAW_EXTENSIONS]
+        written = self._assign_active_icc_profile_to_raw_files(files)
+        self._set_status(self.tr("Perfil ICC aplicado a") + f" {written} " + self.tr("RAW de sesion"))
+
+    def _apply_selected_named_adjustment_profile_to_selected(self, category: str) -> None:
+        profile_id = self._active_named_adjustment_profile_id(category)
+        if not profile_id:
+            _collection_attr, _active_attr, combo_attr, _name_attr, _status_attr = self._named_adjustment_profile_attrs(category)
+            combo = getattr(self, combo_attr)
+            profile_id = str(combo.currentData() or "")
+        if not profile_id:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Guarda o selecciona primero un perfil."))
+            return
+        files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
+        if not files:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona uno o mas RAW de destino."))
+            return
+        written = self._apply_named_adjustment_profile_to_raw_files(category, profile_id, files)
+        if self._selected_file is not None and any(self._normalized_path_key(self._selected_file) == self._normalized_path_key(p) for p in files):
+            self._apply_raw_sidecar_to_controls(self._selected_file)
+        self._set_status(self._named_adjustment_profile_title(category) + self.tr(" aplicado a") + f" {written} " + self.tr("imagen(es)"))
+
+    def _copy_named_adjustment_profile_from_selected(self, category: str) -> None:
+        files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
+        if not files:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona un RAW con ajustes guardados."))
+            return
+        source = files[0]
+        try:
+            sidecar = load_raw_sidecar(source)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, self.tr("Mochila no valida"), str(exc))
+            return
+        if category == "color_contrast":
+            state = sidecar.get("render_adjustments")
+        elif category == "detail":
+            state = sidecar.get("detail_adjustments")
+        elif category == "raw_export":
+            state = sidecar.get("recipe")
+        else:
+            state = None
+        if not isinstance(state, dict):
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("La imagen no contiene ese tipo de ajuste."))
+            return
+        _collection_attr, _active_attr, _combo_attr, _name_attr, _status_attr = self._named_adjustment_profile_attrs(category)
+        setattr(self, f"_{category}_profile_clipboard", {"source": str(source), "category": category, "state": state})
+        self._set_status(self._named_adjustment_profile_title(category) + self.tr(" copiado desde ") + source.name)
+
+    def _paste_named_adjustment_profile_to_selected(self, category: str) -> None:
+        copied = getattr(self, f"_{category}_profile_clipboard", None)
+        if not isinstance(copied, dict) or copied.get("category") != category:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Copia primero ese tipo de ajuste desde una miniatura."))
+            return
+        files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
+        if not files:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona uno o mas RAW de destino."))
+            return
+        state = copied.get("state")
+        written = 0
+        for path in files:
+            bundle = self._sidecar_bundle_for_category_write(path)
+            if category == "color_contrast" and isinstance(state, dict):
+                bundle["render_adjustments"] = state
+            elif category == "detail" and isinstance(state, dict):
+                bundle["detail_adjustments"] = state
+            elif category == "raw_export":
+                recipe = self._recipe_from_payload(state)
+                if recipe is None:
+                    continue
+                _input_profile, rendered_profile, mode = self._configured_color_profile_for_recipe(recipe)
+                bundle["recipe"] = recipe
+                bundle["profile_path"] = rendered_profile
+                bundle["color_management_mode"] = mode
+            else:
+                continue
+            if self._write_raw_settings_sidecar(path, status="configured", **bundle) is not None:
+                written += 1
+        if self._selected_file is not None and any(self._normalized_path_key(self._selected_file) == self._normalized_path_key(p) for p in files):
+            self._apply_raw_sidecar_to_controls(self._selected_file)
+        if written:
+            self._refresh_color_reference_thumbnail_markers()
+            self._save_active_session(silent=True)
+        self._set_status(self._named_adjustment_profile_title(category) + self.tr(" pegado en") + f" {written} " + self.tr("imagen(es)"))
 
     def _development_profile_manifest(self, profile: dict[str, Any]) -> dict[str, Any]:
         manifest_path = self._session_stored_path(profile.get("manifest_path"))
@@ -952,15 +1642,15 @@ class SessionDevelopmentMixin:
         return written
 
     def _active_session_icc_for_settings(self) -> Path | None:
-        if not hasattr(self, "path_profile_active") or not hasattr(self, "chk_apply_profile"):
-            return None
-        if not self.chk_apply_profile.isChecked():
+        if not hasattr(self, "path_profile_active"):
             return None
         text = self.path_profile_active.text().strip()
         if not text:
             return None
         path = Path(text).expanduser()
-        return path if path.exists() else None
+        if not path.exists():
+            return None
+        return path if self._profile_can_be_active(path) else None
 
     def _write_current_development_settings_to_raw(self, path: Path, *, status: str = "configured") -> Path | None:
         recipe = self._build_effective_recipe()
@@ -1027,6 +1717,9 @@ class SessionDevelopmentMixin:
             "recipe": sidecar.get("recipe") if isinstance(sidecar.get("recipe"), dict) else {},
             "development_profile": sidecar.get("development_profile")
             if isinstance(sidecar.get("development_profile"), dict)
+            else {},
+            "adjustment_profiles": sidecar.get("adjustment_profiles")
+            if isinstance(sidecar.get("adjustment_profiles"), dict)
             else {},
             "detail_adjustments": sidecar.get("detail_adjustments")
             if isinstance(sidecar.get("detail_adjustments"), dict)
@@ -1120,6 +1813,7 @@ class SessionDevelopmentMixin:
             QtWidgets.QMessageBox.warning(self, self.tr("Mochila no válida"), "El perfil de ajuste copiado no contiene una receta válida.")
             return
         profile = copied.get("development_profile") if isinstance(copied.get("development_profile"), dict) else {}
+        adjustment_profiles = copied.get("adjustment_profiles") if isinstance(copied.get("adjustment_profiles"), dict) else {}
         detail = copied.get("detail_adjustments") if isinstance(copied.get("detail_adjustments"), dict) else {}
         render = copied.get("render_adjustments") if isinstance(copied.get("render_adjustments"), dict) else {}
         icc_path = self._icc_profile_path_from_copied_settings(copied)
@@ -1141,6 +1835,7 @@ class SessionDevelopmentMixin:
                     path,
                     recipe=recipe,
                     development_profile=profile,
+                    adjustment_profiles=adjustment_profiles,
                     detail_adjustments=detail,
                     render_adjustments=render,
                     profile_path=icc_path,
@@ -1244,6 +1939,16 @@ class SessionDevelopmentMixin:
             self._active_development_profile_id = ""
             self._refresh_development_profile_combo()
 
+        adjustment_profiles = payload.get("adjustment_profiles") if isinstance(payload.get("adjustment_profiles"), dict) else {}
+        for category in ("color_contrast", "detail", "raw_export"):
+            category_payload = adjustment_profiles.get(category) if isinstance(adjustment_profiles, dict) else {}
+            category_id = str(category_payload.get("id") or "") if isinstance(category_payload, dict) else ""
+            if category_id and self._named_adjustment_profile_by_id(category, category_id) is not None:
+                self._set_active_named_adjustment_profile_id(category, category_id)
+            else:
+                self._set_active_named_adjustment_profile_id(category, "")
+        self._refresh_named_adjustment_profile_combos()
+
         if icc_role == "session_input_icc" and icc_path is not None and icc_path.exists() and self._profile_can_be_active(icc_path):
             self.path_profile_active.setText(str(icc_path))
             self.chk_apply_profile.setChecked(True)
@@ -1265,6 +1970,7 @@ class SessionDevelopmentMixin:
         detail_adjustments: dict[str, Any],
         render_adjustments: dict[str, Any],
         profile_path: Path | None,
+        adjustment_profiles: dict[str, Any] | None = None,
         color_management_mode: str | None = None,
         output_tiff: Path | None = None,
         proof_path: Path | None = None,
@@ -1277,6 +1983,7 @@ class SessionDevelopmentMixin:
             source,
             recipe=recipe,
             development_profile=development_profile,
+            adjustment_profiles=adjustment_profiles or self._current_named_adjustment_profiles_payload(),
             detail_adjustments=detail_adjustments,
             render_adjustments=render_adjustments,
             icc_profile_path=profile_path,

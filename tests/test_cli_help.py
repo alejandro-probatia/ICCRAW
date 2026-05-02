@@ -1,4 +1,4 @@
-from probraw.cli import build_parser
+from probraw.cli import build_parser, main
 from probraw.version import __version__
 
 
@@ -93,3 +93,18 @@ def test_parser_accepts_batch_worker_controls():
     assert batch.cache_dir == "cache"
     assert auto.workers == 3
     assert auto.cache_dir == "cache"
+
+
+def test_cli_mtf_roi_worker_dispatches(monkeypatch):
+    import probraw.analysis.mtf_roi as mtf_roi
+
+    calls = []
+
+    def fake_worker(argv):
+        calls.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(mtf_roi, "main", fake_worker)
+
+    assert main(["mtf-roi-worker", "request.json", "output.npz"]) == 0
+    assert calls == [["request.json", "output.npz"]]

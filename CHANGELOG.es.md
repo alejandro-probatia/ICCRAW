@@ -18,7 +18,47 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
-Sin cambios pendientes.
+### Added
+
+- Perfiles de ajuste separados y guardados en el proyecto para color/contraste,
+  nitidez y ajustes de exportacion RAW, con flujos de guardar, aplicar, copiar y
+  pegar por imagen.
+- Las mochilas RAW registran ahora los identificadores concretos de perfil ICC,
+  color/contraste, nitidez y exportacion RAW aplicados a cada archivo para
+  reforzar la reproducibilidad.
+- Las miniaturas RAW muestran una banda inferior discreta con indicadores de
+  perfiles ICC, color/contraste, nitidez y exportacion RAW aplicados.
+- El flujo Color/Calibracion empieza ahora con la eleccion entre perfiles
+  genericos estandar, ICC de camara existentes y generacion de ICC con carta,
+  seguida del estado ICC de la imagen seleccionada y la sesion.
+- La opcion de ICC existente indica ahora cuando el proyecto no tiene perfiles
+  ICC guardados y mantiene la carga de ICC de camara del sistema como salida.
+
+### Changed
+
+- La preview de la GUI aplica ahora la gestion de color de pantalla con una
+  conversion directa `ICC de imagen -> ICC de monitor` cuando hay perfil de
+  fuente, reservando sRGB solo como senal tecnica para histograma/diagnostico o
+  fallback.
+- Al activar un ICC de sesion se fuerza el revelado preview en RGB lineal de
+  camara y se recarga la fuente RAW, evitando aplicar un ICC de camara sobre
+  pixeles ya revelados en ProPhoto/sRGB.
+
+### Fixed
+
+- La preparacion de ROI MTF en el paquete Windows lanza ahora el worker CLI
+  interno en vez de reabrir el ejecutable grafico, de modo que seleccionar un
+  area MTF termina sin abrir una segunda ventana de ProbRAW.
+- Las curvas de contraste ya no fuerzan una preview final ICC a resolucion
+  completa en el hilo principal: la fuente interactiva se cachea reducida y la
+  preview pesada pasa a worker asincrono.
+
+### Known Issues
+
+- La ruta colorimetrica estricta sigue siendo mas costosa que una preview
+  embebida. Queda pendiente cachear transformaciones ICC reducidas por
+  perfil/receta para mejorar arrastres continuos sin relajar la correccion de
+  color.
 
 ## [0.3.5] - 2026-05-02
 

@@ -24,8 +24,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 from probraw.core.models import Recipe  # noqa: E402
-from probraw.gui import ICCRawMainWindow, normalize_tone_curve_points  # noqa: E402
+from probraw.gui import ICCRawMainWindow  # noqa: E402
 from probraw.raw.pipeline import develop_scene_linear_array  # noqa: E402
+from probraw.raw.preview import normalize_tone_curve_points  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:

@@ -20,7 +20,43 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
-No pending changes.
+### Added
+
+- Separate project-scoped adjustment profiles for color/contrast, sharpness and
+  RAW export settings, with save, apply, copy and paste workflows per image.
+- RAW sidecars now record the specific ICC, color/contrast, sharpness and RAW
+  export profile identifiers applied to each file for clearer reproducibility.
+- RAW thumbnails show a discreet lower badge strip for applied ICC,
+  color/contrast, sharpness and RAW export profiles.
+- The Color/Calibration workflow now starts with an ICC choice between generic
+  standard output profiles, existing camera ICC profiles and chart-based ICC
+  generation, followed by status for the selected image and session.
+- The existing-ICC choice now states when the project has no saved ICC profiles
+  and keeps system camera ICC loading available as the fallback.
+
+### Changed
+
+- GUI preview now applies display color management with a direct
+  `image ICC -> monitor ICC` conversion whenever a source profile exists,
+  keeping sRGB only as a technical histogram/diagnostic signal or fallback.
+- Activating a session ICC now forces preview development into linear camera
+  RGB and reloads the RAW source, preventing a camera ICC from being applied to
+  pixels already developed into ProPhoto/sRGB.
+
+### Fixed
+
+- Packaged Windows MTF ROI preparation now launches the internal CLI worker
+  instead of reopening the GUI executable, so selecting an MTF area completes
+  without spawning a second ProbRAW window.
+- Contrast curves no longer force a final ICC preview at full resolution on the
+  main thread: the interactive source is cached at reduced size and heavy final
+  preview runs in an asynchronous worker.
+
+### Known Issues
+
+- The stricter colorimetric path remains more expensive than embedded preview.
+  Reduced ICC transform caching by profile/recipe is still pending to improve
+  continuous drags without relaxing color correctness.
 
 ## [0.3.5] - 2026-05-02
 

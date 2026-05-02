@@ -38,6 +38,7 @@ def write_raw_sidecar(
     *,
     recipe: Recipe,
     development_profile: dict[str, Any] | None = None,
+    adjustment_profiles: dict[str, Any] | None = None,
     detail_adjustments: dict[str, Any] | None = None,
     render_adjustments: dict[str, Any] | None = None,
     icc_profile_path: Path | None = None,
@@ -55,6 +56,11 @@ def write_raw_sidecar(
 
     outputs = list(existing.get("outputs") or []) if isinstance(existing.get("outputs"), list) else []
     mtf_analysis = existing.get("mtf_analysis") if isinstance(existing.get("mtf_analysis"), dict) else None
+    stored_adjustment_profiles = (
+        adjustment_profiles
+        if isinstance(adjustment_profiles, dict)
+        else existing.get("adjustment_profiles") if isinstance(existing.get("adjustment_profiles"), dict) else {}
+    )
     if output_tiff is not None:
         outputs.append(
             {
@@ -82,6 +88,7 @@ def write_raw_sidecar(
         },
         "source": _source_payload(source_path, session_root),
         "development_profile": _development_profile_payload(development_profile),
+        "adjustment_profiles": _adjustment_profiles_payload(stored_adjustment_profiles),
         "recipe": asdict(recipe),
         "detail_adjustments": detail_adjustments or {},
         "render_adjustments": render_adjustments or {},
@@ -198,6 +205,21 @@ def _development_profile_payload(profile: dict[str, Any] | None) -> dict[str, st
         "kind": str(profile.get("kind") or ""),
         "profile_type": profile_type,
     }
+
+
+def _adjustment_profiles_payload(profiles: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key in ("icc", "color_contrast", "detail", "raw_export"):
+        value = profiles.get(key) if isinstance(profiles, dict) else None
+        if isinstance(value, dict):
+            payload[key] = {
+                "id": str(value.get("id") or ""),
+                "name": str(value.get("name") or ""),
+                "kind": str(value.get("kind") or key),
+            }
+        else:
+            payload[key] = {"id": "", "name": "", "kind": key}
+    return payload
 
 
 def _color_management_payload(

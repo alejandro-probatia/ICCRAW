@@ -1827,6 +1827,29 @@ class MTFAnalysisMixin:
         name = path.name or self.tr("archivo actual")
         return f"{name}{roi_label} ({mode_label})"
 
+    def _mtf_base_roi_worker_command(self, request_path: Path, output_path: Path) -> list[str]:
+        if bool(getattr(sys, "frozen", False)):
+            exe_path = Path(sys.executable).resolve()
+            candidates = [exe_path.with_name("probraw.exe"), exe_path.with_name("probraw")]
+            for candidate in candidates:
+                if candidate.exists() and candidate.is_file():
+                    return [
+                        str(candidate),
+                        "mtf-roi-worker",
+                        str(request_path),
+                        str(output_path),
+                    ]
+            raise RuntimeError(
+                self.tr("No se encontrÃ³ el ejecutable CLI de ProbRAW para calcular la ROI MTF.")
+            )
+        return [
+            sys.executable,
+            "-m",
+            "probraw.analysis.mtf_roi",
+            str(request_path),
+            str(output_path),
+        ]
+
     def _start_mtf_base_roi_worker(self, request: dict[str, Any]) -> None:
         label = self.tr("MTF ROI full-res")
         self._set_status(self.tr("MTF: preparando ROI full-res en segundo plano..."))
@@ -1858,14 +1881,8 @@ class MTFAnalysisMixin:
                 request_path = tmp_root / "request.json"
                 output_path = tmp_root / "base_roi.npz"
                 request_path.write_text(json.dumps(request, sort_keys=True, ensure_ascii=False), encoding="utf-8")
-                proc = subprocess.run(
-                    [
-                        sys.executable,
-                        "-m",
-                        "probraw.analysis.mtf_roi",
-                        str(request_path),
-                        str(output_path),
-                    ],
+                proc = run_external(
+                    self._mtf_base_roi_worker_command(request_path, output_path),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,

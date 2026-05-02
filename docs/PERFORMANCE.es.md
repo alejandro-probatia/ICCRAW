@@ -150,6 +150,23 @@ Conclusion operativa: el demosaico escala bien por procesos, pero la seleccion
 automatica debe limitarse por RAM. En batch real cada worker necesita mas margen
 que el demosaico aislado porque tambien genera TIFF lineal y final.
 
+## Preview con gestion ICC
+
+La ruta de preview colorimetrica evita la miniatura embebida cuando hay ICC de
+sesion o perfil generico, porque esa miniatura puede estar ya cocinada en otro
+espacio y no sirve para validar color. Para que esto no bloquee al ajustar
+curvas:
+
+- la carga usa revelado LibRaw acotado por `PREVIEW_AUTO_BASE_MAX_SIDE`, salvo
+  precision 1:1, comparar o marcado de carta;
+- las curvas y sliders trabajan sobre una fuente interactiva reducida y cacheada;
+- la preview final pesada, incluyendo conversion `ICC fuente -> ICC monitor`, se
+  ejecuta en un worker asincrono cuando la imagen supera 2 MP.
+
+Esto preserva la seriedad de la gestion de color y reduce los bloqueos largos.
+La siguiente optimizacion pendiente es cachear tambien transformaciones ICC
+reducidas por perfil/receta para bajar uso de CPU durante arrastres continuos.
+
 ## Estrategia MTF RAW y visor global de operaciones
 
 Problema detectado: el analisis MTF frio sobre RAW obliga a obtener una imagen

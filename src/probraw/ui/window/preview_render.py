@@ -63,6 +63,17 @@ class PreviewRenderMixin:
         rgb = np.asarray(image, dtype=np.float32)
         if max_side_limit <= 0:
             return rgb
+        cache_key = (
+            id(image),
+            tuple(int(v) for v in rgb.shape),
+            str(rgb.dtype),
+            int(max_side_limit),
+        )
+        if (
+            getattr(self, "_interactive_source_cache_key", None) == cache_key
+            and getattr(self, "_interactive_source_cache_image", None) is not None
+        ):
+            return self._interactive_source_cache_image
         h, w = int(rgb.shape[0]), int(rgb.shape[1])
         max_side = max(h, w)
         if max_side <= int(max_side_limit):
@@ -70,11 +81,14 @@ class PreviewRenderMixin:
         scale = float(max_side_limit) / float(max_side)
         nw = max(1, int(round(w * scale)))
         nh = max(1, int(round(h * scale)))
-        return np.clip(
+        resized = np.clip(
             cv2.resize(rgb, (nw, nh), interpolation=cv2.INTER_AREA),
             0.0,
             1.0,
         ).astype(np.float32)
+        self._interactive_source_cache_key = cache_key
+        self._interactive_source_cache_image = resized
+        return resized
 
     def _profile_preview_profile_stamp(self, profile_path: Path) -> str:
         try:
@@ -292,6 +306,24 @@ class PreviewRenderMixin:
         thread.failed.connect(fail)
         thread.start()
 
+    def _source_profile_for_preview_recipe(self, recipe: Recipe) -> Path | None:
+        profile_path = self._active_session_icc_for_settings()
+        if profile_path is not None:
+            return profile_path
+        if not is_generic_output_space(recipe.output_space):
+            return None
+        try:
+            return ensure_generic_output_profile(
+                recipe.output_space,
+                directory=self._session_generic_profile_dir(),
+            )
+        except Exception as exc:
+            key = f"generic-preview-profile|{recipe.output_space}|{exc}"
+            if self._profile_preview_error_key != key:
+                self._profile_preview_error_key = key
+                self._log_preview(f"Aviso: perfil ICC estandar no disponible para preview directa: {exc}")
+            return None
+
     def _queue_interactive_preview_request(
         self,
         request: tuple[
@@ -305,9 +337,26 @@ class PreviewRenderMixin:
             int,
             bool,
             bool,
+            str,
+            Path | None,
+            Path | None,
         ],
     ) -> None:
-        request_key, _source_key, _source_linear, _detail_kwargs, _render_kwargs, _compare_enabled, _bypass, _max_side_limit, _apply_detail, _include_analysis = request
+        (
+            request_key,
+            _source_key,
+            _source_linear,
+            _detail_kwargs,
+            _render_kwargs,
+            _compare_enabled,
+            _bypass,
+            _max_side_limit,
+            _apply_detail,
+            _include_analysis,
+            _output_space,
+            _source_profile,
+            _monitor_profile,
+        ) = request
         self._interactive_preview_expected_key = request_key
         if self._interactive_preview_task_active:
             if self._interactive_preview_inflight_key == request_key:
@@ -330,6 +379,9 @@ class PreviewRenderMixin:
             int,
             bool,
             bool,
+            str,
+            Path | None,
+            Path | None,
         ],
     ) -> None:
         (
@@ -343,9 +395,23 @@ class PreviewRenderMixin:
             max_side_limit,
             apply_detail,
             include_analysis,
+            output_space,
+            source_profile,
+            monitor_profile,
         ) = request
 
         def task():
+            warnings: list[str] = []
+
+            def srgb_display_u8(image_srgb: np.ndarray) -> np.ndarray:
+                try:
+                    return srgb_to_display_u8(image_srgb, monitor_profile)
+                except Exception as exc:
+                    warnings.append(
+                        f"Aviso: gestion ICC de monitor no disponible en preview; se usa sRGB: {exc}"
+                    )
+                    return srgb_to_display_u8(image_srgb, None)
+
             source = self._interactive_preview_source(
                 np.asarray(source_linear, dtype=np.float32),
                 max_side_limit=int(max_side_limit),
@@ -365,15 +431,32 @@ class PreviewRenderMixin:
                 # defer detail operators to the final non-interactive refresh.
                 detail_adjusted = source
             adjusted = apply_render_adjustments(detail_adjusted, **render_kwargs)
-            result_srgb = linear_to_srgb_display(adjusted)
+            if source_profile is not None:
+                try:
+                    result_srgb = (
+                        profiled_float_to_display_u8(adjusted, source_profile, None).astype(np.float32) / 255.0
+                    )
+                except Exception as exc:
+                    warnings.append(f"Aviso: no se pudo convertir preview ICC a sRGB tecnico: {exc}")
+                    result_srgb = standard_profile_to_srgb_display(adjusted, output_space)
+                try:
+                    display_u8 = profiled_float_to_display_u8(adjusted, source_profile, monitor_profile)
+                except Exception as exc:
+                    warnings.append(f"Aviso: no se pudo convertir preview ICC directa a monitor; se usa fallback sRGB: {exc}")
+                    display_u8 = srgb_display_u8(result_srgb)
+            else:
+                result_srgb = standard_profile_to_srgb_display(adjusted, output_space)
+                display_u8 = srgb_display_u8(result_srgb)
             analysis_text = preview_analysis_text(source, adjusted) if include_analysis else None
             return (
                 request_key,
                 source_key,
                 np.asarray(result_srgb, dtype=np.float32),
+                np.asarray(display_u8, dtype=np.uint8),
                 bool(compare_enabled),
                 bool(bypass_display_profile),
                 analysis_text,
+                "; ".join(dict.fromkeys(warnings)) if warnings else None,
             )
 
         thread = TaskThread(task)
@@ -402,9 +485,11 @@ class PreviewRenderMixin:
                     key,
                     payload_source_key,
                     candidate,
+                    display_u8,
                     payload_compare_enabled,
                     payload_bypass_display_profile,
                     analysis_text,
+                    warning,
                 ) = payload
                 applied = False
                 if key != self._interactive_preview_expected_key:
@@ -412,16 +497,17 @@ class PreviewRenderMixin:
                 if payload_source_key is not None and payload_source_key != self._last_loaded_preview_key:
                     return
                 self._preview_srgb = np.asarray(candidate, dtype=np.float32)
-                display_u8 = self._display_u8_for_screen(
-                    self._preview_srgb,
-                    bypass_profile=bool(payload_bypass_display_profile),
-                )
                 self._set_result_display_u8(
                     display_u8,
                     compare_enabled=bool(payload_compare_enabled and self.chk_compare.isChecked()),
                 )
                 applied = True
                 if applied:
+                    if warning:
+                        key_warning = f"interactive-preview-profile|{warning}"
+                        if self._profile_preview_error_key != key_warning:
+                            self._profile_preview_error_key = key_warning
+                            self._log_preview(warning)
                     if isinstance(analysis_text, str) and hasattr(self, "preview_analysis"):
                         self.preview_analysis.setPlainText(analysis_text)
                     elapsed_ms = (time.perf_counter() - started_at) * 1000.0
@@ -452,6 +538,7 @@ class PreviewRenderMixin:
             return
         self._preview_refresh_timer.stop()
         try:
+            recipe = self._build_effective_recipe()
             interactive = self._is_preview_interaction_active()
             detail_interactive = interactive and self._is_detail_interaction_active()
             bypass_display_profile = bool(interactive and self._interactive_bypass_display_icc)
@@ -482,6 +569,8 @@ class PreviewRenderMixin:
                 self._ensure_original_compare_panel(bypass_profile=bypass_display_profile)
 
             source_key = self._last_loaded_preview_key or str(id(self._original_linear))
+            source_profile = self._source_profile_for_preview_recipe(recipe)
+            monitor_profile = None if bypass_display_profile else self._active_display_profile_path()
             if interactive:
                 apply_detail = bool(detail_interactive)
                 if apply_detail and self._precision_detail_preview_enabled():
@@ -508,6 +597,9 @@ class PreviewRenderMixin:
                         int(max_side_limit),
                         bool(apply_detail),
                         False,
+                        str(recipe.output_space),
+                        source_profile,
+                        monitor_profile,
                     )
                 )
                 return
@@ -531,6 +623,9 @@ class PreviewRenderMixin:
                         int(self._effective_preview_max_side()),
                         True,
                         True,
+                        str(recipe.output_space),
+                        source_profile,
+                        self._active_display_profile_path(),
                     )
                 )
                 return
@@ -550,47 +645,41 @@ class PreviewRenderMixin:
             )
             adjusted = apply_render_adjustments(detail_adjusted, **render_kwargs)
             self._adjusted_linear = adjusted
-            result_srgb = linear_to_srgb_display(adjusted)
-            should_apply_profile = (
-                self.chk_apply_profile.isChecked()
-                and self.path_profile_active.text().strip() != ""
-            )
-            if should_apply_profile:
-                p = Path(self.path_profile_active.text().strip())
-                if not self._profile_can_be_active(p):
-                    status = self._profile_status_for_path(p) or "no disponible"
-                    self._log_preview(
-                        f"Aviso: perfil ICC no aplicado porque su estado QA es {status}."
-                    )
-                    self.path_profile_active.clear()
+            active_session_profile = self._active_session_icc_for_settings()
+            raw_profile_text = self.path_profile_active.text().strip() if hasattr(self, "path_profile_active") else ""
+
+            result_srgb = standard_profile_to_srgb_display(adjusted, recipe.output_space)
+            if source_profile is not None:
+                try:
+                    result_srgb = profiled_float_to_display_u8(adjusted, source_profile, None).astype(np.float32) / 255.0
+                except Exception as exc:
+                    self._log_preview(f"Aviso: no se pudo calcular preview colorimetrica sRGB desde ICC: {exc}")
+
+            if raw_profile_text and active_session_profile is None:
+                p = Path(raw_profile_text).expanduser()
+                status = self._profile_status_for_path(p) or "no disponible"
+                self._log_preview(
+                    f"Aviso: perfil ICC no aplicado porque su estado QA es {status}."
+                )
+                self.path_profile_active.clear()
+                if hasattr(self, "chk_apply_profile"):
                     self.chk_apply_profile.setChecked(False)
-                    self._profile_preview_expected_key = None
-                elif p.exists():
-                    request_key = self._profile_preview_request_key(p)
-                    self._profile_preview_expected_key = request_key
-                    cached_profile = self._cached_profile_preview_image(request_key)
-                    if cached_profile is not None:
-                        result_srgb = cached_profile
-                    else:
-                        self._queue_profile_preview_request(
-                            request_key,
-                            p,
-                            adjusted,
-                            (int(adjusted.shape[0]), int(adjusted.shape[1])),
-                        )
-                else:
-                    self._profile_preview_expected_key = None
-                    self._log_preview(
-                        f"Aviso: perfil activo no encontrado ({p}). Se muestra vista sin perfil."
-                    )
+                self._profile_preview_expected_key = None
             else:
                 self._profile_preview_expected_key = None
 
             self._preview_srgb = np.asarray(result_srgb, dtype=np.float32)
-            display_u8 = self._display_u8_for_screen(
-                self._preview_srgb,
-                bypass_profile=bypass_display_profile,
-            )
+            if source_profile is not None:
+                display_u8 = self._profiled_display_u8_for_screen(
+                    adjusted,
+                    source_profile,
+                    bypass_profile=bypass_display_profile,
+                )
+            else:
+                display_u8 = self._display_u8_for_screen(
+                    self._preview_srgb,
+                    bypass_profile=bypass_display_profile,
+                )
             self._set_result_display_u8(display_u8, compare_enabled=compare_enabled)
             self.preview_analysis.setPlainText(preview_analysis_text(preview_source, adjusted))
         except Exception as exc:
@@ -607,8 +696,6 @@ class PreviewRenderMixin:
 
     def _should_async_final_preview(self) -> bool:
         if self._original_linear is None:
-            return False
-        if bool(getattr(self, "chk_apply_profile", None) and self.chk_apply_profile.isChecked()):
             return False
         try:
             pixels = int(self._original_linear.shape[0]) * int(self._original_linear.shape[1])

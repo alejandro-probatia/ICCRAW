@@ -205,10 +205,16 @@ class SessionStateMixin:
             "active_icc_profile_id": self._active_icc_profile_id if active_profile_valid else "",
             "development_profiles": list(self._development_profiles),
             "active_development_profile_id": self._active_development_profile_id,
+            "color_contrast_profiles": list(getattr(self, "_color_contrast_profiles", [])),
+            "active_color_contrast_profile_id": getattr(self, "_active_color_contrast_profile_id", ""),
+            "detail_profiles": list(getattr(self, "_detail_profiles", [])),
+            "active_detail_profile_id": getattr(self, "_active_detail_profile_id", ""),
+            "raw_export_profiles": list(getattr(self, "_raw_export_profiles", [])),
+            "active_raw_export_profile_id": getattr(self, "_active_raw_export_profile_id", ""),
             "batch_input_dir": self.batch_input_dir.text().strip(),
             "batch_output_dir": self.batch_out_dir.text().strip(),
             "preview_png_path": str(self._session_default_outputs()["preview"]),
-            "preview_apply_profile": bool(self.chk_apply_profile.isChecked()) and active_profile_valid,
+            "preview_apply_profile": active_profile_valid,
             "batch_embed_profile": True,
             "batch_apply_adjustments": bool(self.batch_apply_adjustments.isChecked()),
             "fast_raw_preview": True,
@@ -281,6 +287,12 @@ class SessionStateMixin:
             "active_icc_profile_id": "",
             "development_profiles": [],
             "active_development_profile_id": "",
+            "color_contrast_profiles": [],
+            "active_color_contrast_profile_id": "",
+            "detail_profiles": [],
+            "active_detail_profile_id": "",
+            "raw_export_profiles": [],
+            "active_raw_export_profile_id": "",
             "batch_input_dir": str(paths["raw"]),
             "batch_output_dir": str(defaults["tiff_dir"]),
             "preview_png_path": str(defaults["preview"]),
@@ -324,6 +336,25 @@ class SessionStateMixin:
         ] if isinstance(raw_profiles, list) else []
         self._active_development_profile_id = str(state.get("active_development_profile_id") or "")
         self._refresh_development_profile_combo()
+        self._color_contrast_profiles = [
+            dict(profile)
+            for profile in state.get("color_contrast_profiles", [])
+            if isinstance(profile, dict) and str(profile.get("id") or "").strip()
+        ] if isinstance(state.get("color_contrast_profiles"), list) else []
+        self._active_color_contrast_profile_id = str(state.get("active_color_contrast_profile_id") or "")
+        self._detail_profiles = [
+            dict(profile)
+            for profile in state.get("detail_profiles", [])
+            if isinstance(profile, dict) and str(profile.get("id") or "").strip()
+        ] if isinstance(state.get("detail_profiles"), list) else []
+        self._active_detail_profile_id = str(state.get("active_detail_profile_id") or "")
+        self._raw_export_profiles = [
+            dict(profile)
+            for profile in state.get("raw_export_profiles", [])
+            if isinstance(profile, dict) and str(profile.get("id") or "").strip()
+        ] if isinstance(state.get("raw_export_profiles"), list) else []
+        self._active_raw_export_profile_id = str(state.get("active_raw_export_profile_id") or "")
+        self._refresh_named_adjustment_profile_combos()
         self._load_session_icc_profiles(state, paths=paths, defaults=defaults)
 
         self.profile_charts_dir.setText(str(charts_dir))
@@ -416,8 +447,7 @@ class SessionStateMixin:
         self.profile_camera.setText(str(state.get("profile_camera") or ""))
         self.profile_lens.setText(str(state.get("profile_lens") or ""))
 
-        preview_apply_profile = bool(state.get("preview_apply_profile", self.chk_apply_profile.isChecked()))
-        self.chk_apply_profile.setChecked(preview_apply_profile and bool(self.path_profile_active.text().strip()))
+        self.chk_apply_profile.setChecked(bool(self.path_profile_active.text().strip()))
         self.batch_embed_profile.setChecked(True)
         self.batch_apply_adjustments.setChecked(bool(state.get("batch_apply_adjustments", self.batch_apply_adjustments.isChecked())))
 

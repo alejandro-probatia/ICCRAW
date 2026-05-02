@@ -71,7 +71,13 @@ class PreviewRecipeMixin:
 
     def _preview_requires_max_quality(self) -> bool:
         compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
-        return compare_enabled or bool(self._manual_chart_marking_after_reload)
+        if compare_enabled or bool(self._manual_chart_marking_after_reload):
+            return True
+        try:
+            recipe = self._build_effective_recipe()
+        except Exception:
+            return False
+        return bool(self._active_session_icc_for_settings() is not None or is_generic_output_space(recipe.output_space))
 
     def _split_black_mode(self, value: str) -> tuple[str, int]:
         txt = (value or "metadata").strip().lower()
@@ -587,12 +593,7 @@ class PreviewRecipeMixin:
             return fallback_u8
 
     def _preview_histogram_source_label(self) -> str:
-        if (
-            hasattr(self, "chk_apply_profile")
-            and self.chk_apply_profile.isChecked()
-            and hasattr(self, "path_profile_active")
-            and self.path_profile_active.text().strip()
-        ):
+        if self._active_session_icc_for_settings() is not None:
             return self.tr("Histograma: sRGB colorimétrico tras ICC de entrada, antes del ICC del monitor.")
         return self.tr("Histograma: sRGB de preview, antes del ICC del monitor.")
 

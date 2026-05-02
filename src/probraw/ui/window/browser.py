@@ -138,8 +138,7 @@ class BrowserMetadataMixin:
             item.setData(QtCore.Qt.UserRole + 1, p.name)
             item.setTextAlignment(QtCore.Qt.AlignHCenter)
             item.setToolTip(self._file_item_tooltip(p))
-            item.setIcon(self._display_icon_for_path(p, self._icon_for_file(p)))
-            item.setSizeHint(self.file_list.gridSize())
+            self._set_file_item_display_icon(item, p, self._icon_for_file(p))
             self.file_list.addItem(item)
             self._file_items_by_key[self._normalized_path_key(p)] = item
 
@@ -170,7 +169,7 @@ class BrowserMetadataMixin:
             if raw_path:
                 path = Path(str(raw_path))
                 item.setToolTip(self._file_item_tooltip(path))
-                item.setIcon(self._display_icon_for_path(path, self._icon_for_file(path)))
+                self._set_file_item_display_icon(item, path, self._icon_for_file(path))
 
     def _queue_thumbnail_generation(self, paths: list[Path], *, delay_ms: int = 220) -> None:
         self._thumbnail_generation += 1
@@ -218,7 +217,7 @@ class BrowserMetadataMixin:
                 if payload_generation != self._thumbnail_generation:
                     return
                 touched_cache_dirs: set[Path] = set()
-                target_icon_size = self.file_list.iconSize()
+                target_icon_size = QtCore.QSize(int(payload_size), int(payload_size))
                 for raw_path, key, rgb_u8 in thumbnails:
                     icon = self._icon_from_thumbnail_array(rgb_u8, target_size=target_icon_size)
                     self._image_thumb_cache[key] = icon
@@ -414,7 +413,7 @@ class BrowserMetadataMixin:
         key = self._normalized_path_key(path)
         item = self._file_items_by_key.get(key)
         if item is not None and self.file_list.row(item) >= 0:
-            item.setIcon(self._display_icon_for_path(path, icon))
+            self._set_file_item_display_icon(item, path, icon)
             return
         self._file_items_by_key.pop(key, None)
 
@@ -432,18 +431,40 @@ class BrowserMetadataMixin:
             if icon is None:
                 icon = self._icon_for_file(path)
             item.setToolTip(self._file_item_tooltip(path))
-            item.setIcon(self._display_icon_for_path(path, icon))
+            self._set_file_item_display_icon(item, path, icon)
+
+    def _set_file_item_display_icon(
+        self,
+        item: QtWidgets.QListWidgetItem,
+        path: Path,
+        source_icon: QtGui.QIcon,
+    ) -> None:
+        display_icon = self._display_icon_for_path(path, source_icon)
+        item.setIcon(display_icon)
+        self._apply_thumbnail_item_size_hint(item, display_icon)
+
+    def _apply_thumbnail_item_size_hint(
+        self,
+        item: QtWidgets.QListWidgetItem,
+        icon: QtGui.QIcon | None = None,
+    ) -> None:
+        if not hasattr(self, "file_list"):
+            return
+        display_icon = icon or item.icon()
+        pixmap = display_icon.pixmap(self.file_list.iconSize())
+        if pixmap.isNull():
+            size = self.file_list.iconSize()
+        else:
+            size = pixmap.size()
+        item.setSizeHint(QtCore.QSize(max(1, int(size.width()) + 4), max(1, int(size.height()) + 4)))
 
     def _display_icon_for_path(self, path: Path, icon: QtGui.QIcon) -> QtGui.QIcon:
-        adjustment_profile_type = self._raw_adjustment_profile_type(path)
-        if not adjustment_profile_type:
-            return icon
         size = int(self.file_list.iconSize().width() or DEFAULT_THUMBNAIL_SIZE)
         size = int(np.clip(size, MIN_THUMBNAIL_SIZE, MAX_THUMBNAIL_SIZE))
         return self._icon_with_thumbnail_markers(
             icon,
             size=size,
-            adjustment_profile_type=adjustment_profile_type,
+            badges=self._raw_adjustment_profile_badges(path),
         )
 
     def _file_item_tooltip(self, path: Path) -> str:
@@ -451,6 +472,9 @@ class BrowserMetadataMixin:
         summary = self._raw_sidecar_development_summary(path)
         if summary:
             lines.append(summary)
+        profile_summary = self._raw_adjustment_profile_badge_summary(path)
+        if profile_summary:
+            lines.append(profile_summary)
         if hasattr(self, "_raw_sidecar_mtf_summary"):
             mtf_summary = self._raw_sidecar_mtf_summary(path)
             if mtf_summary:
@@ -471,25 +495,150 @@ class BrowserMetadataMixin:
             return str(path).lower()
 
     def _icon_with_color_reference_marker(self, icon: QtGui.QIcon, *, size: int) -> QtGui.QIcon:
-        return self._icon_with_thumbnail_markers(icon, size=size, adjustment_profile_type="advanced")
+        return self._icon_with_thumbnail_markers(icon, size=size, badges=[])
+
+    def _thumbnail_badge_strip_height(self, size: int) -> int:
+        return int(np.clip(round(float(size) * 0.17), 12, 22))
+
+    def _raw_adjustment_profile_badges(self, path: Path) -> list[str]:
+        if path.suffix.lower() not in RAW_EXTENSIONS:
+            return []
+        try:
+            payload = load_raw_sidecar(path)
+        except Exception:
+            return []
+        profiles = payload.get("adjustment_profiles") if isinstance(payload.get("adjustment_profiles"), dict) else {}
+        badges: list[str] = []
+        for key in ("icc", "color_contrast", "detail", "raw_export"):
+            profile = profiles.get(key) if isinstance(profiles, dict) else None
+            present = False
+            if isinstance(profile, dict):
+                present = bool(str(profile.get("id") or profile.get("name") or "").strip())
+            if key == "icc" and not present:
+                color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
+                present = bool(str(color.get("icc_profile_path") or "").strip())
+            if present:
+                badges.append(key)
+        return badges
+
+    def _raw_adjustment_profile_badge_summary(self, path: Path) -> str:
+        if path.suffix.lower() not in RAW_EXTENSIONS:
+            return ""
+        try:
+            payload = load_raw_sidecar(path)
+        except Exception:
+            return ""
+        profiles = payload.get("adjustment_profiles") if isinstance(payload.get("adjustment_profiles"), dict) else {}
+        labels = {
+            "icc": "ICC",
+            "color_contrast": "Color/contraste",
+            "detail": "Nitidez",
+            "raw_export": "RAW",
+        }
+        parts: list[str] = []
+        for key in ("icc", "color_contrast", "detail", "raw_export"):
+            profile = profiles.get(key) if isinstance(profiles, dict) else None
+            name = ""
+            if isinstance(profile, dict):
+                name = str(profile.get("name") or profile.get("id") or "").strip()
+            if key == "icc" and not name:
+                color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
+                raw_path = str(color.get("icc_profile_path") or "").strip()
+                if raw_path:
+                    name = Path(raw_path).name
+            if name:
+                parts.append(f"{labels[key]}: {name}")
+        return "Perfiles aplicados: " + " | ".join(parts) if parts else ""
 
     def _icon_with_thumbnail_markers(
         self,
         icon: QtGui.QIcon,
         *,
         size: int,
-        adjustment_profile_type: str,
+        badges: list[str],
     ) -> QtGui.QIcon:
         pixmap = icon.pixmap(QtCore.QSize(size, size))
         if pixmap.isNull():
             return icon
-        marked = QtGui.QPixmap(pixmap)
+        content_w = max(1, int(pixmap.width()))
+        content_h = max(1, int(pixmap.height()))
+        strip_h = self._thumbnail_badge_strip_height(size) if badges else 0
+        marked = QtGui.QPixmap(content_w, content_h + strip_h)
+        marked.fill(QtCore.Qt.transparent)
         painter = QtGui.QPainter(marked)
-        marker_h = max(3, int(round(marked.height() * 0.045)))
-        marker_color = "#38bdf8" if adjustment_profile_type == "advanced" else "#22c55e"
-        painter.fillRect(0, marked.height() - marker_h, marked.width(), marker_h, QtGui.QColor(marker_color))
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.drawPixmap(0, 0, pixmap)
+        if badges:
+            painter.fillRect(0, content_h, content_w, strip_h, QtGui.QColor("#111418"))
+            max_badge_side = int(np.clip(strip_h - 4, 6, 18))
+            spacing = max(1, int(round(max_badge_side * 0.25)))
+            available = max(1, content_w - 4)
+            badge_side = max_badge_side
+            if len(badges) > 1:
+                badge_side = min(badge_side, max(6, (available - (len(badges) - 1) * spacing) // len(badges)))
+            total_w = len(badges) * badge_side + (len(badges) - 1) * spacing
+            x = max(2, (content_w - total_w) // 2)
+            y = content_h + max(1, (strip_h - badge_side) // 2)
+            for badge in badges:
+                rect = QtCore.QRectF(float(x), float(y), float(badge_side), float(badge_side))
+                self._draw_thumbnail_profile_badge(painter, rect, badge)
+                x += badge_side + spacing
         painter.end()
         return QtGui.QIcon(marked)
+
+    def _draw_thumbnail_profile_badge(self, painter: QtGui.QPainter, rect: QtCore.QRectF, badge: str) -> None:
+        if badge == "icc":
+            painter.setPen(QtGui.QPen(QtGui.QColor("#cbd5e1"), 1))
+            painter.setBrush(QtGui.QColor("#1f2937"))
+            painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 2.0, 2.0)
+            font = painter.font()
+            font.setBold(True)
+            font.setPixelSize(max(6, int(rect.height() * 0.38)))
+            painter.setFont(font)
+            painter.setPen(QtGui.QColor("#e5e7eb"))
+            painter.drawText(rect, QtCore.Qt.AlignCenter, "ICC")
+            return
+        if badge == "color_contrast":
+            radius = rect.width() * 0.31
+            centers = [
+                (rect.left() + rect.width() * 0.42, rect.top() + rect.height() * 0.42, "#ef4444"),
+                (rect.left() + rect.width() * 0.58, rect.top() + rect.height() * 0.42, "#22c55e"),
+                (rect.left() + rect.width() * 0.50, rect.top() + rect.height() * 0.60, "#3b82f6"),
+            ]
+            painter.setPen(QtCore.Qt.NoPen)
+            for cx, cy, color in centers:
+                painter.setBrush(QtGui.QColor(color))
+                painter.drawEllipse(QtCore.QPointF(float(cx), float(cy)), float(radius), float(radius))
+            return
+        if badge == "detail":
+            ellipse = rect.adjusted(1.0, 1.0, -1.0, -1.0)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#cbd5e1"), 1))
+            painter.setBrush(QtGui.QColor("#ffffff"))
+            painter.drawPie(ellipse, 90 * 16, 180 * 16)
+            painter.setBrush(QtGui.QColor("#050505"))
+            painter.drawPie(ellipse, -90 * 16, 180 * 16)
+            painter.setBrush(QtCore.Qt.NoBrush)
+            painter.drawEllipse(ellipse)
+            return
+        if badge == "raw_export":
+            gap = max(1.0, rect.width() * 0.08)
+            cell = (rect.width() - gap) / 2.0
+            cells = [
+                (0, 0, "#22c55e"),
+                (1, 0, "#2563eb"),
+                (0, 1, "#ef4444"),
+                (1, 1, "#22c55e"),
+            ]
+            painter.setPen(QtCore.Qt.NoPen)
+            for col, row, color in cells:
+                cell_rect = QtCore.QRectF(
+                    rect.left() + col * (cell + gap),
+                    rect.top() + row * (cell + gap),
+                    cell,
+                    cell,
+                )
+                painter.setBrush(QtGui.QColor(color))
+                painter.drawRect(cell_rect)
 
     def _thumbnail_cache_key(self, path: Path, size: int | None = None) -> str:
         try:
@@ -598,7 +747,7 @@ class BrowserMetadataMixin:
         icon = self._cached_thumbnail_icon(self._thumbnail_cache_key(path, icon_size), path=path)
         if icon is None:
             icon = self._icon_for_file(path)
-        item.setIcon(self._display_icon_for_path(path, icon))
+        self._set_file_item_display_icon(item, path, icon)
 
     def _remove_stale_file_item(self, item: QtWidgets.QListWidgetItem, path: Path) -> None:
         self._file_items_by_key.pop(self._normalized_path_key(path), None)
@@ -765,22 +914,12 @@ class BrowserMetadataMixin:
             target_h = max(1, int(target_size.height()))
             src_h, src_w = int(rgb_u8.shape[0]), int(rgb_u8.shape[1])
             if src_h > 0 and src_w > 0:
-                src_aspect = float(src_w) / float(src_h)
-                target_aspect = float(target_w) / float(target_h)
-                if src_aspect > target_aspect:
-                    crop_w = max(1, int(round(src_h * target_aspect)))
-                    x0 = max(0, (src_w - crop_w) // 2)
-                    rgb_u8 = rgb_u8[:, x0 : x0 + crop_w]
-                else:
-                    crop_h = max(1, int(round(src_w / target_aspect)))
-                    y0 = max(0, (src_h - crop_h) // 2)
-                    rgb_u8 = rgb_u8[y0 : y0 + crop_h, :]
-            interpolation = (
-                cv2.INTER_AREA
-                if int(rgb_u8.shape[1]) >= target_w and int(rgb_u8.shape[0]) >= target_h
-                else cv2.INTER_LINEAR
-            )
-            rgb_u8 = cv2.resize(rgb_u8, (target_w, target_h), interpolation=interpolation)
+                scale = min(float(target_w) / float(src_w), float(target_h) / float(src_h))
+                dest_w = max(1, int(round(src_w * scale)))
+                dest_h = max(1, int(round(src_h * scale)))
+                if dest_w != src_w or dest_h != src_h:
+                    interpolation = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+                    rgb_u8 = cv2.resize(rgb_u8, (dest_w, dest_h), interpolation=interpolation)
         rgb_u8 = np.ascontiguousarray(rgb_u8.astype(np.uint8))
         h, w = int(rgb_u8.shape[0]), int(rgb_u8.shape[1])
         qimg = QtGui.QImage(rgb_u8.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
@@ -808,6 +947,7 @@ class BrowserMetadataMixin:
             self._metadata_timer.stop()
             self._clear_metadata_view()
             self._clear_viewer_histogram()
+            self._refresh_selected_icc_profile_info()
             return
         raw_path = item.data(QtCore.Qt.UserRole)
         if not raw_path:
@@ -818,6 +958,7 @@ class BrowserMetadataMixin:
             self._metadata_timer.stop()
             self._clear_metadata_view()
             self._clear_viewer_histogram()
+            self._refresh_selected_icc_profile_info()
             return
         stale_path = Path(str(raw_path))
         selected = self._resolve_existing_browsable_path(stale_path)
@@ -833,6 +974,7 @@ class BrowserMetadataMixin:
         self.selected_file_label.setText(str(self._selected_file))
         if not self._apply_raw_sidecar_to_controls(self._selected_file):
             self._reset_development_controls_for_unconfigured_file()
+        self._refresh_selected_icc_profile_info()
         self._queue_metadata_load(self._selected_file, include_c2pa=False)
         if self._selected_file.suffix.lower() in BROWSABLE_EXTENSIONS:
             self._set_status(self.tr("Seleccionado:") + f" {self._selected_file.name}. " + self.tr("Cargando preview..."))

@@ -140,6 +140,23 @@ Operational conclusion: the demosaic scales well by processes, but the selection
 automatic should be limited by RAM. In real batch each worker needs more margin
 than the isolated demosaic because it also generates linear and final TIFF.
 
+## ICC-managed Preview
+
+The colorimetric preview path avoids embedded thumbnails when a session ICC or
+generic profile is active, because those thumbnails can already be baked into a
+different space and are not valid for color review. To keep curve editing from
+blocking:
+
+- loading uses LibRaw development bounded by `PREVIEW_AUTO_BASE_MAX_SIDE`,
+  except for 1:1 precision, compare and chart marking;
+- curves and sliders operate on a cached reduced interactive source;
+- heavy final preview, including `source ICC -> monitor ICC` conversion, runs in
+  an asynchronous worker when the image exceeds 2 MP.
+
+This preserves strict color management while reducing long UI stalls. The next
+optimization target is caching reduced ICC transforms by profile/recipe to lower
+CPU use during continuous drags.
+
 ## RAW MTF Strategy And Global Operation Viewer
 
 Detected problem: cold MTF analysis on RAW files needs a real-resolution image.

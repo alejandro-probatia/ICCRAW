@@ -9,6 +9,13 @@ try:
 except Exception:  # pragma: no cover - optional dependency at runtime.
     rawpy = None
 
+if rawpy is not None and not hasattr(rawpy, "ThumbFormat"):
+    class _ThumbFormatCompat:
+        JPEG = 1
+        BITMAP = 2
+
+    rawpy.ThumbFormat = _ThumbFormatCompat
+
 
 @contextmanager
 def open_rawpy(path_or_file, *, shot_select: int = 0, unpack: bool = False) -> Iterator:

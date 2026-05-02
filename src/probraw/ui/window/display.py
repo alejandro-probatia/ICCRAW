@@ -338,6 +338,8 @@ class DisplayControlsMixin:
         self._original_display_u8_cache = None
         self._original_display_u8_cache_key = None
         self._original_compare_panel_key = None
+        self._interactive_source_cache_key = None
+        self._interactive_source_cache_image = None
 
     def _add_path_row(
         self,
@@ -458,6 +460,27 @@ class DisplayControlsMixin:
                 self._log_preview(f"Aviso: gestion ICC de monitor desactivada para esta vista: {exc}")
                 self._update_display_profile_status(error=str(exc))
             return srgb_to_display_u8(image_srgb, None)
+
+    def _profiled_display_u8_for_screen(
+        self,
+        image_rgb: np.ndarray,
+        source_profile: Path,
+        *,
+        bypass_profile: bool = False,
+    ) -> np.ndarray:
+        monitor_profile = None if bypass_profile else self._active_display_profile_path()
+        try:
+            return profiled_float_to_display_u8(image_rgb, source_profile, monitor_profile)
+        except Exception as exc:
+            key = f"{source_profile}|{monitor_profile}|{exc}"
+            if self._display_color_error_key != key:
+                self._display_color_error_key = key
+                self._log_preview(f"Aviso: conversion ICC directa a monitor no disponible: {exc}")
+                self._update_display_profile_status(error=str(exc))
+            try:
+                return profiled_float_to_display_u8(image_rgb, source_profile, None)
+            except Exception:
+                return srgb_to_display_u8(image_rgb, None)
 
     def _thumbnail_u8_for_screen(self, rgb_u8: np.ndarray) -> np.ndarray:
         profile_path = self._active_display_profile_path()

@@ -8,6 +8,7 @@ import subprocess
 import cv2
 import numpy as np
 import colour
+from colour.adaptation import matrix_chromatic_adaptation_VonKries
 from PIL import Image, ImageOps
 
 from ..core.external import external_tool_path, run_external
@@ -15,6 +16,7 @@ from ..core.models import Recipe
 from ..core.recipe import load_recipe
 from ..core.utils import RAW_EXTENSIONS, read_image
 from ..profile.export import apply_profile_matrix
+from ..profile.generic import generic_output_profile, is_generic_output_space
 from .compat import open_rawpy, rawpy
 from .pipeline import develop_image_array, develop_standard_output_array, is_standard_output_space
 
@@ -968,6 +970,43 @@ def linear_to_srgb_display(image_linear_rgb: np.ndarray) -> np.ndarray:
     a = 0.055
     srgb = np.where(x <= 0.0031308, 12.92 * x, (1.0 + a) * np.power(x, 1.0 / 2.4) - a)
     return np.clip(srgb, 0.0, 1.0)
+
+
+def standard_profile_to_srgb_display(image_rgb: np.ndarray, output_space: str) -> np.ndarray:
+    """Convert encoded standard RGB preview data to encoded sRGB for display."""
+    if not is_generic_output_space(output_space):
+        return linear_to_srgb_display(image_rgb)
+    profile = generic_output_profile(output_space)
+    encoded = np.clip(np.asarray(image_rgb, dtype=np.float32), 0.0, 1.0)
+    if profile.key == "srgb":
+        return encoded.astype(np.float32, copy=False)
+
+    rgb_space = colour.RGB_COLOURSPACES[profile.colour_space]
+    decoder = getattr(rgb_space, "cctf_decoding", None)
+    if callable(decoder):
+        linear = np.asarray(decoder(encoded), dtype=np.float64)
+    else:
+        linear = np.power(encoded.astype(np.float64), float(profile.gamma))
+
+    flat = linear.reshape((-1, 3))
+    matrix = np.asarray(rgb_space.matrix_RGB_to_XYZ, dtype=np.float64)
+    xyz_native = flat @ matrix.T
+
+    source_white = np.asarray(colour.xy_to_XYZ(rgb_space.whitepoint), dtype=np.float64)
+    d65_xy = np.asarray(colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D65"], dtype=np.float64)
+    d65_xyz = np.asarray(colour.xy_to_XYZ(d65_xy), dtype=np.float64)
+    if np.allclose(source_white, d65_xyz, atol=1e-6):
+        xyz_d65 = xyz_native
+    else:
+        adaptation = matrix_chromatic_adaptation_VonKries(source_white, d65_xyz, transform="Bradford")
+        xyz_d65 = xyz_native @ np.asarray(adaptation, dtype=np.float64).T
+
+    srgb = colour.XYZ_to_sRGB(
+        xyz_d65.reshape(encoded.shape),
+        illuminant=d65_xy,
+        apply_cctf_encoding=True,
+    )
+    return np.clip(np.asarray(srgb, dtype=np.float32), 0.0, 1.0)
 
 
 def srgb_to_linear_display(image_srgb: np.ndarray) -> np.ndarray:

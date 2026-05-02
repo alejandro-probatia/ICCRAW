@@ -154,6 +154,9 @@ if QtWidgets is not None:
                 int,
                 bool,
                 bool,
+                str,
+                Path | None,
+                Path | None,
             ] | None = None
             self._interactive_preview_expected_key: str | None = None
             self._interactive_preview_last_ms: float | None = None
@@ -207,6 +210,15 @@ if QtWidgets is not None:
             self._development_profiles: list[dict[str, Any]] = []
             self._active_development_profile_id = ""
             self._development_settings_clipboard: dict[str, Any] | None = None
+            self._color_contrast_profiles: list[dict[str, Any]] = []
+            self._active_color_contrast_profile_id = ""
+            self._color_contrast_profile_clipboard: dict[str, Any] | None = None
+            self._detail_profiles: list[dict[str, Any]] = []
+            self._active_detail_profile_id = ""
+            self._detail_profile_clipboard: dict[str, Any] | None = None
+            self._raw_export_profiles: list[dict[str, Any]] = []
+            self._active_raw_export_profile_id = ""
+            self._raw_export_profile_clipboard: dict[str, Any] | None = None
             self._selected_chart_files: list[Path] = []
             self._manual_chart_detections: dict[str, dict[str, Any]] = {}
             self._tone_curve_active_channel = "luminance"
@@ -236,6 +248,8 @@ if QtWidgets is not None:
             self._original_display_u8_cache: np.ndarray | None = None
             self._original_display_u8_cache_key: str | None = None
             self._original_compare_panel_key: str | None = None
+            self._interactive_source_cache_key: tuple[object, ...] | None = None
+            self._interactive_source_cache_image: np.ndarray | None = None
             self._interactive_bypass_display_icc = _env_flag(
                 PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC_ENV,
                 default=True,

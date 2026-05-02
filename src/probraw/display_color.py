@@ -41,6 +41,34 @@ def srgb_to_display_u8(image_srgb: np.ndarray, monitor_profile: Path | None) -> 
     return srgb_u8_to_display_u8(rgb_u8, monitor_profile)
 
 
+def profiled_float_to_display_u8(
+    image_rgb: np.ndarray,
+    source_profile: Path,
+    monitor_profile: Path | None,
+) -> np.ndarray:
+    rgb_u8 = srgb_float_to_u8(image_rgb)
+    return profiled_u8_to_display_u8(rgb_u8, source_profile, monitor_profile)
+
+
+def profiled_u8_to_display_u8(
+    rgb_u8: np.ndarray,
+    source_profile: Path,
+    monitor_profile: Path | None,
+) -> np.ndarray:
+    rgb = np.asarray(rgb_u8)
+    if rgb.ndim == 2:
+        rgb = np.repeat(rgb[..., None], 3, axis=2)
+    if rgb.ndim != 3 or rgb.shape[2] < 3:
+        raise RuntimeError(f"Imagen RGB inesperada para display ICC: shape={rgb.shape}")
+    rgb = np.ascontiguousarray(rgb[..., :3].astype(np.uint8))
+    transform = _profile_to_display_transform(source_profile, monitor_profile)
+    image = Image.fromarray(rgb, "RGB")
+    converted = ImageCms.applyTransform(image, transform)
+    if converted is None:
+        raise RuntimeError("La conversion ICC perfil->monitor no devolvio imagen.")
+    return np.asarray(converted, dtype=np.uint8).copy()
+
+
 def srgb_u8_to_display_u8(rgb_u8: np.ndarray, monitor_profile: Path | None) -> np.ndarray:
     rgb = np.asarray(rgb_u8)
     if rgb.ndim == 2:
@@ -118,6 +146,42 @@ def _display_transform(monitor_profile: Path) -> ImageCms.ImageCmsTransform:
 
     _TRANSFORM_CACHE[key] = transform
     while len(_TRANSFORM_CACHE) > 4:
+        _TRANSFORM_CACHE.popitem(last=False)
+    return transform
+
+
+def _profile_to_display_transform(source_profile: Path, monitor_profile: Path | None) -> ImageCms.ImageCmsTransform:
+    source_key = display_profile_cache_key(source_profile)
+    destination_key = "srgb" if monitor_profile is None else display_profile_cache_key(monitor_profile)
+    key = f"profile-display|{source_key}|{destination_key}"
+    cached = _TRANSFORM_CACHE.get(key)
+    if cached is not None:
+        _TRANSFORM_CACHE.move_to_end(key)
+        return cached
+
+    source_path = Path(source_profile).expanduser()
+    if not source_path.exists():
+        raise FileNotFoundError(f"No existe el perfil ICC de origen: {source_path}")
+    if monitor_profile is not None and not Path(monitor_profile).expanduser().exists():
+        raise FileNotFoundError(f"No existe el perfil ICC de monitor: {monitor_profile}")
+
+    try:
+        source = ImageCms.getOpenProfile(str(source_path))
+        destination = _SRGB_PROFILE if monitor_profile is None else ImageCms.getOpenProfile(str(Path(monitor_profile).expanduser()))
+        transform = ImageCms.buildTransformFromOpenProfiles(
+            source,
+            destination,
+            "RGB",
+            "RGB",
+            renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"No se pudo construir transformacion ICC origen->monitor: {source_path} -> {monitor_profile or 'sRGB'}"
+        ) from exc
+
+    _TRANSFORM_CACHE[key] = transform
+    while len(_TRANSFORM_CACHE) > 8:
         _TRANSFORM_CACHE.popitem(last=False)
     return transform
 

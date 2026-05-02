@@ -363,11 +363,14 @@ def test_raw_develop_layout_prioritizes_viewer_area(qapp):
         assert window.viewer_splitter.count() == 2
         assert window.viewer_splitter.widget(0) is window.viewer_area
         assert window.viewer_stack.parentWidget() is window.viewer_area
+        thumbnail_pane = window.viewer_splitter.widget(1)
+        assert not thumbnail_pane.findChildren(QtWidgets.QPushButton)
         assert isinstance(window.chk_compare, QtGui.QAction)
         assert isinstance(window.chk_apply_profile, QtGui.QAction)
         assert isinstance(window._action_side_columns_focus, QtGui.QAction)
         toolbar_buttons = window.viewer_toolbar.findChildren(QtWidgets.QToolButton)
-        assert len(toolbar_buttons) >= 11
+        assert len(toolbar_buttons) >= 10
+        assert not any(button.defaultAction() is window.chk_apply_profile for button in toolbar_buttons)
         assert not any(button.menu() is not None for button in toolbar_buttons)
         assert not window.raw_splitter.widget(0).isHidden()
         assert not window.raw_splitter.widget(2).isHidden()
@@ -544,10 +547,37 @@ def test_thumbnail_size_control_resizes_file_list(qapp):
         assert not window.file_list.isWrapping()
         assert window.file_list.horizontalScrollBarPolicy() == QtCore.Qt.ScrollBarAsNeeded
         assert window.file_list.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarAlwaysOff
+        assert not window.file_list.uniformItemSizes()
         window.thumbnail_size_slider.setValue(180)
         assert window.file_list.iconSize().width() == 180
-        assert window.file_list.gridSize().width() > 180
+        assert not window.file_list.gridSize().isValid()
         assert int(window._settings.value("view/thumbnail_size")) == 180
+    finally:
+        window.close()
+
+
+def test_thumbnail_icon_uses_image_aspect_instead_of_square_canvas(tmp_path: Path, qapp):
+    image_path = tmp_path / "landscape.png"
+    window = ICCRawMainWindow()
+    try:
+        window._apply_thumbnail_size(120)
+        base_icon = window._icon_from_thumbnail_array(
+            gui_module.np.full((40, 120, 3), 128, dtype=gui_module.np.uint8),
+            target_size=QtCore.QSize(120, 120),
+        )
+        base_pixmap = base_icon.pixmap(QtCore.QSize(120, 120))
+        assert base_pixmap.width() == 120
+        assert base_pixmap.height() == 40
+
+        display_icon = window._display_icon_for_path(image_path, base_icon)
+        display_pixmap = display_icon.pixmap(window.file_list.iconSize())
+        assert display_pixmap.width() == 120
+        assert display_pixmap.height() == 40
+
+        item = QtWidgets.QListWidgetItem("")
+        window._set_file_item_display_icon(item, image_path, base_icon)
+        assert item.sizeHint().width() == 124
+        assert item.sizeHint().height() == 44
     finally:
         window.close()
 
@@ -1028,6 +1058,101 @@ def test_output_space_combo_synchronizes_linear_state_and_basic_selector(qapp):
         window.close()
 
 
+def test_output_space_change_reloads_raw_preview_source(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "image.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion color")
+    calls: list[dict[str, object]] = []
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._selected_file = raw
+        window._original_linear = gui_module.np.zeros((12, 16, 3), dtype=gui_module.np.float32)
+        window._last_loaded_preview_key = "old-preview"
+        monkeypatch.setattr(window, "_on_load_selected", lambda *args, **kwargs: calls.append(dict(kwargs)))
+
+        window.combo_output_space.blockSignals(True)
+        window._set_combo_text(window.combo_output_space, "prophoto_rgb")
+        window.combo_output_space.blockSignals(False)
+        window._on_output_space_changed()
+
+        assert calls == [{"show_message": False}]
+        assert window._last_loaded_preview_key is None
+        assert window.development_output_space_combo.currentData() == "prophoto_rgb"
+    finally:
+        window.close()
+
+
+def test_generic_icc_selection_reloads_raw_preview_once(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "image.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion color")
+    calls: list[dict[str, object]] = []
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._selected_file = raw
+        window._original_linear = gui_module.np.zeros((12, 16, 3), dtype=gui_module.np.float32)
+        monkeypatch.setattr(window, "_on_load_selected", lambda *args, **kwargs: calls.append(dict(kwargs)))
+        window.combo_generic_icc_space.blockSignals(True)
+        window.combo_generic_icc_space.setCurrentIndex(window.combo_generic_icc_space.findData("prophoto_rgb"))
+        window.combo_generic_icc_space.blockSignals(False)
+
+        window._apply_generic_icc_workflow_to_controls()
+
+        assert calls == [{"show_message": False}]
+        assert window.combo_output_space.currentText().strip() == "prophoto_rgb"
+        assert not window.check_output_linear.isChecked()
+    finally:
+        window.close()
+
+
+def test_color_managed_preview_keeps_bounded_preview_size(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    payload = create_session(root, name="Sesion rendimiento")
+    profile = root / "00_configuraciones" / "profiles" / "session.icc"
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    profile.write_bytes(b"fake profile" * 32)
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._original_linear = gui_module.np.zeros((3000, 4500, 3), dtype=gui_module.np.float32)
+        monkeypatch.setattr(window, "_active_session_icc_for_settings", lambda: profile)
+
+        assert window._preview_requires_max_quality()
+        assert window._effective_preview_max_side() == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
+        assert window._should_async_final_preview()
+
+        window.check_precision_detail_preview.setChecked(True)
+        assert window._effective_preview_max_side() == 0
+    finally:
+        window.close()
+
+
+def test_interactive_preview_source_reuses_downscaled_cache(qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.linspace(0.0, 1.0, 900 * 1200 * 3, dtype=gui_module.np.float32).reshape((900, 1200, 3))
+
+        first = window._interactive_preview_source(image, max_side_limit=300)
+        second = window._interactive_preview_source(image, max_side_limit=300)
+        third = window._interactive_preview_source(image, max_side_limit=240)
+
+        assert first.shape == (225, 300, 3)
+        assert second is first
+        assert third.shape == (180, 240, 3)
+        assert third is not first
+    finally:
+        window.close()
+
+
 def test_colprof_args_default_to_restricted_input_gamut(qapp):
     window = ICCRawMainWindow()
     try:
@@ -1104,6 +1229,12 @@ def test_activate_session_loads_generated_icc_profile_catalog(tmp_path: Path, mo
         assert window.icc_profile_combo.count() == 3
         assert window.icc_profile_combo.currentData() == window._active_icc_profile_id
         assert window.gamut_profile_a_combo.findData(f"managed:{window._active_icc_profile_id}") >= 0
+        first_profile_id = next(profile["id"] for profile in window._icc_profiles if Path(profile["path"]).name == "d50.icc")
+        window.icc_profile_combo.setCurrentIndex(window.icc_profile_combo.findData(first_profile_id))
+        assert Path(window.path_profile_active.text()) == first
+        assert window._active_icc_profile_id == first_profile_id
+        assert window.combo_output_space.currentText().strip() == "scene_linear_camera_rgb"
+        assert window.check_output_linear.isChecked()
 
         saved_state = load_session(root)["state"]
         assert [Path(profile["path"]).name for profile in saved_state["icc_profiles"]] == ["led.icc", "d50.icc"]
@@ -2000,10 +2131,8 @@ def test_chart_profile_assignment_marks_raw_as_advanced_and_can_be_pasted(tmp_pa
             window._icon_from_thumbnail_array(gui_module.np.full((48, 48, 3), 96, dtype=gui_module.np.uint8)),
         )
         pixmap = marked.pixmap(window.file_list.iconSize())
-        image = pixmap.toImage().convertToFormat(QtGui.QImage.Format_RGB32)
-        marker = QtGui.QColor(image.pixel(image.width() // 2, image.height() - 2))
-        assert marker.blue() > 160
-        assert marker.red() < 120
+        assert pixmap.height() > pixmap.width()
+        assert window._raw_adjustment_profile_badges(source) == ["icc"]
 
         source_item = next(
             window.file_list.item(row)
@@ -2034,6 +2163,7 @@ def test_chart_profile_assignment_marks_raw_as_advanced_and_can_be_pasted(tmp_pa
         assert pasted["development_profile"]["profile_type"] == "advanced"
         assert pasted["recipe"]["exposure_compensation"] == 0.45
         assert "Perfil de ajuste avanzado" in target_item.toolTip()
+        assert "Perfiles aplicados" in target_item.toolTip()
     finally:
         window.close()
 
@@ -2196,11 +2326,8 @@ def test_thumbnail_copy_paste_development_settings_writes_raw_sidecars(tmp_path:
             window._icon_from_thumbnail_array(gui_module.np.full((48, 48, 3), 96, dtype=gui_module.np.uint8)),
         )
         pixmap = marked.pixmap(window.file_list.iconSize())
-        image = pixmap.toImage().convertToFormat(QtGui.QImage.Format_RGB32)
-        marker = QtGui.QColor(image.pixel(image.width() // 2, image.height() - 2))
-        assert marker.green() > 160
-        assert marker.red() < 120
-        assert marker.blue() < 140
+        assert pixmap.height() > pixmap.width()
+        assert window._raw_adjustment_profile_badges(source) == ["icc"]
 
         window._copy_development_settings_from_selected()
 
@@ -2217,9 +2344,96 @@ def test_thumbnail_copy_paste_development_settings_writes_raw_sidecars(tmp_path:
         assert pasted["development_profile"]["profile_type"] == "basic"
         assert pasted["recipe"]["exposure_compensation"] == 0.75
         assert pasted["render_adjustments"]["brightness_ev"] == 0.22
+        assert "Perfiles aplicados" in target_item.toolTip()
         assert "Perfil de ajuste básico" in target_item.toolTip()
     finally:
         window.close()
+
+
+def test_separate_adjustment_profiles_are_saved_and_applied_to_raw_sidecars(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_dir = root / "01_ORG"
+    raw_dir.mkdir(parents=True)
+    raw = raw_dir / "target.NEF"
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion perfiles separados")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
+
+        window.color_contrast_profile_name_edit.setText("Color caso")
+        window.slider_brightness.setValue(24)
+        window.slider_contrast.setValue(13)
+        window._save_named_adjustment_profile("color_contrast")
+        color_profile_id = window._active_color_contrast_profile_id
+        window.slider_brightness.setValue(0)
+        window._apply_named_adjustment_profile_to_controls("color_contrast", color_profile_id)
+        assert window.slider_brightness.value() == 24
+
+        window.detail_profile_name_edit.setText("Nitidez caso")
+        window.slider_sharpen.setValue(86)
+        window.slider_radius.setValue(18)
+        window._save_named_adjustment_profile("detail")
+        detail_profile_id = window._active_detail_profile_id
+        window.slider_sharpen.setValue(0)
+        window._apply_named_adjustment_profile_to_controls("detail", detail_profile_id)
+        assert window.slider_sharpen.value() == 86
+
+        window.raw_export_profile_name_edit.setText("RAW caso")
+        window.spin_exposure.setValue(1.15)
+        window._save_named_adjustment_profile("raw_export")
+        raw_profile_id = window._active_raw_export_profile_id
+        window.spin_exposure.setValue(0.0)
+        window._apply_named_adjustment_profile_to_controls("raw_export", raw_profile_id)
+        assert window.spin_exposure.value() == pytest.approx(1.15)
+
+        assert window._apply_named_adjustment_profile_to_raw_files("color_contrast", color_profile_id, [raw]) == 1
+        assert window._apply_named_adjustment_profile_to_raw_files("detail", detail_profile_id, [raw]) == 1
+        assert window._apply_named_adjustment_profile_to_raw_files("raw_export", raw_profile_id, [raw]) == 1
+
+        sidecar = load_raw_sidecar(raw)
+        assert sidecar["render_adjustments"]["brightness_ev"] == pytest.approx(0.24)
+        assert sidecar["render_adjustments"]["contrast"] == pytest.approx(0.13)
+        assert sidecar["detail_adjustments"]["sharpen"] == 86
+        assert sidecar["detail_adjustments"]["radius"] == 18
+        assert sidecar["recipe"]["exposure_compensation"] == pytest.approx(1.15)
+        assert sidecar["adjustment_profiles"]["color_contrast"]["id"] == color_profile_id
+        assert sidecar["adjustment_profiles"]["detail"]["id"] == detail_profile_id
+        assert sidecar["adjustment_profiles"]["raw_export"]["id"] == raw_profile_id
+        assert window._raw_adjustment_profile_badges(raw) == ["icc", "color_contrast", "detail", "raw_export"]
+        summary = window._raw_adjustment_profile_badge_summary(raw)
+        assert "ICC:" in summary
+        assert "Color/contraste: Color caso" in summary
+        assert "Nitidez: Nitidez caso" in summary
+        assert "RAW: RAW caso" in summary
+        window._selected_file = raw
+        window._refresh_selected_icc_profile_info()
+        assert "ICC aplicado:" in window.icc_selected_file_info_label.text()
+        assert raw.name in window.icc_selected_file_info_label.text()
+        marked = window._display_icon_for_path(
+            raw,
+            window._icon_from_thumbnail_array(gui_module.np.full((48, 48, 3), 96, dtype=gui_module.np.uint8)),
+        )
+        pixmap = marked.pixmap(window.file_list.iconSize())
+        assert pixmap.height() > pixmap.width()
+
+        saved = load_session(root)["state"]
+        assert saved["color_contrast_profiles"][0]["id"] == color_profile_id
+        assert saved["detail_profiles"][0]["id"] == detail_profile_id
+        assert saved["raw_export_profiles"][0]["id"] == raw_profile_id
+    finally:
+        window.close()
+
+    reloaded = ICCRawMainWindow()
+    try:
+        reloaded._activate_session(root, load_session(root))
+        assert reloaded._named_adjustment_profile_by_id("color_contrast", color_profile_id) is not None
+        assert reloaded._named_adjustment_profile_by_id("detail", detail_profile_id) is not None
+        assert reloaded._named_adjustment_profile_by_id("raw_export", raw_profile_id) is not None
+    finally:
+        reloaded.close()
 
 
 def test_raw_adjustment_groups_follow_editor_flow(qapp):
@@ -2247,12 +2461,36 @@ def test_raw_adjustment_groups_follow_editor_flow(qapp):
         ]
         assert raw_export_labels == [
             "RAW Global",
+            "Perfiles completos",
             "Exportar derivados",
         ]
         assert "Gestión de color y calibración" not in panel_labels
         assert "Calibrar sesión" not in panel_labels
         assert "Corrección básica" not in panel_labels
         assert "Ajustes personalizados" not in workflow_labels
+        group_titles = [box.title() for box in window.findChildren(QtWidgets.QGroupBox)]
+        assert "Perfil ICC de la imagen" in group_titles
+        assert "Estado ICC" in group_titles
+        assert "Perfiles de ajuste por archivo" not in group_titles
+        assert window.radio_icc_generic.isChecked()
+        assert window.radio_icc_generic.text() == "Perfil ICC RGB estandar"
+        assert window.radio_icc_existing.text() == "Perfiles ICC de la sesion"
+        assert window.radio_icc_generate.text() == "Generar perfil ICC"
+        assert window.combo_generic_icc_space.currentData() == "prophoto_rgb"
+        assert "todavia no tiene ICC generados" in window.icc_existing_availability_label.text()
+        assert not window._icc_profile_generation_section.isEnabled()
+        assert not window.icc_profile_combo.isEnabled()
+        window.radio_icc_existing.setChecked(True)
+        assert window.icc_profile_combo.isEnabled()
+        assert not window._icc_profile_generation_section.isEnabled()
+        assert "No hay ICC de sesion" in window.icc_workflow_decision_label.text()
+        window.radio_icc_generate.setChecked(True)
+        assert not window.icc_profile_combo.isEnabled()
+        assert window._icc_profile_generation_section.isEnabled()
+        window.radio_icc_generic.setChecked(True)
+        window.combo_generic_icc_space.setCurrentIndex(window.combo_generic_icc_space.findData("srgb"))
+        assert window.combo_output_space.currentText() == "srgb"
+        assert "Imagen seleccionada: ninguna" in window.icc_selected_file_info_label.text()
         assert isinstance(window._advanced_raw_config, QtWidgets.QGroupBox)
         assert window._advanced_raw_config.title() == "Criterios RAW globales"
         mtf_tab_labels = [
@@ -2707,6 +2945,50 @@ def test_mtf_cold_fullres_roi_is_queued_outside_ui(tmp_path: Path, monkeypatch, 
         window.close()
 
 
+def test_mtf_roi_worker_command_uses_module_in_source_run(tmp_path: Path, qapp):
+    import probraw.ui.window.mtf as mtf_module
+
+    window = ICCRawMainWindow()
+    request_path = tmp_path / "request.json"
+    output_path = tmp_path / "output.npz"
+    try:
+        command = window._mtf_base_roi_worker_command(request_path, output_path)
+
+        assert command == [
+            mtf_module.sys.executable,
+            "-m",
+            "probraw.analysis.mtf_roi",
+            str(request_path),
+            str(output_path),
+        ]
+    finally:
+        window.close()
+
+
+def test_mtf_roi_worker_command_uses_cli_sibling_when_frozen(tmp_path: Path, monkeypatch, qapp):
+    import probraw.ui.window.mtf as mtf_module
+
+    gui_exe = tmp_path / "probraw-ui.exe"
+    cli_exe = tmp_path / "probraw.exe"
+    gui_exe.write_bytes(b"gui")
+    cli_exe.write_bytes(b"cli")
+    monkeypatch.setattr(mtf_module.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(mtf_module.sys, "executable", str(gui_exe))
+
+    window = ICCRawMainWindow()
+    request_path = tmp_path / "request.json"
+    output_path = tmp_path / "output.npz"
+    try:
+        assert window._mtf_base_roi_worker_command(request_path, output_path) == [
+            str(cli_exe),
+            "mtf-roi-worker",
+            str(request_path),
+            str(output_path),
+        ]
+    finally:
+        window.close()
+
+
 def test_mtf_progress_panel_reports_elapsed_estimate_and_completion(qapp):
     window = ICCRawMainWindow()
     try:
@@ -3079,7 +3361,8 @@ def test_development_profile_controls_live_in_color_management_flow(qapp):
                 parent = parent.parentWidget()
             return False
 
-        assert is_descendant(window.development_profile_combo, window.right_workflow_tabs.widget(0))
+        assert not is_descendant(window.development_profile_combo, window.right_workflow_tabs.widget(0))
+        assert is_descendant(window.development_profile_combo, window.right_workflow_tabs.widget(3))
         assert is_descendant(window.slider_sharpen, window.right_workflow_tabs.widget(2))
         assert not is_descendant(window.development_profile_combo, window.config_tabs)
         assert not is_descendant(window.slider_sharpen, window.config_tabs)
@@ -3204,11 +3487,13 @@ def test_display_color_settings_migrate_old_disabled_default(tmp_path: Path, mon
         window.close()
 
 
-def test_histogram_uses_colorimetric_preview_before_monitor_transform(qapp):
+def test_histogram_uses_colorimetric_preview_before_monitor_transform(tmp_path: Path, qapp):
     window = ICCRawMainWindow()
     try:
-        window.path_profile_active.setText("/tmp/generated-profile.icc")
-        window.chk_apply_profile.setChecked(True)
+        profile = tmp_path / "generated-profile.icc"
+        profile.write_bytes(b"fake profile" * 32)
+        window.path_profile_active.setText(str(profile))
+        window.chk_apply_profile.setChecked(False)
         window._preview_srgb = gui_module.np.asarray(
             [
                 [

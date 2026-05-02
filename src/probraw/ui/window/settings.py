@@ -246,11 +246,12 @@ class SettingsMixin:
         self.check_display_color_management = QtWidgets.QCheckBox(self.tr("Gestion ICC del monitor del sistema"))
         self.check_display_color_management.setToolTip(
             self.tr(
-                "Usa automaticamente el perfil ICC configurado para el monitor en el sistema. "
-                "Si necesitas revisar otro monitor o flujo, puedes seleccionar un perfil manualmente."
+                "Siempre activo: usa automaticamente el perfil ICC configurado para el monitor "
+                "en el sistema. Puedes seleccionar un perfil manualmente para otro monitor o flujo."
             )
         )
-        self.check_display_color_management.setChecked(self._settings_bool("display/color_management_enabled", True))
+        self.check_display_color_management.setChecked(True)
+        self.check_display_color_management.setEnabled(False)
         self.check_display_color_management.toggled.connect(self._on_display_color_settings_changed)
         grid.addWidget(self.check_display_color_management, 3, 0, 1, 3)
 
@@ -399,7 +400,8 @@ class SettingsMixin:
     def _effective_preview_max_side(self) -> int:
         if self._precision_detail_preview_enabled():
             return 0
-        if self._preview_requires_max_quality():
+        compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
+        if compare_enabled or bool(getattr(self, "_manual_chart_marking_after_reload", False)):
             return 0
         return int(PREVIEW_AUTO_BASE_MAX_SIDE)
 
