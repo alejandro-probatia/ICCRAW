@@ -52,6 +52,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Las curvas de contraste ya no fuerzan una preview final ICC a resolucion
   completa en el hilo principal: la fuente interactiva se cachea reducida y la
   preview pesada pasa a worker asincrono.
+- La preview interactiva cuenta ahora con un watchdog: si un worker ICC queda
+  atascado, se abandona esa tarea, se registra el aviso y la cola de ajustes
+  vuelve a avanzar.
 
 ### Known Issues
 

@@ -1153,6 +1153,27 @@ def test_interactive_preview_source_reuses_downscaled_cache(qapp):
         window.close()
 
 
+def test_stuck_interactive_preview_watchdog_releases_queue(qapp):
+    window = ICCRawMainWindow()
+    try:
+        messages: list[str] = []
+        window._interactive_preview_task_active = True
+        window._interactive_preview_task_token = 10
+        window._interactive_preview_inflight_key = "stuck"
+        window._interactive_preview_expected_key = "stuck"
+        window._interactive_preview_pending_request = None
+        window._log_preview = lambda message: messages.append(str(message))
+
+        window._abandon_stuck_interactive_preview(10, "stuck")
+
+        assert not window._interactive_preview_task_active
+        assert window._interactive_preview_inflight_key is None
+        assert window._interactive_preview_expected_key is None
+        assert messages
+    finally:
+        window.close()
+
+
 def test_colprof_args_default_to_restricted_input_gamut(qapp):
     window = ICCRawMainWindow()
     try:

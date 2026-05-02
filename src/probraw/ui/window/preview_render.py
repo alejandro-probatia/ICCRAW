@@ -399,6 +399,8 @@ class PreviewRenderMixin:
             source_profile,
             monitor_profile,
         ) = request
+        self._interactive_preview_task_token = int(getattr(self, "_interactive_preview_task_token", 0)) + 1
+        task_token = int(self._interactive_preview_task_token)
 
         def task():
             warnings: list[str] = []
@@ -467,11 +469,17 @@ class PreviewRenderMixin:
         self._threads.append(thread)
 
         def cleanup() -> None:
-            self._interactive_preview_task_active = False
-            self._interactive_preview_inflight_key = None
+            stale = (
+                int(getattr(self, "_interactive_preview_task_token", 0)) != task_token
+                or self._interactive_preview_inflight_key != request_key
+            )
             if thread in self._threads:
                 self._threads.remove(thread)
             thread.deleteLater()
+            if stale:
+                return
+            self._interactive_preview_task_active = False
+            self._interactive_preview_inflight_key = None
             pending = self._interactive_preview_pending_request
             self._interactive_preview_pending_request = None
             if pending is not None:
@@ -516,12 +524,41 @@ class PreviewRenderMixin:
             finally:
                 cleanup()
 
-        def fail(_trace: str) -> None:
+        def fail(trace: str) -> None:
+            line = trace.strip().splitlines()[-1] if trace.strip() else "error desconocido"
+            key = f"interactive-preview-failed|{request_key}|{line}"
+            if self._profile_preview_error_key != key:
+                self._profile_preview_error_key = key
+                self._log_preview(f"Aviso: fallo en preview interactiva; se conserva la ultima vista: {line}")
+                self._set_status(self.tr("Preview interactiva fallida; puedes seguir ajustando."))
             cleanup()
 
         thread.succeeded.connect(ok)
         thread.failed.connect(fail)
         thread.start()
+        QtCore.QTimer.singleShot(
+            int(PREVIEW_INTERACTIVE_STUCK_TIMEOUT_MS),
+            lambda: self._abandon_stuck_interactive_preview(task_token, request_key),
+        )
+
+    def _abandon_stuck_interactive_preview(self, task_token: int, request_key: str) -> None:
+        if not bool(getattr(self, "_interactive_preview_task_active", False)):
+            return
+        if int(getattr(self, "_interactive_preview_task_token", 0)) != int(task_token):
+            return
+        if getattr(self, "_interactive_preview_inflight_key", None) != request_key:
+            return
+        self._interactive_preview_task_token = int(getattr(self, "_interactive_preview_task_token", 0)) + 1
+        self._interactive_preview_task_active = False
+        self._interactive_preview_inflight_key = None
+        pending = self._interactive_preview_pending_request
+        self._interactive_preview_pending_request = None
+        self._log_preview("Aviso: preview interactiva cancelada por tiempo de espera; se reanuda la cola de ajustes.")
+        if pending is not None:
+            self._start_interactive_preview_task(pending)
+        else:
+            self._interactive_preview_expected_key = None
+            self._set_interactive_preview_busy(False)
 
     def _reset_adjustments(self) -> None:
         self.slider_sharpen.setValue(0)

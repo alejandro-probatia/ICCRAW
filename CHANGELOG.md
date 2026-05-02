@@ -51,6 +51,8 @@ To maintain full traceability, each change must:
 - Contrast curves no longer force a final ICC preview at full resolution on the
   main thread: the interactive source is cached at reduced size and heavy final
   preview runs in an asynchronous worker.
+- Interactive preview now has a watchdog: if an ICC worker gets stuck, that task
+  is abandoned, the warning is logged and the adjustment queue can continue.
 
 ### Known Issues
 

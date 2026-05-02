@@ -162,6 +162,8 @@ curvas:
 - las curvas y sliders trabajan sobre una fuente interactiva reducida y cacheada;
 - la preview final pesada, incluyendo conversion `ICC fuente -> ICC monitor`, se
   ejecuta en un worker asincrono cuando la imagen supera 2 MP.
+- un watchdog abandona workers interactivos que no responden y reanuda la cola
+  de ajustes para evitar que la interfaz quede atrapada en "Ajustando...".
 
 Esto preserva la seriedad de la gestion de color y reduce los bloqueos largos.
 La siguiente optimizacion pendiente es cachear tambien transformaciones ICC

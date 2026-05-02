@@ -152,6 +152,8 @@ blocking:
 - curves and sliders operate on a cached reduced interactive source;
 - heavy final preview, including `source ICC -> monitor ICC` conversion, runs in
   an asynchronous worker when the image exceeds 2 MP.
+- a watchdog abandons non-responsive interactive workers and resumes the
+  adjustment queue so the UI does not remain stuck in "Adjusting...".
 
 This preserves strict color management while reducing long UI stalls. The next
 optimization target is caching reduced ICC transforms by profile/recipe to lower

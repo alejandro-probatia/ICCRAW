@@ -143,6 +143,7 @@ if QtWidgets is not None:
             self._profile_preview_error_key: str | None = None
             self._interactive_preview_task_active = False
             self._interactive_preview_inflight_key: str | None = None
+            self._interactive_preview_task_token = 0
             self._interactive_preview_pending_request: tuple[
                 str,
                 str | None,
