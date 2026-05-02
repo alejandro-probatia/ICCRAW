@@ -186,6 +186,20 @@ class DisplayControlsMixin:
             "ca_blue": int(self.slider_ca_blue.value()),
         }
 
+    def _detail_adjustment_state_has_effect(self, state: dict[str, Any] | None = None) -> bool:
+        if not isinstance(state, dict):
+            state = self._detail_adjustment_state()
+        default = self._default_detail_adjustment_state()
+        for key, baseline in default.items():
+            current = state.get(key, baseline)
+            try:
+                if abs(float(current) - float(baseline)) > 1e-4:
+                    return True
+            except Exception:
+                if str(current) != str(baseline):
+                    return True
+        return False
+
     def _detail_adjustment_kwargs_from_state(self, state: dict[str, Any]) -> dict[str, float]:
         return {
             "denoise_luma": float(state.get("noise_luma", 0)) / 100.0,

@@ -79,6 +79,9 @@ To maintain full traceability, each change must:
   and make the render queue prefer that sidecar over a queued profile snapshot.
 - The tone-curve editor histogram now updates in real time with the curve
   applied and displays RGB columns in addition to luminance.
+- The thumbnail context menu can now copy all applied adjustments or only ICC,
+  color/contrast, sharpness or RAW/export settings, then paste them onto one or
+  multiple selected images without overwriting unrelated categories.
 
 ### Known Issues
 

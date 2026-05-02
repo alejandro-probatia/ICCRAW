@@ -82,6 +82,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 - El histograma integrado del editor de curva tonal se actualiza ahora en
   tiempo real con la curva aplicada y muestra columnas RGB ademas de la
   luminancia.
+- El menu contextual de miniaturas permite copiar todos los ajustes aplicados
+  o solo ICC, color/contraste, nitidez o RAW/exportacion, y pegarlos sobre una
+  o varias imagenes seleccionadas sin sobrescribir el resto de categorias.
 
 ### Known Issues
 

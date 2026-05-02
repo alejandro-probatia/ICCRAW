@@ -2538,6 +2538,109 @@ def test_thumbnail_copy_paste_development_settings_writes_raw_sidecars(tmp_path:
         window.close()
 
 
+def test_thumbnail_copy_paste_individual_adjustment_categories_to_multiple_targets(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_dir = root / "01_ORG"
+    source = raw_dir / "source.NEF"
+    target_a = raw_dir / "target_a.NEF"
+    target_b = raw_dir / "target_b.NEF"
+    raw_dir.mkdir(parents=True)
+    for path in (source, target_a, target_b):
+        path.write_bytes(path.name.encode("utf-8"))
+    payload = create_session(root, name="Sesion copiar ajustes separados")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        icc_path = _activate_fake_session_icc(window, root)
+
+        source_render = window._default_render_adjustment_state()
+        source_render.update({"brightness_ev": 0.41, "contrast": 0.18})
+        source_detail = window._default_detail_adjustment_state()
+        source_detail.update({"sharpen": 92, "radius": 16})
+        source_recipe = Recipe(
+            output_space="scene_linear_camera_rgb",
+            demosaic_algorithm="amaze",
+            false_color_suppression_steps=3,
+            four_color_rgb=True,
+        )
+        target_render = window._default_render_adjustment_state()
+        target_detail = window._default_detail_adjustment_state()
+        target_detail.update({"sharpen": 7, "radius": 11})
+        target_recipe = Recipe(output_space="scene_linear_camera_rgb", demosaic_algorithm="ahd")
+
+        window._write_raw_settings_sidecar(
+            source,
+            recipe=source_recipe,
+            development_profile={"id": "source-full", "name": "Fuente", "kind": "manual", "profile_type": "basic"},
+            adjustment_profiles={
+                "icc": {"id": "icc-session", "name": "ICC sesion", "kind": "icc"},
+                "color_contrast": {"id": "", "name": "Color fuente", "kind": "color_contrast"},
+                "detail": {"id": "", "name": "Nitidez fuente", "kind": "detail"},
+                "raw_export": {"id": "", "name": "RAW fuente", "kind": "raw_export"},
+            },
+            detail_adjustments=source_detail,
+            render_adjustments=source_render,
+            profile_path=icc_path,
+            color_management_mode="camera_rgb_with_input_icc",
+        )
+        for target in (target_a, target_b):
+            window._write_raw_settings_sidecar(
+                target,
+                recipe=target_recipe,
+                development_profile={"id": "", "name": "Destino", "kind": "manual", "profile_type": "basic"},
+                adjustment_profiles={},
+                detail_adjustments=target_detail,
+                render_adjustments=target_render,
+                profile_path=icc_path,
+                color_management_mode="camera_rgb_with_input_icc",
+            )
+
+        window._set_current_directory(raw_dir)
+        items = {
+            Path(str(window.file_list.item(row).data(QtCore.Qt.UserRole))).name: window.file_list.item(row)
+            for row in range(window.file_list.count())
+        }
+
+        window.file_list.clearSelection()
+        items[source.name].setSelected(True)
+        window.file_list.setCurrentItem(items[source.name])
+        window._copy_adjustments_from_selected(("color_contrast",))
+
+        window.file_list.clearSelection()
+        window.file_list.setCurrentItem(items[target_a.name])
+        for target in (target_a, target_b):
+            items[target.name].setSelected(True)
+        window._paste_adjustments_to_selected()
+
+        pasted_a = load_raw_sidecar(target_a)
+        pasted_b = load_raw_sidecar(target_b)
+        assert pasted_a["render_adjustments"]["brightness_ev"] == pytest.approx(0.41)
+        assert pasted_b["render_adjustments"]["contrast"] == pytest.approx(0.18)
+        assert pasted_a["detail_adjustments"]["sharpen"] == 7
+        assert pasted_a["recipe"]["demosaic_algorithm"] == "ahd"
+        assert "color_contrast" in window._raw_adjustment_profile_badges(target_a)
+
+        window.file_list.clearSelection()
+        items[source.name].setSelected(True)
+        window.file_list.setCurrentItem(items[source.name])
+        window._copy_adjustments_from_selected(("detail", "raw_export"))
+
+        window.file_list.clearSelection()
+        items[target_a.name].setSelected(True)
+        window.file_list.setCurrentItem(items[target_a.name])
+        window._paste_adjustments_to_selected()
+
+        updated = load_raw_sidecar(target_a)
+        assert updated["render_adjustments"]["brightness_ev"] == pytest.approx(0.41)
+        assert updated["detail_adjustments"]["sharpen"] == 92
+        assert updated["recipe"]["demosaic_algorithm"] == "amaze"
+        assert updated["recipe"]["false_color_suppression_steps"] == 3
+        assert {"color_contrast", "detail", "raw_export"}.issubset(set(window._raw_adjustment_profile_badges(target_a)))
+    finally:
+        window.close()
+
+
 def test_raw_export_adjustments_autosave_to_raw_sidecar_and_badge(tmp_path: Path, qapp):
     root = tmp_path / "session"
     raw = root / "01_ORG" / "capture.NEF"

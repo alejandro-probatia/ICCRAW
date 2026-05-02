@@ -211,6 +211,7 @@ if QtWidgets is not None:
             self._development_profiles: list[dict[str, Any]] = []
             self._active_development_profile_id = ""
             self._development_settings_clipboard: dict[str, Any] | None = None
+            self._adjustment_settings_clipboard: dict[str, Any] | None = None
             self._color_contrast_profiles: list[dict[str, Any]] = []
             self._active_color_contrast_profile_id = ""
             self._color_contrast_profile_clipboard: dict[str, Any] | None = None

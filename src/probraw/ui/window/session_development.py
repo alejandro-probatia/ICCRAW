@@ -1960,10 +1960,68 @@ class SessionDevelopmentMixin:
             )
         self._set_status(self.tr("Perfil básico guardado en") + f" {written} " + self.tr("imagen(es)"))
 
-    def _copy_development_settings_from_selected(self) -> None:
+    def _all_adjustment_copy_categories(self) -> tuple[str, ...]:
+        return ("icc", "color_contrast", "detail", "raw_export")
+
+    def _adjustment_copy_category_title(self, category: str) -> str:
+        labels = {
+            "icc": self.tr("Perfil ICC"),
+            "color_contrast": self.tr("Color y contraste"),
+            "detail": self.tr("Nitidez"),
+            "raw_export": self.tr("RAW / exportación"),
+        }
+        return labels.get(category, category)
+
+    def _adjustment_copy_categories_label(self, categories: tuple[str, ...]) -> str:
+        if set(categories) == set(self._all_adjustment_copy_categories()):
+            return self.tr("todos los ajustes")
+        return ", ".join(self._adjustment_copy_category_title(category) for category in categories)
+
+    def _has_adjustment_settings_clipboard(self) -> bool:
+        copied = getattr(self, "_adjustment_settings_clipboard", None)
+        if isinstance(copied, dict) and copied.get("categories"):
+            return True
+        return bool(getattr(self, "_development_settings_clipboard", None))
+
+    def _sidecar_has_adjustment_category(self, sidecar: dict[str, Any], category: str) -> bool:
+        profiles = sidecar.get("adjustment_profiles") if isinstance(sidecar.get("adjustment_profiles"), dict) else {}
+        profile = profiles.get(category) if isinstance(profiles, dict) else None
+        if isinstance(profile, dict) and str(profile.get("id") or profile.get("name") or "").strip():
+            return True
+        if category == "icc":
+            color = sidecar.get("color_management") if isinstance(sidecar.get("color_management"), dict) else {}
+            return bool(str(color.get("icc_profile_path") or color.get("mode") or "").strip())
+        if category == "color_contrast":
+            render = sidecar.get("render_adjustments") if isinstance(sidecar.get("render_adjustments"), dict) else {}
+            return bool(self._render_adjustment_state_has_effect(render))
+        if category == "detail":
+            detail = sidecar.get("detail_adjustments") if isinstance(sidecar.get("detail_adjustments"), dict) else {}
+            return bool(self._detail_adjustment_state_has_effect(detail))
+        if category == "raw_export":
+            recipe = self._recipe_from_payload(sidecar.get("recipe"))
+            return bool(self._raw_export_recipe_has_effect(recipe))
+        return False
+
+    def _adjustment_clipboard_payload_from_sidecar(
+        self,
+        source: Path,
+        sidecar: dict[str, Any],
+        categories: tuple[str, ...],
+        *,
+        copy_all: bool,
+    ) -> dict[str, Any]:
+        payload = self._development_settings_payload_from_sidecar(source, sidecar)
+        payload["categories"] = list(categories)
+        payload["copy_all"] = bool(copy_all)
+        return payload
+
+    def _copy_adjustments_from_selected(self, categories: tuple[str, ...]) -> None:
+        requested = tuple(category for category in categories if category in self._all_adjustment_copy_categories())
+        if not requested:
+            return
         files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
         if not files:
-            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona un RAW con perfil de ajuste."))
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona un RAW con ajustes guardados."))
             return
         source = files[0]
         try:
@@ -1972,43 +2030,145 @@ class SessionDevelopmentMixin:
             QtWidgets.QMessageBox.information(
                 self,
                 self.tr("Info"),
-                self.tr("Esta imagen todavía no tiene perfil de ajuste guardado. Usa primero 'Guardar perfil básico en imagen' o genera un perfil con carta."),
+                self.tr("Esta imagen todavía no tiene mochila ProbRAW con ajustes guardados."),
             )
             return
         except Exception as exc:
             QtWidgets.QMessageBox.warning(self, self.tr("Mochila no válida"), str(exc))
             return
-        self._development_settings_clipboard = self._development_settings_payload_from_sidecar(source, sidecar)
-        profile_type = self._adjustment_profile_type_from_sidecar(sidecar)
-        label = self.tr("avanzado") if profile_type == "advanced" else self.tr("básico")
-        self._set_status(self.tr("Perfil de ajuste") + f" {label} " + self.tr("copiado:") + f" {source.name}")
 
-    def _icc_profile_path_from_copied_settings(self, copied: dict[str, Any]) -> Path | None:
+        all_categories = self._all_adjustment_copy_categories()
+        copy_all = set(requested) == set(all_categories)
+        if copy_all and self._recipe_from_payload(sidecar.get("recipe")) is None:
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("Info"),
+                self.tr("La mochila de esta imagen no contiene ajustes copiables."),
+            )
+            return
+        available_categories = tuple(category for category in all_categories if self._sidecar_has_adjustment_category(sidecar, category))
+        copied_categories = all_categories if copy_all else tuple(
+            category for category in requested if self._sidecar_has_adjustment_category(sidecar, category)
+        )
+        if not copied_categories:
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("Info"),
+                self.tr("La imagen no contiene ese tipo de ajuste aplicado."),
+            )
+            return
+
+        copied = self._adjustment_clipboard_payload_from_sidecar(
+            source,
+            sidecar,
+            copied_categories,
+            copy_all=copy_all,
+        )
+        self._adjustment_settings_clipboard = copied
+        copied["available_categories"] = list(available_categories)
+        if copy_all:
+            self._development_settings_clipboard = copied
+        for category in copied_categories:
+            state = self._copied_category_state(copied, category)
+            if isinstance(state, dict):
+                setattr(self, f"_{category}_profile_clipboard", {"source": str(source), "category": category, "state": state})
+        self._set_status(
+            self.tr("Copiado")
+            + " "
+            + self._adjustment_copy_categories_label(tuple(copied_categories))
+            + self.tr(" desde ")
+            + source.name
+        )
+
+    def _copied_category_state(self, copied: dict[str, Any], category: str) -> dict[str, Any] | None:
+        if category == "color_contrast":
+            state = copied.get("render_adjustments")
+            return dict(state) if isinstance(state, dict) else None
+        if category == "detail":
+            state = copied.get("detail_adjustments")
+            return dict(state) if isinstance(state, dict) else None
+        if category == "raw_export":
+            recipe = self._recipe_from_payload(copied.get("recipe"))
+            return asdict(self._raw_export_recipe_subset(recipe)) if recipe is not None else None
+        if category == "icc":
+            color = copied.get("color_management")
+            return dict(color) if isinstance(color, dict) else None
+        return None
+
+    def _copied_adjustment_profile_payload(self, copied: dict[str, Any], category: str) -> dict[str, str]:
+        profiles = copied.get("adjustment_profiles") if isinstance(copied.get("adjustment_profiles"), dict) else {}
+        profile = profiles.get(category) if isinstance(profiles, dict) else None
+        if isinstance(profile, dict) and str(profile.get("id") or profile.get("name") or "").strip():
+            return {
+                "id": str(profile.get("id") or ""),
+                "name": str(profile.get("name") or profile.get("id") or ""),
+                "kind": str(profile.get("kind") or category),
+            }
+        if category == "icc":
+            color = copied.get("color_management") if isinstance(copied.get("color_management"), dict) else {}
+            raw_path = str(color.get("icc_profile_path") or "").strip()
+            name = Path(raw_path).name if raw_path else self.tr("ICC copiado")
+        else:
+            name = self.tr("Ajustes copiados")
+        return {"id": "", "name": str(name), "kind": category}
+
+    def _apply_copied_icc_to_bundle(
+        self,
+        bundle: dict[str, Any],
+        copied: dict[str, Any],
+        source_recipe: Recipe,
+    ) -> None:
+        recipe = Recipe(**asdict(bundle["recipe"]))
+        for field_name in (
+            "output_space",
+            "output_linear",
+            "tone_curve",
+            "profiling_mode",
+            "input_color_assumption",
+            "illuminant_metadata",
+        ):
+            if hasattr(source_recipe, field_name):
+                setattr(recipe, field_name, getattr(source_recipe, field_name))
         color = copied.get("color_management") if isinstance(copied.get("color_management"), dict) else {}
-        raw_path = str(color.get("icc_profile_path") or "").strip()
-        if not raw_path:
-            return None
-        stored = self._session_stored_path(raw_path)
-        if stored is not None and stored.exists():
-            return stored
-        path = Path(raw_path).expanduser()
-        return path if path.exists() else None
+        mode = str(color.get("mode") or "")
+        profile_path = self._icc_profile_path_from_copied_settings(copied)
+        if profile_path is None and is_generic_output_space(recipe.output_space):
+            profile_path = ensure_generic_output_profile(
+                recipe.output_space,
+                directory=self._session_generic_profile_dir(),
+            )
+            mode = mode or f"standard_{generic_output_profile(recipe.output_space).key}_output_icc"
+        elif profile_path is not None and not mode:
+            mode = "camera_rgb_with_input_icc" if not is_generic_output_space(recipe.output_space) else f"standard_{generic_output_profile(recipe.output_space).key}_output_icc"
+        elif profile_path is None:
+            mode = mode or "no_profile"
+        bundle["recipe"] = recipe
+        bundle["profile_path"] = profile_path
+        bundle["color_management_mode"] = mode
 
-    def _paste_development_settings_to_selected(self) -> None:
-        copied = self._development_settings_clipboard
-        if not copied:
-            QtWidgets.QMessageBox.information(self, self.tr("Info"), "Copia primero un perfil de ajuste desde una miniatura.")
+    def _show_adjustment_paste_errors(self, errors: list[tuple[Path, Exception]]) -> None:
+        if not errors:
             return
-        files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
-        if not files:
-            QtWidgets.QMessageBox.information(self, self.tr("Info"), "Selecciona uno o más RAW de destino.")
-            return
+        first_path, first_error = errors[0]
+        QtWidgets.QMessageBox.warning(
+            self,
+            self.tr("No se pudo escribir mochila"),
+            self.tr("Fallaron") + f" {len(errors)} " + self.tr("archivo(s). Primer error:")
+            + f"\n{first_path}\n{first_error}",
+        )
+
+    def _paste_full_copied_adjustments_to_files(self, copied: dict[str, Any], files: list[Path]) -> int:
         recipe = self._recipe_from_payload(copied.get("recipe"))
         if recipe is None:
-            QtWidgets.QMessageBox.warning(self, self.tr("Mochila no válida"), "El perfil de ajuste copiado no contiene una receta válida.")
-            return
+            QtWidgets.QMessageBox.warning(self, self.tr("Mochila no válida"), self.tr("El ajuste copiado no contiene una receta válida."))
+            return 0
         profile = copied.get("development_profile") if isinstance(copied.get("development_profile"), dict) else {}
         adjustment_profiles = copied.get("adjustment_profiles") if isinstance(copied.get("adjustment_profiles"), dict) else {}
+        adjustment_profiles = dict(adjustment_profiles)
+        profile_categories = copied.get("available_categories") or copied.get("categories") or self._all_adjustment_copy_categories()
+        for category in profile_categories:
+            if category in self._all_adjustment_copy_categories():
+                adjustment_profiles[category] = self._copied_adjustment_profile_payload(copied, category)
         detail = copied.get("detail_adjustments") if isinstance(copied.get("detail_adjustments"), dict) else {}
         render = copied.get("render_adjustments") if isinstance(copied.get("render_adjustments"), dict) else {}
         icc_path = self._icc_profile_path_from_copied_settings(copied)
@@ -2019,10 +2179,9 @@ class SessionDevelopmentMixin:
             input_profile_path=input_profile_for_issue,
             title=self.tr("Perfil de ajuste incompleto"),
         ):
-            return
+            return 0
         written = 0
         errors: list[tuple[Path, Exception]] = []
-        targets = {self._normalized_path_key(path) for path in files}
         profile_id = str(profile.get("id") or "")
         for path in files:
             try:
@@ -2048,6 +2207,68 @@ class SessionDevelopmentMixin:
                         item["development_profile_id"] = profile_id
                         item["status"] = "pending"
                         item["message"] = ""
+        self._show_adjustment_paste_errors(errors)
+        return written
+
+    def _paste_partial_copied_adjustments_to_files(self, copied: dict[str, Any], files: list[Path]) -> int:
+        source_recipe = self._recipe_from_payload(copied.get("recipe"))
+        if source_recipe is None:
+            QtWidgets.QMessageBox.warning(self, self.tr("Mochila no válida"), self.tr("El ajuste copiado no contiene una receta válida."))
+            return 0
+        categories = tuple(category for category in copied.get("categories") or () if category in self._all_adjustment_copy_categories())
+        written = 0
+        errors: list[tuple[Path, Exception]] = []
+        for path in files:
+            try:
+                bundle = self._sidecar_bundle_for_category_write(path)
+                adjustment_profiles = bundle["adjustment_profiles"]
+                for category in categories:
+                    if category == "icc":
+                        self._apply_copied_icc_to_bundle(bundle, copied, source_recipe)
+                    elif category == "color_contrast":
+                        state = copied.get("render_adjustments")
+                        if isinstance(state, dict):
+                            bundle["render_adjustments"] = dict(state)
+                    elif category == "detail":
+                        state = copied.get("detail_adjustments")
+                        if isinstance(state, dict):
+                            bundle["detail_adjustments"] = dict(state)
+                    elif category == "raw_export":
+                        raw_state = self._raw_export_recipe_subset(source_recipe)
+                        bundle["recipe"] = self._merge_raw_export_recipe(bundle["recipe"], raw_state)
+                    adjustment_profiles[category] = self._copied_adjustment_profile_payload(copied, category)
+                sidecar = self._write_raw_settings_sidecar(path, status="configured", **bundle)
+            except Exception as exc:
+                errors.append((path, exc))
+                sidecar = None
+            if sidecar is not None:
+                written += 1
+        self._show_adjustment_paste_errors(errors)
+        return written
+
+    def _paste_adjustments_to_selected(self) -> None:
+        copied = getattr(self, "_adjustment_settings_clipboard", None)
+        if not isinstance(copied, dict):
+            copied = getattr(self, "_development_settings_clipboard", None)
+            if isinstance(copied, dict):
+                copied = self._adjustment_clipboard_payload_from_sidecar(
+                    Path(str(copied.get("source") or "")),
+                    copied,
+                    self._all_adjustment_copy_categories(),
+                    copy_all=True,
+                )
+        if not isinstance(copied, dict) or not copied.get("categories"):
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Copia primero ajustes desde una miniatura."))
+            return
+        files = [p for p in self._selected_or_current_file_paths() if p.suffix.lower() in RAW_EXTENSIONS]
+        if not files:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona uno o más RAW de destino."))
+            return
+        targets = {self._normalized_path_key(path) for path in files}
+        if bool(copied.get("copy_all")):
+            written = self._paste_full_copied_adjustments_to_files(copied, files)
+        else:
+            written = self._paste_partial_copied_adjustments_to_files(copied, files)
         self._refresh_queue_table()
         self._refresh_color_reference_thumbnail_markers()
         self._save_active_session(silent=True)
@@ -2055,15 +2276,31 @@ class SessionDevelopmentMixin:
             self._apply_raw_sidecar_to_controls(self._selected_file)
             if self._original_linear is not None:
                 self._on_load_selected(show_message=False)
-        if errors:
-            first_path, first_error = errors[0]
-            QtWidgets.QMessageBox.warning(
-                self,
-                self.tr("No se pudo escribir mochila"),
-                self.tr("Fallaron") + f" {len(errors)} " + self.tr("archivo(s). Primer error:")
-                + f"\n{first_path}\n{first_error}",
-            )
-        self._set_status(self.tr("Perfil de ajuste pegado en") + f" {written} " + self.tr("imagen(es)"))
+        self._set_status(
+            self.tr("Pegado")
+            + " "
+            + self._adjustment_copy_categories_label(tuple(copied.get("categories") or ()))
+            + self.tr(" en ")
+            + f"{written} "
+            + self.tr("imagen(es)")
+        )
+
+    def _copy_development_settings_from_selected(self) -> None:
+        self._copy_adjustments_from_selected(self._all_adjustment_copy_categories())
+
+    def _icc_profile_path_from_copied_settings(self, copied: dict[str, Any]) -> Path | None:
+        color = copied.get("color_management") if isinstance(copied.get("color_management"), dict) else {}
+        raw_path = str(color.get("icc_profile_path") or "").strip()
+        if not raw_path:
+            return None
+        stored = self._session_stored_path(raw_path)
+        if stored is not None and stored.exists():
+            return stored
+        path = Path(raw_path).expanduser()
+        return path if path.exists() else None
+
+    def _paste_development_settings_to_selected(self) -> None:
+        self._paste_adjustments_to_selected()
 
     def _default_unconfigured_recipe(self) -> Recipe:
         recipe = Recipe(

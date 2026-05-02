@@ -525,6 +525,9 @@ class BrowserMetadataMixin:
             if key == "color_contrast" and not present:
                 render = payload.get("render_adjustments") if isinstance(payload.get("render_adjustments"), dict) else {}
                 present = bool(self._render_adjustment_state_has_effect(render))
+            if key == "detail" and not present:
+                detail = payload.get("detail_adjustments") if isinstance(payload.get("detail_adjustments"), dict) else {}
+                present = bool(self._detail_adjustment_state_has_effect(detail))
             if key == "raw_export" and not present:
                 recipe = self._recipe_from_payload(payload.get("recipe"))
                 present = bool(self._raw_export_recipe_has_effect(recipe))
@@ -563,6 +566,10 @@ class BrowserMetadataMixin:
             if key == "color_contrast" and not name:
                 render = payload.get("render_adjustments") if isinstance(payload.get("render_adjustments"), dict) else {}
                 if self._render_adjustment_state_has_effect(render):
+                    name = "ajustes propios"
+            if key == "detail" and not name:
+                detail = payload.get("detail_adjustments") if isinstance(payload.get("detail_adjustments"), dict) else {}
+                if self._detail_adjustment_state_has_effect(detail):
                     name = "ajustes propios"
             if key == "raw_export" and not name:
                 recipe = self._recipe_from_payload(payload.get("recipe"))
@@ -1014,10 +1021,20 @@ class BrowserMetadataMixin:
             self.file_list.setCurrentItem(item)
 
         menu = QtWidgets.QMenu(self)
-        menu.addAction(self.tr("Guardar perfil básico en imagen"), self._save_current_development_settings_to_selected)
-        menu.addAction(self.tr("Copiar perfil de ajuste"), self._copy_development_settings_from_selected)
-        paste_action = menu.addAction(self.tr("Pegar perfil de ajuste"), self._paste_development_settings_to_selected)
-        paste_action.setEnabled(self._development_settings_clipboard is not None)
+        menu.addAction(self.tr("Guardar ajustes actuales en imagen"), self._save_current_development_settings_to_selected)
+        copy_menu = menu.addMenu(self.tr("Copiar ajustes"))
+        copy_menu.addAction(
+            self.tr("Todos los ajustes aplicados"),
+            lambda: self._copy_adjustments_from_selected(self._all_adjustment_copy_categories()),
+        )
+        copy_menu.addSeparator()
+        for category in self._all_adjustment_copy_categories():
+            copy_menu.addAction(
+                self._adjustment_copy_category_title(category),
+                lambda _checked=False, c=category: self._copy_adjustments_from_selected((c,)),
+            )
+        paste_action = menu.addAction(self.tr("Pegar ajustes copiados"), self._paste_adjustments_to_selected)
+        paste_action.setEnabled(self._has_adjustment_settings_clipboard())
         menu.addSeparator()
         menu.addAction(self.tr("Usar como referencia colorimétrica"), self._use_selected_files_as_profile_charts)
         compare_mtf_action = menu.addAction(self.tr("Comparar MTF de selección"), self._compare_mtf_for_selected_thumbnails)
