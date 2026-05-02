@@ -2499,6 +2499,38 @@ def test_thumbnail_copy_paste_development_settings_writes_raw_sidecars(tmp_path:
         window.close()
 
 
+def test_raw_export_adjustments_autosave_to_raw_sidecar_and_badge(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion autosave raw")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
+        window._selected_file = raw
+
+        window._set_combo_data(window.combo_demosaic, "ahd")
+        assert window._raw_export_sidecar_timer.isActive()
+        window._flush_raw_export_sidecar_persist()
+
+        sidecar = load_raw_sidecar(raw)
+        assert sidecar["recipe"]["demosaic_algorithm"] == "ahd"
+        assert "raw_export" in window._raw_adjustment_profile_badges(raw)
+        assert "RAW: ajustes propios" in window._raw_adjustment_profile_badge_summary(raw)
+
+        window._set_combo_data(window.combo_black_mode, "fixed")
+        window.spin_black_value.setValue(128)
+        window._flush_raw_export_sidecar_persist()
+        updated = load_raw_sidecar(raw)
+        assert updated["recipe"]["demosaic_algorithm"] == "ahd"
+        assert updated["recipe"]["black_level_mode"] == "fixed:128"
+    finally:
+        window.close()
+
+
 def test_separate_adjustment_profiles_are_saved_and_applied_to_raw_sidecars(tmp_path: Path, qapp):
     root = tmp_path / "session"
     raw_dir = root / "01_ORG"
@@ -2618,7 +2650,6 @@ def test_raw_adjustment_groups_follow_editor_flow(qapp):
         ]
         assert raw_export_labels == [
             "RAW Global",
-            "Perfiles RAW",
             "Exportar derivados",
         ]
         assert "Gestión de color y calibración" not in panel_labels
@@ -3519,7 +3550,11 @@ def test_development_profile_controls_live_in_color_management_flow(qapp):
             return False
 
         assert not is_descendant(window.development_profile_combo, window.right_workflow_tabs.widget(0))
-        assert is_descendant(window.development_profile_combo, window.right_workflow_tabs.widget(3))
+        assert not window._development_profiles_panel.isVisible()
+        assert not any(
+            window.raw_export_tabs.itemText(i) == "Perfiles RAW"
+            for i in range(window.raw_export_tabs.count())
+        )
         assert is_descendant(window.slider_sharpen, window.right_workflow_tabs.widget(2))
         assert not is_descendant(window.development_profile_combo, window.config_tabs)
         assert not is_descendant(window.slider_sharpen, window.config_tabs)

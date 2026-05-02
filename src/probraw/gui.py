@@ -243,7 +243,9 @@ if QtWidgets is not None:
             self._last_loaded_preview_key: str | None = None
             self._tone_curve_histogram_key: str | None = None
             self._render_adjustment_sidecar_key: str | None = None
+            self._raw_export_sidecar_key: str | None = None
             self._suspend_render_adjustment_autosave = 0
+            self._suspend_raw_export_autosave = 0
             self._detail_adjusted_linear: np.ndarray | None = None
             self._detail_adjustment_cache_key: str | None = None
             self._original_srgb_cache: np.ndarray | None = None
@@ -271,6 +273,9 @@ if QtWidgets is not None:
             self._render_adjustment_sidecar_timer = QtCore.QTimer(self)
             self._render_adjustment_sidecar_timer.setSingleShot(True)
             self._render_adjustment_sidecar_timer.timeout.connect(self._persist_render_adjustments_for_selected)
+            self._raw_export_sidecar_timer = QtCore.QTimer(self)
+            self._raw_export_sidecar_timer.setSingleShot(True)
+            self._raw_export_sidecar_timer.timeout.connect(self._persist_raw_export_settings_for_selected)
             self._thumbnail_timer = QtCore.QTimer(self)
             self._thumbnail_timer.setSingleShot(True)
             self._thumbnail_timer.timeout.connect(self._start_pending_thumbnail_generation)

@@ -1030,6 +1030,21 @@ class SessionDevelopmentMixin:
                 setattr(raw_recipe, field_name, getattr(recipe, field_name))
         return raw_recipe
 
+    def _raw_export_recipe_has_effect(self, recipe: Recipe | None) -> bool:
+        if recipe is None:
+            return False
+        default = Recipe()
+        for field_name in self._raw_export_recipe_fields():
+            current = getattr(recipe, field_name, None)
+            baseline = getattr(default, field_name, None)
+            if isinstance(current, str) or isinstance(baseline, str):
+                if str(current or "").strip().lower() != str(baseline or "").strip().lower():
+                    return True
+                continue
+            if current != baseline:
+                return True
+        return False
+
     def _raw_export_recipe_from_current_controls(self) -> Recipe:
         return self._raw_export_recipe_subset(self._build_effective_recipe())
 
@@ -1779,6 +1794,75 @@ class SessionDevelopmentMixin:
         if timer is not None:
             timer.stop()
         self._persist_render_adjustments_for_selected()
+
+    def _raw_export_sidecar_signature(self, path: Path) -> str:
+        return json.dumps(
+            {
+                "source": str(path),
+                "raw_recipe": asdict(self._raw_export_recipe_from_current_controls()),
+                "profiles": self._current_named_adjustment_profiles_payload(),
+                "icc": str(self._active_session_icc_for_settings() or ""),
+            },
+            sort_keys=True,
+            default=str,
+        )
+
+    def _schedule_raw_export_sidecar_persist(self, *, immediate: bool = False) -> None:
+        if int(getattr(self, "_suspend_raw_export_autosave", 0) or 0) > 0:
+            return
+        selected = getattr(self, "_selected_file", None)
+        if selected is None or Path(selected).suffix.lower() not in RAW_EXTENSIONS:
+            return
+        path = Path(selected)
+        has_named_raw_profile = bool(self._active_named_adjustment_profile_id("raw_export"))
+        has_raw_effect = self._raw_export_recipe_has_effect(self._build_effective_recipe())
+        if not has_raw_effect and not raw_sidecar_path(path).exists() and not has_named_raw_profile:
+            return
+        timer = getattr(self, "_raw_export_sidecar_timer", None)
+        if timer is None:
+            self._persist_raw_export_settings_for_selected()
+            return
+        if immediate:
+            timer.stop()
+            self._persist_raw_export_settings_for_selected()
+            return
+        timer.start(350)
+
+    def _persist_raw_export_settings_for_selected(self) -> None:
+        selected = getattr(self, "_selected_file", None)
+        if selected is None:
+            return
+        path = Path(selected)
+        if path.suffix.lower() not in RAW_EXTENSIONS:
+            return
+        has_named_raw_profile = bool(self._active_named_adjustment_profile_id("raw_export"))
+        has_raw_effect = self._raw_export_recipe_has_effect(self._build_effective_recipe())
+        if not has_raw_effect and not raw_sidecar_path(path).exists() and not has_named_raw_profile:
+            return
+        try:
+            signature = self._raw_export_sidecar_signature(path)
+            if signature == getattr(self, "_raw_export_sidecar_key", None):
+                return
+            sidecar = self._write_current_development_settings_to_raw(
+                path,
+                status="configured",
+                refresh_markers=False,
+            )
+        except Exception as exc:
+            self._raw_export_sidecar_key = None
+            self._log_preview(f"No se pudo actualizar mochila RAW para {path.name}: {exc}")
+            return
+        if sidecar is not None:
+            self._raw_export_sidecar_key = signature
+            if hasattr(self, "_refresh_thumbnail_marker_for_path"):
+                self._refresh_thumbnail_marker_for_path(path)
+            self._save_active_session(silent=True)
+
+    def _flush_raw_export_sidecar_persist(self) -> None:
+        timer = getattr(self, "_raw_export_sidecar_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._persist_raw_export_settings_for_selected()
 
     def _raw_sidecar_development_summary(self, path: Path) -> str:
         try:

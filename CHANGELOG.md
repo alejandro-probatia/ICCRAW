@@ -51,6 +51,9 @@ To maintain full traceability, each change must:
 - RAW export profiles now save and apply only RAW parameters (engine,
   algorithm, demosaic options and black level), without overwriting chromatic
   adjustments or the image ICC decision.
+- RAW edits are now written automatically to the selected image sidecar and
+  activate the RAW thumbnail badge even before a named RAW profile is saved;
+  the redundant RAW Profiles accordion is hidden from the UI.
 
 ### Fixed
 

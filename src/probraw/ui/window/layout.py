@@ -1661,7 +1661,9 @@ class LayoutMixin:
         self.raw_export_tabs = CollapsibleToolPanel()
         self._advanced_raw_config = self._build_tab_raw_config(self.tr("Criterios RAW globales"))
         self.raw_export_tabs.addItem(self._advanced_raw_config, self.tr("RAW Global"), expanded=True)
-        self.raw_export_tabs.addItem(self._build_development_profiles_panel(), self.tr("Perfiles RAW"), expanded=False)
+        self._development_profiles_panel = self._build_development_profiles_panel()
+        self._development_profiles_panel.setParent(self.raw_export_tabs)
+        self._development_profiles_panel.hide()
         self.raw_export_tabs.addItem(self._build_tab_batch_config(), self.tr("Exportar derivados"), expanded=True)
         self.right_workflow_tabs.addTab(self.raw_export_tabs, self.tr("RAW / exportación"))
 

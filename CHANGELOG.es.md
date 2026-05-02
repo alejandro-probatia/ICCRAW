@@ -52,6 +52,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Los perfiles de exportacion RAW guardan y aplican solo parametros RAW
   (motor, algoritmo, opciones de destramado y nivel negro), sin sobrescribir
   ajustes cromaticos ni decisiones ICC de la imagen.
+- Los cambios RAW se escriben ahora automaticamente en la mochila de la imagen
+  seleccionada y activan el indicador RAW aunque no se haya guardado un perfil
+  RAW con nombre; el acordeon redundante de Perfiles RAW se oculta de la UI.
 
 ### Fixed
 

@@ -525,6 +525,9 @@ class BrowserMetadataMixin:
             if key == "color_contrast" and not present:
                 render = payload.get("render_adjustments") if isinstance(payload.get("render_adjustments"), dict) else {}
                 present = bool(self._render_adjustment_state_has_effect(render))
+            if key == "raw_export" and not present:
+                recipe = self._recipe_from_payload(payload.get("recipe"))
+                present = bool(self._raw_export_recipe_has_effect(recipe))
             if key == "icc" and not present:
                 color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
                 present = bool(str(color.get("icc_profile_path") or "").strip())
@@ -560,6 +563,10 @@ class BrowserMetadataMixin:
             if key == "color_contrast" and not name:
                 render = payload.get("render_adjustments") if isinstance(payload.get("render_adjustments"), dict) else {}
                 if self._render_adjustment_state_has_effect(render):
+                    name = "ajustes propios"
+            if key == "raw_export" and not name:
+                recipe = self._recipe_from_payload(payload.get("recipe"))
+                if self._raw_export_recipe_has_effect(recipe):
                     name = "ajustes propios"
             if name:
                 parts.append(f"{labels[key]}: {name}")

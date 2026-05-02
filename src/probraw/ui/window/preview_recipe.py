@@ -5,6 +5,8 @@ from ._imports import *  # noqa: F401,F403
 
 class PreviewRecipeMixin:
     def _apply_recipe_to_controls(self, recipe: Recipe) -> None:
+        raw_autosave_suspend = int(getattr(self, "_suspend_raw_export_autosave", 0) or 0)
+        self._suspend_raw_export_autosave = raw_autosave_suspend + 1
         self._set_combo_data(self.combo_raw_developer, recipe.raw_developer)
         self._set_combo_data(
             self.combo_demosaic,
@@ -26,6 +28,7 @@ class PreviewRecipeMixin:
         mode, value = self._split_black_mode(recipe.black_level_mode)
         self._set_combo_data(self.combo_black_mode, mode)
         self.spin_black_value.setValue(value)
+        self._suspend_raw_export_autosave = raw_autosave_suspend
 
         self.spin_exposure.setValue(float(recipe.exposure_compensation))
 
@@ -69,6 +72,10 @@ class PreviewRecipeMixin:
         self._on_raw_decode_control_changed()
 
     def _on_raw_decode_control_changed(self) -> None:
+        if int(getattr(self, "_suspend_raw_export_autosave", 0) or 0) > 0:
+            return
+        if hasattr(self, "_schedule_raw_export_sidecar_persist"):
+            self._schedule_raw_export_sidecar_persist()
         if getattr(self, "_original_linear", None) is None:
             return
         self._invalidate_preview_cache()
@@ -134,6 +141,8 @@ class PreviewRecipeMixin:
             )
 
     def _apply_raw_export_recipe_to_controls(self, recipe: Recipe) -> None:
+        raw_autosave_suspend = int(getattr(self, "_suspend_raw_export_autosave", 0) or 0)
+        self._suspend_raw_export_autosave = raw_autosave_suspend + 1
         self._set_combo_data(self.combo_raw_developer, recipe.raw_developer)
         self._set_combo_data(
             self.combo_demosaic,
@@ -151,6 +160,7 @@ class PreviewRecipeMixin:
         self._set_combo_data(self.combo_black_mode, mode)
         self.spin_black_value.setValue(value)
         self._update_raw_algorithm_option_state()
+        self._suspend_raw_export_autosave = raw_autosave_suspend
 
     def _supported_gui_demosaic(self, demosaic_algorithm: str, *, notify: bool) -> str:
         requested = str(demosaic_algorithm or "dcb").strip().lower()
