@@ -36,6 +36,9 @@ To maintain full traceability, each change must:
 - The RAW panel now exposes algorithm-dependent demosaic options (4-color
   interpolation, edge quality and false-color suppression) and records those
   capabilities in recipes when the LibRaw/rawpy backend supports them.
+- RAW false-color suppression now has a local chroma-only postprocess that
+  preserves luminance when the LibRaw/rawpy backend does not expose
+  `median_filter_passes`, allowing it to be used with AMaZE.
 
 ### Changed
 
@@ -54,6 +57,9 @@ To maintain full traceability, each change must:
 - RAW edits are now written automatically to the selected image sidecar and
   activate the RAW thumbnail badge even before a named RAW profile is saved;
   the redundant RAW Profiles accordion is hidden from the UI.
+- The RAW "Edge quality" control is now labeled as "Border" and behaves like
+  RawTherapee's border control: it crops peripheral pixels after demosaicing
+  instead of being mapped to DCB iterations.
 
 ### Fixed
 

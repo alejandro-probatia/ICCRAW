@@ -57,6 +57,22 @@ El comando debe informar:
 }
 ```
 
+## Controles RAW tipo RawTherapee
+
+AMaZE depende del demosaic pack GPL3, pero los controles "Borde" y
+"Supresion de falso color" no son parametros internos exclusivos de AMaZE.
+ProbRAW los trata como controles comunes del destramado:
+
+- "Borde" recorta el numero indicado de pixeles en cada periferia tras el
+  demosaico para evitar artefactos de borde.
+- "Supresion de falso color" usa `median_filter_passes` si la build de
+  LibRaw/rawpy lo expone; si no, ProbRAW aplica un filtrado mediano propio
+  sobre crominancia conservando la luminancia.
+
+Los parametros DCB especificos, como `dcb_iterations`, no se activan desde el
+control "Borde"; si se exponen mas adelante deben mostrarse como controles
+DCB independientes.
+
 ## Windows
 
 Si PyPI no ofrece wheel compatible con la versión de Python usada para el

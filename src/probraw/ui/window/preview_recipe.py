@@ -86,8 +86,10 @@ class PreviewRecipeMixin:
         if hasattr(self, "combo_demosaic"):
             algorithm = str(self.combo_demosaic.currentData() or self.combo_demosaic.currentText()).strip().lower()
         four_color_supported = rawpy_postprocess_parameter_supported("four_color_rgb")
-        edge_supported = algorithm == "dcb" and rawpy_postprocess_parameter_supported("dcb_iterations")
-        false_color_supported = rawpy_postprocess_parameter_supported("median_filter_passes")
+        demosaic_supported = unavailable_demosaic_reason(algorithm) is None if algorithm else False
+        edge_supported = demosaic_supported
+        false_color_backend_supported = rawpy_postprocess_parameter_supported("median_filter_passes")
+        false_color_supported = demosaic_supported
 
         if hasattr(self, "check_four_color_rgb"):
             self.check_four_color_rgb.setEnabled(four_color_supported)
@@ -99,22 +101,27 @@ class PreviewRecipeMixin:
         if hasattr(self, "spin_demosaic_edge_quality"):
             self.spin_demosaic_edge_quality.setEnabled(edge_supported)
             if edge_supported:
-                self.spin_demosaic_edge_quality.setToolTip(self.tr("Parámetro DCB de LibRaw: dcb_iterations."))
-            elif algorithm == "dcb":
                 self.spin_demosaic_edge_quality.setToolTip(
-                    self.tr("No disponible con la versión instalada de rawpy; se conserva como parámetro de receta.")
+                    self.tr("Recorta este numero de pixeles en cada borde tras el demosaico.")
                 )
             else:
                 self.spin_demosaic_edge_quality.setToolTip(
-                    self.tr("Esta opción solo se aplica a algoritmos que exponen control de borde.")
+                    self.tr("Activa un metodo de demosaico disponible para aplicar el borde.")
                 )
         if hasattr(self, "spin_false_color_suppression"):
             self.spin_false_color_suppression.setEnabled(false_color_supported)
-            self.spin_false_color_suppression.setToolTip(
-                self.tr("Parámetro de LibRaw/rawpy: median_filter_passes.")
-                if false_color_supported
-                else self.tr("No disponible con la versión instalada de rawpy; se conserva como parámetro de receta.")
-            )
+            if false_color_backend_supported:
+                self.spin_false_color_suppression.setToolTip(
+                    self.tr("Aplicado por LibRaw/rawpy mediante median_filter_passes.")
+                )
+            elif false_color_supported:
+                self.spin_false_color_suppression.setToolTip(
+                    self.tr("Aplicado por ProbRAW como filtrado mediano de crominancia tras el demosaico.")
+                )
+            else:
+                self.spin_false_color_suppression.setToolTip(
+                    self.tr("Activa un metodo de demosaico disponible para aplicar la supresion de falso color.")
+                )
         if hasattr(self, "raw_algorithm_options_status_label"):
             enabled = []
             unavailable = []
@@ -123,11 +130,13 @@ class PreviewRecipeMixin:
             else:
                 unavailable.append("4 colores")
             if edge_supported:
-                enabled.append("calidad de borde")
+                enabled.append("borde")
             else:
-                unavailable.append("calidad de borde")
-            if false_color_supported:
-                enabled.append("falso color")
+                unavailable.append("borde")
+            if false_color_backend_supported:
+                enabled.append("falso color (LibRaw/rawpy)")
+            elif false_color_supported:
+                enabled.append("falso color (ProbRAW)")
             else:
                 unavailable.append("falso color")
             enabled_text = ", ".join(enabled) if enabled else self.tr("ninguna opción adicional")

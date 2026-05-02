@@ -51,6 +51,22 @@ The command should report:
   "amaze_supported": true
 }
 ```
+## RawTherapee-Style RAW Controls
+
+AMaZE depends on the GPL3 demosaic pack, but the "Border" and "False color
+suppression" controls are not AMaZE-only internal parameters. ProbRAW treats
+them as common demosaic controls:
+
+- "Border" crops the selected number of pixels from each image edge after
+  demosaicing to avoid edge artifacts.
+- "False color suppression" uses `median_filter_passes` when the LibRaw/rawpy
+  build exposes it; otherwise ProbRAW applies its own median chroma filtering
+  while preserving luminance.
+
+DCB-specific parameters such as `dcb_iterations` are not driven by the
+"Border" control; if they are exposed later they should appear as separate DCB
+controls.
+
 ## Windows
 
 If PyPI does not offer wheel compatible with the version of Python used for the

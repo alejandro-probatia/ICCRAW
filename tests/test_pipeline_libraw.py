@@ -10,13 +10,16 @@ from probraw.raw import pipeline
 from probraw.core.utils import read_image
 from probraw.raw.pipeline import (
     _build_libraw_postprocess_kwargs,
+    _crop_demosaic_border,
     _develop_image,
     _parse_int_mode_value,
+    apply_raw_demosaic_postprocess,
     develop_scene_linear_array,
     develop_image_array,
     develop_standard_output_array,
     develop_controlled,
     libraw_demosaic_value,
+    suppress_false_color,
 )
 
 
@@ -66,7 +69,7 @@ def test_build_libraw_kwargs_includes_supported_raw_demosaic_options(monkeypatch
     kwargs = _build_libraw_postprocess_kwargs(recipe)
 
     assert kwargs["four_color_rgb"] is True
-    assert kwargs["dcb_iterations"] == 3
+    assert "dcb_iterations" not in kwargs
     assert kwargs["median_filter_passes"] == 2
 
 
@@ -83,6 +86,47 @@ def test_build_libraw_kwargs_omits_unavailable_raw_demosaic_options(monkeypatch)
     assert "four_color_rgb" not in kwargs
     assert "dcb_iterations" not in kwargs
     assert "median_filter_passes" not in kwargs
+
+
+def test_crop_demosaic_border_removes_perimeter_pixels():
+    image = np.arange(6 * 8 * 3, dtype=np.float32).reshape(6, 8, 3)
+    cropped = _crop_demosaic_border(image, 2)
+
+    assert cropped.shape == (2, 4, 3)
+    assert np.array_equal(cropped, image[2:-2, 2:-2])
+
+
+def test_suppress_false_color_reduces_chroma_without_changing_luminance():
+    image = np.full((7, 7, 3), 0.5, dtype=np.float32)
+    image[3, 3, 0] = 0.9
+    image[3, 3, 2] = 0.2
+    image[3, 3, 1] = (0.5 - 0.2126 * image[3, 3, 0] - 0.0722 * image[3, 3, 2]) / 0.7152
+
+    filtered = suppress_false_color(image, 1)
+    weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    original_y = float(np.dot(image[3, 3], weights))
+    filtered_y = float(np.dot(filtered[3, 3], weights))
+
+    assert filtered.dtype == np.float32
+    assert abs(filtered_y - original_y) < 1e-5
+    assert abs(float(filtered[3, 3, 0]) - 0.5) < abs(float(image[3, 3, 0]) - 0.5)
+    assert abs(float(filtered[3, 3, 2]) - 0.5) < abs(float(image[3, 3, 2]) - 0.5)
+
+
+def test_raw_demosaic_postprocess_uses_local_false_color_fallback(monkeypatch):
+    monkeypatch.setattr(pipeline, "rawpy_postprocess_parameter_supported", lambda _name: False)
+    image = np.full((7, 7, 3), 0.5, dtype=np.float32)
+    image[3, 3, 0] = 0.9
+    image[3, 3, 2] = 0.2
+    image[3, 3, 1] = (0.5 - 0.2126 * image[3, 3, 0] - 0.0722 * image[3, 3, 2]) / 0.7152
+
+    processed = apply_raw_demosaic_postprocess(
+        image,
+        Recipe(demosaic_edge_quality=1, false_color_suppression_steps=1),
+    )
+
+    assert processed.shape == (5, 5, 3)
+    assert abs(float(processed[2, 2, 0]) - 0.5) < abs(float(image[3, 3, 0]) - 0.5)
 
 
 def test_build_libraw_kwargs_uses_real_standard_output_spaces():

@@ -358,9 +358,9 @@ class ControlPanelsMixin:
         self.check_four_color_rgb.toggled.connect(lambda _checked: self._on_raw_decode_control_changed())
         grid.addWidget(self.check_four_color_rgb, 2, 0, 1, 3)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Calidad de borde")), 3, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Borde")), 3, 0)
         self.spin_demosaic_edge_quality = QtWidgets.QSpinBox()
-        self.spin_demosaic_edge_quality.setRange(0, 5)
+        self.spin_demosaic_edge_quality.setRange(0, 32)
         self.spin_demosaic_edge_quality.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
         grid.addWidget(self.spin_demosaic_edge_quality, 3, 1, 1, 2)
 

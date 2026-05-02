@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 from functools import lru_cache
 
+import cv2
 import numpy as np
 
 from ..core.models import DevelopResult, Recipe
@@ -37,9 +38,10 @@ GPL3_DEMOSAIC_ALGORITHMS = {"amaze"}
 
 
 RAW_SUFFIXES = {".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".rw2", ".orf", ".pef"}
-DEMOSAIC_CACHE_SCHEMA = "probraw-demosaic-cache-v3"
+DEMOSAIC_CACHE_SCHEMA = "probraw-demosaic-cache-v4"
 DEMOSAIC_CACHE_MAX_GB_ENV = "PROBRAW_DEMOSAIC_CACHE_MAX_GB"
 DEFAULT_DEMOSAIC_CACHE_MAX_GB = 5.0
+MAX_FALSE_COLOR_SUPPRESSION_STEPS = 10
 
 STANDARD_OUTPUT_ALIASES = {
     "srgb": "srgb",
@@ -205,7 +207,8 @@ def develop_with_libraw(
             image = raw.postprocess(**kwargs)
     except Exception as exc:
         raise RuntimeError(f"Fallo de decodificacion RAW con LibRaw/rawpy: {exc}") from exc
-    return _postprocess_output_to_float(image)
+    image_float = _postprocess_output_to_float(image)
+    return apply_raw_demosaic_postprocess(image_float, recipe)
 
 
 def _build_libraw_postprocess_kwargs(
@@ -245,19 +248,53 @@ def _build_libraw_postprocess_kwargs(
     elif black_mode.startswith("white:"):
         kwargs["user_sat"] = _parse_int_mode_value(black_mode, "white")
 
-    edge_quality = max(0, int(getattr(recipe, "demosaic_edge_quality", 0) or 0))
-    if (
-        edge_quality > 0
-        and str(recipe.demosaic_algorithm or "").strip().lower() == "dcb"
-        and rawpy_postprocess_parameter_supported("dcb_iterations")
-    ):
-        kwargs["dcb_iterations"] = edge_quality
-
     false_color_steps = max(0, int(getattr(recipe, "false_color_suppression_steps", 0) or 0))
     if false_color_steps > 0 and rawpy_postprocess_parameter_supported("median_filter_passes"):
         kwargs["median_filter_passes"] = false_color_steps
 
     return kwargs
+
+
+def apply_raw_demosaic_postprocess(image: np.ndarray, recipe: Recipe) -> np.ndarray:
+    out = np.clip(np.asarray(image, dtype=np.float32), 0.0, 1.0)
+    out = _crop_demosaic_border(out, int(getattr(recipe, "demosaic_edge_quality", 0) or 0))
+
+    false_color_steps = max(0, int(getattr(recipe, "false_color_suppression_steps", 0) or 0))
+    if false_color_steps > 0 and not rawpy_postprocess_parameter_supported("median_filter_passes"):
+        out = suppress_false_color(out, false_color_steps)
+    return np.clip(out, 0.0, 1.0).astype(np.float32, copy=False)
+
+
+def _crop_demosaic_border(image: np.ndarray, border: int) -> np.ndarray:
+    amount = max(0, int(border or 0))
+    if amount <= 0:
+        return np.asarray(image, dtype=np.float32)
+    h, w = int(image.shape[0]), int(image.shape[1])
+    if h <= amount * 2 or w <= amount * 2:
+        return np.asarray(image, dtype=np.float32)
+    return np.ascontiguousarray(image[amount : h - amount, amount : w - amount, :3])
+
+
+def suppress_false_color(image: np.ndarray, steps: int) -> np.ndarray:
+    passes = min(MAX_FALSE_COLOR_SUPPRESSION_STEPS, max(0, int(steps or 0)))
+    out = np.clip(np.asarray(image, dtype=np.float32)[..., :3], 0.0, 1.0)
+    if passes <= 0 or out.ndim != 3 or out.shape[2] < 3:
+        return out.astype(np.float32, copy=False)
+
+    # RawTherapee describes this control as median passes on chroma while
+    # preserving luminance. We use Rec.709 linear luminance and filter two
+    # opponent channels, then solve green back from the unchanged luminance.
+    y_weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    for _ in range(passes):
+        y = np.tensordot(out, y_weights, axes=([-1], [0])).astype(np.float32)
+        r_chroma = cv2.medianBlur((out[..., 0] - y).astype(np.float32), 3)
+        b_chroma = cv2.medianBlur((out[..., 2] - y).astype(np.float32), 3)
+        red = y + r_chroma
+        blue = y + b_chroma
+        green = (y - y_weights[0] * red - y_weights[2] * blue) / y_weights[1]
+        out = np.stack((red, green, blue), axis=-1).astype(np.float32)
+        out = np.clip(out, 0.0, 1.0)
+    return out.astype(np.float32, copy=False)
 
 
 def canonical_standard_output_space(output_space: str | None) -> str | None:

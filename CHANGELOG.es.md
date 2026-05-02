@@ -36,6 +36,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 - El panel RAW incorpora opciones de destramado dependientes del algoritmo
   (4 colores, calidad de borde y supresion de falso color) y registra esas
   capacidades en las recetas cuando el backend LibRaw/rawpy las soporte.
+- La supresion de falso color RAW cuenta ahora con un postproceso propio de
+  crominancia que preserva luminancia cuando el backend LibRaw/rawpy no expone
+  `median_filter_passes`, permitiendo usarla con AMaZE.
 
 ### Changed
 
@@ -55,6 +58,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Los cambios RAW se escriben ahora automaticamente en la mochila de la imagen
   seleccionada y activan el indicador RAW aunque no se haya guardado un perfil
   RAW con nombre; el acordeon redundante de Perfiles RAW se oculta de la UI.
+- El control RAW "Calidad de borde" se renombra a "Borde" y pasa a comportarse
+  como el control de borde de RawTherapee: recorta pixeles perifericos tras el
+  demosaico en lugar de mapearse a iteraciones DCB.
 
 ### Fixed
 

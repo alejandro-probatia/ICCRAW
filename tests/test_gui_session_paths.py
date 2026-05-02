@@ -15,6 +15,7 @@ pytest.importorskip("PySide6")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 import probraw.gui as gui_module  # noqa: E402
+import probraw.ui.window.preview_recipe as preview_recipe_module  # noqa: E402
 from probraw.chart.sampling import ReferenceCatalog  # noqa: E402
 from probraw.core.models import Recipe  # noqa: E402
 from probraw.core.utils import write_tiff16  # noqa: E402
@@ -3523,6 +3524,28 @@ def test_mtf_manual_sensor_size_derives_pixel_pitch_when_metadata_is_missing(tmp
         assert window.spin_mtf_pixel_pitch_um.value() == pytest.approx(6.0)
         assert window._mtf_pixel_pitch_auto_source == "manual_sensor_size"
         assert "sensor manual" in window.mtf_pixel_pitch_source_label.text()
+    finally:
+        window.close()
+
+
+def test_amaze_raw_options_enable_border_and_local_false_color(monkeypatch, qapp):
+    monkeypatch.setattr(preview_recipe_module, "unavailable_demosaic_reason", lambda _algorithm: None)
+    monkeypatch.setattr(
+        preview_recipe_module,
+        "rawpy_postprocess_parameter_supported",
+        lambda name: name == "four_color_rgb",
+    )
+
+    window = ICCRawMainWindow()
+    try:
+        window._set_combo_data(window.combo_demosaic, "amaze")
+        window._update_raw_algorithm_option_state()
+
+        assert window.spin_demosaic_edge_quality.isEnabled()
+        assert window.spin_false_color_suppression.isEnabled()
+        assert "borde" in window.raw_algorithm_options_status_label.text()
+        assert "falso color (ProbRAW)" in window.raw_algorithm_options_status_label.text()
+        assert "ProbRAW" in window.spin_false_color_suppression.toolTip()
     finally:
         window.close()
 
