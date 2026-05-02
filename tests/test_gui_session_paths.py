@@ -1240,6 +1240,45 @@ def test_tone_curve_histogram_updates_after_curve_points_change(qapp):
         window.close()
 
 
+def test_tone_curve_editor_uses_active_rgb_channel_histogram_and_keeps_overlays(qapp):
+    window = ICCRawMainWindow()
+    try:
+        values = gui_module.np.linspace(0.02, 0.92, 96 * 128, dtype=gui_module.np.float32).reshape((96, 128, 1))
+        image = gui_module.np.concatenate(
+            (
+                values,
+                values**1.8,
+                gui_module.np.sqrt(values),
+            ),
+            axis=2,
+        )
+        window._original_linear = image
+        window._last_loaded_preview_key = "curve-channel-histogram-test"
+        window.check_tone_curve_enabled.setChecked(True)
+        window._set_tone_curve_controls_enabled(True)
+
+        window._set_combo_data(window.combo_tone_curve_channel, "red")
+        window._update_tone_curve_histogram_for_current_controls(force=True)
+        editor = window.tone_curve_editor
+        assert editor._active_channel == "red"
+        assert editor._histogram is not None
+        assert gui_module.np.allclose(editor._histogram, editor._histogram_r)
+        assert not gui_module.np.allclose(editor._histogram, editor._histogram_g)
+
+        editor.set_points([(0.0, 0.0), (0.30, 0.62), (1.0, 1.0)], emit=False)
+        window._on_tone_curve_points_changed(editor.points())
+
+        window._set_combo_data(window.combo_tone_curve_channel, "green")
+        editor.set_points([(0.0, 0.0), (0.58, 0.74), (1.0, 1.0)], emit=False)
+        window._on_tone_curve_points_changed(editor.points())
+
+        assert editor._active_channel == "green"
+        assert editor._channel_curves["red"][1] == pytest.approx((0.30, 0.62))
+        assert editor._channel_curves["green"][1] == pytest.approx((0.58, 0.74))
+    finally:
+        window.close()
+
+
 def test_colprof_args_default_to_restricted_input_gamut(qapp):
     window = ICCRawMainWindow()
     try:
@@ -1923,6 +1962,37 @@ def test_color_contrast_adjustments_autosave_to_raw_sidecar_and_badge(tmp_path: 
         updated = load_raw_sidecar(raw)
         assert updated["render_adjustments"]["brightness_ev"] == pytest.approx(0.25)
         assert updated["render_adjustments"]["contrast"] == pytest.approx(0.17)
+    finally:
+        window.close()
+
+
+def test_detail_adjustments_autosave_to_raw_sidecar_and_badge(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion autosave nitidez")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
+        window._selected_file = raw
+
+        window.slider_sharpen.setValue(82)
+        assert window._detail_adjustment_sidecar_timer.isActive()
+        window._flush_detail_adjustment_sidecar_persist()
+
+        sidecar = load_raw_sidecar(raw)
+        assert sidecar["detail_adjustments"]["sharpen"] == 82
+        assert "detail" in window._raw_adjustment_profile_badges(raw)
+        assert "Nitidez: ajustes propios" in window._raw_adjustment_profile_badge_summary(raw)
+
+        window.slider_radius.setValue(21)
+        window._flush_detail_adjustment_sidecar_persist()
+        updated = load_raw_sidecar(raw)
+        assert updated["detail_adjustments"]["sharpen"] == 82
+        assert updated["detail_adjustments"]["radius"] == 21
     finally:
         window.close()
 
@@ -3443,7 +3513,7 @@ def test_mtf_lateral_ca_roi_block_matches_full_resolution_adjustment(tmp_path: P
         window.close()
 
 
-def test_mtf_auto_sharpening_updates_sliders_and_improves_roi_mtf(tmp_path: Path, qapp):
+def test_mtf_auto_sharpening_updates_sliders_and_improves_roi_mtf(tmp_path: Path, monkeypatch, qapp):
     size = 260
     yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
     dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.12
@@ -3452,13 +3522,20 @@ def test_mtf_auto_sharpening_updates_sliders_and_improves_roi_mtf(tmp_path: Path
     edge = 0.18 + 0.64 * edge
     full_image = gui_module.np.repeat(edge[..., None], 3, axis=2)
 
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "edge.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion auto nitidez")
+
     window = ICCRawMainWindow()
-    image_path = tmp_path / "edge.tiff"
-    write_tiff16(image_path, full_image)
     try:
-        window._selected_file = image_path
+        window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
+        window._selected_file = raw
         window._original_linear = full_image
         window._preview_srgb = full_image
+        monkeypatch.setattr(window, "_mtf_full_resolution_base_image", lambda _path, _recipe: full_image)
         window._on_mtf_roi_selected(60, 60, 140, 140)
         baseline = window._mtf_last_result
         assert baseline is not None
@@ -3473,8 +3550,11 @@ def test_mtf_auto_sharpening_updates_sliders_and_improves_roi_mtf(tmp_path: Path
         assert optimized.mtf50 > baseline.mtf50
         assert optimized.roi == baseline.roi
         assert window._mtf_auto_sharpen_halo_metrics(optimized)["halo"] <= 0.025
-        payload = load_raw_sidecar(image_path)["mtf_analysis"]
-        assert payload["summary"]["mtf50"] == pytest.approx(optimized.mtf50)
+        sidecar = load_raw_sidecar(raw)
+        assert sidecar["mtf_analysis"]["summary"]["mtf50"] == pytest.approx(optimized.mtf50)
+        assert sidecar["detail_adjustments"]["sharpen"] == window.slider_sharpen.value()
+        assert sidecar["detail_adjustments"]["radius"] == window.slider_radius.value()
+        assert "detail" in window._raw_adjustment_profile_badges(raw)
     finally:
         window.close()
 

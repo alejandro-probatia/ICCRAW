@@ -20,6 +20,10 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+- No pending changes.
+
+## [0.3.6] - 2026-05-02
+
 ### Added
 
 - Separate project-scoped adjustment profiles for color/contrast, sharpness and
@@ -60,6 +64,12 @@ To maintain full traceability, each change must:
 - The RAW "Edge quality" control is now labeled as "Border" and behaves like
   RawTherapee's border control: it crops peripheral pixels after demosaicing
   instead of being mapped to DCB iterations.
+- The tone-curve editor now shows only the active red, green or blue channel
+  histogram when editing that channel, colors the active curve accordingly and
+  keeps adjusted RGB curves visible with a global luminance reference.
+- Documentation and the user manual now reflect the current ICC workflow,
+  independent profile categories, thumbnail markers, RGB curves and RAW panel
+  limited to reading/demosaicing.
 
 ### Fixed
 
@@ -82,6 +92,9 @@ To maintain full traceability, each change must:
 - The thumbnail context menu can now copy all applied adjustments or only ICC,
   color/contrast, sharpness or RAW/export settings, then paste them onto one or
   multiple selected images without overwriting unrelated categories.
+- Auto sharpness and the detail controls now write sharpness, radius, noise and
+  CA into the selected RAW sidecar in real time, refreshing the sharpness badge
+  and keeping final TIFF output aligned with the visible adjustment.
 
 ### Known Issues
 

@@ -10,7 +10,7 @@ Reproducible and auditable RAW/TIFF development for scientific, forensic and
 heritage photography, with session ICC profiling, per-file parametric settings
 and open AGPL traceability.
 
-![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.5-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.6-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![ProbRAW main interface](docs/assets/screenshots/probraw-portada.png)
 
@@ -31,19 +31,20 @@ The current workflow is intentionally ICC-centered:
 
 ## Current Status
 
-ProbRAW 0.3.5 is suitable for controlled testing, method review and release
+ProbRAW 0.3.6 is suitable for controlled testing, method review and release
 candidate validation. It is not yet a certified scientific or forensic
 production system.
 
-The current version improves professional-size RAW handling: cold MTF analysis
-uses cached full-resolution ROI workers, long preview/MTF operations publish a
-global progress estimate, and batch rendering now applies each RAW backpack's
-detail, color and contrast settings reliably.
+The current version consolidates professional RAW adjustment workflows:
+per-image ICC, color/contrast, sharpness and RAW export profiles are tracked in
+RAW sidecars and thumbnails; display preview uses monitor ICC conversion for
+viewing; tonal curves expose channel-specific histograms and RGB curve overlays;
+and MTF/auto-sharpness results persist as reproducible detail settings.
 
 The latest packaging validation passed with:
 
 ```text
-276 passed, 1 warning
+305 passed, 1 warning
 ```
 
 ## Documentation

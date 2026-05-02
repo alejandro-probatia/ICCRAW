@@ -4,7 +4,7 @@ _English version: [COLOR_PIPELINE.md](COLOR_PIPELINE.md)_
 
 ## Estado Operativo
 
-ProbRAW 0.3.5 implementa el flujo ICC principal y la interfaz de trabajo por
+ProbRAW 0.3.6 implementa el flujo ICC principal y la interfaz de trabajo por
 sesión. La aplicación es apta para pruebas controladas y validación de release,
 pero todavía no debe presentarse como sistema certificado de producción
 científica/forense.

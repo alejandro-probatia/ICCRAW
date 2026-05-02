@@ -10,7 +10,7 @@ settings, profiles, hashes and audit artifacts.
 
 ![ProbRAW: main development and profiling interface](assets/screenshots/probraw-portada.png)
 
-This manual covers the complete ProbRAW 0.3.5 workflow: session creation, color
+This manual covers the complete ProbRAW 0.3.6 workflow: session creation, color
 chart profiling, manual work without a chart, settings copy/paste, render queue,
 TIFF export, metadata, Proof, C2PA, 3D gamut diagnostics, chart reference
 management, session statistics, colorimetric histogram, MTF sharpness analysis,
@@ -55,30 +55,41 @@ Older sessions with `raw/`, `charts/`, `exports/`, `profiles/`, `config/` or
 `work/` folders are opened in compatibility mode. ProbRAW resolves those paths
 against the current structure whenever possible, without destructive conversion.
 
-### Development Profile
+### Adjustment Profiles
 
-A development profile is a parametric recipe assignable to one or more RAW
-files: balance, exposure, temperature, tone, sharpening, noise, chromatic
-aberration and base RAW criteria. It can be:
+ProbRAW stores four independent families of settings. Each one can live in the
+RAW sidecar and can also be saved as a session profile for reuse:
 
-- **Advanced with chart**: created from a color chart capture. ProbRAW computes
-  objective adjustments from the reference and creates a session input ICC.
-- **Basic without chart**: created from manual adjustments in the development
-  panels and associated with a standard output ICC.
+- **Image ICC profile**: the profile used to interpret the image. It can be a
+  standard RGB ICC profile, a session-generated ICC profile or an existing
+  camera ICC profile from the system.
+- **Color and contrast**: brightness, levels, contrast, curves, illuminant,
+  temperature, tint and neutral point.
+- **Sharpness**: sharpening, radius, noise reduction, lateral chromatic
+  aberration and, when available, MTF-based auto sharpness results.
+- **RAW / export**: RAW reading, demosaicing method, algorithm-specific options
+  and RAW black point.
+
+Settings can exist before they are saved as named profiles: ProbRAW updates the
+selected RAW sidecar while controls are moved. Saving a session profile is the
+explicit reuse step for other files.
 
 ### ProbRAW Backpack
 
 The backpack is the `RAW.probraw.json` sidecar written next to the RAW file. It
-stores the profile assigned to that specific image. Thumbnail markers indicate:
+stores the settings assigned to that specific image. Thumbnails show small
+markers below the image, without covering the photograph:
 
-- blue band: advanced profile created from a chart;
-- green band: basic profile created from manual adjustments;
-- no band: image without an assigned development profile.
+- `ICC`: the image has an ICC profile applied.
+- three RGB circles: color and contrast settings are present.
+- half white / half black circle: sharpness/detail settings are present.
+- 2x2 Bayer pixels: RAW / export settings are present.
 
 When the selected image changes, ProbRAW reads the backpack for that exact RAW.
 If no backpack exists, recipe, detail, sharpening, noise, chromatic aberration,
 color and contrast controls return to a neutral state; the preview is prepared
-as an unprofiled RAW using standard ProPhoto RGB and camera white balance.
+as an unprofiled RAW using ProPhoto RGB as the default standard RGB ICC profile
+and camera white balance.
 
 ### Color Policy
 
@@ -87,19 +98,20 @@ recommended base is scientific and reproducible:
 
 - with a chart: measure a colorimetric reference, build a calibrated recipe and
   generate a session-specific input ICC profile;
-- without a chart: use a manual development profile and a real standard ICC
-  output space (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`);
+- without a chart or without a specific ICC: use a real standard RGB ICC profile
+  (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`) as the image profile;
 - the monitor profile affects only on-screen viewing. It never changes TIFFs,
   session profiles, hashes, manifests or the analysis histogram.
-- when a chart-generated input ICC exists, preview and the colorimetric
-  histogram should use that profile before monitor ICC conversion.
+- when an input ICC generated from a chart or selected for the image exists, the
+  preview and colorimetric histogram should use that profile before monitor ICC
+  conversion.
 
 Practical rule:
 
 | Situation | Recommended output |
 | --- | --- |
 | Valid chart available | TIFF in camera/session RGB with the generated input ICC embedded. |
-| No chart available | TIFF developed into the selected standard space with that standard ICC embedded. |
+| No chart available | TIFF developed with the selected standard RGB ICC profile embedded. |
 | On-screen review | Monitor ICC applied only to the preview as the final output layer. |
 | Analysis histogram | Colorimetric preview signal before monitor ICC conversion. |
 
@@ -209,7 +221,7 @@ Shows preview events, warnings, execution traces and workflow messages.
 | --- | --- |
 | Top toolbar | Horizontal access to A/B comparison, ICC application, side-column focus, zoom, 1:1, rotation, fit and precache. |
 | `A/B` | Compares original/result. When enabled, ProbRAW loads maximum-quality preview when needed. |
-| ICC validation icon | Applies the active ICC only to the result preview. The ICC must match the current camera, recipe and lighting. |
+| ICC validation icon | Forces preview recomputation with the ICC chosen for the image. That ICC must match the current camera, recipe and lighting. |
 | Column icon | Hides/restores side columns for a larger image review area. |
 | `-` / `+` | Zoom out or in. |
 | Magnifier `1:1` | Display at real pixel size. |
@@ -220,51 +232,60 @@ Shows preview events, warnings, execution traces and workflow messages.
 | `Antes` / `Después` view | Appears when original/result comparison is enabled. |
 | `Miniaturas` strip | Lists compatible files in the current directory. Supports multi-selection. |
 | Thumbnail slider | Changes thumbnail size within the application limits. |
-| `Usar selección como referencias colorimétricas` | Uses selected RAW/DNG/TIFF files as chart references for advanced profiling. |
-| `Añadir selección a cola` | Sends selected files to the render queue. |
-| `Guardar perfil básico en imagen` | Writes the manual-adjustment backpack next to the selected RAW. |
-| `Copiar perfil de ajuste` | Copies the profile assigned to the selected file. |
-| `Pegar perfil de ajuste` | Pastes the copied profile into selected images. |
 
-The thumbnail context menu also offers save basic profile, copy, paste, use as
-colorimetric reference and add to queue.
+The buttons that used to live below the thumbnail strip have been removed. File
+actions now live in the thumbnail context menu and in the right-side panels.
+
+The thumbnail context menu offers:
+
+- `Guardar ajustes actuales en imagen`: forces the selected RAW sidecar to be
+  written.
+- `Copiar ajustes`: copies all applied settings or one category: `Perfil ICC`,
+  `Color y contraste`, `Nitidez` or `RAW / exportación`.
+- `Pegar ajustes copiados`: pastes only the copied categories into the selection.
+- `Usar como referencia colorimétrica`: marks the selection as chart captures for
+  ICC generation.
+- `Comparar MTF de selección`: available when two selected thumbnails have MTF
+  data.
+- `Anadir a cola`: sends selected files to the render queue.
 
 ## 7. Complete Workflow With a Color Chart
 
-This is the preferred workflow when objective colorimetric precision matters.
+This is the preferred workflow when you need a camera/session ICC profile
+measured from a color chart.
 
 ![Workflow with color chart](assets/screenshots/probraw-flujo-con-carta.png)
 
 1. Create or open the session.
 2. Copy chart RAW files and scene RAW files to `01_ORG/`.
-3. In `2. Ajustar / Aplicar`, select the chart capture or captures.
-4. Press `Usar selección como referencias colorimétricas`.
-5. In `Color / calibración`, review `Referencia de carta`, `Tipo de
-   carta`, `Formato ICC`, `Tipo de perfil ICC` and `Calidad colprof`.
-6. In `RAW Global`, review demosaic and base RAW criteria. During advanced
-   profiling, ProbRAW forces objective measurement settings: linear curve,
-   linear output, `scene_linear_camera_rgb`, with denoise and sharpen disabled
-   for chart measurement.
+3. In `Color / calibración`, choose `Generar perfil ICC`.
+4. Select the chart capture or captures in the thumbnail strip and use the
+   context menu action `Usar como referencia colorimétrica`.
+5. Review `Referencia de carta`, `Tipo de carta`, `Formato ICC`, `Tipo de perfil
+   ICC` and `Calidad colprof`.
+6. In `RAW / exportación`, review only RAW reading criteria relevant to the
+   measurement: demosaicing method, algorithm-specific options and RAW black
+   point. ICC generation does not depend on color, contrast or sharpness
+   settings.
 7. If automatic detection is not good enough, press `Marcar en visor`. The cursor
    changes to a crosshair. Mark the four visible chart corners in the order shown
    by the overlay, review the points and press `Guardar detección`.
-8. Press `Generar perfil avanzado con carta`.
+8. Press `Generar ICC con carta`.
 9. Review the result JSON, overlays, QA report and profile status.
-10. Press `Usar perfil generado` if you want it to become the active ICC for
-    preview/export.
-11. Copy the development profile or assign it to the queue for images taken with
-    the same camera, lens, lighting and recipe.
+10. Press `Usar ICC generado` if you want it active on the current image.
+11. Use `Aplicar ICC a selección` or `Aplicar ICC a sesión` to assign it to
+    images taken with the same camera, lens, lighting and recipe.
 12. Render the queue and review TIFF files in `02_DRV/`.
 
 Expected result:
 
 - calibrated recipe in `00_configuraciones/`;
-- advanced profile in `00_configuraciones/development_profiles/`;
 - input ICC in `00_configuraciones/profiles/`;
+- ICC registry entry in the session;
 - custom references in `00_configuraciones/references/`, if created or imported;
 - profile reports, QA, overlays and cache in
   `00_configuraciones/profile_runs/` and `00_configuraciones/work/`;
-- `RAW.probraw.json` backpack for the chart RAW files used.
+- `RAW.probraw.json` backpack for RAW files to which that ICC is applied.
 
 ### Chart References and Custom Charts
 
@@ -294,8 +315,8 @@ Best practices:
 Each generated ICC profile is registered in the session with name, path, status
 and source. This allows several versions of the same profile, for example matrix,
 cLUT, different references or different ArgyllCMS arguments, without losing
-history. The `Perfil ICC de sesión` selector activates any registered version for
-preview/export.
+history. The `Perfil de sesión` selector activates any registered version as the
+image ICC.
 
 The `Diagnóstico > Carta` tab shows chart data for the current session: patch
 identifier, reference Lab, estimated Lab after the generated ICC and DeltaE. If
@@ -320,25 +341,26 @@ objective, but still parametric and traceable.
 ![Workflow without color chart](assets/screenshots/probraw-flujo-sin-carta.png)
 
 1. Select a representative image.
-2. Adjust `Brillo y contraste`, `Color`, `Nitidez` and, if needed, `RAW Global`.
-3. In `Color / calibración`, enter `Nombre del ajuste`.
-4. In `Espacio estándar sin carta`, choose the real output space: `sRGB
-   estándar`, `Adobe RGB (1998) estándar` or `ProPhoto RGB estándar`.
-5. Press `Guardar perfil básico`.
-6. Press `Guardar perfil básico en imagen` to write the backpack next to the RAW.
-7. Copy and paste that profile to equivalent images.
-8. Add images to the queue and render.
+2. In `Color / calibración`, leave `Perfil ICC RGB estándar` enabled or choose
+   another available ICC. If you do nothing, ProbRAW uses `ProPhoto RGB`.
+3. Adjust `Color y contraste`, `Nitidez` and, if needed, `RAW / exportación`.
+   Each change is saved to the selected RAW sidecar.
+4. To reuse a setting as a session profile, use `Perfiles guardados` in the
+   corresponding tab and press `Guardar`.
+5. Copy and paste settings to equivalent images from the thumbnail context menu,
+   choosing all settings or a single category.
+6. Add images to the queue and render.
 
 Expected result:
 
-- manual profile in `00_configuraciones/development_profiles/`;
-- standard ICC in `00_configuraciones/profiles/standard/`;
-- `RAW.probraw.json` backpack with the generic output space;
-- final TIFF in `02_DRV/` with the standard ICC embedded.
+- `RAW.probraw.json` backpack with the image ICC and applied settings;
+- session profiles in `00_configuraciones/development_profiles/` if you saved
+  them;
+- final TIFF in `02_DRV/` with the selected ICC embedded.
 
-When a standard no-chart output space is selected, ProbRAW disables `Profiling
-mode` for the visible/final render and uses camera white balance if fixed white
-balance was still identity. This keeps preview and TIFF color rules aligned.
+The RAW panel does not choose an output profile. The ICC decision lives in
+`Color / calibración`; RAW only controls how sensor data is read and demosaiced
+before display, color, contrast or sharpness are applied.
 
 ## 9. Copy Settings and Backpacks
 
@@ -346,18 +368,25 @@ balance was still identity. This keeps preview and TIFF color rules aligned.
 
 ProbRAW treats development as per-file parametric editing.
 
-1. Select the image with the correct profile.
-2. If the adjustment is manual and has no backpack yet, press `Guardar perfil
-   básico en imagen`.
-3. Press `Copiar perfil de ajuste`.
+1. Select the image with the correct settings.
+2. If you want to force a write before copying, open the context menu and press
+   `Guardar ajustes actuales en imagen`.
+3. Open `Copiar ajustes` and choose `Todos los ajustes aplicados` or one
+   category: `Perfil ICC`, `Color y contraste`, `Nitidez` or `RAW / exportación`.
 4. Select one or more target images.
-5. Press `Pegar perfil de ajuste`.
-6. Check thumbnail color bands and add to queue if needed.
+5. Press `Pegar ajustes copiados`.
+6. Check the markers below the thumbnail and add to queue if needed.
+
+Pasting is partial: if you copy only `Nitidez`, ProbRAW does not replace the
+destination ICC, chromatic settings or RAW settings. If you copy all categories,
+the destination image receives the same technical backpack as the source image.
 
 Best practices:
 
-- do not paste profiles across scenes with different lighting;
-- do not mix chart profiles from one camera/lens combination with another;
+- do not paste chromatic settings across scenes with different lighting;
+- do not mix ICC profiles from one camera/lens combination with another;
+- copy RAW / export only between files that should share the same reading and
+  demosaicing method;
 - keep backpacks next to RAW files when moving a session.
 
 ## 10. Render Queue and Export
@@ -373,12 +402,12 @@ belongs to each file.
 | --- | --- |
 | `Añadir selección` | Add selected thumbnail files. |
 | `Añadir RAW de sesión` | Add all compatible files from the configured input folder. |
-| `Asignar perfil activo` | Assign the active development profile to selected rows or to the queue. |
+| `Asignar perfil activo` | Assigns the available active profile to selected rows or to the queue. |
 | `Quitar seleccionados` | Remove selected rows from the queue. |
 | `Limpiar cola` | Empty the queue. |
 | `Revelar cola` | Run TIFF rendering for valid items. |
 | Table `Archivo` | RAW/TIFF/image source. |
-| Table `Perfil` | Assigned development profile. |
+| Table `Perfil` | Profile or settings assigned to the file. |
 | Table `Estado` | `pending`, `done` or `error`. |
 | Table `TIFF salida` | Generated TIFF path. |
 | Table `Mensaje` | Process or error message. |
@@ -387,10 +416,9 @@ belongs to each file.
 If an output TIFF already exists, ProbRAW creates a new version:
 `capture.tiff`, `capture_v002.tiff`, `capture_v003.tiff`, etc.
 
-When rendering the queue, each RAW uses its registered profile or, when no
-registered profile is assigned, the backpack saved next to that RAW. Sharpening,
-noise, CA, color and contrast are not taken from another file or from the
-current sliders.
+When rendering the queue, each RAW uses its saved backpack: image ICC, color and
+contrast, sharpness and RAW / export. These values are not taken from another
+file or from the current sliders.
 
 ### `Exportar derivados` Panel
 
@@ -398,7 +426,7 @@ current sliders.
 | --- | --- |
 | `RAW a revelar (carpeta)` | Source folder used by `Aplicar a carpeta` or `Añadir RAW de sesión`. |
 | `Salida TIFF derivados` | Folder where final TIFFs are saved. In a normal session it points to `02_DRV/`. |
-| `Incrustar/aplicar ICC en TIFF` | Always enabled. Embeds the input ICC if output is camera RGB, or a standard ICC if output is sRGB/Adobe RGB/ProPhoto. |
+| `Incrustar/aplicar ICC en TIFF` | Always enabled. Embeds the ICC selected for the image: camera/session ICC or standard RGB ICC profile. |
 | `Aplicar ajustes básicos y de nitidez` | Applies tone, color, sharpening, noise and CA settings from the profile to the TIFF. |
 | `Usar carpeta actual` | Uses the browser directory as batch input. |
 | `Aplicar a selección` | Renders the current selection. |
@@ -415,10 +443,10 @@ The right column of `2. Ajustar / Aplicar` guides the workflow:
 
 | Tab | Purpose |
 | --- | --- |
-| `Color / calibración` | References, development profiles, chart-based ICC generation and active ICC. |
+| `Color / calibración` | Image ICC status, standard RGB ICC selection, session ICC selection or chart-based ICC generation. |
 | `Color y contraste` | Always-visible colorimetric histogram plus brightness, contrast and color controls. |
 | `Nitidez` | Acutance, sharpening radius, noise reduction and lateral chromatic aberration controls. |
-| `RAW / exportación` | Global RAW recipe and derived TIFF output. |
+| `RAW / exportación` | RAW reading, demosaicing, RAW black point, RAW/export profiles and derived TIFF output. |
 
 The histogram in `Color y contraste` is computed from the colorimetric
 signal before monitor ICC conversion. If the input ICC profile is active, it
@@ -442,6 +470,13 @@ profile only to display the image correctly on screen.
 | Curve editor | draggable points | Manually edits the tonal curve. |
 | `Restablecer curva` | action | Resets the advanced curve. |
 | `Restablecer brillo y contraste` | action | Resets tonal controls. |
+
+The curve editor histogram updates in real time with brightness, levels,
+contrast and curve changes. In `Luminosidad` it shows luminance plus RGB columns.
+When editing `Rojo`, `Verde` or `Azul`, it shows only that channel histogram in
+the channel color. Non-linear RGB curves remain visible as references, the active
+curve is drawn with the channel color, and a dotted reference shows the global
+effect on luminance.
 
 ### Color
 
@@ -483,6 +518,11 @@ know it. With that value, ProbRAW also reports line pairs per millimetre
 (`lp/mm`): `lp/mm = cycles/pixel × 1000 / pixel_pitch_µm`. That conversion
 depends on the pixel size being correct for the analysed file.
 
+`Auto nitidez` uses the selected MTF ROI to evaluate amount/radius combinations
+at real resolution. It tries to improve MTF50/MTF30/acutance without excessive
+halo or noise penalties, writes the resulting values into the `Nitidez` controls
+and immediately updates the RAW sidecar and the sharpness thumbnail marker.
+
 | Option | Range/values | Explanation |
 | --- | --- | --- |
 | `Nitidez (amount)` | `0.00` to `3.00` | Sharpening intensity. |
@@ -500,19 +540,34 @@ depends on the pixel size being correct for the analysed file.
 
 ### Color / Calibration
 
-#### Per-file Development Profiles
+The first decision in this panel is which ICC profile describes the image.
+ProbRAW uses that ICC for preview, the colorimetric histogram and final TIFF; the
+additional conversion to the monitor is only for correct display on each system.
+
+#### ICC Status
 
 | Option | Explanation |
 | --- | --- |
-| `Perfil de ajuste activo` | Saved profile list. Applying one moves its parameters into the controls. |
-| `Nombre del ajuste` | Name for the basic profile to save. |
-| `Espacio estándar sin carta` | `Carta / RGB de cámara`, `sRGB estándar`, `Adobe RGB (1998) estándar` or `ProPhoto RGB estándar`. |
-| `Guardar perfil básico` | Saves a manual profile from current controls. |
-| `Aplicar a controles` | Loads the selected profile into the development controls. |
-| `Asignar activo a cola` | Assigns the active profile to queue items. |
-| Profile status | Reports profile count and active profile. |
+| `Imagen seleccionada` | Reports whether the RAW has a sidecar, whether an ICC is applied and which ICC file is used. |
+| `Perfiles ICC de sesión` | Shows how many ICC profiles are registered in the project and which one is active. |
+| Monitor note | Reminds that the image ICC and monitor ICC are separate layers: the monitor profile does not modify the image or the sidecar. |
 
-#### Color Chart: Advanced Development Profile + Input ICC
+#### Image ICC Profile
+
+| Option | Explanation |
+| --- | --- |
+| `Perfil ICC RGB estandar` | Uses a standard RGB ICC profile. Technically these are standard RGB spaces represented by ICC profiles; ProPhoto RGB is the default. |
+| `Espacio RGB estandar` | `sRGB`, `Adobe RGB` or `ProPhoto RGB`. Changing it applies it to the selected image. |
+| `Perfiles ICC de la sesion` | Selects an ICC generated or registered in the project. If none exists yet, the interface says so and keeps ProPhoto RGB as the safe fallback. |
+| `Perfil de sesion` | Session ICC list. Choosing one makes it active on the selected image. |
+| `Generar perfil ICC` | Shows the chart workflow for creating a new camera/session ICC. |
+| `Activar seleccionado` | Activates the ICC selected in the session list. |
+| `Cargar ICC de camara...` | Selects an existing external ICC from the system and registers it for use in the project. |
+| `Usar ICC generado` | Activates the latest chart-generated ICC. |
+| `Aplicar ICC a seleccion` | Writes the active ICC into the selected thumbnail sidecars. |
+| `Aplicar ICC a sesion` | Applies the active ICC to every RAW in the session. |
+
+#### Generate ICC With a Color Chart
 
 | Option | Explanation |
 | --- | --- |
@@ -527,7 +582,6 @@ depends on the pixel size being correct for the analysed file.
 | `Perfil ICC de entrada` | Output path for the generated ICC. |
 | `Reporte perfil JSON` | Automatic path for the technical profile report. It normally lives in `00_configuraciones/work/`. |
 | `Directorio artefactos` | Automatic directory for overlays, measurements, intermediates and profiling cache. |
-| `Perfil de ajuste avanzado JSON` | Automatic path for the development profile computed from the chart. |
 | `Receta calibrada` | Automatic path for the recipe produced after chart measurement. |
 | `Tipo de carta` | `colorchecker24` or `it8`. Must match the JSON reference. |
 | `Confianza mínima` | `0.00` to `1.00`. Acceptance threshold for automatic detection. |
@@ -541,18 +595,8 @@ depends on the pixel size being correct for the analysed file.
 | `Marcar en visor` | Starts manual four-corner marking. The cursor changes to a crosshair. |
 | `Limpiar puntos` | Clears manual marking points. |
 | `Guardar detección` | Saves JSON and overlay for a manual detection. |
-| `Generar perfil avanzado con carta` | Runs measurement, development profile, input ICC and reports. |
+| `Generar ICC con carta` | Runs measurement, input ICC generation and reports. |
 | Result JSON | Technical output from profile generation. |
-
-#### Active ICC for Preview and Export
-
-| Option | Explanation |
-| --- | --- |
-| `Perfil ICC de entrada activo` | ICC used for preview/export when it matches the session profile. |
-| `Perfil ICC de sesión` | Catalog of ICC profiles generated or loaded in the session. |
-| `Activar seleccionado` | Activates the selected session profile. |
-| `Cargar perfil activo` | Manually selects an existing ICC. |
-| `Usar perfil generado` | Registers and activates the latest ICC generated by the chart workflow. |
 
 ### RAW Global
 
@@ -563,38 +607,32 @@ depends on the pixel size being correct for the analysed file.
 | `Guardar receta` | action | Saves current criteria as a recipe. |
 | `Receta por defecto` | action | Restores the base recipe. |
 | `Motor RAW` | `LibRaw / rawpy` | RAW development engine. It is the only available engine. |
-| `Demosaic/interpolación` | DCB, DHT, AHD, AAHD, VNG, PPG, Linear, AMaZE | RAW interpolation algorithm. AMaZE is available only when the build reports `DEMOSAIC_PACK_GPL3=True`. |
-| `Balance de blancos` | Fixed, From camera metadata | Uses manual multipliers or camera metadata. |
-| `WB multiplicadores` | `R,G,B,G` or `R,G,B` | Manual white balance multipliers. |
-| `Black level mode` | Metadata, Fixed, White level | Source of RAW black level. |
+| `Método` | DCB, DHT, AHD, AAHD, VNG, PPG, Linear, AMaZE | RAW demosaicing algorithm. AMaZE is available only when the build reports `DEMOSAIC_PACK_GPL3=True`. |
+| `Interpolar verdes por separado (4 colores)` | on/off | Uses four-color interpolation when the backend and method support it. |
+| `Borde` | `0` to `32` | Edge-quality parameter for compatible methods/backends. Disabled when it does not apply to the chosen method. |
+| `Pasos de supresión de falso color` | `0` to `10` | False-color suppression passes for compatible methods/backends. Disabled when it does not apply to the chosen method. |
+| Options status | text | Reports which options are available for the selected method. |
+| `Modo` under `Puntos de negro RAW` | Metadata, Fixed, White level | RAW black point source. |
 | Black value | `0` to `65535` | Value used when black mode is fixed. |
-| `Exposure compensation (EV)` | `-8.00` to `+8.00` | Base RAW compensation before final rendering. |
-| `Tone curve` | Linear, sRGB, Gamma | Base RAW curve. |
-| Gamma | `0.80` to `4.00` | Value used when `Tone curve` is Gamma. |
-| `Salida lineal` | on/off | Keeps the base pipeline output linear. |
-| `Working space (metadato)` | scene_linear_camera_rgb, srgb, adobe_rgb, prophoto_rgb, camera_rgb | Declarative recipe/provenance field. It does not apply an extra transform. |
-| `Output space` | scene_linear_camera_rgb, srgb, adobe_rgb, prophoto_rgb, camera_rgb | Development output space. |
-| `Sampling strategy` | trimmed_mean, median | Chart patch sampling method. |
-| `Profiling mode` | on/off | Enables measurement criteria for profiling. |
-| `Input color assumption (metadato)` | camera_native | Declarative field; does not apply an additional color transform. |
-| `Illuminant metadata` | text | Free illuminant metadata. |
 
-Note: during `Generar perfil avanzado con carta`, ProbRAW forces
-`tone_curve=linear`, `Salida lineal=on` and
-`Output space=scene_linear_camera_rgb`. Sharpening and noise reduction are
-disabled during chart measurement and applied later in final rendering if the
-profile says so.
+This panel controls only RAW reading and demosaicing. The camera ICC is decided
+in `Color / calibración`; monitor conversion is applied only for display.
+Exposure, color, contrast, noise and sharpness belong to their specific panels.
 
-Recipe fields that are saved even when they are not always directly editable:
+#### RAW / Export Profiles
 
-| Field | Explanation |
+| Option | Explanation |
 | --- | --- |
-| `chart_reference` | JSON reference used to measure the chart. Filled from `Referencia de carta`. |
-| `sampling_trim_percent` | Percentage trimmed from each end when robust `trimmed_mean` sampling is used. |
-| `sampling_reject_saturated` | Excludes saturated pixels during patch sampling. |
-| `profile_engine` | Profiling engine. Currently `argyll`. |
-| `argyll_colprof_args` | List derived from `Args extra colprof`. |
-| `use_cache` | Advanced field for reusing numeric cache when the workflow allows it. The GUI also keeps its own preview and thumbnail caches. |
+| `Perfil` | RAW/export profile saved in the session or `Ajustes actuales`. |
+| `Nombre` | Name for the profile to save. |
+| `Guardar` | Saves current RAW controls as a session profile. |
+| `Aplicar a controles` | Loads the selected profile into the RAW controls. |
+| `Aplicar a selección` | Writes those RAW settings to the selected thumbnail sidecars. |
+| `Copiar de imagen` | Copies RAW settings from the selected image. |
+| `Pegar a imagen` | Pastes copied RAW settings into the selected image. |
+
+RAW changes are also saved in real time in the active file sidecar, even when you
+do not save a session profile.
 
 ## 12. Global Settings
 
@@ -720,8 +758,9 @@ Review the QA report and do not use derived TIFFs as input charts.
 
 ### There Is No Color Chart
 
-Use the no-chart workflow: manual profile plus a real standard output ICC. It is
-traceable, but it does not replace the precision of a measured reference.
+Use the no-chart workflow: a standard RGB ICC profile, parametric sidecar
+settings and, when useful, session profiles for reuse. It is traceable, but it
+does not replace the precision of a measured reference.
 
 ### The Image Already Had an Exported TIFF
 
@@ -745,13 +784,13 @@ ProbRAW does not overwrite existing outputs. It creates `_v002`, `_v003`, etc.
 | Input ICC | Profile describing the camera/session RGB generated from a chart. |
 | Standard ICC | Known profile such as sRGB, Adobe RGB or ProPhoto RGB. |
 | Illuminant | Description of the reference white point or light source. |
-| Advanced profile | Development profile and ICC generated from a color chart. |
-| Basic profile | Manual profile created from development controls. |
+| Session ICC profile | ICC generated or registered inside the project, usually from a color chart. |
+| Adjustment profile | Saved profile for one category: ICC, color/contrast, sharpness or RAW/export. |
 | Monitor profile | ICC used only for correct on-screen display. |
 | Preview | Working view. It does not replace the audited final render. |
 | Proof | ProbRAW autonomous signature linking RAW, TIFF, recipe, profile and hashes. |
 | QA | Quality assurance for profile, detection and colorimetry. |
-| RAW Global | Panel containing base RAW development and profiling criteria. |
+| RAW Global | Panel for RAW reading, demosaicing, algorithm options and RAW black point. |
 | Recipe | YAML/JSON file with development parameters and technical criteria. |
 | Sidecar | Auxiliary file next to an image that stores metadata or settings. |
 | Linear audit TIFF | Linear intermediate TIFF used for technical verification. |

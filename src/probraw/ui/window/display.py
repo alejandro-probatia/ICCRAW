@@ -263,12 +263,16 @@ class DisplayControlsMixin:
         self._set_combo_data(self.combo_tone_curve_preset, self._tone_curve_channel_presets.get(active_channel, curve_preset))
         self.combo_tone_curve_preset.blockSignals(False)
         self._set_tone_curve_range_controls(curve_black, curve_white)
+        if hasattr(self.tone_curve_editor, "set_active_channel"):
+            self.tone_curve_editor.set_active_channel(active_channel)
         self.tone_curve_editor.set_points(
             self._tone_curve_channel_points.get(active_channel)
             or curve_points
             or self._tone_curve_preset_points(curve_preset),
             emit=False,
         )
+        if hasattr(self, "_sync_tone_curve_editor_channel_overlay"):
+            self._sync_tone_curve_editor_channel_overlay()
         self.check_tone_curve_enabled.setChecked(curve_enabled)
         self._set_tone_curve_controls_enabled(curve_enabled)
 

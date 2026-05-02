@@ -10,7 +10,7 @@ perfiles, hashes y artefactos de auditoría.
 
 ![ProbRAW: interfaz principal de revelado y perfilado](assets/screenshots/probraw-portada.png)
 
-Este manual cubre el flujo completo de ProbRAW 0.3.5: creación de sesión,
+Este manual cubre el flujo completo de ProbRAW 0.3.6: creación de sesión,
 perfilado con carta, perfil manual sin carta, copia de ajustes, cola de revelado,
 exportación TIFF, metadatos, Proof, C2PA, diagnóstico Gamut 3D, gestión de
 referencias de carta, estadísticas de sesión, histograma colorimétrico,
@@ -56,30 +56,42 @@ Las sesiones antiguas con carpetas `raw/`, `charts/`, `exports/`, `profiles/`,
 `config/` o `work/` se abren en modo compatible. ProbRAW resuelve esas rutas
 contra la estructura actual cuando es posible, sin conversión destructiva.
 
-### Perfil de ajuste
+### Perfiles de ajuste
 
-Un perfil de ajuste es una receta paramétrica asignable a uno o varios RAW:
-balance, exposición, temperatura, tono, nitidez, ruido, aberración cromática y
-criterios RAW base. Puede ser:
+ProbRAW guarda cuatro familias de ajustes independientes. Todas pueden vivir en
+la mochila de cada RAW y también pueden guardarse como perfiles de sesión para
+reutilizarlas:
 
-- **Avanzado con carta**: nace de una captura de carta de color. ProbRAW calcula
-  ajustes objetivos desde la referencia y crea un ICC de entrada de la sesión.
-- **Básico sin carta**: nace de ajustes manuales realizados en los paneles de
-  revelado y se asocia a un ICC estándar de salida.
+- **Perfil ICC de la imagen**: perfil que describe cómo interpretar la imagen.
+  Puede ser un perfil ICC RGB estándar, un ICC generado en la sesión o un perfil
+  ICC de cámara localizado en el sistema.
+- **Color y contraste**: brillo, niveles, contraste, curvas, iluminante,
+  temperatura, matiz y punto neutro.
+- **Nitidez**: enfoque, radio, reducción de ruido, corrección de aberración
+  cromática lateral y, si existe, resultado de auto nitidez basado en MTF.
+- **RAW / exportación**: lectura RAW, método de desentramado, opciones
+  específicas del algoritmo y punto negro RAW.
+
+El ajuste puede existir aunque todavía no se haya guardado como perfil nombrado:
+ProbRAW actualiza la mochila del RAW al mover los controles. Guardar un perfil
+de sesión sirve para reutilizarlo de forma explícita en otros archivos.
 
 ### Mochila ProbRAW
 
-La mochila es el sidecar `RAW.probraw.json` que queda junto al RAW. Guarda el
-perfil asignado a esa imagen concreta. Las miniaturas indican el estado:
+La mochila es el sidecar `RAW.probraw.json` que queda junto al RAW. Guarda los
+ajustes asignados a esa imagen concreta. Las miniaturas muestran iconos discretos
+bajo la imagen, sin tapar la fotografía:
 
-- banda azul: perfil avanzado creado desde carta;
-- banda verde: perfil básico creado desde ajustes manuales;
-- sin banda: imagen sin perfil de ajuste asignado.
+- `ICC`: la imagen tiene un perfil ICC aplicado.
+- tres círculos RGB: hay ajustes de color y contraste.
+- círculo medio blanco y medio negro: hay ajustes de nitidez/detalle.
+- cuatro píxeles Bayer 2x2: hay ajustes RAW / exportación.
 
 Al cambiar de imagen, ProbRAW lee la mochila de ese RAW concreto. Si no existe
 mochila, los controles de receta, detalle, nitidez, ruido, aberración cromática,
 color y contraste vuelven a un estado neutro; la preview se prepara como RAW sin
-perfil personalizado usando ProPhoto RGB estándar y balance de blancos de cámara.
+perfil personalizado usando ProPhoto RGB como perfil ICC RGB estándar
+predeterminado y balance de blancos de cámara.
 
 ### Política de color
 
@@ -88,20 +100,21 @@ trabajo recomendada es científica y reproducible:
 
 - con carta: se mide una referencia colorimétrica, se genera una receta
   calibrada y se crea un perfil ICC de entrada propio de la sesión;
-- sin carta: se usa un perfil de ajuste manual y un espacio ICC estándar real
-  (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`);
+- sin carta o sin ICC específico: se usa un perfil ICC RGB estándar real
+  (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`) como perfil de la imagen;
 - el perfil del monitor solo afecta a la visualización en pantalla. Nunca cambia
   el TIFF, el perfil de sesión, los hashes, los manifiestos ni el histograma de
   análisis.
-- si existe un ICC de entrada generado con carta, la preview y el histograma
-  colorimétrico deben usar ese perfil antes de aplicar el ICC del monitor.
+- si existe un ICC de entrada generado con carta o elegido para la imagen, la
+  preview y el histograma colorimétrico deben usar ese perfil antes de aplicar el
+  ICC del monitor.
 
 Regla práctica:
 
 | Situación | Salida recomendada |
 | --- | --- |
 | Hay carta válida | TIFF en RGB de cámara/sesión con ICC de entrada generado e incrustado. |
-| No hay carta | TIFF revelado en el espacio estándar elegido e ICC estándar incrustado. |
+| No hay carta | TIFF revelado con el perfil ICC RGB estándar elegido e ICC incrustado. |
 | Revisión en pantalla | Perfil ICC del monitor aplicado solo al preview, como última capa de salida. |
 | Histograma de análisis | Señal colorimétrica de preview antes del ICC del monitor. |
 
@@ -213,7 +226,7 @@ Muestra eventos de preview, advertencias, trazas de ejecución y mensajes de flu
 | --- | --- |
 | Barra de herramientas superior | Acceso horizontal a comparación A/B, aplicación ICC, enfoque de columnas, zoom, 1:1, giro, encaje y precaché. |
 | `A/B` | Compara original/resultado. Al activarla, ProbRAW fuerza preview de máxima calidad cuando es necesario. |
-| Icono de validación ICC | Aplica el ICC activo solo al preview de resultado. El ICC debe corresponder a cámara, receta e iluminación actuales. |
+| Icono de validación ICC | Fuerza el recálculo del preview con el ICC elegido para la imagen. Ese ICC debe corresponder a cámara, receta e iluminación actuales. |
 | Icono de columnas | Oculta/restaura columnas laterales para revisar la imagen con más espacio. |
 | `-` / `+` | Reduce o aumenta zoom. |
 | Lupa `1:1` | Muestra a píxel real. |
@@ -224,52 +237,64 @@ Muestra eventos de preview, advertencias, trazas de ejecución y mensajes de flu
 | Vista `Antes` / `Después` | Aparece al activar comparar original/resultado. |
 | Tira `Miniaturas` | Lista los archivos compatibles del directorio actual. Permite selección múltiple. |
 | Slider de miniaturas | Cambia tamaño entre los límites de la aplicación. |
-| `Usar selección como referencias colorimétricas` | Define RAW/DNG/TIFF seleccionados como cartas para perfil avanzado. |
-| `Añadir selección a cola` | Envía archivos seleccionados a la cola de revelado. |
-| `Guardar perfil básico en imagen` | Escribe la mochila del ajuste manual junto al RAW seleccionado. |
-| `Copiar perfil de ajuste` | Copia el perfil asignado al archivo seleccionado. |
-| `Pegar perfil de ajuste` | Pega el perfil copiado en las imágenes seleccionadas. |
 
-El menú contextual de miniatura ofrece guardar perfil básico, copiar, pegar, usar
-como referencia colorimétrica y añadir a cola.
+Los botones que antes aparecían bajo las miniaturas se han eliminado. Las
+acciones de archivo están en el menú contextual de miniatura y en los paneles de
+la derecha.
+
+El menú contextual de miniatura ofrece:
+
+- `Guardar ajustes actuales en imagen`: fuerza la escritura de la mochila del
+  RAW seleccionado.
+- `Copiar ajustes`: permite copiar todos los ajustes aplicados o solo una
+  categoría: `Perfil ICC`, `Color y contraste`, `Nitidez` o `RAW / exportación`.
+- `Pegar ajustes copiados`: pega en la selección únicamente las categorías
+  copiadas, sin tocar las demás.
+- `Usar como referencia colorimétrica`: marca la selección como captura de carta
+  para el flujo de generación ICC.
+- `Comparar MTF de selección`: disponible cuando hay dos miniaturas
+  seleccionadas con datos MTF.
+- `Anadir a cola`: envía los archivos seleccionados a la cola de revelado.
 
 ## 7. Flujo completo con carta de color
 
-Este es el flujo preferente cuando se busca precisión colorimétrica objetiva.
+Este es el flujo preferente cuando se busca un perfil ICC de cámara/sesión
+medido con una carta de color.
 
 ![Flujo con carta de color](assets/screenshots/probraw-flujo-con-carta.png)
 
 1. Crea o abre la sesión.
 2. Copia los RAW de carta y de escena a `01_ORG/`.
-3. En `2. Ajustar / Aplicar`, selecciona la captura o capturas de carta.
-4. Pulsa `Usar selección como referencias colorimétricas`.
-5. En `Color / calibración`, revisa `Referencia de carta`, `Tipo de
-   carta`, `Formato ICC`, `Tipo de perfil ICC` y `Calidad colprof`.
-6. En `RAW Global`, revisa demosaico y criterios RAW base. Durante el perfilado
-   avanzado ProbRAW fuerza una medición objetiva: curva lineal, salida lineal,
-   espacio `scene_linear_camera_rgb`, sin denoise ni sharpen en la medición.
+3. En `Color / calibración`, elige `Generar perfil ICC`.
+4. Selecciona la captura o capturas de carta en las miniaturas y usa el menú
+   contextual `Usar como referencia colorimétrica`.
+5. Revisa `Referencia de carta`, `Tipo de carta`, `Formato ICC`, `Tipo de perfil
+   ICC` y `Calidad colprof`.
+6. En `RAW / exportación`, revisa solo los criterios de lectura RAW relevantes
+   para la medición: método de desentramado, opciones del algoritmo y punto
+   negro RAW. La generación ICC no depende de ajustes de color, contraste ni
+   nitidez.
 7. Si la detección automática no es suficiente, pulsa `Marcar en visor`. El
    puntero cambia a cruz. Marca las cuatro esquinas visibles de la carta en el
    orden que muestra el overlay, revisa los puntos y pulsa `Guardar detección`.
-8. Pulsa `Generar perfil avanzado con carta`.
+8. Pulsa `Generar ICC con carta`.
 9. Revisa el JSON de resultado, los overlays, el reporte QA y el estado del
    perfil.
-10. Pulsa `Usar perfil generado` si quieres convertirlo en ICC activo para
-    preview/exportación.
-11. Copia el perfil de ajuste o asígnalo a cola para aplicarlo a imágenes tomadas
-    bajo la misma cámara, óptica, luz y receta.
+10. Pulsa `Usar ICC generado` si quieres activarlo en la imagen actual.
+11. Usa `Aplicar ICC a selección` o `Aplicar ICC a sesión` para asignarlo a
+    imágenes tomadas bajo la misma cámara, óptica, luz y receta.
 12. Revela la cola y revisa los TIFF en `02_DRV/`.
 
 Resultado esperado:
 
 - receta calibrada en `00_configuraciones/`;
-- perfil avanzado en `00_configuraciones/development_profiles/`;
 - ICC de entrada en `00_configuraciones/profiles/`;
+- registro del ICC en la sesión;
 - referencias personalizadas en `00_configuraciones/references/`, si se han
   creado o importado;
 - reportes de perfil, QA, overlays y caché en
   `00_configuraciones/profile_runs/` y `00_configuraciones/work/`;
-- mochila `RAW.probraw.json` en los RAW de carta usados.
+- mochila `RAW.probraw.json` en los RAW a los que se aplique ese ICC.
 
 ### Referencias de carta y cartas personalizadas
 
@@ -301,8 +326,8 @@ Buenas prácticas:
 Cada perfil ICC generado queda registrado en la sesión con nombre, ruta, estado y
 origen. Esto permite tener varias versiones del mismo perfil, por ejemplo matriz,
 cLUT, diferentes referencias o diferentes argumentos de ArgyllCMS, sin perder el
-historial. El selector `Perfil ICC de sesión` permite activar cualquiera de esas
-versiones para preview/exportación.
+historial. El selector `Perfil de sesión` permite activar cualquiera de esas
+versiones como ICC de la imagen.
 
 La pestaña `Diagnóstico > Carta` muestra los datos de la carta en curso:
 identificador de parche, Lab de referencia, Lab estimado tras el ICC generado y
@@ -328,26 +353,26 @@ objetivo, pero sigue siendo paramétrico y trazable.
 ![Flujo sin carta de color](assets/screenshots/probraw-flujo-sin-carta.png)
 
 1. Selecciona una imagen representativa.
-2. Ajusta `Brillo y contraste`, `Color`, `Nitidez` y, si es necesario,
-   `RAW Global`.
-3. En `Color / calibración`, escribe `Nombre del ajuste`.
-4. En `Espacio estándar sin carta`, elige el espacio real de salida:
-   `sRGB estándar`, `Adobe RGB (1998) estándar` o `ProPhoto RGB estándar`.
-5. Pulsa `Guardar perfil básico`.
-6. Pulsa `Guardar perfil básico en imagen` para escribir la mochila junto al RAW.
-7. Copia y pega ese perfil a otras imágenes equivalentes.
-8. Añade las imágenes a la cola y revela.
+2. En `Color / calibración`, deja `Perfil ICC RGB estándar` o elige otro ICC
+   disponible. Si no haces nada, ProbRAW usa `ProPhoto RGB`.
+3. Ajusta `Color y contraste`, `Nitidez` y, si es necesario, `RAW / exportación`.
+   Cada cambio se guarda en la mochila del RAW seleccionado.
+4. Si quieres reutilizar el ajuste como perfil de sesión, usa `Perfiles
+   guardados` en la pestaña correspondiente y pulsa `Guardar`.
+5. Copia y pega los ajustes a otras imágenes equivalentes desde el menú
+   contextual de miniatura, eligiendo todos los ajustes o solo una categoría.
+6. Añade las imágenes a la cola y revela.
 
 Resultado esperado:
 
-- perfil manual en `00_configuraciones/development_profiles/`;
-- ICC estándar en `00_configuraciones/profiles/standard/`;
-- mochila `RAW.probraw.json` con el espacio de salida genérico;
-- TIFF final en `02_DRV/` con el ICC estándar incrustado.
+- mochila `RAW.probraw.json` con el ICC de la imagen y los ajustes aplicados;
+- perfiles de sesión en `00_configuraciones/development_profiles/` si los has
+  guardado;
+- TIFF final en `02_DRV/` con el ICC elegido incrustado.
 
-Al escoger un espacio estándar sin carta, ProbRAW desactiva `Profiling mode`
-para el revelado visible/final y usa balance de cámara si el balance fijo era
-identidad. Esto evita que la preview y el TIFF sigan reglas de color distintas.
+El panel RAW no decide un perfil de salida. La decisión ICC vive en
+`Color / calibración`; RAW solo controla cómo se lee y se desentraman los datos
+del sensor antes de aplicar visualización, color, contraste o nitidez.
 
 ## 9. Copiar ajustes y mochilas
 
@@ -355,18 +380,25 @@ identidad. Esto evita que la preview y el TIFF sigan reglas de color distintas.
 
 ProbRAW trata el revelado como edición paramétrica por archivo.
 
-1. Selecciona la imagen con el perfil correcto.
-2. Si el ajuste es manual y todavía no tiene mochila, pulsa `Guardar perfil
-   básico en imagen`.
-3. Pulsa `Copiar perfil de ajuste`.
+1. Selecciona la imagen con los ajustes correctos.
+2. Si quieres forzar la escritura antes de copiar, abre el menú contextual y
+   pulsa `Guardar ajustes actuales en imagen`.
+3. Abre `Copiar ajustes` y elige `Todos los ajustes aplicados` o una categoría:
+   `Perfil ICC`, `Color y contraste`, `Nitidez` o `RAW / exportación`.
 4. Selecciona una o varias imágenes de destino.
-5. Pulsa `Pegar perfil de ajuste`.
-6. Revisa las bandas de color de miniatura y, si procede, añade a cola.
+5. Pulsa `Pegar ajustes copiados`.
+6. Revisa los iconos bajo la miniatura y, si procede, añade a cola.
+
+El pegado es parcial: si copias solo `Nitidez`, ProbRAW no sustituye el ICC, los
+ajustes cromáticos ni los ajustes RAW de destino. Si copias todas las categorías,
+la imagen de destino queda con la misma mochila técnica que la imagen origen.
 
 Buenas prácticas:
 
-- no pegues perfiles entre escenas con iluminación distinta;
-- no mezcles perfiles de carta de una cámara/óptica con otra combinación;
+- no pegues ajustes cromáticos entre escenas con iluminación distinta;
+- no mezcles perfiles ICC de una cámara/óptica con otra combinación;
+- copia RAW / exportación solo entre archivos que deben compartir el mismo
+  método de lectura y desentramado;
 - conserva las mochilas junto a los RAW si mueves la sesión.
 
 ## 10. Cola de revelado y exportación
@@ -382,12 +414,12 @@ a cada archivo.
 | --- | --- |
 | `Añadir selección` | Añade los archivos seleccionados en miniaturas. |
 | `Añadir RAW de sesión` | Añade todos los archivos compatibles de la carpeta de entrada configurada. |
-| `Asignar perfil activo` | Asigna el perfil de ajuste activo a las filas seleccionadas o a la cola. |
+| `Asignar perfil activo` | Asigna el perfil activo disponible a las filas seleccionadas o a la cola. |
 | `Quitar seleccionados` | Elimina filas seleccionadas de la cola. |
 | `Limpiar cola` | Vacía la cola. |
 | `Revelar cola` | Ejecuta el revelado TIFF de los elementos válidos. |
 | Tabla `Archivo` | Fuente RAW/TIFF/imagen. |
-| Tabla `Perfil` | Perfil de ajuste asignado. |
+| Tabla `Perfil` | Perfil o ajustes asignados al archivo. |
 | Tabla `Estado` | `pending`, `done` o `error`. |
 | Tabla `TIFF salida` | Ruta del TIFF generado. |
 | Tabla `Mensaje` | Mensaje de proceso o error. |
@@ -396,9 +428,9 @@ a cada archivo.
 Si el TIFF de salida ya existe, ProbRAW crea una versión nueva:
 `captura.tiff`, `captura_v002.tiff`, `captura_v003.tiff`, etc.
 
-Al revelar la cola, cada RAW usa su perfil registrado o, si no hay perfil
-registrado, la mochila guardada junto a ese RAW. La nitidez, ruido, CA, color y
-contraste no se toman de otro archivo ni de los sliders actuales.
+Al revelar la cola, cada RAW usa su mochila guardada: ICC de imagen, color y
+contraste, nitidez y RAW / exportación. Estos valores no se toman de otro
+archivo ni de los sliders actuales.
 
 ### Panel `Exportar derivados`
 
@@ -406,7 +438,7 @@ contraste no se toman de otro archivo ni de los sliders actuales.
 | --- | --- |
 | `RAW a revelar (carpeta)` | Carpeta fuente usada por `Aplicar a carpeta` o `Añadir RAW de sesión`. |
 | `Salida TIFF derivados` | Carpeta donde se guardan los TIFF finales. En una sesión normal apunta a `02_DRV/`. |
-| `Incrustar/aplicar ICC en TIFF` | Siempre activo. Incrusta el ICC de entrada si la salida es RGB de cámara o un ICC estándar si la salida es sRGB/Adobe RGB/ProPhoto. |
+| `Incrustar/aplicar ICC en TIFF` | Siempre activo. Incrusta el ICC elegido para la imagen: ICC de cámara/sesión o perfil ICC RGB estándar. |
 | `Aplicar ajustes básicos y de nitidez` | Aplica al TIFF los ajustes de tono, color, nitidez, ruido y CA del perfil. |
 | `Usar carpeta actual` | Usa el directorio del navegador como entrada de lote. |
 | `Aplicar a selección` | Revela la selección actual. |
@@ -423,10 +455,10 @@ La columna derecha de `2. Ajustar / Aplicar` induce el flujo de trabajo:
 
 | Pestaña | Uso |
 | --- | --- |
-| `Color / calibración` | Referencias, perfiles de ajuste, generación ICC con carta e ICC activo. |
+| `Color / calibración` | Estado ICC de la imagen, elección de ICC RGB estándar, ICC de sesión o generación ICC con carta. |
 | `Color y contraste` | Histograma colorimétrico siempre visible y controles de brillo, contraste y color. |
 | `Nitidez` | Controles de acutancia, radio de enfoque, reducción de ruido y corrección de aberración cromática lateral. |
-| `RAW / exportación` | Receta RAW global y salida de derivados TIFF. |
+| `RAW / exportación` | Lectura RAW, desentramado, punto negro RAW, perfiles RAW/exportación y salida de derivados TIFF. |
 
 El histograma de `Color y contraste` se calcula sobre la señal
 colorimétrica previa al ICC del monitor. Si el perfil ICC de entrada está
@@ -450,6 +482,13 @@ perfil del monitor solo para mostrar correctamente en pantalla.
 | Editor de curva | puntos arrastrables | Ajusta manualmente la curva tonal. |
 | `Restablecer curva` | acción | Vuelve la curva avanzada a su estado base. |
 | `Restablecer brillo y contraste` | acción | Restaura los controles tonales. |
+
+El histograma del editor se actualiza en tiempo real con los ajustes de brillo,
+niveles, contraste y curva. En `Luminosidad` muestra luminancia y columnas RGB.
+Al editar `Rojo`, `Verde` o `Azul`, muestra solo el histograma de ese canal en
+su color. Las curvas RGB no lineales permanecen visibles como referencia, la
+curva activa se dibuja con el color del canal y una referencia punteada muestra
+el efecto global sobre la luminosidad.
 
 ### Color
 
@@ -494,6 +533,12 @@ conversión a líneas por milímetro (`lp/mm`):
 `lp/mm = ciclos/píxel × 1000 / tamaño_píxel_µm`. La conversión depende de que el
 tamaño de píxel sea correcto para el archivo analizado.
 
+`Auto nitidez` usa la ROI MTF seleccionada para evaluar combinaciones de
+intensidad y radio a resolución real. Busca mejorar MTF50/MTF30/acutancia sin
+penalizaciones excesivas por halos o ruido, escribe los valores resultantes en
+los controles de `Nitidez` y actualiza inmediatamente la mochila RAW y el icono
+de nitidez en la miniatura.
+
 | Opción | Rango/valores | Explicación |
 | --- | --- | --- |
 | `Nitidez (amount)` | `0.00` a `3.00` | Intensidad de enfoque. |
@@ -511,19 +556,35 @@ tamaño de píxel sea correcto para el archivo analizado.
 
 ### Color / calibración
 
-#### Perfiles de ajuste por archivo
+La primera decisión de este panel es qué ICC describe la imagen. ProbRAW usa ese
+ICC para la preview, para el histograma colorimétrico y para el TIFF final; la
+conversión adicional al monitor solo sirve para visualizar correctamente en cada
+sistema.
+
+#### Estado ICC
 
 | Opción | Explicación |
 | --- | --- |
-| `Perfil de ajuste activo` | Lista perfiles guardados. Al aplicarlo, sus parámetros pasan a los controles. |
-| `Nombre del ajuste` | Nombre del perfil básico que se va a guardar. |
-| `Espacio estándar sin carta` | `Carta / RGB de cámara`, `sRGB estándar`, `Adobe RGB (1998) estándar` o `ProPhoto RGB estándar`. |
-| `Guardar perfil básico` | Guarda un perfil manual desde los controles actuales. |
-| `Aplicar a controles` | Carga el perfil seleccionado en los controles de revelado. |
-| `Asignar activo a cola` | Asigna el perfil activo a los elementos de la cola. |
-| Estado de perfiles | Informa número de perfiles y perfil activo. |
+| `Imagen seleccionada` | Informa si el RAW tiene mochila, si hay ICC aplicado y qué archivo ICC se está usando. |
+| `Perfiles ICC de sesión` | Muestra cuántos ICC se han registrado en el proyecto y cuál está activo. |
+| Nota de monitor | Recuerda que el ICC de la imagen y el ICC del monitor son capas distintas: el monitor no modifica la imagen ni la mochila. |
 
-#### Carta de color: perfil avanzado de ajuste + ICC de entrada
+#### Perfil ICC de la imagen
+
+| Opción | Explicación |
+| --- | --- |
+| `Perfil ICC RGB estandar` | Usa un perfil ICC RGB estándar. Técnicamente son espacios RGB estándar definidos mediante ICC; ProPhoto RGB es el valor predeterminado. |
+| `Espacio RGB estandar` | `sRGB`, `Adobe RGB` o `ProPhoto RGB`. Al cambiarlo queda aplicado a la imagen seleccionada. |
+| `Perfiles ICC de la sesion` | Permite elegir un ICC generado o registrado en el proyecto. Si todavía no existe ninguno, la interfaz lo indica y mantiene ProPhoto RGB como opción segura. |
+| `Perfil de sesion` | Lista de ICC de sesión. Al elegir uno queda activo en la imagen seleccionada. |
+| `Generar perfil ICC` | Muestra el flujo de carta para crear un nuevo ICC de cámara/sesión. |
+| `Activar seleccionado` | Activa el ICC seleccionado en la lista de sesión. |
+| `Cargar ICC de camara...` | Permite elegir un ICC externo existente en el sistema y registrarlo para usarlo en el proyecto. |
+| `Usar ICC generado` | Activa el último ICC generado con carta. |
+| `Aplicar ICC a seleccion` | Escribe el ICC activo en las mochilas de las miniaturas seleccionadas. |
+| `Aplicar ICC a sesion` | Aplica el ICC activo a todos los RAW de la sesión. |
+
+#### Generar ICC con carta de color
 
 | Opción | Explicación |
 | --- | --- |
@@ -538,7 +599,6 @@ tamaño de píxel sea correcto para el archivo analizado.
 | `Perfil ICC de entrada` | Ruta de salida del ICC generado. |
 | `Reporte perfil JSON` | Ruta automática del reporte técnico de perfil. Normalmente queda en `00_configuraciones/work/`. |
 | `Directorio artefactos` | Directorio automático de overlays, mediciones, intermedios y cachés del perfilado. |
-| `Perfil de ajuste avanzado JSON` | Ruta automática del perfil de ajuste calculado desde carta. |
 | `Receta calibrada` | Ruta automática de la receta resultante tras medir la carta. |
 | `Tipo de carta` | `colorchecker24` o `it8`. Debe coincidir con la referencia JSON. |
 | `Confianza mínima` | `0.00` a `1.00`. Umbral de aceptación de la detección automática. |
@@ -552,18 +612,8 @@ tamaño de píxel sea correcto para el archivo analizado.
 | `Marcar en visor` | Inicia marcado manual de cuatro esquinas. El cursor cambia a cruz. |
 | `Limpiar puntos` | Borra el marcado manual. |
 | `Guardar detección` | Guarda JSON y overlay de una detección manual. |
-| `Generar perfil avanzado con carta` | Ejecuta medición, perfil de ajuste, ICC de entrada y reportes. |
+| `Generar ICC con carta` | Ejecuta medición, ICC de entrada y reportes. |
 | `Resultado JSON` | Salida técnica de la generación de perfil. |
-
-#### ICC activo para preview y exportación
-
-| Opción | Explicación |
-| --- | --- |
-| `Perfil ICC de entrada activo` | ICC usado para preview/exportación cuando corresponde al perfil de sesión. |
-| `Perfil ICC de sesión` | Catálogo de perfiles ICC generados o cargados en la sesión. |
-| `Activar seleccionado` | Activa el perfil seleccionado del catálogo de sesión. |
-| `Cargar perfil activo` | Selecciona manualmente un ICC existente. |
-| `Usar perfil generado` | Registra y activa el último ICC generado por el flujo con carta. |
 
 ### RAW Global
 
@@ -574,38 +624,33 @@ tamaño de píxel sea correcto para el archivo analizado.
 | `Guardar receta` | acción | Guarda los criterios actuales como receta. |
 | `Receta por defecto` | acción | Restaura la receta base. |
 | `Motor RAW` | `LibRaw / rawpy` | Motor de revelado. Es el único motor disponible. |
-| `Demosaic/interpolación` | DCB, DHT, AHD, AAHD, VNG, PPG, Lineal, AMaZE | Algoritmo de interpolación RAW. AMaZE solo está disponible si la build informa `DEMOSAIC_PACK_GPL3=True`. |
-| `Balance de blancos` | Fijo, Desde metadatos de cámara | Decide si usa multiplicadores manuales o metadatos de cámara. |
-| `WB multiplicadores` | `R,G,B,G` o `R,G,B` | Multiplicadores manuales de balance. |
-| `Black level mode` | Metadata, Fijo, White level | Origen del nivel negro RAW. |
+| `Método` | DCB, DHT, AHD, AAHD, VNG, PPG, Lineal, AMaZE | Algoritmo de desentramado RAW. AMaZE solo está disponible si la build informa `DEMOSAIC_PACK_GPL3=True`. |
+| `Interpolar verdes por separado (4 colores)` | activado/desactivado | Usa interpolación de cuatro colores cuando el backend y el método lo soportan. |
+| `Borde` | `0` a `32` | Parámetro de calidad de borde disponible para métodos/backend compatibles. Si no aplica al método elegido, queda deshabilitado. |
+| `Pasos de supresión de falso color` | `0` a `10` | Pasos de supresión de falso color disponibles para métodos/backend compatibles. Si no aplica al método elegido, queda deshabilitado. |
+| Estado de opciones | texto | Informa qué opciones están disponibles para el método seleccionado. |
+| `Modo` en `Puntos de negro RAW` | Metadata, Fijo, White level | Origen del punto negro RAW. |
 | Valor de negro | `0` a `65535` | Valor usado cuando el modo negro es fijo. |
-| `Exposure compensation (EV)` | `-8.00` a `+8.00` | Compensación base RAW antes del render final. |
-| `Tone curve` | Lineal, sRGB, Gamma | Curva base RAW. |
-| Gamma | `0.80` a `4.00` | Valor cuando `Tone curve` es Gamma. |
-| `Salida lineal` | activada/desactivada | Mantiene salida lineal de pipeline base. |
-| `Working space (metadato)` | scene_linear_camera_rgb, srgb, adobe_rgb, prophoto_rgb, camera_rgb | Campo declarativo de receta y procedencia. No aplica transformación adicional. |
-| `Output space` | scene_linear_camera_rgb, srgb, adobe_rgb, prophoto_rgb, camera_rgb | Espacio de salida del revelado. |
-| `Sampling strategy` | trimmed_mean, median | Método de muestreo de parches de carta. |
-| `Profiling mode` | activado/desactivado | Activa criterios de medición para perfilado. |
-| `Input color assumption (metadato)` | camera_native | Campo declarativo; no aplica transformación de color adicional. |
-| `Illuminant metadata` | texto | Metadato libre del iluminante. |
 
-Nota: durante `Generar perfil avanzado con carta`, ProbRAW fuerza
-`tone_curve=linear`, `Salida lineal=on` y
-`Output space=scene_linear_camera_rgb`. Nitidez y reducción de ruido se
-desactivan durante la medición de carta y se aplican después en el revelado
-final si el perfil lo indica.
+Este panel controla solo la lectura y el desentramado del RAW. El ICC de cámara
+se decide en `Color / calibración`; la conversión al monitor se aplica solo para
+visualizar. Exposición, color, contraste, ruido y nitidez pertenecen a sus
+paneles específicos.
 
-Campos de receta guardados aunque no siempre sean editables directamente:
+#### Perfiles RAW / exportación
 
-| Campo | Explicación |
+| Opción | Explicación |
 | --- | --- |
-| `chart_reference` | Referencia JSON usada para medir la carta. Se rellena desde `Referencia de carta`. |
-| `sampling_trim_percent` | Porcentaje recortado por extremo al usar muestreo robusto `trimmed_mean`. |
-| `sampling_reject_saturated` | Excluye píxeles saturados durante el muestreo de parches. |
-| `profile_engine` | Motor de perfilado. Actualmente `argyll`. |
-| `argyll_colprof_args` | Lista derivada de `Args extra colprof`. |
-| `use_cache` | Campo avanzado para reutilizar caché numérica cuando el flujo lo permite. La GUI mantiene además cachés propias de preview y miniaturas. |
+| `Perfil` | Perfil RAW/exportación guardado en la sesión o `Ajustes actuales`. |
+| `Nombre` | Nombre del perfil que se guardará. |
+| `Guardar` | Guarda los controles RAW actuales como perfil de sesión. |
+| `Aplicar a controles` | Carga el perfil seleccionado en los controles RAW. |
+| `Aplicar a selección` | Escribe esos ajustes RAW en las mochilas de las miniaturas seleccionadas. |
+| `Copiar de imagen` | Copia los ajustes RAW de la imagen seleccionada. |
+| `Pegar a imagen` | Pega los ajustes RAW copiados en la imagen seleccionada. |
+
+Los cambios RAW se guardan también en tiempo real en la mochila del archivo
+activo, aunque no guardes un perfil de sesión.
 
 ## 12. Configuración global
 
@@ -731,8 +776,9 @@ coinciden. Revisa el reporte QA y no uses TIFF derivados como cartas de entrada.
 
 ### No hay carta de color
 
-Usa el flujo sin carta: perfil manual + ICC estándar real de salida. Es trazable,
-pero no sustituye la precisión de una referencia medida.
+Usa el flujo sin carta: perfil ICC RGB estándar, ajustes paramétricos por
+mochila y, si conviene, perfiles de sesión para reutilizarlos. Es trazable, pero
+no sustituye la precisión de una referencia medida.
 
 ### La imagen ya tenía un TIFF exportado
 
@@ -756,13 +802,13 @@ ProbRAW no sobrescribe salidas existentes. Crea sufijos `_v002`, `_v003`, etc.
 | ICC estándar | Perfil conocido como sRGB, Adobe RGB o ProPhoto RGB. |
 | Iluminante | Descripción del punto blanco o fuente de luz de referencia. |
 | Mochila | Sidecar `RAW.probraw.json` con ajustes asignados al RAW. |
-| Perfil avanzado | Perfil de ajuste e ICC generados desde carta de color. |
-| Perfil básico | Perfil manual creado desde los controles de revelado. |
+| Perfil ICC de sesión | ICC generado o registrado dentro del proyecto, normalmente a partir de una carta de color. |
+| Perfil de ajuste | Perfil guardado de una categoría concreta: ICC, color/contraste, nitidez o RAW/exportación. |
 | Perfil del monitor | ICC usado solo para mostrar correctamente en pantalla. |
 | Preview | Previsualización de trabajo. No sustituye al render final auditado. |
 | Proof | Firma autónoma de ProbRAW que vincula RAW, TIFF, receta, perfil y hashes. |
 | QA | Control de calidad del perfil, detección y colorimetría. |
-| RAW Global | Panel de criterios base del revelado RAW y perfilado. |
+| RAW Global | Panel de lectura RAW, desentramado, opciones del algoritmo y punto negro RAW. |
 | Receta | Archivo YAML/JSON con parámetros de revelado y criterios técnicos. |
 | Sidecar | Archivo auxiliar junto a una imagen que guarda metadatos o ajustes. |
 | TIFF lineal de auditoría | TIFF intermedio lineal usado para verificación técnica. |

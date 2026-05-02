@@ -7,6 +7,22 @@ class PreviewRenderMixin:
     def _on_slider_change(self) -> None:
         if self._original_linear is not None:
             self._schedule_preview_refresh()
+        sender = self.sender()
+        detail_sliders = (
+            getattr(self, "slider_sharpen", None),
+            getattr(self, "slider_radius", None),
+            getattr(self, "slider_noise_luma", None),
+            getattr(self, "slider_noise_color", None),
+            getattr(self, "slider_ca_red", None),
+            getattr(self, "slider_ca_blue", None),
+        )
+        if sender in detail_sliders:
+            if hasattr(self, "_set_active_named_adjustment_profile_id"):
+                self._set_active_named_adjustment_profile_id("detail", "")
+            if hasattr(self, "_refresh_named_adjustment_profile_combo"):
+                self._refresh_named_adjustment_profile_combo("detail")
+            if hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
+                self._schedule_detail_adjustment_sidecar_persist()
         if hasattr(self, "_schedule_mtf_refresh"):
             self._schedule_mtf_refresh(interactive=self._is_preview_interaction_active())
 
@@ -23,8 +39,18 @@ class PreviewRenderMixin:
             getattr(self, "slider_tone_curve_black", None),
             getattr(self, "slider_tone_curve_white", None),
         )
+        detail_sliders = (
+            getattr(self, "slider_sharpen", None),
+            getattr(self, "slider_radius", None),
+            getattr(self, "slider_noise_luma", None),
+            getattr(self, "slider_noise_color", None),
+            getattr(self, "slider_ca_red", None),
+            getattr(self, "slider_ca_blue", None),
+        )
         if sender in render_sliders and hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
             self._schedule_render_adjustment_sidecar_persist(immediate=True)
+        if sender in detail_sliders and hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
+            self._schedule_detail_adjustment_sidecar_persist(immediate=True)
         if hasattr(self, "_schedule_mtf_refresh"):
             self._schedule_mtf_refresh(interactive=False)
 
@@ -670,6 +696,8 @@ class PreviewRenderMixin:
         self.slider_ca_blue.setValue(0)
         if self._original_linear is not None:
             self._refresh_preview()
+        if hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
+            self._schedule_detail_adjustment_sidecar_persist(immediate=True)
 
     def _refresh_preview(self) -> None:
         if self._original_linear is None:

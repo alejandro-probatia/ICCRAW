@@ -72,6 +72,28 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.6
+
+Release 0.3.6 consolidates per-image ICC, color/contrast, sharpness and RAW
+export adjustment traceability:
+
+- RAW sidecars and thumbnails show the active adjustment categories per image,
+- Color/Calibration separates generic ICC, existing camera ICC and chart-based
+  ICC generation,
+- preview display applies image ICC to monitor ICC conversion for viewing,
+- RAW/export controls focus on RAW read/demosaic options and black points,
+- tone-curve histograms update in real time, show RGB columns and isolate the
+  active chromatic channel when editing it,
+- Auto Sharpness writes the selected sharpness/radius into the RAW sidecar.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.6-Setup.exe`
+- `ProbRAW-0.3.6-Setup.exe.sha256`
+- `probraw-0.3.6.tar.gz`
+- `probraw-0.3.6-py3-none-any.whl`
+- `probraw_0.3.6_python_artifacts.sha256`
+
 ## Release 0.3.5
 
 Release 0.3.5 is a performance and reliability release for professional-size

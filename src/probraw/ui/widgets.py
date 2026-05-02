@@ -176,6 +176,13 @@ if QtWidgets is not None:
             self._histogram_r: np.ndarray | None = None
             self._histogram_g: np.ndarray | None = None
             self._histogram_b: np.ndarray | None = None
+            self._active_channel = "luminance"
+            self._channel_curves: dict[str, list[tuple[float, float]]] = {
+                "luminance": normalize_tone_curve_points([(0.0, 0.0), (1.0, 1.0)]),
+                "red": normalize_tone_curve_points([(0.0, 0.0), (1.0, 1.0)]),
+                "green": normalize_tone_curve_points([(0.0, 0.0), (1.0, 1.0)]),
+                "blue": normalize_tone_curve_points([(0.0, 0.0), (1.0, 1.0)]),
+            }
             self._black_point = 0.0
             self._white_point = 1.0
             self.setMinimumHeight(320)
@@ -196,10 +203,42 @@ if QtWidgets is not None:
 
         def set_points(self, points: list[tuple[float, float]], *, emit: bool = True) -> None:
             self._points = normalize_tone_curve_points(points)
+            self._channel_curves[self._active_channel] = list(self._points)
             self._drag_index = None
             self.update()
             if emit:
                 self.pointsChanged.emit(self.points())
+
+        def set_active_channel(self, channel: str) -> None:
+            key = str(channel or "luminance").strip().lower()
+            if key not in {"luminance", "red", "green", "blue"}:
+                key = "luminance"
+            previous = self._active_channel
+            if previous in {"luminance", "red", "green", "blue"}:
+                self._channel_curves[previous] = list(self._points)
+            self._active_channel = key
+            self.update()
+
+        def set_channel_curves(self, curves: dict[str, Any] | None) -> None:
+            normalized: dict[str, list[tuple[float, float]]] = {}
+            for channel in ("luminance", "red", "green", "blue"):
+                raw = curves.get(channel) if isinstance(curves, dict) else None
+                if isinstance(raw, (list, tuple)):
+                    try:
+                        normalized[channel] = normalize_tone_curve_points(
+                            [
+                                (float(point[0]), float(point[1]))
+                                for point in raw
+                                if isinstance(point, (list, tuple)) and len(point) >= 2
+                            ]
+                        )
+                    except Exception:
+                        normalized[channel] = normalize_tone_curve_points([(0.0, 0.0), (1.0, 1.0)])
+                else:
+                    normalized[channel] = normalize_tone_curve_points([(0.0, 0.0), (1.0, 1.0)])
+            normalized[self._active_channel] = list(self._points)
+            self._channel_curves = normalized
+            self.update()
 
         def set_input_range(self, black_point: float, white_point: float) -> None:
             black = float(np.clip(black_point, 0.0, 0.95))
@@ -224,6 +263,9 @@ if QtWidgets is not None:
                 rgb = rgb[::max(1, stride), ::max(1, stride), :3]
             rgb = np.clip(rgb.astype(np.float32, copy=False), 0.0, 1.0)
             key = str(channel or "luminance").strip().lower()
+            if key not in {"luminance", "red", "green", "blue"}:
+                key = "luminance"
+            self._active_channel = key
             weights = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
             luminance = np.sum(rgb[..., :3] * weights.reshape((1, 1, 3)), axis=2)
             hist_l, _ = np.histogram(luminance, bins=64, range=(0.0, 1.0))
@@ -236,7 +278,10 @@ if QtWidgets is not None:
                 "green": hist_g.astype(np.float32),
                 "blue": hist_b.astype(np.float32),
             }
-            maxv = float(max((np.max(hist) for hist in histograms.values() if hist.size), default=0.0))
+            if key in {"red", "green", "blue"}:
+                maxv = float(np.max(histograms[key])) if histograms[key].size else 0.0
+            else:
+                maxv = float(max((np.max(hist) for hist in histograms.values() if hist.size), default=0.0))
             if maxv <= 0.0:
                 self._clear_histograms()
                 self.update()
@@ -291,20 +336,12 @@ if QtWidgets is not None:
                 self._domain_point_to_widget(self._white_point, 1.0),
             )
 
-            curve_pen = QtGui.QPen(QtGui.QColor("#d9d9d9"), 2)
-            painter.setPen(curve_pen)
-            curve_x, curve_y = tone_curve_lut(
-                self._points,
-                lut_size=256,
-                black_point=self._black_point,
-                white_point=self._white_point,
-            )
-            path = QtGui.QPainterPath(self._domain_point_to_widget(float(curve_x[0]), float(curve_y[0])))
-            for x, y in zip(curve_x[1:], curve_y[1:]):
-                path.lineTo(self._domain_point_to_widget(float(x), float(y)))
-            painter.drawPath(path)
+            self._draw_channel_curve_overlays(painter)
 
-            painter.setBrush(QtGui.QBrush(QtGui.QColor("#d9d9d9")))
+            active_color = self._curve_color(self._active_channel, alpha=235)
+            self._draw_curve(painter, self._points, active_color, width=2.6)
+
+            painter.setBrush(QtGui.QBrush(active_color))
             painter.setPen(QtGui.QPen(QtGui.QColor("#101010"), 1))
             for idx, point in enumerate(self._points):
                 radius = 5 if idx == self._drag_index else 4
@@ -312,11 +349,18 @@ if QtWidgets is not None:
                 painter.drawEllipse(pos, radius, radius)
 
         def _draw_histogram_columns(self, painter: QtGui.QPainter, rect: QtCore.QRectF) -> None:
+            active = self._active_channel
             hist_l = self._histogram_luminance
             hist_r = self._histogram_r
             hist_g = self._histogram_g
             hist_b = self._histogram_b
             if not any(hist is not None and hist.size for hist in (hist_l, hist_r, hist_g, hist_b)):
+                return
+            if active in {"red", "green", "blue"}:
+                hist = {"red": hist_r, "green": hist_g, "blue": hist_b}.get(active)
+                if hist is None:
+                    return
+                self._draw_single_histogram(painter, rect, hist, self._histogram_color(active, alpha=150))
                 return
             bins = max(
                 int(hist.size)
@@ -350,6 +394,133 @@ if QtWidgets is not None:
                         x = rect.left() + idx * bin_w
                     painter.drawRect(QtCore.QRectF(x, rect.bottom() - h, sub_w + 0.8, h))
 
+        def _draw_single_histogram(
+            self,
+            painter: QtGui.QPainter,
+            rect: QtCore.QRectF,
+            hist: np.ndarray,
+            color: QtGui.QColor,
+        ) -> None:
+            if hist is None or not hist.size:
+                return
+            bins = int(hist.size)
+            bin_w = rect.width() / max(1, bins)
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(color)
+            for idx, value in enumerate(hist):
+                h = rect.height() * float(value)
+                painter.drawRect(QtCore.QRectF(rect.left() + idx * bin_w, rect.bottom() - h, bin_w + 1.0, h))
+
+        def _draw_channel_curve_overlays(self, painter: QtGui.QPainter) -> None:
+            active = self._active_channel
+            chromatic_curves = {
+                channel: self._curve_points_for_channel(channel)
+                for channel in ("red", "green", "blue")
+            }
+            for channel, points in chromatic_curves.items():
+                if channel == active:
+                    continue
+                if self._curve_is_identity(points):
+                    continue
+                self._draw_curve(
+                    painter,
+                    points,
+                    self._curve_color(channel, alpha=150),
+                    width=1.7,
+                )
+            if active != "luminance":
+                luminance_points = self._curve_points_for_channel("luminance")
+                if not self._curve_is_identity(luminance_points):
+                    self._draw_curve(
+                        painter,
+                        luminance_points,
+                        QtGui.QColor(230, 230, 230, 130),
+                        width=1.4,
+                        style=QtCore.Qt.DashLine,
+                    )
+            if any(not self._curve_is_identity(points) for points in chromatic_curves.values()):
+                self._draw_rgb_luminance_effect(painter, chromatic_curves)
+
+        def _draw_curve(
+            self,
+            painter: QtGui.QPainter,
+            points: list[tuple[float, float]],
+            color: QtGui.QColor,
+            *,
+            width: float,
+            style: QtCore.Qt.PenStyle = QtCore.Qt.SolidLine,
+        ) -> None:
+            curve_x, curve_y = tone_curve_lut(
+                points,
+                lut_size=256,
+                black_point=self._black_point,
+                white_point=self._white_point,
+            )
+            path = QtGui.QPainterPath(self._domain_point_to_widget(float(curve_x[0]), float(curve_y[0])))
+            for x, y in zip(curve_x[1:], curve_y[1:]):
+                path.lineTo(self._domain_point_to_widget(float(x), float(y)))
+            painter.setPen(QtGui.QPen(color, width, style))
+            painter.drawPath(path)
+
+        def _draw_rgb_luminance_effect(
+            self,
+            painter: QtGui.QPainter,
+            chromatic_curves: dict[str, list[tuple[float, float]]],
+        ) -> None:
+            lut_x: np.ndarray | None = None
+            weighted = np.zeros(256, dtype=np.float32)
+            weights = {"red": 0.2126, "green": 0.7152, "blue": 0.0722}
+            for channel, weight in weights.items():
+                x_values, y_values = tone_curve_lut(
+                    chromatic_curves[channel],
+                    lut_size=256,
+                    black_point=self._black_point,
+                    white_point=self._white_point,
+                )
+                if lut_x is None:
+                    lut_x = x_values
+                weighted += float(weight) * y_values.astype(np.float32)
+            if lut_x is None:
+                return
+            path = QtGui.QPainterPath(self._domain_point_to_widget(float(lut_x[0]), float(weighted[0])))
+            for x, y in zip(lut_x[1:], weighted[1:]):
+                path.lineTo(self._domain_point_to_widget(float(x), float(y)))
+            painter.setPen(QtGui.QPen(QtGui.QColor(250, 204, 21, 150), 1.5, QtCore.Qt.DotLine))
+            painter.drawPath(path)
+
+        def _curve_points_for_channel(self, channel: str) -> list[tuple[float, float]]:
+            if channel == self._active_channel:
+                return list(self._points)
+            points = self._channel_curves.get(channel)
+            if isinstance(points, list):
+                return normalize_tone_curve_points(points)
+            return normalize_tone_curve_points([(0.0, 0.0), (1.0, 1.0)])
+
+        def _curve_is_identity(self, points: list[tuple[float, float]]) -> bool:
+            curve = normalize_tone_curve_points(points)
+            xs = np.asarray([p[0] for p in curve], dtype=np.float32)
+            ys = np.asarray([p[1] for p in curve], dtype=np.float32)
+            return (
+                len(curve) <= 2
+                and np.allclose(xs, [0.0, 1.0], atol=1e-6)
+                and np.allclose(ys, [0.0, 1.0], atol=1e-6)
+                and abs(float(self._black_point)) <= 1e-6
+                and abs(float(self._white_point) - 1.0) <= 1e-6
+            )
+
+        def _curve_color(self, channel: str, *, alpha: int) -> QtGui.QColor:
+            colors = {
+                "red": (248, 113, 113),
+                "green": (134, 239, 172),
+                "blue": (96, 165, 250),
+                "luminance": (226, 232, 240),
+            }
+            r, g, b = colors.get(channel, colors["luminance"])
+            return QtGui.QColor(r, g, b, int(alpha))
+
+        def _histogram_color(self, channel: str, *, alpha: int) -> QtGui.QColor:
+            return self._curve_color(channel, alpha=alpha)
+
         def mousePressEvent(self, event) -> None:  # noqa: N802
             pos = event.position()
             nearest = self._nearest_point_index(pos)
@@ -364,6 +535,7 @@ if QtWidgets is not None:
             if nearest is None:
                 self._points.append(self._widget_to_point(pos))
                 self._points = normalize_tone_curve_points(self._points)
+                self._channel_curves[self._active_channel] = list(self._points)
                 nearest = self._nearest_point_index(pos)
                 self.pointsChanged.emit(self.points())
             self._drag_index = nearest
@@ -383,6 +555,7 @@ if QtWidgets is not None:
                 float(np.clip(x, left, right)),
                 float(np.clip(y, lower_y, upper_y)),
             )
+            self._channel_curves[self._active_channel] = list(self._points)
             self.update()
             self.pointsChanged.emit(self.points())
 
@@ -390,6 +563,7 @@ if QtWidgets is not None:
             had_drag = self._drag_index is not None
             self._drag_index = None
             self._points = normalize_tone_curve_points(self._points)
+            self._channel_curves[self._active_channel] = list(self._points)
             self.update()
             if had_drag:
                 self.interactionFinished.emit()

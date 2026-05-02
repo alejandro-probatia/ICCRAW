@@ -293,6 +293,8 @@ class PreviewRecipeMixin:
         self._tone_curve_active_channel = target
         self._tone_curve_channel_points[target] = normalize_tone_curve_points(self.tone_curve_editor.points())
         self._tone_curve_channel_presets[target] = self._tone_curve_preset_key()
+        if channel is None:
+            self._sync_tone_curve_editor_channel_overlay()
 
     def _load_tone_curve_channel_into_editor(self, channel: str) -> None:
         self._ensure_tone_curve_channel_state()
@@ -303,10 +305,23 @@ class PreviewRecipeMixin:
         self.combo_tone_curve_preset.blockSignals(True)
         self._set_combo_data(self.combo_tone_curve_preset, preset)
         self.combo_tone_curve_preset.blockSignals(False)
+        if hasattr(self.tone_curve_editor, "set_active_channel"):
+            self.tone_curve_editor.set_active_channel(key)
         self.tone_curve_editor.set_points(points, emit=False)
+        self._sync_tone_curve_editor_channel_overlay()
         self._tone_curve_histogram_key = None
         if self._original_linear is not None and hasattr(self, "_update_tone_curve_histogram_for_current_controls"):
             self._update_tone_curve_histogram_for_current_controls(force=True)
+
+    def _sync_tone_curve_editor_channel_overlay(self) -> None:
+        editor = getattr(self, "tone_curve_editor", None)
+        if editor is None:
+            return
+        self._ensure_tone_curve_channel_state()
+        if hasattr(editor, "set_active_channel"):
+            editor.set_active_channel(self._tone_curve_channel_key())
+        if hasattr(editor, "set_channel_curves"):
+            editor.set_channel_curves(self._tone_curve_channel_points)
 
     def _tone_curve_channel_points_state(self) -> dict[str, list[list[float]]]:
         self._save_visible_tone_curve_channel_state()
@@ -563,6 +578,7 @@ class PreviewRecipeMixin:
         self._set_combo_data(self.combo_tone_curve_preset, "linear")
         self._set_tone_curve_range_controls(0.0, 1.0)
         self.tone_curve_editor.set_points(self._tone_curve_preset_points("linear"), emit=False)
+        self._sync_tone_curve_editor_channel_overlay()
         self._set_tone_curve_controls_enabled(False)
         self._on_render_control_change()
 

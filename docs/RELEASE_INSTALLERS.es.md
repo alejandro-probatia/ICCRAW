@@ -78,6 +78,30 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.6
+
+La release 0.3.6 consolida la trazabilidad por imagen de ICC, color/contraste,
+nitidez y exportacion RAW:
+
+- las mochilas RAW y miniaturas muestran las categorias de ajuste activas por
+  imagen,
+- Color/Calibracion separa ICC generico, ICC de camara existente e ICC generado
+  con carta,
+- la preview aplica conversion de ICC de imagen a ICC de monitor para
+  visualizacion,
+- RAW/exportacion se centra en lectura/demosaico RAW y puntos de negro,
+- los histogramas de curva tonal se actualizan en tiempo real, muestran columnas
+  RGB y aislan el canal cromatico activo al editarlo,
+- Auto nitidez escribe nitidez/radio en la mochila RAW.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.6-Setup.exe`
+- `ProbRAW-0.3.6-Setup.exe.sha256`
+- `probraw-0.3.6.tar.gz`
+- `probraw-0.3.6-py3-none-any.whl`
+- `probraw_0.3.6_python_artifacts.sha256`
+
 ## Release 0.3.5
 
 La release 0.3.5 es una release de rendimiento y fiabilidad para flujos RAW de

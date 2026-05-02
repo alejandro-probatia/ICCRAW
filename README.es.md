@@ -10,7 +10,7 @@ Revelado RAW/TIFF reproducible y auditable para fotografía científica, forense
 patrimonial, con perfilado ICC por sesión, ajustes paramétricos por archivo y
 trazabilidad abierta AGPL.
 
-![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.5-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.6-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![Interfaz principal de ProbRAW](docs/assets/screenshots/probraw-portada.png)
 
@@ -31,20 +31,21 @@ El flujo actual está centrado de forma deliberada en ICC:
 
 ## Estado Actual
 
-ProbRAW 0.3.5 es adecuado para pruebas controladas, revisión metodológica y
+ProbRAW 0.3.6 es adecuado para pruebas controladas, revisión metodológica y
 validación de candidata a release. Todavía no es un sistema certificado para
 producción científica o forense.
 
-La versión actual mejora el trabajo con RAW profesionales de gran tamaño: el
-análisis MTF frío usa workers de ROI a resolución completa con caché, las
-operaciones largas de preview/MTF publican progreso global estimado, y la cola
-aplica de forma fiable los ajustes de detalle, color y contraste de la mochila
-de cada RAW.
+La versión actual consolida el flujo profesional de ajustes RAW: perfiles ICC,
+color/contraste, nitidez y exportacion RAW por imagen quedan trazados en
+mochilas y miniaturas; la preview usa conversion ICC de monitor para
+visualizacion; las curvas tonales muestran histogramas por canal y
+superposicion RGB; y MTF/auto nitidez persisten como ajustes reproducibles de
+detalle.
 
 La última validación de empaquetado pasó con:
 
 ```text
-276 passed, 1 warning
+305 passed, 1 warning
 ```
 
 ## Documentación

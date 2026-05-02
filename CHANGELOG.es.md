@@ -18,6 +18,10 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+- Sin cambios pendientes.
+
+## [0.3.6] - 2026-05-02
+
 ### Added
 
 - Perfiles de ajuste separados y guardados en el proyecto para color/contraste,
@@ -61,6 +65,12 @@ Para mantener trazabilidad completa, cada cambio debe:
 - El control RAW "Calidad de borde" se renombra a "Borde" y pasa a comportarse
   como el control de borde de RawTherapee: recorta pixeles perifericos tras el
   demosaico en lugar de mapearse a iteraciones DCB.
+- El editor de curva tonal muestra ahora, al editar rojo, verde o azul, solo el
+  histograma del canal activo con el color correspondiente y mantiene visibles
+  las curvas RGB ajustadas junto a una referencia de luminancia global.
+- La documentacion y el manual de usuario reflejan el flujo actual de ICC,
+  perfiles independientes, iconos de miniatura, curvas RGB y RAW limitado a
+  lectura/desentramado.
 
 ### Fixed
 
@@ -85,6 +95,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 - El menu contextual de miniaturas permite copiar todos los ajustes aplicados
   o solo ICC, color/contraste, nitidez o RAW/exportacion, y pegarlos sobre una
   o varias imagenes seleccionadas sin sobrescribir el resto de categorias.
+- Auto nitidez y los controles de detalle escriben ahora nitidez, radio, ruido
+  y CA en la mochila RAW seleccionada en tiempo real, actualizando el indicador
+  de Nitidez y evitando que el TIFF revele ajustes distintos a los vistos.
 
 ### Known Issues
 

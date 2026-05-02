@@ -1730,6 +1730,10 @@ class MTFAnalysisMixin:
             self.slider_sharpen.setValue(amount_slider)
         if hasattr(self, "slider_radius"):
             self.slider_radius.setValue(radius_slider)
+        if hasattr(self, "_set_active_named_adjustment_profile_id"):
+            self._set_active_named_adjustment_profile_id("detail", "")
+        if hasattr(self, "_refresh_named_adjustment_profile_combo"):
+            self._refresh_named_adjustment_profile_combo("detail")
         result = best["result"]
         self._mtf_last_analysis_image_dimensions = prepared["analysis_dimensions"]
         self._mtf_last_display_dimensions = prepared["display_dimensions"]
@@ -1737,6 +1741,8 @@ class MTFAnalysisMixin:
         self._mtf_last_result = result
         self._update_mtf_result_widgets()
         self._persist_mtf_analysis_for_selected()
+        if hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
+            self._schedule_detail_adjustment_sidecar_persist(immediate=True)
         if hasattr(self, "_schedule_preview_refresh") and getattr(self, "_original_linear", None) is not None:
             self._schedule_preview_refresh()
         amount = float(amount_slider) / 100.0

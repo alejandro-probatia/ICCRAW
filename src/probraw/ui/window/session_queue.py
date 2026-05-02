@@ -32,6 +32,8 @@ class SessionQueueMixin:
     def _queue_add_selected(self) -> None:
         if hasattr(self, "_flush_render_adjustment_sidecar_persist"):
             self._flush_render_adjustment_sidecar_persist()
+        if hasattr(self, "_flush_detail_adjustment_sidecar_persist"):
+            self._flush_detail_adjustment_sidecar_persist()
         files = self._collect_selected_file_paths()
         if not files:
             QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("No hay seleccion para anadir a la cola."))
@@ -107,6 +109,8 @@ class SessionQueueMixin:
     def _queue_process(self) -> None:
         if hasattr(self, "_flush_render_adjustment_sidecar_persist"):
             self._flush_render_adjustment_sidecar_persist()
+        if hasattr(self, "_flush_detail_adjustment_sidecar_persist"):
+            self._flush_detail_adjustment_sidecar_persist()
         if not self._develop_queue:
             QtWidgets.QMessageBox.information(self, self.tr("Info"), "No hay elementos en cola.")
             return
