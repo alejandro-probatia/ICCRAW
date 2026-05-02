@@ -79,6 +79,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Los ajustes de Color/contraste se guardan automaticamente en la mochila RAW
   seleccionada al mover controles, actualizan el indicador cromatico de la
   miniatura y la cola de revelado prioriza esa mochila frente al perfil de cola.
+- El histograma integrado del editor de curva tonal se actualiza ahora en
+  tiempo real con la curva aplicada y muestra columnas RGB ademas de la
+  luminancia.
 
 ### Known Issues
 

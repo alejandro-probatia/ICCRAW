@@ -77,6 +77,8 @@ To maintain full traceability, each change must:
 - Color/contrast adjustments are now written automatically to the selected RAW
   sidecar while controls are moved, refresh the chromatic thumbnail indicator
   and make the render queue prefer that sidecar over a queued profile snapshot.
+- The tone-curve editor histogram now updates in real time with the curve
+  applied and displays RGB columns in addition to luminance.
 
 ### Known Issues
 

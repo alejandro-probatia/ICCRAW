@@ -172,6 +172,10 @@ if QtWidgets is not None:
             self._points = normalize_tone_curve_points([(0.0, 0.0), (1.0, 1.0)])
             self._drag_index: int | None = None
             self._histogram: np.ndarray | None = None
+            self._histogram_luminance: np.ndarray | None = None
+            self._histogram_r: np.ndarray | None = None
+            self._histogram_g: np.ndarray | None = None
+            self._histogram_b: np.ndarray | None = None
             self._black_point = 0.0
             self._white_point = 1.0
             self.setMinimumHeight(320)
@@ -206,12 +210,12 @@ if QtWidgets is not None:
 
         def set_histogram_from_image(self, image_linear_rgb: np.ndarray | None, *, channel: str = "luminance") -> None:
             if image_linear_rgb is None:
-                self._histogram = None
+                self._clear_histograms()
                 self.update()
                 return
             rgb = np.asarray(image_linear_rgb)
             if rgb.ndim != 3 or rgb.shape[2] < 3:
-                self._histogram = None
+                self._clear_histograms()
                 self.update()
                 return
             count = int(rgb.shape[0]) * int(rgb.shape[1])
@@ -220,17 +224,40 @@ if QtWidgets is not None:
                 rgb = rgb[::max(1, stride), ::max(1, stride), :3]
             rgb = np.clip(rgb.astype(np.float32, copy=False), 0.0, 1.0)
             key = str(channel or "luminance").strip().lower()
-            channel_index = {"red": 0, "green": 1, "blue": 2}.get(key)
-            if channel_index is None:
-                weights = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
-                values = np.sum(rgb[..., :3] * weights.reshape((1, 1, 3)), axis=2)
-            else:
-                values = rgb[..., channel_index]
-            hist, _ = np.histogram(values, bins=64, range=(0.0, 1.0))
-            hist = hist.astype(np.float32)
-            maxv = float(np.max(hist)) if hist.size else 0.0
-            self._histogram = hist / maxv if maxv > 0.0 else None
+            weights = np.asarray([0.2126, 0.7152, 0.0722], dtype=np.float32)
+            luminance = np.sum(rgb[..., :3] * weights.reshape((1, 1, 3)), axis=2)
+            hist_l, _ = np.histogram(luminance, bins=64, range=(0.0, 1.0))
+            hist_r, _ = np.histogram(rgb[..., 0], bins=64, range=(0.0, 1.0))
+            hist_g, _ = np.histogram(rgb[..., 1], bins=64, range=(0.0, 1.0))
+            hist_b, _ = np.histogram(rgb[..., 2], bins=64, range=(0.0, 1.0))
+            histograms = {
+                "luminance": hist_l.astype(np.float32),
+                "red": hist_r.astype(np.float32),
+                "green": hist_g.astype(np.float32),
+                "blue": hist_b.astype(np.float32),
+            }
+            maxv = float(max((np.max(hist) for hist in histograms.values() if hist.size), default=0.0))
+            if maxv <= 0.0:
+                self._clear_histograms()
+                self.update()
+                return
+            self._histogram_luminance = histograms["luminance"] / maxv
+            self._histogram_r = histograms["red"] / maxv
+            self._histogram_g = histograms["green"] / maxv
+            self._histogram_b = histograms["blue"] / maxv
+            self._histogram = {
+                "red": self._histogram_r,
+                "green": self._histogram_g,
+                "blue": self._histogram_b,
+            }.get(key, self._histogram_luminance)
             self.update()
+
+        def _clear_histograms(self) -> None:
+            self._histogram = None
+            self._histogram_luminance = None
+            self._histogram_r = None
+            self._histogram_g = None
+            self._histogram_b = None
 
         def paintEvent(self, _event) -> None:  # noqa: N802
             painter = QtGui.QPainter(self)
@@ -247,13 +274,7 @@ if QtWidgets is not None:
                 painter.drawLine(QtCore.QPointF(x, rect.top()), QtCore.QPointF(x, rect.bottom()))
                 painter.drawLine(QtCore.QPointF(rect.left(), y), QtCore.QPointF(rect.right(), y))
 
-            if self._histogram is not None:
-                painter.setPen(QtCore.Qt.NoPen)
-                painter.setBrush(QtGui.QColor(110, 110, 110, 110))
-                bin_w = rect.width() / max(1, len(self._histogram))
-                for idx, value in enumerate(self._histogram):
-                    h = rect.height() * float(value)
-                    painter.drawRect(QtCore.QRectF(rect.left() + idx * bin_w, rect.bottom() - h, bin_w + 1, h))
+            self._draw_histogram_columns(painter, rect)
 
             diagonal_pen = QtGui.QPen(QtGui.QColor("#8a8a8a"), 1, QtCore.Qt.DashLine)
             painter.setPen(diagonal_pen)
@@ -289,6 +310,45 @@ if QtWidgets is not None:
                 radius = 5 if idx == self._drag_index else 4
                 pos = self._point_to_widget(point)
                 painter.drawEllipse(pos, radius, radius)
+
+        def _draw_histogram_columns(self, painter: QtGui.QPainter, rect: QtCore.QRectF) -> None:
+            hist_l = self._histogram_luminance
+            hist_r = self._histogram_r
+            hist_g = self._histogram_g
+            hist_b = self._histogram_b
+            if not any(hist is not None and hist.size for hist in (hist_l, hist_r, hist_g, hist_b)):
+                return
+            bins = max(
+                int(hist.size)
+                for hist in (hist_l, hist_r, hist_g, hist_b)
+                if hist is not None and hist.size
+            )
+            bin_w = rect.width() / max(1, bins)
+            painter.setPen(QtCore.Qt.NoPen)
+
+            if hist_l is not None:
+                painter.setBrush(QtGui.QColor(120, 120, 120, 70))
+                for idx, value in enumerate(hist_l):
+                    h = rect.height() * float(value)
+                    painter.drawRect(QtCore.QRectF(rect.left() + idx * bin_w, rect.bottom() - h, bin_w + 1.0, h))
+
+            sub_w = bin_w / 3.0 if bin_w >= 3.0 else bin_w
+            channels = (
+                (hist_r, QtGui.QColor(248, 113, 113, 120), 0),
+                (hist_g, QtGui.QColor(134, 239, 172, 115), 1),
+                (hist_b, QtGui.QColor(96, 165, 250, 125), 2),
+            )
+            for hist, color, sub_idx in channels:
+                if hist is None:
+                    continue
+                painter.setBrush(color)
+                for idx, value in enumerate(hist):
+                    h = rect.height() * float(value)
+                    if bin_w >= 3.0:
+                        x = rect.left() + idx * bin_w + sub_idx * sub_w
+                    else:
+                        x = rect.left() + idx * bin_w
+                    painter.drawRect(QtCore.QRectF(x, rect.bottom() - h, sub_w + 0.8, h))
 
         def mousePressEvent(self, event) -> None:  # noqa: N802
             pos = event.position()

@@ -1202,6 +1202,44 @@ def test_tone_curve_histogram_follows_brightness_adjustment(qapp):
         window.close()
 
 
+def test_tone_curve_histogram_updates_after_curve_points_change(qapp):
+    window = ICCRawMainWindow()
+    try:
+        values = gui_module.np.linspace(0.02, 0.82, 90 * 120, dtype=gui_module.np.float32).reshape((90, 120, 1))
+        image = gui_module.np.concatenate(
+            (
+                values,
+                gui_module.np.sqrt(values),
+                values**1.8,
+            ),
+            axis=2,
+        )
+        window._original_linear = image
+        window._last_loaded_preview_key = "curve-histogram-test"
+        window.check_tone_curve_enabled.blockSignals(True)
+        window.check_tone_curve_enabled.setChecked(True)
+        window.check_tone_curve_enabled.blockSignals(False)
+        window._set_tone_curve_controls_enabled(True)
+        window.tone_curve_editor.set_points([(0.0, 0.0), (1.0, 1.0)], emit=False)
+        window._save_visible_tone_curve_channel_state()
+        window._update_tone_curve_histogram_for_current_controls(force=True)
+        before = window.tone_curve_editor._histogram.copy()
+
+        window.tone_curve_editor.set_points([(0.0, 0.0), (0.32, 0.78), (1.0, 1.0)], emit=False)
+        window._on_tone_curve_points_changed(window.tone_curve_editor.points())
+        after = window.tone_curve_editor._histogram.copy()
+
+        assert before.shape == after.shape
+        assert not gui_module.np.allclose(before, after)
+        assert window.tone_curve_editor._histogram_luminance is not None
+        assert window.tone_curve_editor._histogram_r is not None
+        assert window.tone_curve_editor._histogram_g is not None
+        assert window.tone_curve_editor._histogram_b is not None
+        assert "curve=0.0000:0.0000,0.3200:0.7800,1.0000:1.0000" in window._tone_curve_histogram_key
+    finally:
+        window.close()
+
+
 def test_colprof_args_default_to_restricted_input_gamut(qapp):
     window = ICCRawMainWindow()
     try:

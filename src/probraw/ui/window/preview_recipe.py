@@ -504,6 +504,8 @@ class PreviewRecipeMixin:
         if key != "custom":
             self.tone_curve_editor.set_points(self._tone_curve_preset_points(key), emit=False)
         self._save_visible_tone_curve_channel_state()
+        if self._original_linear is not None and hasattr(self, "_update_tone_curve_histogram_for_current_controls"):
+            self._update_tone_curve_histogram_for_current_controls(force=True)
         self._on_render_control_change()
 
     def _on_tone_curve_range_changed(self, *_args) -> None:
@@ -517,6 +519,8 @@ class PreviewRecipeMixin:
             self._set_tone_curve_range_controls(black, white)
         else:
             self.tone_curve_editor.set_input_range(black, white)
+        if self._original_linear is not None and hasattr(self, "_update_tone_curve_histogram_for_current_controls"):
+            self._update_tone_curve_histogram_for_current_controls(force=True)
         self._on_render_control_change()
 
     def _on_tone_curve_points_changed(self, _points: object) -> None:
@@ -525,6 +529,8 @@ class PreviewRecipeMixin:
             self._set_combo_data(self.combo_tone_curve_preset, "custom")
             self.combo_tone_curve_preset.blockSignals(False)
         self._save_visible_tone_curve_channel_state()
+        if self._original_linear is not None and hasattr(self, "_update_tone_curve_histogram_for_current_controls"):
+            self._update_tone_curve_histogram_for_current_controls(force=True)
         self._on_render_control_change()
 
     def _on_render_control_change(self) -> None:

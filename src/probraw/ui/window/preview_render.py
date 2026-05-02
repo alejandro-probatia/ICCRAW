@@ -183,10 +183,27 @@ class PreviewRenderMixin:
         return int(PREVIEW_PROFILE_APPLY_MAX_SIDE)
 
     def _tone_curve_histogram_render_kwargs(self, render_kwargs: dict[str, Any]) -> dict[str, Any]:
-        kwargs = dict(render_kwargs)
-        kwargs["tone_curve_points"] = None
-        kwargs["tone_curve_channel_points"] = None
-        return kwargs
+        return dict(render_kwargs)
+
+    def _tone_curve_points_signature(self, points: Any) -> str:
+        if not isinstance(points, (list, tuple)):
+            return ""
+        normalized = normalize_tone_curve_points(
+            [
+                (point[0], point[1])
+                for point in points
+                if isinstance(point, (list, tuple)) and len(point) >= 2
+            ]
+        )
+        return ",".join(f"{float(x):.4f}:{float(y):.4f}" for x, y in normalized)
+
+    def _tone_curve_channel_points_signature(self, channel_points: Any) -> str:
+        if not isinstance(channel_points, dict):
+            return ""
+        parts: list[str] = []
+        for channel in ("luminance", "red", "green", "blue"):
+            parts.append(f"{channel}={self._tone_curve_points_signature(channel_points.get(channel))}")
+        return ";".join(parts)
 
     def _tone_curve_histogram_signature(self, source_key: str, render_kwargs: dict[str, Any]) -> str:
         return "|".join(
@@ -200,6 +217,10 @@ class PreviewRenderMixin:
                 f"white={float(render_kwargs.get('white_point', 1.0)):.4f}",
                 f"contrast={float(render_kwargs.get('contrast', 0.0)):.4f}",
                 f"midtone={float(render_kwargs.get('midtone', 1.0)):.4f}",
+                f"curve_black={float(render_kwargs.get('tone_curve_black_point', 0.0)):.4f}",
+                f"curve_white={float(render_kwargs.get('tone_curve_white_point', 1.0)):.4f}",
+                f"curve={self._tone_curve_points_signature(render_kwargs.get('tone_curve_points'))}",
+                f"channel_curves={self._tone_curve_channel_points_signature(render_kwargs.get('tone_curve_channel_points'))}",
             ]
         )
 
