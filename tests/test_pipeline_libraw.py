@@ -55,6 +55,36 @@ def test_build_libraw_kwargs_with_camera_wb_and_white_level():
     assert kwargs["user_sat"] == 15000
 
 
+def test_build_libraw_kwargs_includes_supported_raw_demosaic_options(monkeypatch):
+    monkeypatch.setattr(pipeline, "rawpy_postprocess_parameter_supported", lambda name: name in {"dcb_iterations", "median_filter_passes", "four_color_rgb"})
+    recipe = Recipe(
+        demosaic_algorithm="dcb",
+        demosaic_edge_quality=3,
+        false_color_suppression_steps=2,
+        four_color_rgb=True,
+    )
+    kwargs = _build_libraw_postprocess_kwargs(recipe)
+
+    assert kwargs["four_color_rgb"] is True
+    assert kwargs["dcb_iterations"] == 3
+    assert kwargs["median_filter_passes"] == 2
+
+
+def test_build_libraw_kwargs_omits_unavailable_raw_demosaic_options(monkeypatch):
+    monkeypatch.setattr(pipeline, "rawpy_postprocess_parameter_supported", lambda _name: False)
+    recipe = Recipe(
+        demosaic_algorithm="dcb",
+        demosaic_edge_quality=3,
+        false_color_suppression_steps=2,
+        four_color_rgb=True,
+    )
+    kwargs = _build_libraw_postprocess_kwargs(recipe)
+
+    assert "four_color_rgb" not in kwargs
+    assert "dcb_iterations" not in kwargs
+    assert "median_filter_passes" not in kwargs
+
+
 def test_build_libraw_kwargs_uses_real_standard_output_spaces():
     assert (
         _build_libraw_postprocess_kwargs(

@@ -23,6 +23,26 @@ def test_recipe_default_raw_developer_is_libraw(tmp_path: Path):
     recipe = load_recipe(recipe_file)
     assert recipe.raw_developer == "libraw"
     assert recipe.demosaic_algorithm == "dcb"
+    assert recipe.demosaic_edge_quality == 0
+    assert recipe.false_color_suppression_steps == 0
+    assert recipe.four_color_rgb is False
+
+
+def test_recipe_loads_raw_demosaic_options(tmp_path: Path):
+    recipe_file = tmp_path / "recipe.yml"
+    recipe_file.write_text(
+        """
+demosaic_edge_quality: "3"
+false_color_suppression_steps: "2"
+four_color_rgb: "true"
+""",
+        encoding="utf-8",
+    )
+    recipe = load_recipe(recipe_file)
+
+    assert recipe.demosaic_edge_quality == 3
+    assert recipe.false_color_suppression_steps == 2
+    assert recipe.four_color_rgb is True
 
 
 def test_recipe_nested_sampling_strategy_preserves_parameters(tmp_path: Path):

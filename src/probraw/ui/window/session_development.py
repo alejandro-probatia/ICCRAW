@@ -1013,6 +1013,33 @@ class SessionDevelopmentMixin:
             setattr(self, collection_attr, collection)
         return collection
 
+    def _raw_export_recipe_fields(self) -> tuple[str, ...]:
+        return (
+            "raw_developer",
+            "demosaic_algorithm",
+            "demosaic_edge_quality",
+            "false_color_suppression_steps",
+            "four_color_rgb",
+            "black_level_mode",
+        )
+
+    def _raw_export_recipe_subset(self, recipe: Recipe) -> Recipe:
+        raw_recipe = Recipe()
+        for field_name in self._raw_export_recipe_fields():
+            if hasattr(recipe, field_name):
+                setattr(raw_recipe, field_name, getattr(recipe, field_name))
+        return raw_recipe
+
+    def _raw_export_recipe_from_current_controls(self) -> Recipe:
+        return self._raw_export_recipe_subset(self._build_effective_recipe())
+
+    def _merge_raw_export_recipe(self, base: Recipe, raw_settings: Recipe) -> Recipe:
+        merged = Recipe(**asdict(base))
+        for field_name in self._raw_export_recipe_fields():
+            if hasattr(raw_settings, field_name):
+                setattr(merged, field_name, getattr(raw_settings, field_name))
+        return merged
+
     def _active_named_adjustment_profile_id(self, category: str) -> str:
         _collection_attr, active_attr, _combo_attr, _name_attr, _status_attr = self._named_adjustment_profile_attrs(category)
         return str(getattr(self, active_attr, "") or "")
@@ -1061,7 +1088,7 @@ class SessionDevelopmentMixin:
             return state if isinstance(state, dict) else self._default_detail_adjustment_state()
         if category == "raw_export":
             recipe = self._recipe_from_payload(manifest.get("recipe"))
-            return recipe or self._build_effective_recipe()
+            return self._raw_export_recipe_subset(recipe) if recipe is not None else self._raw_export_recipe_from_current_controls()
         raise RuntimeError(f"Tipo de perfil de ajuste no soportado: {category}")
 
     def _current_named_adjustment_profiles_payload(self) -> dict[str, Any]:
@@ -1158,7 +1185,7 @@ class SessionDevelopmentMixin:
         elif category == "detail":
             manifest["detail_adjustments"] = self._detail_adjustment_state()
         elif category == "raw_export":
-            recipe = self._build_effective_recipe()
+            recipe = self._raw_export_recipe_from_current_controls()
             recipe_path = profile_dir / "recipe.yml"
             save_recipe(recipe, recipe_path)
             manifest["recipe_path"] = self._session_relative_or_absolute(recipe_path)
@@ -1197,12 +1224,7 @@ class SessionDevelopmentMixin:
         elif category == "detail":
             self._apply_detail_adjustment_state(state)
         elif category == "raw_export":
-            input_profile = self._active_session_icc_for_settings()
-            recipe = self._visible_export_recipe_for_color_management(state, input_profile_path=input_profile)
-            self._apply_recipe_to_controls(recipe)
-            recipe_path = self._session_stored_path(profile.get("recipe_path"))
-            if recipe_path is not None:
-                self.path_recipe.setText(str(recipe_path))
+            self._apply_raw_export_recipe_to_controls(state)
         self._set_active_named_adjustment_profile_id(category, profile_id)
         self._refresh_named_adjustment_profile_combo(category)
         self._invalidate_preview_cache()
@@ -1270,8 +1292,9 @@ class SessionDevelopmentMixin:
                 elif category == "detail":
                     bundle["detail_adjustments"] = state
                 elif category == "raw_export":
-                    bundle["recipe"] = state
-                    _input_profile, rendered_profile, mode = self._configured_color_profile_for_recipe(state)
+                    merged_recipe = self._merge_raw_export_recipe(bundle["recipe"], state)
+                    bundle["recipe"] = merged_recipe
+                    _input_profile, rendered_profile, mode = self._configured_color_profile_for_recipe(merged_recipe)
                     bundle["profile_path"] = rendered_profile
                     bundle["color_management_mode"] = mode
                 bundle["adjustment_profiles"][category] = self._profile_summary_payload(category, profile)
@@ -1377,7 +1400,8 @@ class SessionDevelopmentMixin:
         elif category == "detail":
             state = sidecar.get("detail_adjustments")
         elif category == "raw_export":
-            state = sidecar.get("recipe")
+            recipe = self._recipe_from_payload(sidecar.get("recipe"))
+            state = asdict(self._raw_export_recipe_subset(recipe)) if recipe is not None else None
         else:
             state = None
         if not isinstance(state, dict):
@@ -1408,8 +1432,9 @@ class SessionDevelopmentMixin:
                 recipe = self._recipe_from_payload(state)
                 if recipe is None:
                     continue
-                _input_profile, rendered_profile, mode = self._configured_color_profile_for_recipe(recipe)
-                bundle["recipe"] = recipe
+                merged_recipe = self._merge_raw_export_recipe(bundle["recipe"], recipe)
+                _input_profile, rendered_profile, mode = self._configured_color_profile_for_recipe(merged_recipe)
+                bundle["recipe"] = merged_recipe
                 bundle["profile_path"] = rendered_profile
                 bundle["color_management_mode"] = mode
             else:

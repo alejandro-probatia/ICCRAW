@@ -74,6 +74,7 @@ from ...raw.pipeline import (
     is_standard_output_space,
     is_libraw_demosaic_supported,
     rawpy_feature_flags,
+    rawpy_postprocess_parameter_supported,
     unavailable_demosaic_reason,
 )
 from ...raw.metadata import estimate_pixel_pitch_um

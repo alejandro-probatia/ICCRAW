@@ -33,6 +33,9 @@ Para mantener trazabilidad completa, cada cambio debe:
   seguida del estado ICC de la imagen seleccionada y la sesion.
 - La opcion de ICC existente indica ahora cuando el proyecto no tiene perfiles
   ICC guardados y mantiene la carga de ICC de camara del sistema como salida.
+- El panel RAW incorpora opciones de destramado dependientes del algoritmo
+  (4 colores, calidad de borde y supresion de falso color) y registra esas
+  capacidades en las recetas cuando el backend LibRaw/rawpy las soporte.
 
 ### Changed
 
@@ -43,6 +46,12 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Al activar un ICC de sesion se fuerza el revelado preview en RGB lineal de
   camara y se recarga la fuente RAW, evitando aplicar un ICC de camara sobre
   pixeles ya revelados en ProPhoto/sRGB.
+- RAW / exportacion deja de presentar decisiones de perfil de salida, curva,
+  exposicion, ruido o contraste: el panel queda limitado a lectura/demosaico
+  RAW y puntos de negro, mientras la gestion ICC permanece en Color/Calibracion.
+- Los perfiles de exportacion RAW guardan y aplican solo parametros RAW
+  (motor, algoritmo, opciones de destramado y nivel negro), sin sobrescribir
+  ajustes cromaticos ni decisiones ICC de la imagen.
 
 ### Fixed
 

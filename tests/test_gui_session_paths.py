@@ -2531,12 +2531,18 @@ def test_separate_adjustment_profiles_are_saved_and_applied_to_raw_sidecars(tmp_
         assert window.slider_sharpen.value() == 86
 
         window.raw_export_profile_name_edit.setText("RAW caso")
-        window.spin_exposure.setValue(1.15)
+        window._set_combo_data(window.combo_black_mode, "fixed")
+        window.spin_black_value.setValue(64)
+        window.check_four_color_rgb.setChecked(True)
         window._save_named_adjustment_profile("raw_export")
         raw_profile_id = window._active_raw_export_profile_id
-        window.spin_exposure.setValue(0.0)
+        window._set_combo_data(window.combo_black_mode, "metadata")
+        window.spin_black_value.setValue(0)
+        window.check_four_color_rgb.setChecked(False)
         window._apply_named_adjustment_profile_to_controls("raw_export", raw_profile_id)
-        assert window.spin_exposure.value() == pytest.approx(1.15)
+        assert window.combo_black_mode.currentData() == "fixed"
+        assert window.spin_black_value.value() == 64
+        assert window.check_four_color_rgb.isChecked() is True
 
         assert window._apply_named_adjustment_profile_to_raw_files("color_contrast", color_profile_id, [raw]) == 1
         assert window._apply_named_adjustment_profile_to_raw_files("detail", detail_profile_id, [raw]) == 1
@@ -2547,7 +2553,9 @@ def test_separate_adjustment_profiles_are_saved_and_applied_to_raw_sidecars(tmp_
         assert sidecar["render_adjustments"]["contrast"] == pytest.approx(0.13)
         assert sidecar["detail_adjustments"]["sharpen"] == 86
         assert sidecar["detail_adjustments"]["radius"] == 18
-        assert sidecar["recipe"]["exposure_compensation"] == pytest.approx(1.15)
+        assert sidecar["recipe"]["black_level_mode"] == "fixed:64"
+        assert sidecar["recipe"]["four_color_rgb"] is True
+        assert sidecar["recipe"]["exposure_compensation"] == pytest.approx(0.0)
         assert sidecar["adjustment_profiles"]["color_contrast"]["id"] == color_profile_id
         assert sidecar["adjustment_profiles"]["detail"]["id"] == detail_profile_id
         assert sidecar["adjustment_profiles"]["raw_export"]["id"] == raw_profile_id
@@ -2610,7 +2618,7 @@ def test_raw_adjustment_groups_follow_editor_flow(qapp):
         ]
         assert raw_export_labels == [
             "RAW Global",
-            "Perfiles completos",
+            "Perfiles RAW",
             "Exportar derivados",
         ]
         assert "Gestión de color y calibración" not in panel_labels

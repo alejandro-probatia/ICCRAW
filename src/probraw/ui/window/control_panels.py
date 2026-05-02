@@ -315,139 +315,156 @@ class ControlPanelsMixin:
 
     def _build_tab_raw_config(self, title: str | None = None) -> QtWidgets.QWidget:
         tab = QtWidgets.QGroupBox(title) if title else QtWidgets.QWidget()
-        grid = QtWidgets.QGridLayout(tab)
+        outer = QtWidgets.QVBoxLayout(tab)
+        outer.setContentsMargins(8, 8, 8, 8)
+        outer.setSpacing(8)
 
+        recipe_grid = QtWidgets.QGridLayout()
         self.path_recipe = QtWidgets.QLineEdit("testdata/recipes/scientific_recipe.yml")
-        self._add_path_row(grid, 0, self.tr("Receta YAML/JSON"), self.path_recipe, file_mode=True, save_mode=False, dir_mode=False)
-
+        self._add_path_row(
+            recipe_grid,
+            0,
+            self.tr("Receta YAML/JSON"),
+            self.path_recipe,
+            file_mode=True,
+            save_mode=False,
+            dir_mode=False,
+        )
         row_recipe = QtWidgets.QHBoxLayout()
         row_recipe.addWidget(self._button(self.tr("Cargar receta"), self._menu_load_recipe))
         row_recipe.addWidget(self._button(self.tr("Guardar receta"), self._menu_save_recipe))
         row_recipe.addWidget(self._button(self.tr("Receta por defecto"), self._menu_reset_recipe))
-        grid.addLayout(row_recipe, 1, 0, 1, 3)
+        recipe_grid.addLayout(row_recipe, 1, 0, 1, 3)
+        outer.addLayout(recipe_grid)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Motor RAW")), 2, 0)
+        demosaic_box = QtWidgets.QGroupBox(self.tr("Desentramado"))
+        grid = QtWidgets.QGridLayout(demosaic_box)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Motor RAW")), 0, 0)
         self.combo_raw_developer = QtWidgets.QComboBox()
         self.combo_raw_developer.addItem(self.tr("LibRaw / rawpy"), "libraw")
         self.combo_raw_developer.setEnabled(False)
-        grid.addWidget(self.combo_raw_developer, 2, 1, 1, 2)
+        grid.addWidget(self.combo_raw_developer, 0, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Demosaic/interpolacion")), 3, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Método")), 1, 0)
         self.combo_demosaic = QtWidgets.QComboBox()
         for label, opt in DEMOSAIC_OPTIONS:
             self.combo_demosaic.addItem(self.tr(label), opt)
         self._sync_demosaic_capabilities()
-        grid.addWidget(self.combo_demosaic, 3, 1, 1, 2)
+        self.combo_demosaic.currentIndexChanged.connect(lambda _index: self._on_raw_demosaic_changed())
+        grid.addWidget(self.combo_demosaic, 1, 1, 1, 2)
 
-        note = QtWidgets.QLabel(
-            self.tr(
-                "LibRaw/rawpy es el único motor RAW. DCB es el preset instalable de alta calidad. "
-                "AMaZE queda disponible solo cuando rawpy informa DEMOSAIC_PACK_GPL3=True."
-            )
-        )
-        note.setWordWrap(True)
-        note.setStyleSheet("font-size: 12px; color: #6b7280;")
-        grid.addWidget(note, 4, 0, 1, 3)
+        self.check_four_color_rgb = QtWidgets.QCheckBox(self.tr("Interpolar verdes por separado (4 colores)"))
+        self.check_four_color_rgb.toggled.connect(lambda _checked: self._on_raw_decode_control_changed())
+        grid.addWidget(self.check_four_color_rgb, 2, 0, 1, 3)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Balance de blancos")), 5, 0)
-        self.combo_wb_mode = QtWidgets.QComboBox()
-        for label, val in WB_MODE_OPTIONS:
-            self.combo_wb_mode.addItem(self.tr(label), val)
-        grid.addWidget(self.combo_wb_mode, 5, 1, 1, 2)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Calidad de borde")), 3, 0)
+        self.spin_demosaic_edge_quality = QtWidgets.QSpinBox()
+        self.spin_demosaic_edge_quality.setRange(0, 5)
+        self.spin_demosaic_edge_quality.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        grid.addWidget(self.spin_demosaic_edge_quality, 3, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("WB multiplicadores")), 6, 0)
-        self.edit_wb_multipliers = QtWidgets.QLineEdit("1,1,1,1")
-        self.edit_wb_multipliers.setToolTip(self.tr("Formato: R,G,B,G (o R,G,B)"))
-        grid.addWidget(self.edit_wb_multipliers, 6, 1, 1, 2)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Pasos de supresión de falso color")), 4, 0)
+        self.spin_false_color_suppression = QtWidgets.QSpinBox()
+        self.spin_false_color_suppression.setRange(0, 10)
+        self.spin_false_color_suppression.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        grid.addWidget(self.spin_false_color_suppression, 4, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Black level mode")), 7, 0)
+        self.raw_algorithm_options_status_label = QtWidgets.QLabel("")
+        self.raw_algorithm_options_status_label.setWordWrap(True)
+        self.raw_algorithm_options_status_label.setStyleSheet("font-size: 12px; color: #6b7280;")
+        grid.addWidget(self.raw_algorithm_options_status_label, 5, 0, 1, 3)
+        outer.addWidget(demosaic_box)
+
+        black_box = QtWidgets.QGroupBox(self.tr("Puntos de negro RAW"))
+        black_grid = QtWidgets.QGridLayout(black_box)
+        black_grid.addWidget(QtWidgets.QLabel(self.tr("Modo")), 0, 0)
         self.combo_black_mode = QtWidgets.QComboBox()
         for label, val in BLACK_MODE_OPTIONS:
             self.combo_black_mode.addItem(self.tr(label), val)
-        grid.addWidget(self.combo_black_mode, 7, 1)
+        self.combo_black_mode.currentIndexChanged.connect(lambda _index: self._on_raw_decode_control_changed())
+        black_grid.addWidget(self.combo_black_mode, 0, 1)
         self.spin_black_value = QtWidgets.QSpinBox()
         self.spin_black_value.setRange(0, 65535)
-        self.spin_black_value.setValue(0)
-        grid.addWidget(self.spin_black_value, 7, 2)
+        self.spin_black_value.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        black_grid.addWidget(self.spin_black_value, 0, 2)
+        outer.addWidget(black_box)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Exposure compensation (EV)")), 8, 0)
-        self.spin_exposure = QtWidgets.QDoubleSpinBox()
+        raw_note = QtWidgets.QLabel(
+            self.tr(
+                "Este panel controla solo la lectura y el destramado del RAW. El ICC de cámara se decide en "
+                "Color / calibración; la conversión al monitor se aplica solo para visualizar. Exposición, color, "
+                "contraste, ruido y nitidez pertenecen a sus paneles específicos."
+            )
+        )
+        raw_note.setWordWrap(True)
+        raw_note.setStyleSheet("font-size: 12px; color: #6b7280;")
+        outer.addWidget(raw_note)
+
+        self._build_hidden_raw_compatibility_controls(tab)
+        outer.addWidget(self._build_named_adjustment_profile_panel("raw_export", self.tr("Exportacion RAW")))
+        outer.addStretch(1)
+        self._update_raw_algorithm_option_state()
+        return tab
+
+    def _build_hidden_raw_compatibility_controls(self, parent: QtWidgets.QWidget) -> None:
+        self.combo_wb_mode = QtWidgets.QComboBox(parent)
+        for label, val in WB_MODE_OPTIONS:
+            self.combo_wb_mode.addItem(self.tr(label), val)
+
+        self.edit_wb_multipliers = QtWidgets.QLineEdit("1,1,1,1", parent)
+        self.edit_wb_multipliers.setToolTip(self.tr("Formato: R,G,B,G (o R,G,B)"))
+
+        self.spin_exposure = QtWidgets.QDoubleSpinBox(parent)
         self.spin_exposure.setRange(-8.0, 8.0)
         self.spin_exposure.setDecimals(2)
         self.spin_exposure.setSingleStep(0.1)
-        grid.addWidget(self.spin_exposure, 8, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Tone curve")), 9, 0)
-        self.combo_tone_curve = QtWidgets.QComboBox()
+        self.combo_tone_curve = QtWidgets.QComboBox(parent)
         for label, val in TONE_OPTIONS:
             self.combo_tone_curve.addItem(self.tr(label), val)
-        grid.addWidget(self.combo_tone_curve, 9, 1)
-        self.spin_gamma = QtWidgets.QDoubleSpinBox()
+        self.spin_gamma = QtWidgets.QDoubleSpinBox(parent)
         self.spin_gamma.setRange(0.8, 4.0)
         self.spin_gamma.setDecimals(2)
         self.spin_gamma.setValue(2.2)
-        grid.addWidget(self.spin_gamma, 9, 2)
 
-        self.check_output_linear = QtWidgets.QCheckBox(self.tr("Salida lineal"))
+        self.check_output_linear = QtWidgets.QCheckBox(self.tr("Salida lineal"), parent)
         self.check_output_linear.setChecked(True)
         self.check_output_linear.toggled.connect(self._on_output_linear_toggled)
-        grid.addWidget(self.check_output_linear, 10, 0, 1, 3)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Working space (metadato)")), 11, 0)
-        self.combo_working_space = QtWidgets.QComboBox()
+        self.combo_working_space = QtWidgets.QComboBox(parent)
         self.combo_working_space.addItems(SPACE_OPTIONS)
         self.combo_working_space.setEnabled(False)
-        self.combo_working_space.setToolTip(
-            self.tr("Campo guardado en receta y pruebas de procedencia; el revelado actual usa el espacio de salida.")
-        )
-        grid.addWidget(self.combo_working_space, 11, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Output space")), 12, 0)
-        self.combo_output_space = QtWidgets.QComboBox()
+        self.combo_output_space = QtWidgets.QComboBox(parent)
         self.combo_output_space.addItems(SPACE_OPTIONS)
         self.combo_output_space.currentTextChanged.connect(self._on_output_space_changed)
-        grid.addWidget(self.combo_output_space, 12, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Sampling strategy")), 13, 0)
-        self.combo_sampling = QtWidgets.QComboBox()
+        self.combo_sampling = QtWidgets.QComboBox(parent)
         self.combo_sampling.addItems(SAMPLE_OPTIONS)
-        grid.addWidget(self.combo_sampling, 13, 1, 1, 2)
 
-        self.check_profiling_mode = QtWidgets.QCheckBox(self.tr("Profiling mode"))
+        self.check_profiling_mode = QtWidgets.QCheckBox(self.tr("Profiling mode"), parent)
         self.check_profiling_mode.setChecked(True)
-        grid.addWidget(self.check_profiling_mode, 14, 0, 1, 3)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Input color assumption (metadato)")), 15, 0)
-        self.edit_input_color = QtWidgets.QLineEdit("camera_native")
+        self.edit_input_color = QtWidgets.QLineEdit("camera_native", parent)
         self.edit_input_color.setReadOnly(True)
-        self.edit_input_color.setToolTip(
-            self.tr("Campo declarativo de receta; no aplica una transformación de color adicional.")
-        )
-        grid.addWidget(self.edit_input_color, 15, 1, 1, 2)
+        self.edit_illuminant = QtWidgets.QLineEdit("", parent)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Illuminant metadata")), 16, 0)
-        self.edit_illuminant = QtWidgets.QLineEdit("")
-        grid.addWidget(self.edit_illuminant, 16, 1, 1, 2)
-
-        scientific_note = QtWidgets.QLabel(
-            self.tr(
-                "Durante la generación de un perfil avanzado con carta, ProbRAW fuerza estos parámetros a "
-                "modo objetivo: tone_curve=linear, salida lineal=on, output_space=scene_linear_camera_rgb. "
-                "Denoise y sharpen quedan desactivados durante la medición de carta y se "
-                "configuran en la pestaña Nitidez para el revelado final."
-            )
-        )
-        scientific_note.setWordWrap(True)
-        scientific_note.setStyleSheet("font-size: 12px; color: #6b7280; padding-top: 6px;")
-        grid.addWidget(scientific_note, 17, 0, 1, 3)
-        grid.addWidget(
-            self._build_named_adjustment_profile_panel("raw_export", self.tr("Exportacion RAW")),
-            18,
-            0,
-            1,
-            3,
-        )
-        return tab
+        for widget in (
+            self.combo_wb_mode,
+            self.edit_wb_multipliers,
+            self.spin_exposure,
+            self.combo_tone_curve,
+            self.spin_gamma,
+            self.check_output_linear,
+            self.combo_working_space,
+            self.combo_output_space,
+            self.combo_sampling,
+            self.check_profiling_mode,
+            self.edit_input_color,
+            self.edit_illuminant,
+        ):
+            widget.hide()
 
     def _build_tab_profile_config(self) -> QtWidgets.QWidget:
         tab = QtWidgets.QWidget()

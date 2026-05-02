@@ -10,6 +10,16 @@ class PreviewRecipeMixin:
             self.combo_demosaic,
             self._supported_gui_demosaic(recipe.demosaic_algorithm, notify=True),
         )
+        if hasattr(self, "spin_demosaic_edge_quality"):
+            self.spin_demosaic_edge_quality.setValue(max(0, int(getattr(recipe, "demosaic_edge_quality", 0) or 0)))
+        if hasattr(self, "spin_false_color_suppression"):
+            self.spin_false_color_suppression.setValue(
+                max(0, int(getattr(recipe, "false_color_suppression_steps", 0) or 0))
+            )
+        if hasattr(self, "check_four_color_rgb"):
+            self.check_four_color_rgb.setChecked(bool(getattr(recipe, "four_color_rgb", False)))
+        if hasattr(self, "_update_raw_algorithm_option_state"):
+            self._update_raw_algorithm_option_state()
         self._set_combo_data(self.combo_wb_mode, recipe.white_balance_mode)
         self.edit_wb_multipliers.setText(",".join(f"{float(v):.6g}" for v in recipe.wb_multipliers))
 
@@ -53,6 +63,94 @@ class PreviewRecipeMixin:
             if value == "amaze":
                 suffix = "disponible" if has_gpl3 else "no disponible: requiere rawpy-demosaic/GPL3"
                 self.combo_demosaic.setItemText(i, f"AMaZE (GPL3, {suffix})")
+
+    def _on_raw_demosaic_changed(self) -> None:
+        self._update_raw_algorithm_option_state()
+        self._on_raw_decode_control_changed()
+
+    def _on_raw_decode_control_changed(self) -> None:
+        if getattr(self, "_original_linear", None) is None:
+            return
+        self._invalidate_preview_cache()
+        self._reload_preview_source_for_color_management()
+
+    def _update_raw_algorithm_option_state(self) -> None:
+        algorithm = ""
+        if hasattr(self, "combo_demosaic"):
+            algorithm = str(self.combo_demosaic.currentData() or self.combo_demosaic.currentText()).strip().lower()
+        four_color_supported = rawpy_postprocess_parameter_supported("four_color_rgb")
+        edge_supported = algorithm == "dcb" and rawpy_postprocess_parameter_supported("dcb_iterations")
+        false_color_supported = rawpy_postprocess_parameter_supported("median_filter_passes")
+
+        if hasattr(self, "check_four_color_rgb"):
+            self.check_four_color_rgb.setEnabled(four_color_supported)
+            self.check_four_color_rgb.setToolTip(
+                self.tr("Disponible en rawpy para interpolar los dos canales verdes por separado.")
+                if four_color_supported
+                else self.tr("La versión instalada de rawpy no expone four_color_rgb.")
+            )
+        if hasattr(self, "spin_demosaic_edge_quality"):
+            self.spin_demosaic_edge_quality.setEnabled(edge_supported)
+            if edge_supported:
+                self.spin_demosaic_edge_quality.setToolTip(self.tr("Parámetro DCB de LibRaw: dcb_iterations."))
+            elif algorithm == "dcb":
+                self.spin_demosaic_edge_quality.setToolTip(
+                    self.tr("No disponible con la versión instalada de rawpy; se conserva como parámetro de receta.")
+                )
+            else:
+                self.spin_demosaic_edge_quality.setToolTip(
+                    self.tr("Esta opción solo se aplica a algoritmos que exponen control de borde.")
+                )
+        if hasattr(self, "spin_false_color_suppression"):
+            self.spin_false_color_suppression.setEnabled(false_color_supported)
+            self.spin_false_color_suppression.setToolTip(
+                self.tr("Parámetro de LibRaw/rawpy: median_filter_passes.")
+                if false_color_supported
+                else self.tr("No disponible con la versión instalada de rawpy; se conserva como parámetro de receta.")
+            )
+        if hasattr(self, "raw_algorithm_options_status_label"):
+            enabled = []
+            unavailable = []
+            if four_color_supported:
+                enabled.append("4 colores")
+            else:
+                unavailable.append("4 colores")
+            if edge_supported:
+                enabled.append("calidad de borde")
+            else:
+                unavailable.append("calidad de borde")
+            if false_color_supported:
+                enabled.append("falso color")
+            else:
+                unavailable.append("falso color")
+            enabled_text = ", ".join(enabled) if enabled else self.tr("ninguna opción adicional")
+            unavailable_text = ", ".join(unavailable) if unavailable else self.tr("ninguna")
+            self.raw_algorithm_options_status_label.setText(
+                self.tr("Opciones disponibles para el método seleccionado: ")
+                + enabled_text
+                + self.tr(". No disponibles en este backend: ")
+                + unavailable_text
+                + "."
+            )
+
+    def _apply_raw_export_recipe_to_controls(self, recipe: Recipe) -> None:
+        self._set_combo_data(self.combo_raw_developer, recipe.raw_developer)
+        self._set_combo_data(
+            self.combo_demosaic,
+            self._supported_gui_demosaic(recipe.demosaic_algorithm, notify=True),
+        )
+        if hasattr(self, "spin_demosaic_edge_quality"):
+            self.spin_demosaic_edge_quality.setValue(max(0, int(getattr(recipe, "demosaic_edge_quality", 0) or 0)))
+        if hasattr(self, "spin_false_color_suppression"):
+            self.spin_false_color_suppression.setValue(
+                max(0, int(getattr(recipe, "false_color_suppression_steps", 0) or 0))
+            )
+        if hasattr(self, "check_four_color_rgb"):
+            self.check_four_color_rgb.setChecked(bool(getattr(recipe, "four_color_rgb", False)))
+        mode, value = self._split_black_mode(recipe.black_level_mode)
+        self._set_combo_data(self.combo_black_mode, mode)
+        self.spin_black_value.setValue(value)
+        self._update_raw_algorithm_option_state()
 
     def _supported_gui_demosaic(self, demosaic_algorithm: str, *, notify: bool) -> str:
         requested = str(demosaic_algorithm or "dcb").strip().lower()
@@ -668,6 +766,12 @@ class PreviewRecipeMixin:
             str(self.combo_demosaic.currentData() or self.combo_demosaic.currentText()),
             notify=False,
         )
+        if hasattr(self, "spin_demosaic_edge_quality"):
+            recipe.demosaic_edge_quality = max(0, int(self.spin_demosaic_edge_quality.value()))
+        if hasattr(self, "spin_false_color_suppression"):
+            recipe.false_color_suppression_steps = max(0, int(self.spin_false_color_suppression.value()))
+        if hasattr(self, "check_four_color_rgb"):
+            recipe.four_color_rgb = bool(self.check_four_color_rgb.isChecked())
         recipe.white_balance_mode = str(self.combo_wb_mode.currentData() or self.combo_wb_mode.currentText())
         recipe.wb_multipliers = self._parse_wb_multipliers(self.edit_wb_multipliers.text(), recipe.wb_multipliers)
 

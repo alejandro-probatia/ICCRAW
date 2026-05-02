@@ -33,6 +33,9 @@ To maintain full traceability, each change must:
   generation, followed by status for the selected image and session.
 - The existing-ICC choice now states when the project has no saved ICC profiles
   and keeps system camera ICC loading available as the fallback.
+- The RAW panel now exposes algorithm-dependent demosaic options (4-color
+  interpolation, edge quality and false-color suppression) and records those
+  capabilities in recipes when the LibRaw/rawpy backend supports them.
 
 ### Changed
 
@@ -42,6 +45,12 @@ To maintain full traceability, each change must:
 - Activating a session ICC now forces preview development into linear camera
   RGB and reloads the RAW source, preventing a camera ICC from being applied to
   pixels already developed into ProPhoto/sRGB.
+- RAW / export no longer presents output-profile, curve, exposure, noise or
+  contrast decisions: the panel is limited to RAW read/demosaic controls and
+  black points, while ICC management remains in Color/Calibration.
+- RAW export profiles now save and apply only RAW parameters (engine,
+  algorithm, demosaic options and black level), without overwriting chromatic
+  adjustments or the image ICC decision.
 
 ### Fixed
 

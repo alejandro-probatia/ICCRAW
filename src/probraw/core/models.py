@@ -59,6 +59,9 @@ class RawMetadata:
 class Recipe:
     raw_developer: str = "libraw"
     demosaic_algorithm: str = "dcb"
+    demosaic_edge_quality: int = 0
+    false_color_suppression_steps: int = 0
+    four_color_rgb: bool = False
     black_level_mode: str = "metadata"
     white_balance_mode: str = "fixed"
     wb_multipliers: list[float] = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])

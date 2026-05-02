@@ -93,6 +93,14 @@ def _normalize_recipe_payload(payload: dict) -> dict:
     }.items():
         out[field_name] = _as_mode_string(out.get(field_name, default), default)
 
+    for field_name in ("demosaic_edge_quality", "false_color_suppression_steps"):
+        try:
+            out[field_name] = max(0, int(out.get(field_name, 0) or 0))
+        except Exception:
+            out[field_name] = 0
+
+    out["four_color_rgb"] = _as_bool(out.get("four_color_rgb", False))
+
     return out
 
 
@@ -102,3 +110,10 @@ def _as_mode_string(value, default: str) -> str:
     if isinstance(value, bool):
         return "on" if value else "off"
     return str(value)
+
+
+def _as_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    raw = str(value or "").strip().lower()
+    return raw in {"1", "true", "yes", "on", "si", "sí"}

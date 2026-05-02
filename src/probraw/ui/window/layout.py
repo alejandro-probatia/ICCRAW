@@ -613,7 +613,7 @@ class LayoutMixin:
         grid.addWidget(self.development_profile_name_edit, 1, 1, 1, 2)
 
         grid.addWidget(QtWidgets.QLabel(self.tr("Espacio estándar sin carta")), 2, 0)
-        self.development_output_space_combo = QtWidgets.QComboBox()
+        self.development_output_space_combo = QtWidgets.QComboBox(tab)
         self.development_output_space_combo.setToolTip(
             self.tr(
                 "Para imágenes sin carta, revela el RAW en un espacio RGB estándar real "
@@ -627,6 +627,10 @@ class LayoutMixin:
         self.development_output_space_combo.addItem(self.tr("ProPhoto RGB estándar"), "prophoto_rgb")
         self.development_output_space_combo.currentIndexChanged.connect(self._on_development_output_space_changed)
         grid.addWidget(self.development_output_space_combo, 2, 1, 1, 2)
+        output_space_label_item = grid.itemAtPosition(2, 0)
+        if output_space_label_item is not None and output_space_label_item.widget() is not None:
+            output_space_label_item.widget().hide()
+        self.development_output_space_combo.hide()
 
         profile_buttons = QtWidgets.QGridLayout()
         profile_buttons.addWidget(self._button(self.tr("Guardar perfil básico"), self._save_current_development_profile), 0, 0)
@@ -1657,7 +1661,7 @@ class LayoutMixin:
         self.raw_export_tabs = CollapsibleToolPanel()
         self._advanced_raw_config = self._build_tab_raw_config(self.tr("Criterios RAW globales"))
         self.raw_export_tabs.addItem(self._advanced_raw_config, self.tr("RAW Global"), expanded=True)
-        self.raw_export_tabs.addItem(self._build_development_profiles_panel(), self.tr("Perfiles completos"), expanded=False)
+        self.raw_export_tabs.addItem(self._build_development_profiles_panel(), self.tr("Perfiles RAW"), expanded=False)
         self.raw_export_tabs.addItem(self._build_tab_batch_config(), self.tr("Exportar derivados"), expanded=True)
         self.right_workflow_tabs.addTab(self.raw_export_tabs, self.tr("RAW / exportación"))
 

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from functools import lru_cache
 
 import numpy as np
 
@@ -36,7 +37,7 @@ GPL3_DEMOSAIC_ALGORITHMS = {"amaze"}
 
 
 RAW_SUFFIXES = {".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".rw2", ".orf", ".pef"}
-DEMOSAIC_CACHE_SCHEMA = "probraw-demosaic-cache-v2"
+DEMOSAIC_CACHE_SCHEMA = "probraw-demosaic-cache-v3"
 DEMOSAIC_CACHE_MAX_GB_ENV = "PROBRAW_DEMOSAIC_CACHE_MAX_GB"
 DEFAULT_DEMOSAIC_CACHE_MAX_GB = 5.0
 
@@ -235,11 +236,26 @@ def _build_libraw_postprocess_kwargs(
         "gamma": (1.0, 1.0),
     }
 
+    if rawpy_postprocess_parameter_supported("four_color_rgb"):
+        kwargs["four_color_rgb"] = bool(getattr(recipe, "four_color_rgb", False))
+
     black_mode = recipe.black_level_mode.strip().lower()
     if black_mode.startswith("fixed:"):
         kwargs["user_black"] = _parse_int_mode_value(black_mode, "fixed")
     elif black_mode.startswith("white:"):
         kwargs["user_sat"] = _parse_int_mode_value(black_mode, "white")
+
+    edge_quality = max(0, int(getattr(recipe, "demosaic_edge_quality", 0) or 0))
+    if (
+        edge_quality > 0
+        and str(recipe.demosaic_algorithm or "").strip().lower() == "dcb"
+        and rawpy_postprocess_parameter_supported("dcb_iterations")
+    ):
+        kwargs["dcb_iterations"] = edge_quality
+
+    false_color_steps = max(0, int(getattr(recipe, "false_color_suppression_steps", 0) or 0))
+    if false_color_steps > 0 and rawpy_postprocess_parameter_supported("median_filter_passes"):
+        kwargs["median_filter_passes"] = false_color_steps
 
     return kwargs
 
@@ -294,6 +310,31 @@ def rawpy_feature_flags() -> dict[str, bool]:
     if not isinstance(flags, dict):
         return {}
     return {str(key): bool(value) for key, value in flags.items()}
+
+
+@lru_cache(maxsize=None)
+def rawpy_postprocess_parameter_supported(parameter: str) -> bool:
+    if rawpy is None:
+        return False
+    name = str(parameter or "").strip()
+    if not name:
+        return False
+    test_values = {
+        "four_color_rgb": True,
+        "dcb_iterations": 1,
+        "dcb_enhance": True,
+        "median_filter_passes": 1,
+        "fbdd_noise_reduction": 0,
+    }
+    if name not in test_values:
+        return False
+    try:
+        rawpy.Params(**{name: test_values[name]})
+    except TypeError:
+        return False
+    except Exception:
+        return False
+    return True
 
 
 def is_libraw_demosaic_supported(demosaic_algorithm: str) -> bool:
@@ -383,6 +424,9 @@ def _demosaic_cache_key(raw_path: Path, recipe: Recipe, *, output_color_space: s
         "sha256": raw_sha.hexdigest(),
         "raw_developer": str(recipe.raw_developer),
         "demosaic_algorithm": str(recipe.demosaic_algorithm),
+        "demosaic_edge_quality": int(getattr(recipe, "demosaic_edge_quality", 0) or 0),
+        "false_color_suppression_steps": int(getattr(recipe, "false_color_suppression_steps", 0) or 0),
+        "four_color_rgb": bool(getattr(recipe, "four_color_rgb", False)),
         "white_balance_mode": str(recipe.white_balance_mode),
         "wb_multipliers": [float(v) for v in (recipe.wb_multipliers or [])],
         "black_level_mode": str(recipe.black_level_mode),
