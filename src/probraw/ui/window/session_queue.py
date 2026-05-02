@@ -30,6 +30,8 @@ class SessionQueueMixin:
         return added
 
     def _queue_add_selected(self) -> None:
+        if hasattr(self, "_flush_render_adjustment_sidecar_persist"):
+            self._flush_render_adjustment_sidecar_persist()
         files = self._collect_selected_file_paths()
         if not files:
             QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("No hay seleccion para anadir a la cola."))
@@ -103,6 +105,8 @@ class SessionQueueMixin:
         self._refresh_session_statistics()
 
     def _queue_process(self) -> None:
+        if hasattr(self, "_flush_render_adjustment_sidecar_persist"):
+            self._flush_render_adjustment_sidecar_persist()
         if not self._develop_queue:
             QtWidgets.QMessageBox.information(self, self.tr("Info"), "No hay elementos en cola.")
             return
@@ -140,19 +144,19 @@ class SessionQueueMixin:
         settings_by_group: dict[str, dict[str, Any]] = {}
         try:
             for item, src in valid_entries:
+                sidecar_settings = self._development_settings_from_raw_sidecar(src)
+                if sidecar_settings is not None:
+                    group_key = f"sidecar:{self._normalized_path_key(src)}"
+                    groups.setdefault(group_key, []).append(src)
+                    settings_by_group[group_key] = sidecar_settings
+                    continue
+
                 profile_id = str(item.get("development_profile_id") or "")
                 if profile_id:
                     group_key = f"profile:{profile_id}"
                     groups.setdefault(group_key, []).append(src)
                     if group_key not in settings_by_group:
                         settings_by_group[group_key] = self._development_profile_settings(profile_id)
-                    continue
-
-                sidecar_settings = self._development_settings_from_raw_sidecar(src)
-                if sidecar_settings is not None:
-                    group_key = f"sidecar:{self._normalized_path_key(src)}"
-                    groups.setdefault(group_key, []).append(src)
-                    settings_by_group[group_key] = sidecar_settings
                     continue
 
                 group_key = "current:"

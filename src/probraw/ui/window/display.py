@@ -130,6 +130,52 @@ class DisplayControlsMixin:
     def _render_adjustment_kwargs(self) -> dict[str, Any]:
         return self._render_adjustment_kwargs_from_state(self._render_adjustment_state())
 
+    @staticmethod
+    def _tone_curve_points_have_effect(points: Any) -> bool:
+        if not points:
+            return False
+        normalized = normalize_tone_curve_points(
+            [
+                (p[0], p[1])
+                for p in points
+                if isinstance(p, (list, tuple)) and len(p) >= 2
+            ]
+        )
+        if len(normalized) != 2:
+            return True
+        return any(
+            abs(float(x) - float(y)) > 1e-4
+            for x, y in normalized
+        )
+
+    def _render_adjustment_state_has_effect(self, state: dict[str, Any] | None = None) -> bool:
+        if not isinstance(state, dict):
+            state = self._render_adjustment_state()
+        if abs(float(state.get("temperature_kelvin", 5003.0)) - 5003.0) > 0.5:
+            return True
+        if abs(float(state.get("tint", 0.0))) > 1e-4:
+            return True
+        if abs(float(state.get("brightness_ev", 0.0))) > 1e-4:
+            return True
+        if abs(float(state.get("black_point", 0.0))) > 1e-4:
+            return True
+        if abs(float(state.get("white_point", 1.0)) - 1.0) > 1e-4:
+            return True
+        if abs(float(state.get("contrast", 0.0))) > 1e-4:
+            return True
+        if abs(float(state.get("midtone", 1.0)) - 1.0) > 1e-4:
+            return True
+        if not bool(state.get("tone_curve_enabled", False)):
+            return False
+        if abs(float(state.get("tone_curve_black_point", 0.0))) > 1e-4:
+            return True
+        if abs(float(state.get("tone_curve_white_point", 1.0)) - 1.0) > 1e-4:
+            return True
+        channel_points = state.get("tone_curve_channel_points")
+        if isinstance(channel_points, dict):
+            return any(self._tone_curve_points_have_effect(channel_points.get(channel)) for channel in ("luminance", "red", "green", "blue"))
+        return self._tone_curve_points_have_effect(state.get("tone_curve_points"))
+
     def _detail_adjustment_state(self) -> dict[str, Any]:
         return {
             "sharpen": int(self.slider_sharpen.value()),

@@ -32,6 +32,8 @@ class PreviewExportMixin:
         self._save_active_session(silent=True)
 
     def _on_develop_selected(self) -> None:
+        if hasattr(self, "_flush_render_adjustment_sidecar_persist"):
+            self._flush_render_adjustment_sidecar_persist()
         if self._selected_file is None:
             QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona un archivo para revelar."))
             return

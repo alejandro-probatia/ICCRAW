@@ -187,9 +187,9 @@ class PreviewRecipeMixin:
         self._set_combo_data(self.combo_tone_curve_preset, preset)
         self.combo_tone_curve_preset.blockSignals(False)
         self.tone_curve_editor.set_points(points, emit=False)
-        if self._original_linear is not None:
-            self.tone_curve_editor.set_histogram_from_image(self._original_linear, channel=key)
-            self._tone_curve_histogram_key = None
+        self._tone_curve_histogram_key = None
+        if self._original_linear is not None and hasattr(self, "_update_tone_curve_histogram_for_current_controls"):
+            self._update_tone_curve_histogram_for_current_controls(force=True)
 
     def _tone_curve_channel_points_state(self) -> dict[str, list[list[float]]]:
         self._save_visible_tone_curve_channel_state()
@@ -366,6 +366,8 @@ class PreviewRecipeMixin:
         if self._original_linear is not None:
             self._refresh_preview()
         self._save_active_session(silent=True)
+        if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist(immediate=True)
         self._set_status(self.tr("Balance neutro aplicado:") + f" {temperature} K, " + self.tr("matiz") + f" {tint:+.1f}")
 
     def _on_tone_curve_enabled_changed(self, enabled: bool) -> None:
@@ -411,6 +413,12 @@ class PreviewRecipeMixin:
     def _on_render_control_change(self) -> None:
         if self._original_linear is not None:
             self._schedule_preview_refresh()
+        if hasattr(self, "_set_active_named_adjustment_profile_id"):
+            self._set_active_named_adjustment_profile_id("color_contrast", "")
+        if hasattr(self, "_refresh_named_adjustment_profile_combo"):
+            self._refresh_named_adjustment_profile_combo("color_contrast")
+        if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist()
 
     def _reset_tone_curve(self) -> None:
         self.check_tone_curve_enabled.setChecked(False)

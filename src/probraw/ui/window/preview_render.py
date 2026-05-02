@@ -13,6 +13,18 @@ class PreviewRenderMixin:
     def _on_slider_release(self) -> None:
         if self._original_linear is not None:
             self._schedule_preview_refresh()
+        sender = self.sender()
+        render_sliders = (
+            getattr(self, "slider_brightness", None),
+            getattr(self, "slider_black_point", None),
+            getattr(self, "slider_white_point", None),
+            getattr(self, "slider_contrast", None),
+            getattr(self, "slider_midtone", None),
+            getattr(self, "slider_tone_curve_black", None),
+            getattr(self, "slider_tone_curve_white", None),
+        )
+        if sender in render_sliders and hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist(immediate=True)
         if hasattr(self, "_schedule_mtf_refresh"):
             self._schedule_mtf_refresh(interactive=False)
 
@@ -169,6 +181,74 @@ class PreviewRenderMixin:
         if self._precision_detail_preview_enabled() or float(self._viewer_zoom) >= 1.0:
             return 0
         return int(PREVIEW_PROFILE_APPLY_MAX_SIDE)
+
+    def _tone_curve_histogram_render_kwargs(self, render_kwargs: dict[str, Any]) -> dict[str, Any]:
+        kwargs = dict(render_kwargs)
+        kwargs["tone_curve_points"] = None
+        kwargs["tone_curve_channel_points"] = None
+        return kwargs
+
+    def _tone_curve_histogram_signature(self, source_key: str, render_kwargs: dict[str, Any]) -> str:
+        return "|".join(
+            [
+                str(source_key),
+                f"channel={self._tone_curve_channel_key()}",
+                f"tk={float(render_kwargs.get('temperature_kelvin', 5003.0)):.3f}",
+                f"tint={float(render_kwargs.get('tint', 0.0)):.3f}",
+                f"bright={float(render_kwargs.get('brightness_ev', 0.0)):.4f}",
+                f"black={float(render_kwargs.get('black_point', 0.0)):.4f}",
+                f"white={float(render_kwargs.get('white_point', 1.0)):.4f}",
+                f"contrast={float(render_kwargs.get('contrast', 0.0)):.4f}",
+                f"midtone={float(render_kwargs.get('midtone', 1.0)):.4f}",
+            ]
+        )
+
+    def _update_tone_curve_histogram(
+        self,
+        source: np.ndarray,
+        render_kwargs: dict[str, Any],
+        *,
+        source_key: str,
+        force: bool = False,
+    ) -> None:
+        if not hasattr(self, "tone_curve_editor"):
+            return
+        key = self._tone_curve_histogram_signature(source_key, render_kwargs)
+        if not force and self._tone_curve_histogram_key == key:
+            return
+        try:
+            histogram_source = apply_render_adjustments(
+                np.asarray(source, dtype=np.float32),
+                **self._tone_curve_histogram_render_kwargs(render_kwargs),
+            )
+            self.tone_curve_editor.set_histogram_from_image(
+                histogram_source,
+                channel=self._tone_curve_channel_key(),
+            )
+            self._tone_curve_histogram_key = key
+        except Exception as exc:
+            self._tone_curve_histogram_key = None
+            self._log_preview(f"Aviso: no se pudo actualizar histograma de curva: {exc}")
+
+    def _update_tone_curve_histogram_for_current_controls(
+        self,
+        *,
+        max_side_limit: int = PREVIEW_INTERACTIVE_TONAL_MAX_SIDE,
+        force: bool = False,
+    ) -> None:
+        if self._original_linear is None:
+            return
+        source_key = self._last_loaded_preview_key or str(id(self._original_linear))
+        source = self._interactive_preview_source(
+            self._original_linear,
+            max_side_limit=int(max_side_limit),
+        )
+        self._update_tone_curve_histogram(
+            source,
+            self._render_adjustment_kwargs(),
+            source_key=source_key,
+            force=force,
+        )
 
     def _cached_profile_preview_image(self, key: str) -> np.ndarray | None:
         image = self._profile_preview_cache.get(key)
@@ -593,13 +673,6 @@ class PreviewRenderMixin:
                 "lateral_ca_blue_scale": float(ca_blue),
             }
             render_kwargs = self._render_adjustment_kwargs()
-            histogram_key = self._last_loaded_preview_key or str(id(self._original_linear))
-            if not interactive and self._tone_curve_histogram_key != histogram_key:
-                self.tone_curve_editor.set_histogram_from_image(
-                    self._original_linear,
-                    channel=self._tone_curve_channel_key(),
-                )
-                self._tone_curve_histogram_key = histogram_key
 
             compare_enabled = bool(self.chk_compare.isChecked())
             if compare_enabled:
@@ -618,6 +691,9 @@ class PreviewRenderMixin:
                         if apply_detail
                         else PREVIEW_INTERACTIVE_TONAL_MAX_SIDE
                     )
+                self._update_tone_curve_histogram_for_current_controls(
+                    max_side_limit=int(max_side_limit),
+                )
                 self._interactive_preview_request_seq += 1
                 request_key = f"{source_key}|interactive|{self._interactive_preview_request_seq}"
                 self._profile_preview_expected_key = None
@@ -646,6 +722,9 @@ class PreviewRenderMixin:
             self._set_interactive_preview_busy(False)
 
             if self._should_async_final_preview():
+                self._update_tone_curve_histogram_for_current_controls(
+                    max_side_limit=PREVIEW_INTERACTIVE_TONAL_MAX_SIDE,
+                )
                 self._interactive_preview_request_seq += 1
                 request_key = f"{source_key}|final|{self._interactive_preview_request_seq}"
                 self._queue_interactive_preview_request(
@@ -670,6 +749,9 @@ class PreviewRenderMixin:
             preview_source = self._interactive_preview_source(
                 self._original_linear,
                 max_side_limit=int(self._effective_preview_max_side()),
+            )
+            self._update_tone_curve_histogram_for_current_controls(
+                max_side_limit=PREVIEW_INTERACTIVE_TONAL_MAX_SIDE,
             )
             detail_adjusted = self._detail_adjusted_preview(
                 preview_source,

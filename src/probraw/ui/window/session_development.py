@@ -1209,6 +1209,8 @@ class SessionDevelopmentMixin:
         if self._original_linear is not None:
             self._schedule_preview_refresh()
         self._save_active_session(silent=True)
+        if category == "color_contrast" and hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist(immediate=True)
         self._set_status(self._named_adjustment_profile_title(category) + self.tr(" aplicado:") + f" {profile.get('name') or profile_id}")
 
     def _sidecar_bundle_for_category_write(self, path: Path) -> dict[str, Any]:
@@ -1652,7 +1654,13 @@ class SessionDevelopmentMixin:
             return None
         return path if self._profile_can_be_active(path) else None
 
-    def _write_current_development_settings_to_raw(self, path: Path, *, status: str = "configured") -> Path | None:
+    def _write_current_development_settings_to_raw(
+        self,
+        path: Path,
+        *,
+        status: str = "configured",
+        refresh_markers: bool = True,
+    ) -> Path | None:
         recipe = self._build_effective_recipe()
         _input_profile, rendered_profile, mode = self._configured_color_profile_for_recipe(recipe)
         sidecar = self._write_raw_settings_sidecar(
@@ -1665,9 +1673,87 @@ class SessionDevelopmentMixin:
             color_management_mode=mode,
             status=status,
         )
-        if sidecar is not None:
+        if sidecar is not None and refresh_markers:
             self._refresh_color_reference_thumbnail_markers()
         return sidecar
+
+    def _render_adjustment_sidecar_signature(self, path: Path) -> str:
+        return json.dumps(
+            {
+                "source": str(path),
+                "recipe": asdict(self._build_effective_recipe()),
+                "development_profile": self._development_profile_payload_for_active_settings(),
+                "detail": self._detail_adjustment_state(),
+                "render": self._render_adjustment_state(),
+                "profiles": self._current_named_adjustment_profiles_payload(),
+                "icc": str(self._active_session_icc_for_settings() or ""),
+            },
+            sort_keys=True,
+            default=str,
+        )
+
+    def _schedule_render_adjustment_sidecar_persist(self, *, immediate: bool = False) -> None:
+        if int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0) > 0:
+            return
+        selected = getattr(self, "_selected_file", None)
+        if selected is None or Path(selected).suffix.lower() not in RAW_EXTENSIONS:
+            return
+        path = Path(selected)
+        has_named_color_profile = bool(self._active_named_adjustment_profile_id("color_contrast"))
+        if (
+            not self._render_adjustment_state_has_effect()
+            and not raw_sidecar_path(path).exists()
+            and not has_named_color_profile
+        ):
+            return
+        timer = getattr(self, "_render_adjustment_sidecar_timer", None)
+        if timer is None:
+            self._persist_render_adjustments_for_selected()
+            return
+        if immediate:
+            timer.stop()
+            self._persist_render_adjustments_for_selected()
+            return
+        timer.start(350)
+
+    def _persist_render_adjustments_for_selected(self) -> None:
+        selected = getattr(self, "_selected_file", None)
+        if selected is None:
+            return
+        path = Path(selected)
+        if path.suffix.lower() not in RAW_EXTENSIONS:
+            return
+        has_named_color_profile = bool(self._active_named_adjustment_profile_id("color_contrast"))
+        if (
+            not self._render_adjustment_state_has_effect()
+            and not raw_sidecar_path(path).exists()
+            and not has_named_color_profile
+        ):
+            return
+        try:
+            signature = self._render_adjustment_sidecar_signature(path)
+            if signature == getattr(self, "_render_adjustment_sidecar_key", None):
+                return
+            sidecar = self._write_current_development_settings_to_raw(
+                path,
+                status="configured",
+                refresh_markers=False,
+            )
+        except Exception as exc:
+            self._render_adjustment_sidecar_key = None
+            self._log_preview(f"No se pudo actualizar mochila cromatica para {path.name}: {exc}")
+            return
+        if sidecar is not None:
+            self._render_adjustment_sidecar_key = signature
+            if hasattr(self, "_refresh_thumbnail_marker_for_path"):
+                self._refresh_thumbnail_marker_for_path(path)
+            self._save_active_session(silent=True)
+
+    def _flush_render_adjustment_sidecar_persist(self) -> None:
+        timer = getattr(self, "_render_adjustment_sidecar_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._persist_render_adjustments_for_selected()
 
     def _raw_sidecar_development_summary(self, path: Path) -> str:
         try:

@@ -420,18 +420,26 @@ class BrowserMetadataMixin:
     def _refresh_color_reference_thumbnail_markers(self) -> None:
         if not hasattr(self, "file_list"):
             return
-        icon_size = int(self.file_list.iconSize().width() or DEFAULT_THUMBNAIL_SIZE)
         for row in range(self.file_list.count()):
             item = self.file_list.item(row)
             raw_path = item.data(QtCore.Qt.UserRole)
             if not raw_path:
                 continue
-            path = Path(str(raw_path))
-            icon = self._cached_thumbnail_icon(self._thumbnail_cache_key(path, icon_size), path=path)
-            if icon is None:
-                icon = self._icon_for_file(path)
-            item.setToolTip(self._file_item_tooltip(path))
-            self._set_file_item_display_icon(item, path, icon)
+            self._refresh_thumbnail_marker_for_path(Path(str(raw_path)))
+
+    def _refresh_thumbnail_marker_for_path(self, path: Path) -> None:
+        if not hasattr(self, "file_list"):
+            return
+        key = self._normalized_path_key(path)
+        item = self._file_items_by_key.get(key)
+        if item is None or self.file_list.row(item) < 0:
+            return
+        icon_size = int(self.file_list.iconSize().width() or DEFAULT_THUMBNAIL_SIZE)
+        icon = self._cached_thumbnail_icon(self._thumbnail_cache_key(path, icon_size), path=path)
+        if icon is None:
+            icon = self._icon_for_file(path)
+        item.setToolTip(self._file_item_tooltip(path))
+        self._set_file_item_display_icon(item, path, icon)
 
     def _set_file_item_display_icon(
         self,
@@ -514,6 +522,9 @@ class BrowserMetadataMixin:
             present = False
             if isinstance(profile, dict):
                 present = bool(str(profile.get("id") or profile.get("name") or "").strip())
+            if key == "color_contrast" and not present:
+                render = payload.get("render_adjustments") if isinstance(payload.get("render_adjustments"), dict) else {}
+                present = bool(self._render_adjustment_state_has_effect(render))
             if key == "icc" and not present:
                 color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
                 present = bool(str(color.get("icc_profile_path") or "").strip())
@@ -546,6 +557,10 @@ class BrowserMetadataMixin:
                 raw_path = str(color.get("icc_profile_path") or "").strip()
                 if raw_path:
                     name = Path(raw_path).name
+            if key == "color_contrast" and not name:
+                render = payload.get("render_adjustments") if isinstance(payload.get("render_adjustments"), dict) else {}
+                if self._render_adjustment_state_has_effect(render):
+                    name = "ajustes propios"
             if name:
                 parts.append(f"{labels[key]}: {name}")
         return "Perfiles aplicados: " + " | ".join(parts) if parts else ""

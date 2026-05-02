@@ -53,6 +53,12 @@ To maintain full traceability, each change must:
   preview runs in an asynchronous worker.
 - Interactive preview now has a watchdog: if an ICC worker gets stuck, that task
   is abandoned, the warning is logged and the adjustment queue can continue.
+- The tone-curve editor histogram now updates from the image after prior
+  color/exposure/contrast adjustments, without applying the curve itself, so the
+  displayed levels match the current working state.
+- Color/contrast adjustments are now written automatically to the selected RAW
+  sidecar while controls are moved, refresh the chromatic thumbnail indicator
+  and make the render queue prefer that sidecar over a queued profile snapshot.
 
 ### Known Issues
 

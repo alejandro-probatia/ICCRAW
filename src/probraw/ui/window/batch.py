@@ -246,6 +246,8 @@ class BatchWorkflowMixin:
         }
 
     def _start_batch_develop(self, files: list[Path], task_label: str) -> None:
+        if hasattr(self, "_flush_render_adjustment_sidecar_persist"):
+            self._flush_render_adjustment_sidecar_persist()
         self._ensure_session_output_controls()
         out_dir = Path(self.batch_out_dir.text().strip())
         apply_adjust = bool(self.batch_apply_adjustments.isChecked())

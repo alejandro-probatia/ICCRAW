@@ -1174,6 +1174,33 @@ def test_stuck_interactive_preview_watchdog_releases_queue(qapp):
         window.close()
 
 
+def test_tone_curve_histogram_follows_brightness_adjustment(qapp):
+    window = ICCRawMainWindow()
+    try:
+        values = gui_module.np.linspace(0.02, 0.48, 90 * 120, dtype=gui_module.np.float32).reshape((90, 120, 1))
+        image = gui_module.np.repeat(values**1.7, 3, axis=2)
+        window._original_linear = image
+        window._last_loaded_preview_key = "histogram-test"
+
+        window.slider_brightness.blockSignals(True)
+        window.slider_brightness.setValue(0)
+        window.slider_brightness.blockSignals(False)
+        window._update_tone_curve_histogram_for_current_controls(force=True)
+        before = window.tone_curve_editor._histogram.copy()
+
+        window.slider_brightness.blockSignals(True)
+        window.slider_brightness.setValue(100)
+        window.slider_brightness.blockSignals(False)
+        window._update_tone_curve_histogram_for_current_controls(force=True)
+        after = window.tone_curve_editor._histogram.copy()
+
+        assert before.shape == after.shape
+        assert not gui_module.np.allclose(before, after)
+        assert "bright=1.0000" in window._tone_curve_histogram_key
+    finally:
+        window.close()
+
+
 def test_colprof_args_default_to_restricted_input_gamut(qapp):
     window = ICCRawMainWindow()
     try:
@@ -1830,6 +1857,107 @@ def test_queue_process_uses_inline_raw_sidecar_sharpening(tmp_path: Path, monkey
         window.close()
 
 
+def test_color_contrast_adjustments_autosave_to_raw_sidecar_and_badge(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion autosave color")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
+        window._selected_file = raw
+
+        window.slider_brightness.setValue(25)
+        assert window._render_adjustment_sidecar_timer.isActive()
+        window._flush_render_adjustment_sidecar_persist()
+
+        sidecar = load_raw_sidecar(raw)
+        assert sidecar["render_adjustments"]["brightness_ev"] == pytest.approx(0.25)
+        assert "color_contrast" in window._raw_adjustment_profile_badges(raw)
+        assert "Color/contraste: ajustes propios" in window._raw_adjustment_profile_badge_summary(raw)
+
+        window.slider_contrast.setValue(17)
+        window._flush_render_adjustment_sidecar_persist()
+        updated = load_raw_sidecar(raw)
+        assert updated["render_adjustments"]["brightness_ev"] == pytest.approx(0.25)
+        assert updated["render_adjustments"]["contrast"] == pytest.approx(0.17)
+    finally:
+        window.close()
+
+
+def test_queue_process_prefers_raw_sidecar_over_registered_profile_id(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion cola mochila prioritaria")
+    recipe = Recipe(
+        white_balance_mode="camera_metadata",
+        output_space="prophoto_rgb",
+        output_linear=False,
+        tone_curve="gamma:1.8",
+        profiling_mode=False,
+    )
+    captured: dict[str, Any] = {}
+
+    def run_task(_label, task, on_success):
+        on_success(task())
+
+    def fake_process_batch_files(**kwargs):
+        captured.update(kwargs)
+        src = kwargs["files"][0]
+        out_path = Path(kwargs["out_dir"]) / f"{src.stem}.tiff"
+        return {
+            "input_files": len(kwargs["files"]),
+            "output_dir": str(kwargs["out_dir"]),
+            "outputs": [{"source": str(src), "output": str(out_path)}],
+            "errors": [],
+        }
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
+        window.development_profile_name_edit.setText("Perfil registrado")
+        window.slider_brightness.setValue(3)
+        window._save_current_development_profile()
+        profile_id = window._active_development_profile_id
+
+        write_raw_sidecar(
+            raw,
+            recipe=recipe,
+            development_profile={
+                "id": profile_id,
+                "name": "Ajustes imagen",
+                "kind": "manual",
+                "profile_type": "basic",
+            },
+            detail_adjustments={"sharpen": 0, "radius": 10, "noise_luma": 0, "noise_color": 0, "ca_red": 0, "ca_blue": 0},
+            render_adjustments={"brightness_ev": 0.44, "contrast": 0.21},
+            session_root=root,
+            status="configured",
+        )
+
+        window._start_background_task = run_task
+        window._process_batch_files = fake_process_batch_files
+        monkeypatch.setattr(window, "_resolve_proof_config_for_gui", lambda: ProbRawProofConfig(private_key_path=None))
+        monkeypatch.setattr(window, "_resolve_c2pa_config_for_gui", lambda: None)
+
+        window._queue_add_files([raw])
+        assert window._develop_queue[0]["development_profile_id"] == profile_id
+        window._queue_process()
+
+        assert captured["render_adjustments"]["brightness_ev"] == pytest.approx(0.44)
+        assert captured["render_adjustments"]["contrast"] == pytest.approx(0.21)
+        assert captured["development_profile"]["id"] == profile_id
+        assert window._develop_queue[0]["status"] == "done"
+    finally:
+        window.close()
+
+
 def test_raw_sidecar_without_registered_profile_clears_stale_active_profile(tmp_path: Path, qapp):
     root = tmp_path / "session"
     raw = root / "01_ORG" / "capture.NEF"
@@ -2348,7 +2476,7 @@ def test_thumbnail_copy_paste_development_settings_writes_raw_sidecars(tmp_path:
         )
         pixmap = marked.pixmap(window.file_list.iconSize())
         assert pixmap.height() > pixmap.width()
-        assert window._raw_adjustment_profile_badges(source) == ["icc"]
+        assert window._raw_adjustment_profile_badges(source) == ["icc", "color_contrast"]
 
         window._copy_development_settings_from_selected()
 

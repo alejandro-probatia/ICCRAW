@@ -55,6 +55,12 @@ Para mantener trazabilidad completa, cada cambio debe:
 - La preview interactiva cuenta ahora con un watchdog: si un worker ICC queda
   atascado, se abandona esa tarea, se registra el aviso y la cola de ajustes
   vuelve a avanzar.
+- El histograma del editor de curva tonal se actualiza ahora con la imagen tras
+  los ajustes previos de color/exposicion/contraste, sin aplicar la curva, para
+  que los niveles mostrados coincidan con el estado real de trabajo.
+- Los ajustes de Color/contraste se guardan automaticamente en la mochila RAW
+  seleccionada al mover controles, actualizan el indicador cromatico de la
+  miniatura y la cola de revelado prioriza esa mochila frente al perfil de cola.
 
 ### Known Issues
 
