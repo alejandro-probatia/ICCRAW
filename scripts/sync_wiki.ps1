@@ -150,7 +150,7 @@ Get-ChildItem -Path (Join-Path $root "docs\releases") -Filter "*.es.md" | Sort-O
   $releasePages += @{ Version = $version; Page = $page }
 }
 
-$home = @"
+$homeContent = @"
 # ProbRAW Wiki
 
 Documentacion publica de ProbRAW generada desde los archivos versionados del
@@ -192,7 +192,7 @@ lectura y navegacion.
 - [Incidencias](Incidencias)
 - [Revision operativa](Revision-operativa)
 "@
-$home | Set-Content -LiteralPath (Join-Path $wikiPath "Home.md") -Encoding utf8
+$homeContent | Set-Content -LiteralPath (Join-Path $wikiPath "Home.md") -Encoding utf8
 
 $changelog = Get-Content -Raw -LiteralPath (Join-Path $root "CHANGELOG.es.md")
 $changelog = Convert-DocLinks -Content $changelog -LinkMap $linkMap -Repository $Repository
