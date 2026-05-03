@@ -7,52 +7,56 @@ class PreviewRecipeMixin:
     def _apply_recipe_to_controls(self, recipe: Recipe) -> None:
         raw_autosave_suspend = int(getattr(self, "_suspend_raw_export_autosave", 0) or 0)
         self._suspend_raw_export_autosave = raw_autosave_suspend + 1
-        self._set_combo_data(self.combo_raw_developer, recipe.raw_developer)
-        self._set_combo_data(
-            self.combo_demosaic,
-            self._supported_gui_demosaic(recipe.demosaic_algorithm, notify=True),
-        )
-        if hasattr(self, "spin_demosaic_edge_quality"):
-            self.spin_demosaic_edge_quality.setValue(max(0, int(getattr(recipe, "demosaic_edge_quality", 0) or 0)))
-        if hasattr(self, "spin_false_color_suppression"):
-            self.spin_false_color_suppression.setValue(
-                max(0, int(getattr(recipe, "false_color_suppression_steps", 0) or 0))
+        try:
+            self._set_combo_data(self.combo_raw_developer, recipe.raw_developer)
+            self._set_combo_data(
+                self.combo_demosaic,
+                self._supported_gui_demosaic(recipe.demosaic_algorithm, notify=True),
             )
-        if hasattr(self, "check_four_color_rgb"):
-            self.check_four_color_rgb.setChecked(bool(getattr(recipe, "four_color_rgb", False)))
-        if hasattr(self, "_update_raw_algorithm_option_state"):
-            self._update_raw_algorithm_option_state()
-        self._set_combo_data(self.combo_wb_mode, recipe.white_balance_mode)
-        self.edit_wb_multipliers.setText(",".join(f"{float(v):.6g}" for v in recipe.wb_multipliers))
+            if hasattr(self, "spin_demosaic_edge_quality"):
+                self.spin_demosaic_edge_quality.setValue(max(0, int(getattr(recipe, "demosaic_edge_quality", 0) or 0)))
+            if hasattr(self, "spin_false_color_suppression"):
+                self.spin_false_color_suppression.setValue(
+                    max(0, int(getattr(recipe, "false_color_suppression_steps", 0) or 0))
+                )
+            if hasattr(self, "check_four_color_rgb"):
+                self.check_four_color_rgb.setChecked(bool(getattr(recipe, "four_color_rgb", False)))
+            self._apply_libraw_render_controls(recipe)
+            if hasattr(self, "_update_raw_algorithm_option_state"):
+                self._update_raw_algorithm_option_state()
+            self._set_combo_data(self.combo_wb_mode, recipe.white_balance_mode)
+            self.edit_wb_multipliers.setText(",".join(f"{float(v):.6g}" for v in recipe.wb_multipliers))
 
-        mode, value = self._split_black_mode(recipe.black_level_mode)
-        self._set_combo_data(self.combo_black_mode, mode)
-        self.spin_black_value.setValue(value)
-        self._suspend_raw_export_autosave = raw_autosave_suspend
+            mode, value = self._split_black_mode(recipe.black_level_mode)
+            self._set_combo_data(self.combo_black_mode, mode)
+            self.spin_black_value.setValue(value)
 
-        self.spin_exposure.setValue(float(recipe.exposure_compensation))
+            self.spin_exposure.setValue(float(recipe.exposure_compensation))
 
-        tone_mode, gamma = self._split_tone_curve(recipe.tone_curve)
-        self._set_combo_data(self.combo_tone_curve, tone_mode)
-        self.spin_gamma.setValue(gamma)
+            tone_mode, gamma = self._split_tone_curve(recipe.tone_curve)
+            self._set_combo_data(self.combo_tone_curve, tone_mode)
+            self.spin_gamma.setValue(gamma)
 
-        self.check_output_linear.setChecked(bool(recipe.output_linear))
-        self._set_combo_text(self.combo_recipe_denoise, recipe.denoise)
-        self._set_combo_text(self.combo_recipe_sharpen, recipe.sharpen)
-        self._set_combo_text(self.combo_working_space, recipe.working_space)
-        self._set_combo_text(self.combo_output_space, recipe.output_space)
-        self._sync_development_output_space_combo(recipe.output_space)
-        self._set_combo_text(self.combo_sampling, recipe.sampling_strategy)
-        self.check_profiling_mode.setChecked(bool(recipe.profiling_mode))
-        self.edit_input_color.setText(recipe.input_color_assumption)
-        self.edit_illuminant.setText(recipe.illuminant_metadata or "")
+            self.check_output_linear.setChecked(bool(recipe.output_linear))
+            self.check_profiling_mode.setChecked(bool(recipe.profiling_mode))
+            self._set_combo_text(self.combo_recipe_denoise, recipe.denoise)
+            self._set_combo_text(self.combo_recipe_sharpen, recipe.sharpen)
+            self._set_combo_text(self.combo_working_space, recipe.working_space)
+            self._set_combo_text(self.combo_output_space, recipe.output_space)
+            self._sync_development_output_space_combo(recipe.output_space)
+            self._apply_output_space_defaults_to_controls(recipe.output_space)
+            self._set_combo_text(self.combo_sampling, recipe.sampling_strategy)
+            self.edit_input_color.setText(recipe.input_color_assumption)
+            self.edit_illuminant.setText(recipe.illuminant_metadata or "")
 
-        if recipe.argyll_colprof_args:
-            self._apply_argyll_args_to_controls(recipe.argyll_colprof_args)
-        else:
-            self._set_combo_data(self.combo_profile_quality, "m")
-            self._set_combo_data(self.combo_profile_algo, "-as")
-            self.edit_colprof_args.setText("-u -R")
+            if recipe.argyll_colprof_args:
+                self._apply_argyll_args_to_controls(recipe.argyll_colprof_args)
+            else:
+                self._set_combo_data(self.combo_profile_quality, "m")
+                self._set_combo_data(self.combo_profile_algo, "-as")
+                self.edit_colprof_args.setText("-u -R")
+        finally:
+            self._suspend_raw_export_autosave = raw_autosave_suspend
 
     def _sync_demosaic_capabilities(self) -> None:
         flags = rawpy_feature_flags()
@@ -74,12 +78,39 @@ class PreviewRecipeMixin:
     def _on_raw_decode_control_changed(self) -> None:
         if int(getattr(self, "_suspend_raw_export_autosave", 0) or 0) > 0:
             return
-        if hasattr(self, "_schedule_raw_export_sidecar_persist"):
+        if self._sender_is_libraw_color_control():
+            if hasattr(self, "_set_active_named_adjustment_profile_id"):
+                self._set_active_named_adjustment_profile_id("color_contrast", "")
+            if hasattr(self, "_refresh_named_adjustment_profile_combo"):
+                self._refresh_named_adjustment_profile_combo("color_contrast")
+            if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+                self._schedule_render_adjustment_sidecar_persist()
+        elif hasattr(self, "_schedule_raw_export_sidecar_persist"):
             self._schedule_raw_export_sidecar_persist()
         if getattr(self, "_original_linear", None) is None:
             return
         self._invalidate_preview_cache()
         self._reload_preview_source_for_color_management()
+
+    def _sender_is_libraw_color_control(self) -> bool:
+        sender = self.sender()
+        names = (
+            "check_libraw_auto_bright",
+            "spin_libraw_auto_bright_thr",
+            "spin_libraw_adjust_maximum_thr",
+            "spin_libraw_bright",
+            "combo_libraw_highlight_mode",
+            "spin_libraw_exp_shift",
+            "spin_libraw_exp_preserve_highlights",
+            "check_libraw_no_auto_scale",
+            "spin_libraw_gamma_power",
+            "spin_libraw_gamma_slope",
+            "spin_libraw_ca_red",
+            "spin_libraw_ca_blue",
+            "combo_wb_mode",
+            "edit_wb_multipliers",
+        )
+        return any(sender is getattr(self, name, None) for name in names)
 
     def _update_raw_algorithm_option_state(self) -> None:
         algorithm = ""
@@ -165,6 +196,7 @@ class PreviewRecipeMixin:
             )
         if hasattr(self, "check_four_color_rgb"):
             self.check_four_color_rgb.setChecked(bool(getattr(recipe, "four_color_rgb", False)))
+        self._apply_libraw_render_controls(recipe)
         mode, value = self._split_black_mode(recipe.black_level_mode)
         self._set_combo_data(self.combo_black_mode, mode)
         self.spin_black_value.setValue(value)
@@ -180,6 +212,44 @@ class PreviewRecipeMixin:
             self._log_preview(f"Aviso: {reason} Se usa DCB en la GUI hasta instalar soporte GPL.")
         return "dcb"
 
+    def _apply_libraw_render_controls(self, recipe: Recipe) -> None:
+        if hasattr(self, "combo_wb_mode"):
+            self._set_combo_data(self.combo_wb_mode, str(getattr(recipe, "white_balance_mode", "fixed")))
+        if hasattr(self, "edit_wb_multipliers"):
+            self.edit_wb_multipliers.setText(",".join(f"{float(v):.6g}" for v in getattr(recipe, "wb_multipliers", [1.0, 1.0, 1.0, 1.0])))
+        if hasattr(self, "check_libraw_auto_bright"):
+            self.check_libraw_auto_bright.setChecked(bool(getattr(recipe, "libraw_auto_bright", False)))
+        if hasattr(self, "spin_libraw_auto_bright_thr"):
+            self.spin_libraw_auto_bright_thr.setValue(float(getattr(recipe, "libraw_auto_bright_thr", 0.01)))
+        if hasattr(self, "spin_libraw_adjust_maximum_thr"):
+            self.spin_libraw_adjust_maximum_thr.setValue(float(getattr(recipe, "libraw_adjust_maximum_thr", 0.75)))
+        if hasattr(self, "spin_libraw_bright"):
+            self.spin_libraw_bright.setValue(float(getattr(recipe, "libraw_bright", 1.0)))
+        if hasattr(self, "combo_libraw_highlight_mode"):
+            self._set_combo_data(self.combo_libraw_highlight_mode, str(getattr(recipe, "libraw_highlight_mode", "clip")))
+        if hasattr(self, "spin_libraw_exp_shift"):
+            self.spin_libraw_exp_shift.setValue(float(getattr(recipe, "libraw_exp_shift", 1.0)))
+        if hasattr(self, "spin_libraw_exp_preserve_highlights"):
+            self.spin_libraw_exp_preserve_highlights.setValue(float(getattr(recipe, "libraw_exp_preserve_highlights", 0.0)))
+        if hasattr(self, "check_libraw_no_auto_scale"):
+            self.check_libraw_no_auto_scale.setChecked(bool(getattr(recipe, "libraw_no_auto_scale", False)))
+        if hasattr(self, "spin_libraw_gamma_power"):
+            self.spin_libraw_gamma_power.setValue(float(getattr(recipe, "libraw_gamma_power", 1.0)))
+        if hasattr(self, "spin_libraw_gamma_slope"):
+            self.spin_libraw_gamma_slope.setValue(float(getattr(recipe, "libraw_gamma_slope", 1.0)))
+        if hasattr(self, "spin_libraw_ca_red"):
+            self.spin_libraw_ca_red.setValue(float(getattr(recipe, "libraw_chromatic_aberration_red", 1.0)))
+        if hasattr(self, "spin_libraw_ca_blue"):
+            self.spin_libraw_ca_blue.setValue(float(getattr(recipe, "libraw_chromatic_aberration_blue", 1.0)))
+
+    def _reset_libraw_color_adjustments(self) -> None:
+        self._apply_libraw_render_controls(Recipe())
+        if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist(immediate=True)
+        if getattr(self, "_original_linear", None) is not None:
+            self._invalidate_preview_cache()
+            self._reload_preview_source_for_color_management()
+
     def _balanced_preview_demosaic(self) -> str:
         for candidate in PREVIEW_BALANCED_DEMOSAIC_ORDER:
             if unavailable_demosaic_reason(candidate) is None:
@@ -187,6 +257,8 @@ class PreviewRecipeMixin:
         return self._supported_gui_demosaic("dcb", notify=False)
 
     def _preview_requires_max_quality(self) -> bool:
+        if bool(getattr(self, "_viewer_full_detail_requested", False)):
+            return True
         compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
         if compare_enabled or bool(self._manual_chart_marking_after_reload):
             return True
@@ -549,6 +621,8 @@ class PreviewRecipeMixin:
         self._on_render_control_change()
 
     def _on_render_control_change(self) -> None:
+        if int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0) > 0:
+            return
         if self._original_linear is not None:
             self._schedule_preview_refresh()
         if hasattr(self, "_set_active_named_adjustment_profile_id"):
@@ -589,6 +663,10 @@ class PreviewRecipeMixin:
         self.combo_illuminant_render.setCurrentIndex(1)
         self.spin_render_temperature.setValue(5003)
         self.spin_render_tint.setValue(0.0)
+        if hasattr(self, "slider_vibrance"):
+            self.slider_vibrance.setValue(0)
+        if hasattr(self, "slider_saturation"):
+            self.slider_saturation.setValue(0)
         if refresh and self._original_linear is not None:
             self._refresh_preview()
 
@@ -597,32 +675,65 @@ class PreviewRecipeMixin:
         self.slider_black_point.setValue(0)
         self.slider_white_point.setValue(1000)
         self.slider_contrast.setValue(0)
+        if hasattr(self, "slider_highlights"):
+            self.slider_highlights.setValue(0)
+        if hasattr(self, "slider_shadows"):
+            self.slider_shadows.setValue(0)
+        if hasattr(self, "slider_whites"):
+            self.slider_whites.setValue(0)
+        if hasattr(self, "slider_blacks"):
+            self.slider_blacks.setValue(0)
         self.slider_midtone.setValue(100)
         self._reset_tone_curve()
+        if refresh and self._original_linear is not None:
+            self._refresh_preview()
+
+    def _reset_color_grading(self, *_args: object, refresh: bool = True) -> None:
+        self.slider_grade_midtones_hue.setValue(45)
+        self.slider_grade_midtones_sat.setValue(0)
+        self.slider_grade_shadows_hue.setValue(240)
+        self.slider_grade_shadows_sat.setValue(0)
+        self.slider_grade_highlights_hue.setValue(50)
+        self.slider_grade_highlights_sat.setValue(0)
+        self.slider_grade_blending.setValue(50)
+        self.slider_grade_balance.setValue(0)
         if refresh and self._original_linear is not None:
             self._refresh_preview()
 
     def _reset_basic_adjustments(self) -> None:
         self._reset_color_adjustments(refresh=False)
         self._reset_tone_adjustments(refresh=False)
+        self._reset_color_grading(refresh=False)
         if self._original_linear is not None:
             self._refresh_preview()
 
     def _sync_viewer_transform(self) -> None:
-        for panel_name in (
-            "image_result_single",
-            "image_original_compare",
-            "image_result_compare",
-        ):
-            if hasattr(self, panel_name):
-                getattr(self, panel_name).set_view_transform(
-                    zoom=self._viewer_zoom,
-                    rotation=self._viewer_rotation,
-                )
+        self._syncing_viewer_transform = True
+        try:
+            for panel_name in (
+                "image_result_single",
+                "image_original_compare",
+                "image_result_compare",
+            ):
+                if hasattr(self, panel_name):
+                    getattr(self, panel_name).set_view_transform(
+                        zoom=self._viewer_zoom,
+                        rotation=self._viewer_rotation,
+                    )
+        finally:
+            self._syncing_viewer_transform = False
         if hasattr(self, "viewer_zoom_label"):
             scale = self._viewer_display_scale()
             shown = scale if scale is not None else float(self._viewer_zoom)
             self.viewer_zoom_label.setText(f"{int(round(float(shown) * 100))}%")
+
+    def _on_viewer_panel_transform_changed(self, zoom: float, rotation: int) -> None:
+        if bool(getattr(self, "_syncing_viewer_transform", False)):
+            return
+        self._viewer_zoom = float(np.clip(float(zoom), 0.05, 64.0))
+        self._viewer_rotation = int(rotation) % 360
+        self._sync_viewer_transform()
+        self._ensure_full_detail_preview_if_needed()
 
     def _viewer_reference_panel(self) -> ImagePanel | None:
         names = (
@@ -646,6 +757,7 @@ class PreviewRecipeMixin:
     def _viewer_zoom_in(self) -> None:
         self._viewer_zoom = float(np.clip(self._viewer_zoom * 1.25, 0.05, 64.0))
         self._sync_viewer_transform()
+        self._ensure_full_detail_preview_if_needed()
 
     def _viewer_zoom_out(self) -> None:
         self._viewer_zoom = float(np.clip(self._viewer_zoom / 1.25, 0.05, 64.0))
@@ -657,12 +769,32 @@ class PreviewRecipeMixin:
             self._viewer_zoom = panel.view_zoom_for_display_scale(1.0)
         else:
             self._viewer_zoom = 1.0
+        self._viewer_full_detail_requested = True
         self._sync_viewer_transform()
+        self._ensure_full_detail_preview_if_needed(force=True)
 
     def _viewer_fit(self) -> None:
+        self._viewer_full_detail_requested = False
         self._viewer_zoom = 1.0
         self._viewer_rotation = 0
         self._sync_viewer_transform()
+
+    def _ensure_full_detail_preview_if_needed(self, *, force: bool = False) -> None:
+        selected = getattr(self, "_selected_file", None)
+        if selected is None or Path(selected).suffix.lower() not in RAW_EXTENSIONS:
+            return
+        if self._original_linear is None:
+            return
+        scale = self._viewer_display_scale()
+        if not force and (scale is None or float(scale) < 0.98):
+            return
+        self._viewer_full_detail_requested = True
+        loaded_request = getattr(self, "_loaded_preview_max_side_request", None)
+        loaded_fast = bool(getattr(self, "_loaded_preview_fast_raw", True))
+        if loaded_request == 0 and not loaded_fast:
+            return
+        self._set_status(self.tr("Cargando detalle 1:1..."))
+        self._on_load_selected(show_message=False)
 
     def _viewer_rotate_left(self) -> None:
         self._viewer_rotation = (self._viewer_rotation - 90) % 360
@@ -813,6 +945,32 @@ class PreviewRecipeMixin:
             recipe.false_color_suppression_steps = max(0, int(self.spin_false_color_suppression.value()))
         if hasattr(self, "check_four_color_rgb"):
             recipe.four_color_rgb = bool(self.check_four_color_rgb.isChecked())
+        if hasattr(self, "check_libraw_auto_bright"):
+            recipe.libraw_auto_bright = bool(self.check_libraw_auto_bright.isChecked())
+        if hasattr(self, "spin_libraw_auto_bright_thr"):
+            recipe.libraw_auto_bright_thr = float(self.spin_libraw_auto_bright_thr.value())
+        if hasattr(self, "spin_libraw_adjust_maximum_thr"):
+            recipe.libraw_adjust_maximum_thr = float(self.spin_libraw_adjust_maximum_thr.value())
+        if hasattr(self, "spin_libraw_bright"):
+            recipe.libraw_bright = float(self.spin_libraw_bright.value())
+        if hasattr(self, "combo_libraw_highlight_mode"):
+            recipe.libraw_highlight_mode = str(
+                self.combo_libraw_highlight_mode.currentData() or self.combo_libraw_highlight_mode.currentText()
+            )
+        if hasattr(self, "spin_libraw_exp_shift"):
+            recipe.libraw_exp_shift = float(self.spin_libraw_exp_shift.value())
+        if hasattr(self, "spin_libraw_exp_preserve_highlights"):
+            recipe.libraw_exp_preserve_highlights = float(self.spin_libraw_exp_preserve_highlights.value())
+        if hasattr(self, "check_libraw_no_auto_scale"):
+            recipe.libraw_no_auto_scale = bool(self.check_libraw_no_auto_scale.isChecked())
+        if hasattr(self, "spin_libraw_gamma_power"):
+            recipe.libraw_gamma_power = float(self.spin_libraw_gamma_power.value())
+        if hasattr(self, "spin_libraw_gamma_slope"):
+            recipe.libraw_gamma_slope = float(self.spin_libraw_gamma_slope.value())
+        if hasattr(self, "spin_libraw_ca_red"):
+            recipe.libraw_chromatic_aberration_red = float(self.spin_libraw_ca_red.value())
+        if hasattr(self, "spin_libraw_ca_blue"):
+            recipe.libraw_chromatic_aberration_blue = float(self.spin_libraw_ca_blue.value())
         recipe.white_balance_mode = str(self.combo_wb_mode.currentData() or self.combo_wb_mode.currentText())
         recipe.wb_multipliers = self._parse_wb_multipliers(self.edit_wb_multipliers.text(), recipe.wb_multipliers)
 

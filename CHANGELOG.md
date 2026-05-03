@@ -22,6 +22,43 @@ To maintain full traceability, each change must:
 
 - No pending changes.
 
+## [0.3.7] - 2026-05-03
+
+### Added
+
+- The Color and Contrast tab now provides a broader manual adjustment workflow:
+  white balance first, light/contrast controls, saturation, vibrance and color
+  grading separated from ICC calibration.
+- The viewer renders magnified images without interpolation at real pixel scale
+  and draws a pixel grid at analysis magnifications for scientific inspection
+  of the digital data.
+- ESF/LSF/MTF plots now show ROI context, sample counts, gradual pixel scale
+  and MTF50/MTF50P metrics inspired by slanted-edge analysis workflows.
+
+### Changed
+
+- Visible preview and exported TIFF now share the same effective recipe and the
+  same image-ICC to monitor/output path, preventing chromatic adjustments from
+  appearing only after opening the TIFF in another color-managed application.
+- Zoom preserves the current visible center when magnifying, so the inspected
+  area remains in view.
+- Auto Sharpness now uses MTF50P, halo and post-Nyquist energy metrics to
+  penalize oversharpened peaks and prefer more stable results.
+- Chart-generated ICC profiles no longer carry visible color, contrast or
+  detail adjustments: ICC calibration and manual adjustments stay separate.
+
+### Fixed
+
+- Automatic MTF recalculation stops when leaving Sharpness and is deferred until
+  that tab is opened again, so chromatic adjustments no longer pay the ROI/MTF
+  cost in the background.
+- Generic ICC space selection avoids duplicate preview reloads and normalizes
+  legacy ProPhoto/sRGB profiles toward camera white balance and non-profiling
+  mode when there is no input ICC.
+- The top progress bar now tracks slow interactive adjustments instead of
+  relying on subtle lower indicators for operations lasting more than one
+  second.
+
 ## [0.3.6] - 2026-05-02
 
 ### Added

@@ -98,7 +98,21 @@ class DisplayControlsMixin:
             "black_point": self.slider_black_point.value() / 1000.0,
             "white_point": self.slider_white_point.value() / 1000.0,
             "contrast": self.slider_contrast.value() / 100.0,
+            "highlights": self.slider_highlights.value() / 100.0,
+            "shadows": self.slider_shadows.value() / 100.0,
+            "whites": self.slider_whites.value() / 100.0,
+            "blacks": self.slider_blacks.value() / 100.0,
             "midtone": self.slider_midtone.value() / 100.0,
+            "vibrance": self.slider_vibrance.value() / 100.0,
+            "saturation": self.slider_saturation.value() / 100.0,
+            "grade_shadows_hue": float(self.slider_grade_shadows_hue.value()),
+            "grade_shadows_saturation": self.slider_grade_shadows_sat.value() / 100.0,
+            "grade_midtones_hue": float(self.slider_grade_midtones_hue.value()),
+            "grade_midtones_saturation": self.slider_grade_midtones_sat.value() / 100.0,
+            "grade_highlights_hue": float(self.slider_grade_highlights_hue.value()),
+            "grade_highlights_saturation": self.slider_grade_highlights_sat.value() / 100.0,
+            "grade_blending": self.slider_grade_blending.value() / 100.0,
+            "grade_balance": self.slider_grade_balance.value() / 100.0,
             "tone_curve_enabled": bool(self.check_tone_curve_enabled.isChecked()),
             "tone_curve_preset": self._tone_curve_preset_key(),
             "tone_curve_channel": self._tone_curve_channel_key(),
@@ -107,6 +121,45 @@ class DisplayControlsMixin:
             "tone_curve_points": luminance_points,
             "tone_curve_channel_points": channel_points,
             "tone_curve_channel_presets": dict(getattr(self, "_tone_curve_channel_presets", {})),
+            "libraw": self._libraw_color_adjustment_state(),
+        }
+
+    def _libraw_color_adjustment_state(self) -> dict[str, Any]:
+        if not hasattr(self, "check_libraw_auto_bright"):
+            return self._default_libraw_color_adjustment_state()
+        return {
+            "white_balance_mode": str(self.combo_wb_mode.currentData() or "fixed"),
+            "wb_multipliers": self._parse_wb_multipliers(self.edit_wb_multipliers.text(), [1.0, 1.0, 1.0, 1.0]),
+            "auto_bright": bool(self.check_libraw_auto_bright.isChecked()),
+            "auto_bright_thr": float(self.spin_libraw_auto_bright_thr.value()),
+            "adjust_maximum_thr": float(self.spin_libraw_adjust_maximum_thr.value()),
+            "bright": float(self.spin_libraw_bright.value()),
+            "highlight_mode": str(self.combo_libraw_highlight_mode.currentData() or "clip"),
+            "exp_shift": float(self.spin_libraw_exp_shift.value()),
+            "exp_preserve_highlights": float(self.spin_libraw_exp_preserve_highlights.value()),
+            "no_auto_scale": bool(self.check_libraw_no_auto_scale.isChecked()),
+            "gamma_power": float(self.spin_libraw_gamma_power.value()),
+            "gamma_slope": float(self.spin_libraw_gamma_slope.value()),
+            "chromatic_aberration_red": float(self.spin_libraw_ca_red.value()),
+            "chromatic_aberration_blue": float(self.spin_libraw_ca_blue.value()),
+        }
+
+    def _default_libraw_color_adjustment_state(self) -> dict[str, Any]:
+        return {
+            "white_balance_mode": "camera_metadata",
+            "wb_multipliers": [1.0, 1.0, 1.0, 1.0],
+            "auto_bright": False,
+            "auto_bright_thr": 0.01,
+            "adjust_maximum_thr": 0.75,
+            "bright": 1.0,
+            "highlight_mode": "clip",
+            "exp_shift": 1.0,
+            "exp_preserve_highlights": 0.0,
+            "no_auto_scale": False,
+            "gamma_power": 1.0,
+            "gamma_slope": 1.0,
+            "chromatic_aberration_red": 1.0,
+            "chromatic_aberration_blue": 1.0,
         }
 
     def _render_adjustment_kwargs_from_state(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -118,7 +171,21 @@ class DisplayControlsMixin:
             "black_point": float(state.get("black_point", 0.0)),
             "white_point": float(max(float(state.get("black_point", 0.0)) + 0.001, float(state.get("white_point", 1.0)))),
             "contrast": float(state.get("contrast", 0.0)),
+            "highlights": float(state.get("highlights", 0.0)),
+            "shadows": float(state.get("shadows", 0.0)),
+            "whites": float(state.get("whites", 0.0)),
+            "blacks": float(state.get("blacks", 0.0)),
             "midtone": float(state.get("midtone", 1.0)),
+            "vibrance": float(state.get("vibrance", 0.0)),
+            "saturation": float(state.get("saturation", 0.0)),
+            "grade_shadows_hue": float(state.get("grade_shadows_hue", 240.0)),
+            "grade_shadows_saturation": float(state.get("grade_shadows_saturation", 0.0)),
+            "grade_midtones_hue": float(state.get("grade_midtones_hue", 45.0)),
+            "grade_midtones_saturation": float(state.get("grade_midtones_saturation", 0.0)),
+            "grade_highlights_hue": float(state.get("grade_highlights_hue", 50.0)),
+            "grade_highlights_saturation": float(state.get("grade_highlights_saturation", 0.0)),
+            "grade_blending": float(state.get("grade_blending", 0.5)),
+            "grade_balance": float(state.get("grade_balance", 0.0)),
             "tone_curve_points": state.get("tone_curve_points") if state.get("tone_curve_enabled") else None,
             "tone_curve_channel_points": state.get("tone_curve_channel_points") if state.get("tone_curve_enabled") else None,
             "tone_curve_black_point": float(state.get("tone_curve_black_point", 0.0)),
@@ -163,7 +230,15 @@ class DisplayControlsMixin:
             return True
         if abs(float(state.get("contrast", 0.0))) > 1e-4:
             return True
+        for key in ("highlights", "shadows", "whites", "blacks", "vibrance", "saturation"):
+            if abs(float(state.get(key, 0.0))) > 1e-4:
+                return True
         if abs(float(state.get("midtone", 1.0)) - 1.0) > 1e-4:
+            return True
+        for key in ("grade_shadows_saturation", "grade_midtones_saturation", "grade_highlights_saturation"):
+            if abs(float(state.get(key, 0.0))) > 1e-4:
+                return True
+        if self._libraw_color_adjustment_state_has_effect(state.get("libraw")):
             return True
         if not bool(state.get("tone_curve_enabled", False)):
             return False
@@ -175,6 +250,37 @@ class DisplayControlsMixin:
         if isinstance(channel_points, dict):
             return any(self._tone_curve_points_have_effect(channel_points.get(channel)) for channel in ("luminance", "red", "green", "blue"))
         return self._tone_curve_points_have_effect(state.get("tone_curve_points"))
+
+    def _libraw_color_adjustment_state_has_effect(self, state: Any) -> bool:
+        if not isinstance(state, dict):
+            state = self._default_libraw_color_adjustment_state()
+        default = self._default_libraw_color_adjustment_state()
+        for key, baseline in default.items():
+            current = state.get(key, baseline)
+            if isinstance(baseline, bool):
+                if bool(current) != baseline:
+                    return True
+                continue
+            if isinstance(baseline, str):
+                if str(current or "").strip().lower() != baseline:
+                    return True
+                continue
+            if isinstance(baseline, list):
+                try:
+                    current_values = [float(v) for v in current]
+                except Exception:
+                    return True
+                if len(current_values) != len(baseline):
+                    return True
+                if any(abs(a - float(b)) > 1e-4 for a, b in zip(current_values, baseline)):
+                    return True
+                continue
+            try:
+                if abs(float(current) - float(baseline)) > 1e-4:
+                    return True
+            except Exception:
+                return True
+        return False
 
     def _detail_adjustment_state(self) -> dict[str, Any]:
         return {
@@ -221,15 +327,31 @@ class DisplayControlsMixin:
     def _apply_render_adjustment_state(self, state: dict[str, Any]) -> None:
         self._set_combo_text(
             self.combo_illuminant_render,
-            str(state.get("illuminant") or self.combo_illuminant_render.currentText()),
+            str(state.get("illuminant") or "D50"),
         )
-        self.spin_render_temperature.setValue(int(state.get("temperature_kelvin", self.spin_render_temperature.value())))
-        self.spin_render_tint.setValue(float(state.get("tint", self.spin_render_tint.value())))
+        self.spin_render_temperature.setValue(int(state.get("temperature_kelvin", 5003)))
+        self.spin_render_tint.setValue(float(state.get("tint", 0.0)))
         self.slider_brightness.setValue(int(round(float(state.get("brightness_ev", 0.0)) * 100)))
         self.slider_black_point.setValue(int(round(float(state.get("black_point", 0.0)) * 1000)))
         self.slider_white_point.setValue(int(round(float(state.get("white_point", 1.0)) * 1000)))
         self.slider_contrast.setValue(int(round(float(state.get("contrast", 0.0)) * 100)))
+        self.slider_highlights.setValue(int(round(float(state.get("highlights", 0.0)) * 100)))
+        self.slider_shadows.setValue(int(round(float(state.get("shadows", 0.0)) * 100)))
+        self.slider_whites.setValue(int(round(float(state.get("whites", 0.0)) * 100)))
+        self.slider_blacks.setValue(int(round(float(state.get("blacks", 0.0)) * 100)))
         self.slider_midtone.setValue(int(round(float(state.get("midtone", 1.0)) * 100)))
+        self.slider_vibrance.setValue(int(round(float(state.get("vibrance", 0.0)) * 100)))
+        self.slider_saturation.setValue(int(round(float(state.get("saturation", 0.0)) * 100)))
+        self.slider_grade_shadows_hue.setValue(int(round(float(state.get("grade_shadows_hue", 240.0)))))
+        self.slider_grade_shadows_sat.setValue(int(round(float(state.get("grade_shadows_saturation", 0.0)) * 100)))
+        self.slider_grade_midtones_hue.setValue(int(round(float(state.get("grade_midtones_hue", 45.0)))))
+        self.slider_grade_midtones_sat.setValue(int(round(float(state.get("grade_midtones_saturation", 0.0)) * 100)))
+        self.slider_grade_highlights_hue.setValue(int(round(float(state.get("grade_highlights_hue", 50.0)))))
+        self.slider_grade_highlights_sat.setValue(int(round(float(state.get("grade_highlights_saturation", 0.0)) * 100)))
+        self.slider_grade_blending.setValue(int(round(float(state.get("grade_blending", 0.5)) * 100)))
+        self.slider_grade_balance.setValue(int(round(float(state.get("grade_balance", 0.0)) * 100)))
+        if isinstance(state.get("libraw"), dict):
+            self._apply_libraw_color_adjustment_state(state.get("libraw"))
         curve_enabled = bool(state.get("tone_curve_enabled", False))
         curve_preset = str(state.get("tone_curve_preset") or "linear")
         curve_points = self._coerce_tone_curve_points(state.get("tone_curve_points"))
@@ -275,6 +397,28 @@ class DisplayControlsMixin:
             self._sync_tone_curve_editor_channel_overlay()
         self.check_tone_curve_enabled.setChecked(curve_enabled)
         self._set_tone_curve_controls_enabled(curve_enabled)
+
+    def _apply_libraw_color_adjustment_state(self, state: Any) -> None:
+        if not hasattr(self, "check_libraw_auto_bright"):
+            return
+        if not isinstance(state, dict):
+            state = self._default_libraw_color_adjustment_state()
+        self._set_combo_data(self.combo_wb_mode, str(state.get("white_balance_mode", "fixed")))
+        wb = state.get("wb_multipliers", [1.0, 1.0, 1.0, 1.0])
+        if isinstance(wb, (list, tuple)):
+            self.edit_wb_multipliers.setText(",".join(f"{float(v):.6g}" for v in wb))
+        self.check_libraw_auto_bright.setChecked(bool(state.get("auto_bright", False)))
+        self.spin_libraw_auto_bright_thr.setValue(float(state.get("auto_bright_thr", 0.01)))
+        self.spin_libraw_adjust_maximum_thr.setValue(float(state.get("adjust_maximum_thr", 0.75)))
+        self.spin_libraw_bright.setValue(float(state.get("bright", 1.0)))
+        self._set_combo_data(self.combo_libraw_highlight_mode, str(state.get("highlight_mode", "clip")))
+        self.spin_libraw_exp_shift.setValue(float(state.get("exp_shift", 1.0)))
+        self.spin_libraw_exp_preserve_highlights.setValue(float(state.get("exp_preserve_highlights", 0.0)))
+        self.check_libraw_no_auto_scale.setChecked(bool(state.get("no_auto_scale", False)))
+        self.spin_libraw_gamma_power.setValue(float(state.get("gamma_power", 1.0)))
+        self.spin_libraw_gamma_slope.setValue(float(state.get("gamma_slope", 1.0)))
+        self.spin_libraw_ca_red.setValue(float(state.get("chromatic_aberration_red", 1.0)))
+        self.spin_libraw_ca_blue.setValue(float(state.get("chromatic_aberration_blue", 1.0)))
 
     def _ca_scale_factors(self) -> tuple[float, float]:
         return 1.0 + self.slider_ca_red.value() / 10000.0, 1.0 + self.slider_ca_blue.value() / 10000.0
@@ -404,6 +548,7 @@ class DisplayControlsMixin:
         self._original_compare_panel_key = None
         self._interactive_source_cache_key = None
         self._interactive_source_cache_image = None
+        self._interactive_source_cache_images = {}
 
     def _add_path_row(
         self,

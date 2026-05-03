@@ -398,7 +398,7 @@ class SettingsMixin:
         return bool(checkbox is not None and checkbox.isChecked())
 
     def _effective_preview_max_side(self) -> int:
-        if self._precision_detail_preview_enabled():
+        if bool(getattr(self, "_viewer_full_detail_requested", False)):
             return 0
         compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
         if compare_enabled or bool(getattr(self, "_manual_chart_marking_after_reload", False)):
@@ -409,15 +409,8 @@ class SettingsMixin:
         self._save_preview_monitor_settings()
         if self._original_linear is not None:
             self._schedule_preview_refresh()
-        if not bool(enabled):
-            return
-        if self._original_linear is None or self._selected_file is None:
-            return
-        if self._selected_file.suffix.lower() not in RAW_EXTENSIONS:
-            return
-        # Force a reload at full source resolution when enabling precision mode.
-        self._last_loaded_preview_key = None
-        self._on_load_selected(show_message=False)
+        if bool(enabled):
+            self._set_status(self.tr("Modo precision activado; usa Zoom 1:1 para cargar detalle real."))
 
     def _save_global_settings(self) -> None:
         self._save_signature_settings()

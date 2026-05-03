@@ -17,6 +17,7 @@ class MTFResult:
     overshoot: float
     undershoot: float
     mtf50: float | None
+    mtf50p: float | None
     mtf30: float | None
     mtf10: float | None
     acutance: float
@@ -39,6 +40,7 @@ class MTFResult:
             "overshoot": self.overshoot,
             "undershoot": self.undershoot,
             "mtf50": self.mtf50,
+            "mtf50p": self.mtf50p,
             "mtf30": self.mtf30,
             "mtf10": self.mtf10,
             "acutance": self.acutance,
@@ -101,6 +103,7 @@ def analyze_slanted_edge_mtf(
     frequency, mtf, frequency_extended, mtf_extended = _mtf_from_lsf(lsf, bin_width=bin_width)
 
     mtf50 = _mtf_crossing(frequency, mtf, 0.50)
+    mtf50p = _mtf_peak_crossing(frequency, mtf, 0.50)
     mtf30 = _mtf_crossing(frequency, mtf, 0.30)
     mtf10 = _mtf_crossing(frequency, mtf, 0.10)
     acutance = _mtf_acutance(frequency, mtf)
@@ -123,6 +126,7 @@ def analyze_slanted_edge_mtf(
         overshoot=overshoot,
         undershoot=undershoot,
         mtf50=mtf50,
+        mtf50p=mtf50p,
         mtf30=mtf30,
         mtf10=mtf10,
         acutance=acutance,
@@ -178,29 +182,52 @@ def _fit_edge(gray: np.ndarray) -> dict[str, np.ndarray | float]:
     gy = cv2.Sobel(blurred, cv2.CV_32F, 0, 1, ksize=3)
     magnitude = np.hypot(gx, gy)
     positive = magnitude[magnitude > 1e-6]
-    threshold = float(np.percentile(positive, 70)) if positive.size else 0.0
-    if threshold <= 1e-6:
+    if positive.size == 0:
         raise ValueError("No se detecta un borde con gradiente suficiente en la ROI.")
-    mask = magnitude >= threshold
-    y_idx, x_idx = np.nonzero(mask)
-    if len(x_idx) < 16:
-        raise ValueError("No hay suficientes muestras de borde en la ROI seleccionada.")
 
-    weights = magnitude[mask].astype(np.float64)
-    weights = np.maximum(weights, 1e-8)
-    points = np.column_stack([x_idx.astype(np.float64), y_idx.astype(np.float64)])
+    # Use the ridge of the edge gradient. Lower percentiles include texture,
+    # uneven illumination and chart surface grain, which biases the fitted edge
+    # and artificially widens the ESF.
+    for percentile in (98.0, 97.0, 95.0, 92.0, 90.0, 85.0, 80.0, 70.0):
+        threshold = float(np.percentile(positive, percentile))
+        if threshold <= 1e-6:
+            continue
+        mask = magnitude >= threshold
+        y_idx, x_idx = np.nonzero(mask)
+        if len(x_idx) < 16:
+            continue
+        weights = np.maximum(magnitude[mask].astype(np.float64), 1e-8)
+        points = np.column_stack([x_idx.astype(np.float64), y_idx.astype(np.float64)])
+        try:
+            initial = _fit_edge_from_points(points, weights, gx[mask], gy[mask])
+            return _refine_edge_from_line_centroids(gx, gy, initial) or initial
+        except ValueError:
+            continue
+    raise ValueError("No hay suficientes muestras de borde en la ROI seleccionada.")
+
+
+def _fit_edge_from_points(
+    points: np.ndarray,
+    weights: np.ndarray,
+    gradient_x: np.ndarray,
+    gradient_y: np.ndarray,
+) -> dict[str, np.ndarray | float]:
+    if points.shape[0] < 16:
+        raise ValueError("No hay suficientes muestras de borde en la ROI seleccionada.")
     centroid = np.average(points, axis=0, weights=weights)
     centered = points - centroid
     cov = (centered * weights[:, None]).T @ centered / float(np.sum(weights))
     vals, vecs = np.linalg.eigh(cov)
+    if not np.isfinite(vals).all() or float(np.max(vals)) <= 1e-8:
+        raise ValueError("No se pudo ajustar una línea de borde estable en la ROI.")
     line_dir = vecs[:, int(np.argmax(vals))]
     line_dir = line_dir / max(1e-8, float(np.linalg.norm(line_dir)))
     normal = np.asarray([-line_dir[1], line_dir[0]], dtype=np.float64)
 
     avg_grad = np.asarray(
         [
-            float(np.average(gx[mask], weights=weights)),
-            float(np.average(gy[mask], weights=weights)),
+            float(np.average(gradient_x, weights=weights)),
+            float(np.average(gradient_y, weights=weights)),
         ],
         dtype=np.float64,
     )
@@ -208,6 +235,159 @@ def _fit_edge(gray: np.ndarray) -> dict[str, np.ndarray | float]:
         normal *= -1.0
     angle = (math.degrees(math.atan2(float(line_dir[1]), float(line_dir[0]))) + 180.0) % 180.0
     return {"centroid": centroid, "normal": normal, "angle": angle}
+
+
+def _refine_edge_from_line_centroids(
+    gx: np.ndarray,
+    gy: np.ndarray,
+    initial: dict[str, np.ndarray | float],
+) -> dict[str, np.ndarray | float] | None:
+    normal = np.asarray(initial.get("normal"), dtype=np.float64)
+    if normal.shape != (2,) or not np.isfinite(normal).all():
+        return None
+    if abs(float(normal[0])) >= abs(float(normal[1])):
+        return _fit_vertical_edge_from_rows(gx, normal)
+    return _fit_horizontal_edge_from_columns(gy, normal)
+
+
+def _fit_vertical_edge_from_rows(gx: np.ndarray, normal: np.ndarray) -> dict[str, np.ndarray | float] | None:
+    h, w = gx.shape[:2]
+    if h < 8 or w < 8:
+        return None
+    oriented = gx.astype(np.float64, copy=False) * (1.0 if float(normal[0]) >= 0.0 else -1.0)
+    peaks = np.max(np.maximum(oriented, 0.0), axis=1)
+    strong = peaks[peaks > 1e-8]
+    if strong.size < 8:
+        return None
+    min_peak = max(1e-8, float(np.percentile(strong, 65)) * 0.35)
+    radius = int(np.clip(round(float(w) * 0.08), 6, 24))
+    rows: list[float] = []
+    cols: list[float] = []
+    weights: list[float] = []
+    x_axis = np.arange(w, dtype=np.float64)
+    for y, peak in enumerate(peaks):
+        if float(peak) < min_peak:
+            continue
+        profile = np.maximum(oriented[y], 0.0)
+        center = int(np.argmax(profile))
+        x0 = max(0, center - radius)
+        x1 = min(w, center + radius + 1)
+        local = profile[x0:x1]
+        floor = float(np.percentile(local, 20)) if local.size else 0.0
+        local = np.maximum(local - floor, 0.0)
+        total = float(np.sum(local))
+        if total <= 1e-8:
+            continue
+        xs = x_axis[x0:x1]
+        rows.append(float(y))
+        cols.append(float(np.sum(xs * local) / total))
+        weights.append(total)
+    if len(rows) < max(8, min(24, h // 5)):
+        return None
+    y_values = np.asarray(rows, dtype=np.float64)
+    x_values = np.asarray(cols, dtype=np.float64)
+    fit_weights = np.sqrt(np.asarray(weights, dtype=np.float64))
+    if float(np.ptp(y_values)) < max(6.0, float(h) * 0.35):
+        return None
+    coeff = _robust_polyfit(y_values, x_values, fit_weights)
+    if coeff is None:
+        return None
+    slope, intercept = coeff
+    fitted_x = slope * y_values + intercept
+    centroid = np.asarray(
+        [
+            float(np.average(fitted_x, weights=fit_weights)),
+            float(np.average(y_values, weights=fit_weights)),
+        ],
+        dtype=np.float64,
+    )
+    return _edge_from_line(np.asarray([slope, 1.0], dtype=np.float64), centroid, np.asarray([normal[0], -slope], dtype=np.float64))
+
+
+def _fit_horizontal_edge_from_columns(gy: np.ndarray, normal: np.ndarray) -> dict[str, np.ndarray | float] | None:
+    h, w = gy.shape[:2]
+    if h < 8 or w < 8:
+        return None
+    oriented = gy.astype(np.float64, copy=False) * (1.0 if float(normal[1]) >= 0.0 else -1.0)
+    peaks = np.max(np.maximum(oriented, 0.0), axis=0)
+    strong = peaks[peaks > 1e-8]
+    if strong.size < 8:
+        return None
+    min_peak = max(1e-8, float(np.percentile(strong, 65)) * 0.35)
+    radius = int(np.clip(round(float(h) * 0.08), 6, 24))
+    cols: list[float] = []
+    rows: list[float] = []
+    weights: list[float] = []
+    y_axis = np.arange(h, dtype=np.float64)
+    for x, peak in enumerate(peaks):
+        if float(peak) < min_peak:
+            continue
+        profile = np.maximum(oriented[:, x], 0.0)
+        center = int(np.argmax(profile))
+        y0 = max(0, center - radius)
+        y1 = min(h, center + radius + 1)
+        local = profile[y0:y1]
+        floor = float(np.percentile(local, 20)) if local.size else 0.0
+        local = np.maximum(local - floor, 0.0)
+        total = float(np.sum(local))
+        if total <= 1e-8:
+            continue
+        ys = y_axis[y0:y1]
+        cols.append(float(x))
+        rows.append(float(np.sum(ys * local) / total))
+        weights.append(total)
+    if len(cols) < max(8, min(24, w // 5)):
+        return None
+    x_values = np.asarray(cols, dtype=np.float64)
+    y_values = np.asarray(rows, dtype=np.float64)
+    fit_weights = np.sqrt(np.asarray(weights, dtype=np.float64))
+    if float(np.ptp(x_values)) < max(6.0, float(w) * 0.35):
+        return None
+    coeff = _robust_polyfit(x_values, y_values, fit_weights)
+    if coeff is None:
+        return None
+    slope, intercept = coeff
+    fitted_y = slope * x_values + intercept
+    centroid = np.asarray(
+        [
+            float(np.average(x_values, weights=fit_weights)),
+            float(np.average(fitted_y, weights=fit_weights)),
+        ],
+        dtype=np.float64,
+    )
+    return _edge_from_line(np.asarray([1.0, slope], dtype=np.float64), centroid, np.asarray([-slope, normal[1]], dtype=np.float64))
+
+
+def _robust_polyfit(x: np.ndarray, y: np.ndarray, weights: np.ndarray) -> tuple[float, float] | None:
+    try:
+        coeff = np.polyfit(x, y, 1, w=weights)
+    except Exception:
+        return None
+    residual = y - (float(coeff[0]) * x + float(coeff[1]))
+    median = float(np.median(residual))
+    mad = float(np.median(np.abs(residual - median)))
+    limit = max(1.5, 4.0 * 1.4826 * mad)
+    keep = np.abs(residual - median) <= limit
+    if int(np.count_nonzero(keep)) >= max(8, int(y.size * 0.55)):
+        try:
+            coeff = np.polyfit(x[keep], y[keep], 1, w=weights[keep])
+        except Exception:
+            return None
+    return float(coeff[0]), float(coeff[1])
+
+
+def _edge_from_line(line_dir: np.ndarray, centroid: np.ndarray, preferred_normal: np.ndarray) -> dict[str, np.ndarray | float] | None:
+    line = np.asarray(line_dir, dtype=np.float64)
+    norm = float(np.linalg.norm(line))
+    if not np.isfinite(norm) or norm <= 1e-8:
+        return None
+    line = line / norm
+    normal = np.asarray([-line[1], line[0]], dtype=np.float64)
+    preferred = np.asarray(preferred_normal, dtype=np.float64)
+    if preferred.shape == (2,) and np.isfinite(preferred).all() and float(np.dot(normal, preferred)) < 0.0:
+        normal *= -1.0
+    angle = (math.degrees(math.atan2(float(line[1]), float(line[0]))) + 180.0) % 180.0
+    return {"centroid": np.asarray(centroid, dtype=np.float64), "normal": normal, "angle": angle}
 
 
 def _edge_spread_function(
@@ -305,6 +485,22 @@ def _mtf_crossing(frequency: np.ndarray, mtf: np.ndarray, level: float) -> float
             t = (float(level) - y0) / (y1 - y0)
             return float(x0 + t * (x1 - x0))
     return None
+
+
+def _mtf_peak_crossing(frequency: np.ndarray, mtf: np.ndarray, fraction: float) -> float | None:
+    if len(frequency) < 2 or len(mtf) < 2:
+        return None
+    x = np.asarray(frequency, dtype=np.float64)
+    y = np.asarray(mtf, dtype=np.float64)
+    valid = np.isfinite(x) & np.isfinite(y) & (x >= 0.0)
+    x = x[valid]
+    y = y[valid]
+    if x.size < 2:
+        return None
+    peak = float(np.max(y))
+    if peak <= 0.0:
+        return None
+    return _mtf_crossing(x, y, peak * float(fraction))
 
 
 def _mtf_acutance(frequency: np.ndarray, mtf: np.ndarray) -> float:

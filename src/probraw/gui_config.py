@@ -53,6 +53,7 @@ MTF_ROI_DISK_CACHE_MAX_BYTES = 1024 * 1024 * 1024
 PREVIEW_REFRESH_DEBOUNCE_MS = 120
 PREVIEW_REFRESH_THROTTLE_MS = 65
 PREVIEW_AUTO_BASE_MAX_SIDE = 2600
+PREVIEW_FINAL_ADJUSTMENT_MAX_SIDE = 1800
 PREVIEW_INTERACTIVE_MAX_SIDE = 1200
 PREVIEW_INTERACTIVE_DRAG_MAX_SIDE = 720
 PREVIEW_INTERACTIVE_TONAL_MAX_SIDE = 560
@@ -108,12 +109,20 @@ ILLUMINANT_OPTIONS = [
 WB_MODE_OPTIONS = [
     ("Fijo (multiplicadores manuales)", "fixed"),
     ("Desde metadatos de camara", "camera_metadata"),
+    ("Automatico LibRaw", "auto"),
 ]
 
 BLACK_MODE_OPTIONS = [
     ("Metadata", "metadata"),
     ("Fijo", "fixed"),
     ("White level", "white"),
+]
+
+LIBRAW_HIGHLIGHT_MODE_OPTIONS = [
+    ("Recortar", "clip"),
+    ("Ignorar", "ignore"),
+    ("Mezclar", "blend"),
+    ("Reconstruir", "reconstruct"),
 ]
 
 TONE_OPTIONS = [

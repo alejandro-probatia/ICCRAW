@@ -62,6 +62,18 @@ class Recipe:
     demosaic_edge_quality: int = 0
     false_color_suppression_steps: int = 0
     four_color_rgb: bool = False
+    libraw_auto_bright: bool = False
+    libraw_auto_bright_thr: float = 0.01
+    libraw_adjust_maximum_thr: float = 0.75
+    libraw_bright: float = 1.0
+    libraw_highlight_mode: str = "clip"
+    libraw_exp_shift: float = 1.0
+    libraw_exp_preserve_highlights: float = 0.0
+    libraw_no_auto_scale: bool = False
+    libraw_gamma_power: float = 1.0
+    libraw_gamma_slope: float = 1.0
+    libraw_chromatic_aberration_red: float = 1.0
+    libraw_chromatic_aberration_blue: float = 1.0
     black_level_mode: str = "metadata"
     white_balance_mode: str = "fixed"
     wb_multipliers: list[float] = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])

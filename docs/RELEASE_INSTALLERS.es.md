@@ -78,6 +78,29 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.7
+
+La release 0.3.7 corrige la equivalencia visual entre ProbRAW y aplicaciones
+externas con gestion de color, y refuerza las herramientas de analisis:
+
+- la preview y los TIFF exportados usan la misma receta efectiva y ruta ICC,
+- el zoom a 100% y superiores muestra pixeles reales sin interpolacion y
+  conserva el centro de la zona analizada,
+- ESF/LSF/MTF muestran conteo de muestras, escala de pixeles, MTF50 y MTF50P,
+- Auto nitidez penaliza halos, picos sobreenfocados y energia post-Nyquist,
+- los perfiles ICC de carta quedan separados de ajustes manuales de color,
+  contraste y detalle,
+- el recálculo automatico MTF se pausa fuera de Nitidez para que los ajustes
+  cromaticos no ejecuten calculos MTF ocultos.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.7-Setup.exe`
+- `ProbRAW-0.3.7-Setup.exe.sha256`
+- `probraw-0.3.7.tar.gz`
+- `probraw-0.3.7-py3-none-any.whl`
+- `probraw_0.3.7_python_artifacts.sha256`
+
 ## Release 0.3.6
 
 La release 0.3.6 consolida la trazabilidad por imagen de ICC, color/contraste,

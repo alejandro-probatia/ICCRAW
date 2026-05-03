@@ -73,6 +73,8 @@ class PreviewExportMixin:
         ca_red, ca_blue = self._ca_scale_factors()
         render_adjustments = self._render_adjustment_kwargs()
         c2pa_render_adjustments = {"applied": True, **render_adjustments}
+        sidecar_detail_state = self._detail_adjustment_state()
+        sidecar_render_state = self._render_adjustment_state()
         detail_adjustments = {
             "applied": True,
             "denoise_luminance": nl,
@@ -138,8 +140,8 @@ class PreviewExportMixin:
                 in_path,
                 recipe=recipe,
                 development_profile=development_profile,
-                detail_adjustments=self._detail_adjustment_state(),
-                render_adjustments=self._render_adjustment_state(),
+                detail_adjustments=sidecar_detail_state,
+                render_adjustments=sidecar_render_state,
                 profile_path=rendered_profile_path,
                 color_management_mode=mode,
                 output_tiff=out_path,
@@ -161,6 +163,11 @@ class PreviewExportMixin:
             if payload.get("raw_sidecar"):
                 self._log_preview(f"Mochila ProbRAW: {payload['raw_sidecar']}")
             self._refresh_color_reference_thumbnail_markers()
+            if not self._sync_selected_sidecar_to_preview(
+                in_path,
+                status_message=self.tr("Vista sincronizada con el TIFF revelado:") + f" {Path(str(payload['output_tiff'])).name}",
+            ) and self._selected_file == in_path and self._original_linear is not None:
+                self._refresh_preview()
             self._set_status(self.tr("Revelado completado:") + f" {payload['output_tiff']}")
             self._save_active_session(silent=True)
 

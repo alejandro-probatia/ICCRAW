@@ -5,6 +5,11 @@ from ._imports import *  # noqa: F401,F403
 
 class PreviewRenderMixin:
     def _on_slider_change(self) -> None:
+        if (
+            int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0) > 0
+            or int(getattr(self, "_suspend_detail_adjustment_autosave", 0) or 0) > 0
+        ):
+            return
         if self._original_linear is not None:
             self._schedule_preview_refresh()
         sender = self.sender()
@@ -27,6 +32,11 @@ class PreviewRenderMixin:
             self._schedule_mtf_refresh(interactive=self._is_preview_interaction_active())
 
     def _on_slider_release(self) -> None:
+        if (
+            int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0) > 0
+            or int(getattr(self, "_suspend_detail_adjustment_autosave", 0) or 0) > 0
+        ):
+            return
         if self._original_linear is not None:
             self._schedule_preview_refresh()
         sender = self.sender()
@@ -35,7 +45,21 @@ class PreviewRenderMixin:
             getattr(self, "slider_black_point", None),
             getattr(self, "slider_white_point", None),
             getattr(self, "slider_contrast", None),
+            getattr(self, "slider_highlights", None),
+            getattr(self, "slider_shadows", None),
+            getattr(self, "slider_whites", None),
+            getattr(self, "slider_blacks", None),
             getattr(self, "slider_midtone", None),
+            getattr(self, "slider_vibrance", None),
+            getattr(self, "slider_saturation", None),
+            getattr(self, "slider_grade_midtones_hue", None),
+            getattr(self, "slider_grade_midtones_sat", None),
+            getattr(self, "slider_grade_shadows_hue", None),
+            getattr(self, "slider_grade_shadows_sat", None),
+            getattr(self, "slider_grade_highlights_hue", None),
+            getattr(self, "slider_grade_highlights_sat", None),
+            getattr(self, "slider_grade_blending", None),
+            getattr(self, "slider_grade_balance", None),
             getattr(self, "slider_tone_curve_black", None),
             getattr(self, "slider_tone_curve_white", None),
         )
@@ -66,7 +90,21 @@ class PreviewRenderMixin:
             "slider_black_point",
             "slider_white_point",
             "slider_contrast",
+            "slider_highlights",
+            "slider_shadows",
+            "slider_whites",
+            "slider_blacks",
             "slider_midtone",
+            "slider_vibrance",
+            "slider_saturation",
+            "slider_grade_midtones_hue",
+            "slider_grade_midtones_sat",
+            "slider_grade_shadows_hue",
+            "slider_grade_shadows_sat",
+            "slider_grade_highlights_hue",
+            "slider_grade_highlights_sat",
+            "slider_grade_blending",
+            "slider_grade_balance",
             "slider_tone_curve_black",
             "slider_tone_curve_white",
         )
@@ -112,6 +150,13 @@ class PreviewRenderMixin:
             and getattr(self, "_interactive_source_cache_image", None) is not None
         ):
             return self._interactive_source_cache_image
+        cache_images = getattr(self, "_interactive_source_cache_images", None)
+        if isinstance(cache_images, dict):
+            cached = cache_images.get(cache_key)
+            if cached is not None:
+                self._interactive_source_cache_key = cache_key
+                self._interactive_source_cache_image = cached
+                return cached
         h, w = int(rgb.shape[0]), int(rgb.shape[1])
         max_side = max(h, w)
         if max_side <= int(max_side_limit):
@@ -126,6 +171,10 @@ class PreviewRenderMixin:
         ).astype(np.float32)
         self._interactive_source_cache_key = cache_key
         self._interactive_source_cache_image = resized
+        if isinstance(cache_images, dict):
+            cache_images[cache_key] = resized
+            while len(cache_images) > 4:
+                cache_images.pop(next(iter(cache_images)))
         return resized
 
     def _profile_preview_profile_stamp(self, profile_path: Path) -> str:
@@ -183,7 +232,18 @@ class PreviewRenderMixin:
                 f"bp={float(render_state.get('black_point', 0.0)):.4f}",
                 f"wp={float(render_state.get('white_point', 1.0)):.4f}",
                 f"ct={float(render_state.get('contrast', 0.0)):.3f}",
+                f"hi={float(render_state.get('highlights', 0.0)):.3f}",
+                f"shd={float(render_state.get('shadows', 0.0)):.3f}",
+                f"wh={float(render_state.get('whites', 0.0)):.3f}",
+                f"bl={float(render_state.get('blacks', 0.0)):.3f}",
                 f"mt={float(render_state.get('midtone', 1.0)):.3f}",
+                f"vib={float(render_state.get('vibrance', 0.0)):.3f}",
+                f"sat={float(render_state.get('saturation', 0.0)):.3f}",
+                f"gsh={float(render_state.get('grade_shadows_hue', 240.0)):.2f}:{float(render_state.get('grade_shadows_saturation', 0.0)):.3f}",
+                f"gmi={float(render_state.get('grade_midtones_hue', 45.0)):.2f}:{float(render_state.get('grade_midtones_saturation', 0.0)):.3f}",
+                f"ghi={float(render_state.get('grade_highlights_hue', 50.0)):.2f}:{float(render_state.get('grade_highlights_saturation', 0.0)):.3f}",
+                f"gbl={float(render_state.get('grade_blending', 0.5)):.3f}",
+                f"gba={float(render_state.get('grade_balance', 0.0)):.3f}",
                 f"te={int(bool(render_state.get('tone_curve_enabled', False)))}",
                 f"tb={float(render_state.get('tone_curve_black_point', 0.0)):.4f}",
                 f"tw={float(render_state.get('tone_curve_white_point', 1.0)):.4f}",
@@ -204,9 +264,33 @@ class PreviewRenderMixin:
         )
 
     def _profile_preview_max_side_limit(self) -> int:
-        if self._precision_detail_preview_enabled() or float(self._viewer_zoom) >= 1.0:
+        scale = self._viewer_display_scale()
+        if (
+            bool(getattr(self, "_viewer_full_detail_requested", False))
+            or (scale is not None and float(scale) >= 0.98)
+        ):
             return 0
         return int(PREVIEW_PROFILE_APPLY_MAX_SIDE)
+
+    def _final_adjustment_preview_max_side(self) -> int:
+        effective = int(self._effective_preview_max_side())
+        if effective <= 0 or bool(getattr(self, "_viewer_full_detail_requested", False)):
+            return effective
+        compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
+        if compare_enabled or bool(getattr(self, "_manual_chart_marking_after_reload", False)):
+            return effective
+        return int(min(effective, PREVIEW_FINAL_ADJUSTMENT_MAX_SIDE))
+
+    def _interactive_preview_timeout_ms(self, *, source_linear: np.ndarray, max_side_limit: int) -> int:
+        try:
+            pixels = int(source_linear.shape[0]) * int(source_linear.shape[1])
+        except Exception:
+            pixels = 0
+        if int(max_side_limit) <= 0 or pixels > 20_000_000:
+            return 90_000
+        if pixels > 8_000_000:
+            return 30_000
+        return int(PREVIEW_INTERACTIVE_STUCK_TIMEOUT_MS)
 
     def _tone_curve_histogram_render_kwargs(self, render_kwargs: dict[str, Any]) -> dict[str, Any]:
         return dict(render_kwargs)
@@ -242,7 +326,18 @@ class PreviewRenderMixin:
                 f"black={float(render_kwargs.get('black_point', 0.0)):.4f}",
                 f"white={float(render_kwargs.get('white_point', 1.0)):.4f}",
                 f"contrast={float(render_kwargs.get('contrast', 0.0)):.4f}",
+                f"highlights={float(render_kwargs.get('highlights', 0.0)):.4f}",
+                f"shadows={float(render_kwargs.get('shadows', 0.0)):.4f}",
+                f"whites={float(render_kwargs.get('whites', 0.0)):.4f}",
+                f"blacks={float(render_kwargs.get('blacks', 0.0)):.4f}",
                 f"midtone={float(render_kwargs.get('midtone', 1.0)):.4f}",
+                f"vibrance={float(render_kwargs.get('vibrance', 0.0)):.4f}",
+                f"saturation={float(render_kwargs.get('saturation', 0.0)):.4f}",
+                f"grade_shadows={float(render_kwargs.get('grade_shadows_hue', 240.0)):.2f}:{float(render_kwargs.get('grade_shadows_saturation', 0.0)):.4f}",
+                f"grade_midtones={float(render_kwargs.get('grade_midtones_hue', 45.0)):.2f}:{float(render_kwargs.get('grade_midtones_saturation', 0.0)):.4f}",
+                f"grade_highlights={float(render_kwargs.get('grade_highlights_hue', 50.0)):.2f}:{float(render_kwargs.get('grade_highlights_saturation', 0.0)):.4f}",
+                f"grade_blending={float(render_kwargs.get('grade_blending', 0.5)):.4f}",
+                f"grade_balance={float(render_kwargs.get('grade_balance', 0.0)):.4f}",
                 f"curve_black={float(render_kwargs.get('tone_curve_black_point', 0.0)):.4f}",
                 f"curve_white={float(render_kwargs.get('tone_curve_white_point', 1.0)):.4f}",
                 f"curve={self._tone_curve_points_signature(render_kwargs.get('tone_curve_points'))}",
@@ -277,6 +372,22 @@ class PreviewRenderMixin:
             self._tone_curve_histogram_key = None
             self._log_preview(f"Aviso: no se pudo actualizar histograma de curva: {exc}")
 
+    def _tone_curve_histogram_enabled(self) -> bool:
+        checkbox = getattr(self, "check_tone_curve_enabled", None)
+        return bool(checkbox is not None and checkbox.isChecked() and hasattr(self, "tone_curve_editor"))
+
+    def _tone_curve_histogram_interaction_active(self) -> bool:
+        if not self._tone_curve_histogram_enabled():
+            return False
+        editor = getattr(self, "tone_curve_editor", None)
+        if editor is not None and bool(editor.is_dragging()):
+            return True
+        for name in ("slider_tone_curve_black", "slider_tone_curve_white"):
+            slider = getattr(self, name, None)
+            if slider is not None and bool(slider.isSliderDown()):
+                return True
+        return False
+
     def _update_tone_curve_histogram_for_current_controls(
         self,
         *,
@@ -284,6 +395,8 @@ class PreviewRenderMixin:
         force: bool = False,
     ) -> None:
         if self._original_linear is None:
+            return
+        if not force and not self._tone_curve_histogram_enabled():
             return
         source_key = self._last_loaded_preview_key or str(id(self._original_linear))
         source = self._interactive_preview_source(
@@ -664,7 +777,10 @@ class PreviewRenderMixin:
         thread.failed.connect(fail)
         thread.start()
         QtCore.QTimer.singleShot(
-            int(PREVIEW_INTERACTIVE_STUCK_TIMEOUT_MS),
+            self._interactive_preview_timeout_ms(
+                source_linear=source_linear,
+                max_side_limit=int(max_side_limit),
+            ),
             lambda: self._abandon_stuck_interactive_preview(task_token, request_key),
         )
 
@@ -740,9 +856,10 @@ class PreviewRenderMixin:
                         if apply_detail
                         else PREVIEW_INTERACTIVE_TONAL_MAX_SIDE
                     )
-                self._update_tone_curve_histogram_for_current_controls(
-                    max_side_limit=int(max_side_limit),
-                )
+                if self._tone_curve_histogram_interaction_active():
+                    self._update_tone_curve_histogram_for_current_controls(
+                        max_side_limit=int(max_side_limit),
+                    )
                 self._interactive_preview_request_seq += 1
                 request_key = f"{source_key}|interactive|{self._interactive_preview_request_seq}"
                 self._profile_preview_expected_key = None
@@ -785,7 +902,7 @@ class PreviewRenderMixin:
                         render_kwargs,
                         compare_enabled,
                         False,
-                        int(self._effective_preview_max_side()),
+                        int(self._final_adjustment_preview_max_side()),
                         True,
                         True,
                         str(recipe.output_space),
@@ -797,7 +914,7 @@ class PreviewRenderMixin:
 
             preview_source = self._interactive_preview_source(
                 self._original_linear,
-                max_side_limit=int(self._effective_preview_max_side()),
+                max_side_limit=int(self._final_adjustment_preview_max_side()),
             )
             self._update_tone_curve_histogram_for_current_controls(
                 max_side_limit=PREVIEW_INTERACTIVE_TONAL_MAX_SIDE,

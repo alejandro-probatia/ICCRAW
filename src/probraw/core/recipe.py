@@ -50,6 +50,10 @@ def scientific_guard(recipe: Recipe) -> ScientificGuard:
             warnings.append("tone_curve no lineal en profiling_mode")
         if not recipe.output_linear:
             warnings.append("output_linear=false en profiling_mode")
+        if recipe.white_balance_mode.strip().lower() == "auto":
+            warnings.append("balance automatico LibRaw habilitado en profiling_mode")
+        if _libraw_render_adjustments_have_effect(recipe):
+            warnings.append("ajustes de render LibRaw no neutros en profiling_mode")
     return ScientificGuard(is_scientific_safe=(len(warnings) == 0), warnings=warnings)
 
 
@@ -99,9 +103,49 @@ def _normalize_recipe_payload(payload: dict) -> dict:
         except Exception:
             out[field_name] = 0
 
+    for field_name, default in {
+        "libraw_auto_bright_thr": 0.01,
+        "libraw_adjust_maximum_thr": 0.75,
+        "libraw_bright": 1.0,
+        "libraw_exp_shift": 1.0,
+        "libraw_exp_preserve_highlights": 0.0,
+        "libraw_gamma_power": 1.0,
+        "libraw_gamma_slope": 1.0,
+        "libraw_chromatic_aberration_red": 1.0,
+        "libraw_chromatic_aberration_blue": 1.0,
+    }.items():
+        try:
+            out[field_name] = float(out.get(field_name, default))
+        except Exception:
+            out[field_name] = default
+
     out["four_color_rgb"] = _as_bool(out.get("four_color_rgb", False))
+    out["libraw_auto_bright"] = _as_bool(out.get("libraw_auto_bright", False))
+    out["libraw_no_auto_scale"] = _as_bool(out.get("libraw_no_auto_scale", False))
+    out["libraw_highlight_mode"] = _as_mode_string(out.get("libraw_highlight_mode", "clip"), "clip").strip().lower()
 
     return out
+
+
+def _libraw_render_adjustments_have_effect(recipe: Recipe) -> bool:
+    checks = (
+        (float(getattr(recipe, "libraw_auto_bright_thr", 0.01)), 0.01),
+        (float(getattr(recipe, "libraw_adjust_maximum_thr", 0.75)), 0.75),
+        (float(getattr(recipe, "libraw_bright", 1.0)), 1.0),
+        (float(getattr(recipe, "libraw_exp_shift", 1.0)), 1.0),
+        (float(getattr(recipe, "libraw_exp_preserve_highlights", 0.0)), 0.0),
+        (float(getattr(recipe, "libraw_gamma_power", 1.0)), 1.0),
+        (float(getattr(recipe, "libraw_gamma_slope", 1.0)), 1.0),
+        (float(getattr(recipe, "libraw_chromatic_aberration_red", 1.0)), 1.0),
+        (float(getattr(recipe, "libraw_chromatic_aberration_blue", 1.0)), 1.0),
+    )
+    if bool(getattr(recipe, "libraw_auto_bright", False)):
+        return True
+    if bool(getattr(recipe, "libraw_no_auto_scale", False)):
+        return True
+    if str(getattr(recipe, "libraw_highlight_mode", "clip") or "clip").strip().lower() != "clip":
+        return True
+    return any(abs(current - neutral) > 1e-6 for current, neutral in checks)
 
 
 def _as_mode_string(value, default: str) -> str:

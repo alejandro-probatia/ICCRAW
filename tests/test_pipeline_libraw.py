@@ -58,6 +58,40 @@ def test_build_libraw_kwargs_with_camera_wb_and_white_level():
     assert kwargs["user_sat"] == 15000
 
 
+def test_build_libraw_kwargs_exposes_color_render_options():
+    recipe = Recipe(
+        white_balance_mode="auto",
+        libraw_auto_bright=True,
+        libraw_auto_bright_thr=0.02,
+        libraw_adjust_maximum_thr=0.5,
+        libraw_bright=1.25,
+        libraw_highlight_mode="blend",
+        libraw_exp_shift=1.5,
+        libraw_exp_preserve_highlights=0.4,
+        libraw_no_auto_scale=True,
+        libraw_gamma_power=2.222,
+        libraw_gamma_slope=4.5,
+        libraw_chromatic_aberration_red=1.001,
+        libraw_chromatic_aberration_blue=0.999,
+    )
+
+    kwargs = _build_libraw_postprocess_kwargs(recipe)
+
+    assert kwargs["use_auto_wb"] is True
+    assert kwargs["use_camera_wb"] is False
+    assert kwargs["user_wb"] is None
+    assert kwargs["no_auto_bright"] is False
+    assert kwargs["auto_bright_thr"] == 0.02
+    assert kwargs["adjust_maximum_thr"] == 0.5
+    assert kwargs["bright"] == 1.25
+    assert kwargs["highlight_mode"] == rawpy.HighlightMode.Blend
+    assert kwargs["exp_shift"] == 1.5
+    assert kwargs["exp_preserve_highlights"] == 0.4
+    assert kwargs["no_auto_scale"] is True
+    assert kwargs["gamma"] == (2.222, 4.5)
+    assert kwargs["chromatic_aberration"] == (1.001, 0.999)
+
+
 def test_build_libraw_kwargs_includes_supported_raw_demosaic_options(monkeypatch):
     monkeypatch.setattr(pipeline, "rawpy_postprocess_parameter_supported", lambda name: name in {"dcb_iterations", "median_filter_passes", "four_color_rgb"})
     recipe = Recipe(

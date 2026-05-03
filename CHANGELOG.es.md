@@ -20,6 +20,46 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 - Sin cambios pendientes.
 
+## [0.3.7] - 2026-05-03
+
+### Added
+
+- La pestaña Color y contraste incorpora un flujo ampliado de ajustes manuales:
+  balance de blancos en primer lugar, controles de luz/contraste, saturacion,
+  intensidad y gradacion de color separados de la calibracion ICC.
+- El visor muestra la imagen ampliada sin interpolacion a escala real y dibuja
+  una reticula de pixeles en magnificaciones de analisis para inspeccion
+  cientifica de la informacion digital.
+- Los graficos ESF/LSF/MTF muestran contexto de ROI, conteo de muestras,
+  escala gradual en pixeles y metricas MTF50/MTF50P inspiradas en flujos de
+  lectura slanted-edge.
+
+### Changed
+
+- La preview visible y el TIFF exportado comparten ahora la misma receta
+  efectiva y la misma ruta ICC de imagen a monitor/salida, evitando que un
+  ajuste cromatico aparezca solo al abrir el TIFF en otra aplicacion con
+  gestion de color.
+- El zoom conserva el centro visible actual al ampliar, para no perder la zona
+  que se esta inspeccionando.
+- Auto nitidez usa las nuevas metricas MTF50P, halo y energia post-Nyquist para
+  penalizar picos de sobreenfoque y priorizar resultados mas estables.
+- Los perfiles ICC generados con carta ya no arrastran ajustes de color,
+  contraste o detalle visibles: calibracion ICC y ajustes manuales quedan
+  separados.
+
+### Fixed
+
+- Los recalculos automaticos de MTF se detienen al salir de Nitidez y quedan
+  diferidos hasta volver a esa pestaña, evitando que los ajustes cromaticos
+  sigan pagando el coste del ROI/MTF en segundo plano.
+- La seleccion de espacio ICC generico evita recargas duplicadas de preview y
+  normaliza perfiles legados ProPhoto/sRGB hacia balance de camara y modo no
+  profiling cuando no hay ICC de entrada.
+- La barra superior de progreso recoge ajustes interactivos lentos y deja de
+  depender de indicadores inferiores discretos para operaciones que superan un
+  segundo.
+
 ## [0.3.6] - 2026-05-02
 
 ### Added

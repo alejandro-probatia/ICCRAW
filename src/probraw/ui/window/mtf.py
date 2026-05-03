@@ -598,9 +598,17 @@ class MTFAnalysisMixin:
             return False
 
     def _on_mtf_context_visibility_changed(self, _index: int | None = None) -> None:
-        if not self._mtf_roi_overlay_should_be_visible() and bool(getattr(self, "_mtf_roi_selection_active", False)):
+        mtf_visible = self._mtf_roi_overlay_should_be_visible()
+        if not mtf_visible and bool(getattr(self, "_mtf_roi_selection_active", False)):
             self._set_mtf_roi_selection_active(False)
-            return
+        if not mtf_visible:
+            timer = getattr(self, "_mtf_refresh_timer", None)
+            if timer is not None and timer.isActive():
+                timer.stop()
+                self._mtf_auto_refresh_deferred_until_visible = True
+        elif bool(getattr(self, "_mtf_auto_refresh_deferred_until_visible", False)):
+            self._mtf_auto_refresh_deferred_until_visible = False
+            self._schedule_mtf_refresh(interactive=False)
         self._sync_mtf_roi_overlay()
 
     def _clear_mtf_roi(self) -> None:
@@ -690,6 +698,7 @@ class MTFAnalysisMixin:
             overshoot=self._mtf_payload_float(summary.get("overshoot"), default=0.0),
             undershoot=self._mtf_payload_float(summary.get("undershoot"), default=0.0),
             mtf50=self._mtf_payload_optional_float(summary.get("mtf50")),
+            mtf50p=self._mtf_payload_optional_float(summary.get("mtf50p")),
             mtf30=self._mtf_payload_optional_float(summary.get("mtf30")),
             mtf10=self._mtf_payload_optional_float(summary.get("mtf10")),
             acutance=self._mtf_payload_float(summary.get("acutance"), default=0.0),
@@ -1463,13 +1472,14 @@ class MTFAnalysisMixin:
                 "amount_slider": int(amount_slider),
                 "radius_slider": int(radius_slider),
                 "result": result,
-                "score": self._mtf_auto_sharpen_score(
-                    result,
-                    amount=float(amount_slider) / 100.0,
-                    radius=float(radius_slider) / 10.0,
-                ),
             }
+            candidate.update(self._mtf_auto_sharpen_quality_metrics(result))
             candidate.update(self._mtf_auto_sharpen_halo_metrics(result))
+            candidate["score"] = self._mtf_auto_sharpen_score(
+                result,
+                amount=float(amount_slider) / 100.0,
+                radius=float(radius_slider) / 10.0,
+            )
             evaluated.append(candidate)
 
         best = self._mtf_auto_sharpen_select_best(evaluated)
@@ -1644,21 +1654,40 @@ class MTFAnalysisMixin:
 
     def _mtf_auto_sharpen_score(self, result: MTFResult, *, amount: float, radius: float) -> float:
         mtf50 = self._mtf_payload_optional_float(result.mtf50) or 0.0
+        mtf50p = self._mtf_payload_optional_float(getattr(result, "mtf50p", None)) or mtf50
         mtf30 = self._mtf_payload_optional_float(result.mtf30) or 0.0
         mtf10 = self._mtf_payload_optional_float(result.mtf10) or 0.0
         acutance = float(np.clip(result.acutance, 0.0, 2.0))
+        quality = self._mtf_auto_sharpen_quality_metrics(result)
         halo_metrics = self._mtf_auto_sharpen_halo_metrics(result)
         halo = float(halo_metrics["halo"])
         hard_halo = max(0.0, halo - 0.025)
         post = self._mtf_post_nyquist_metrics(result)
         post_peak = float(post.get("peak_modulation", 0.0) or 0.0)
         post_energy = float(post.get("energy_ratio", 0.0) or 0.0)
-        sharpness = 1.00 * mtf50 + 0.45 * mtf30 + 0.20 * mtf10 + 0.10 * acutance
+        mtf50_gap = float(quality.get("mtf50_gap", 0.0))
+        mtf_peak_boost = float(quality.get("mtf_peak_boost", 0.0))
+        sharpness = 1.15 * mtf50p + 0.35 * mtf50 + 0.35 * mtf30 + 0.12 * mtf10 + 0.08 * acutance
         penalty = 4.0 * halo + 24.0 * hard_halo
-        penalty += 0.10 * post_peak + 0.06 * post_energy
+        penalty += 2.2 * mtf50_gap + 0.65 * mtf_peak_boost
+        penalty += 0.12 * post_peak + 0.08 * post_energy
         penalty += 0.020 * max(0.0, float(amount) - 1.20)
         penalty += 0.004 * max(0.0, float(radius) - 1.50)
         return float(sharpness - penalty)
+
+    def _mtf_auto_sharpen_quality_metrics(self, result: MTFResult) -> dict[str, float]:
+        mtf50 = self._mtf_payload_optional_float(result.mtf50) or 0.0
+        mtf50p = self._mtf_payload_optional_float(getattr(result, "mtf50p", None)) or mtf50
+        mtf_source = getattr(result, "mtf", None)
+        mtf_values = np.asarray([] if mtf_source is None else mtf_source, dtype=np.float64)
+        mtf_values = mtf_values[np.isfinite(mtf_values)]
+        mtf_peak = float(np.max(mtf_values)) if mtf_values.size else 0.0
+        return {
+            "effective_mtf50": float(mtf50p),
+            "mtf50_gap": float(max(0.0, mtf50 - mtf50p)),
+            "mtf_peak": float(mtf_peak),
+            "mtf_peak_boost": float(max(0.0, mtf_peak - 1.05)),
+        }
 
     def _mtf_auto_sharpen_halo_metrics(self, result: MTFResult) -> dict[str, float]:
         overshoot = max(0.0, float(result.overshoot))
@@ -1702,22 +1731,35 @@ class MTFAnalysisMixin:
         baseline_halo = float(baseline.get("halo", 0.0))
         baseline_bright = float(baseline.get("bright_halo", 0.0))
         baseline_dark = float(baseline.get("dark_halo", 0.0))
+        baseline_effective = float(baseline.get("effective_mtf50", 0.0))
+        baseline_gap = float(baseline.get("mtf50_gap", 0.0))
+        baseline_peak_boost = float(baseline.get("mtf_peak_boost", 0.0))
         allowed_halo = max(0.025, baseline_halo + 0.010)
         allowed_bright = max(0.020, baseline_bright + 0.008)
         allowed_dark = max(0.020, baseline_dark + 0.008)
+        allowed_gap = max(0.035, baseline_gap + 0.020)
+        allowed_peak_boost = max(0.100, baseline_peak_boost + 0.060)
+        minimum_effective = baseline_effective * 1.01
         acceptable = [
             candidate
             for candidate in candidates
-            if float(candidate.get("halo", 0.0)) <= allowed_halo
+            if (
+                int(candidate["amount_slider"]) == 0
+                or float(candidate.get("effective_mtf50", 0.0)) >= minimum_effective
+            )
+            and float(candidate.get("halo", 0.0)) <= allowed_halo
             and float(candidate.get("bright_halo", 0.0)) <= allowed_bright
             and float(candidate.get("dark_halo", 0.0)) <= allowed_dark
+            and float(candidate.get("mtf50_gap", 0.0)) <= allowed_gap
+            and float(candidate.get("mtf_peak_boost", 0.0)) <= allowed_peak_boost
         ]
         pool = acceptable or candidates
         return max(pool, key=lambda candidate: self._mtf_auto_sharpen_sort_key(candidate))
 
-    def _mtf_auto_sharpen_sort_key(self, candidate: dict[str, Any]) -> tuple[float, float, int, int]:
+    def _mtf_auto_sharpen_sort_key(self, candidate: dict[str, Any]) -> tuple[float, float, float, int, int]:
         return (
             float(candidate["score"]),
+            float(candidate.get("effective_mtf50", 0.0)),
             -float(candidate.get("halo", 0.0)),
             -int(candidate["amount_slider"]),
             -int(candidate["radius_slider"]),
@@ -1748,9 +1790,10 @@ class MTFAnalysisMixin:
         amount = float(amount_slider) / 100.0
         radius = float(radius_slider) / 10.0
         mtf50 = self._format_mtf_cycles(result.mtf50)
+        mtf50p = self._format_mtf_cycles(getattr(result, "mtf50p", None))
         self._set_status(
             self.tr("Auto nitidez aplicada")
-            + f": amount={amount:.2f}, radius={radius:.1f}, MTF50={mtf50}, halo={float(best.get('halo', 0.0)) * 100.0:.1f}%"
+            + f": amount={amount:.2f}, radius={radius:.1f}, MTF50={mtf50}, MTF50P={mtf50p}, halo={float(best.get('halo', 0.0)) * 100.0:.1f}%"
         )
 
     def _mtf_try_activate_cached_base_roi(self, display_roi: tuple[int, int, int, int]) -> bool:
@@ -2089,6 +2132,11 @@ class MTFAnalysisMixin:
             return
         if not hasattr(self, "_mtf_refresh_timer"):
             return
+        if not self._mtf_roi_overlay_should_be_visible():
+            self._mtf_refresh_timer.stop()
+            self._mtf_auto_refresh_deferred_until_visible = True
+            return
+        self._mtf_auto_refresh_deferred_until_visible = False
         if not self._mtf_has_hot_base_roi_cache(self._mtf_roi):
             deferred_key = self._mtf_base_roi_cache_key(self._mtf_roi) or "missing"
             if getattr(self, "_mtf_deferred_auto_refresh_key", None) != deferred_key:
@@ -2205,6 +2253,7 @@ class MTFAnalysisMixin:
         post = self._mtf_post_nyquist_metrics(result)
         rows: list[tuple[str, str]] = [
             (self.tr("MTF50"), f"{self._format_mtf_cycles(result.mtf50)} | {self._format_mtf_lpmm(result.mtf50)}"),
+            (self.tr("MTF50P"), f"{self._format_mtf_cycles(result.mtf50p)} | {self._format_mtf_lpmm(result.mtf50p)}"),
             (self.tr("MTF30"), f"{self._format_mtf_cycles(result.mtf30)} | {self._format_mtf_lpmm(result.mtf30)}"),
             (self.tr("MTF10"), f"{self._format_mtf_cycles(result.mtf10)} | {self._format_mtf_lpmm(result.mtf10)}"),
             (self.tr("Nyquist"), f"0.500000 c/p | {self._format_mtf_lpmm(0.5)}"),
@@ -2333,6 +2382,7 @@ class MTFAnalysisMixin:
                 "nyquist_cycles_per_pixel": 0.5,
                 "nyquist_lp_per_mm": self._mtf_lpmm(0.5),
                 "mtf50_lp_per_mm": self._mtf_lpmm(result.mtf50),
+                "mtf50p_lp_per_mm": self._mtf_lpmm(result.mtf50p),
                 "mtf30_lp_per_mm": self._mtf_lpmm(result.mtf30),
                 "mtf10_lp_per_mm": self._mtf_lpmm(result.mtf10),
                 "esf_samples": len(result.esf),
@@ -2558,6 +2608,8 @@ class MTFAnalysisMixin:
         specs: list[tuple[str, tuple[str, ...], int, str, float]] = [
             (self.tr("MTF50"), ("mtf50",), 6, " c/p", 1.0),
             (self.tr("MTF50"), ("mtf50_lp_per_mm",), 2, " lp/mm", 1.0),
+            (self.tr("MTF50P"), ("mtf50p",), 6, " c/p", 1.0),
+            (self.tr("MTF50P"), ("mtf50p_lp_per_mm",), 2, " lp/mm", 1.0),
             (self.tr("MTF30"), ("mtf30",), 6, " c/p", 1.0),
             (self.tr("MTF30"), ("mtf30_lp_per_mm",), 2, " lp/mm", 1.0),
             (self.tr("MTF10"), ("mtf10",), 6, " c/p", 1.0),

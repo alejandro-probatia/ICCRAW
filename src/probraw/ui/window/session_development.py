@@ -869,6 +869,8 @@ class SessionDevelopmentMixin:
     def _on_development_output_space_changed(self) -> None:
         if not hasattr(self, "development_output_space_combo") or not hasattr(self, "combo_output_space"):
             return
+        if int(getattr(self, "_suspend_raw_export_autosave", 0) or 0) > 0:
+            return
         output_space = str(self.development_output_space_combo.currentData() or "scene_linear_camera_rgb")
         self.combo_output_space.blockSignals(True)
         self._set_combo_text(self.combo_output_space, output_space)
@@ -880,6 +882,8 @@ class SessionDevelopmentMixin:
     def _on_output_space_changed(self) -> None:
         if not hasattr(self, "combo_output_space"):
             return
+        if int(getattr(self, "_suspend_raw_export_autosave", 0) or 0) > 0:
+            return
         output_space = self.combo_output_space.currentText().strip()
         self._sync_development_output_space_combo(output_space)
         self._apply_output_space_defaults_to_controls(output_space)
@@ -888,6 +892,8 @@ class SessionDevelopmentMixin:
 
     def _on_output_linear_toggled(self, checked: bool) -> None:
         if not hasattr(self, "combo_output_space"):
+            return
+        if int(getattr(self, "_suspend_raw_export_autosave", 0) or 0) > 0:
             return
         output_space = self.combo_output_space.currentText().strip()
         if checked and is_generic_output_space(output_space):
@@ -926,7 +932,9 @@ class SessionDevelopmentMixin:
             and str(self.combo_wb_mode.currentData() or "").strip().lower() == "fixed"
             and self._recipe_uses_identity_fixed_wb(self._build_effective_recipe())
         ):
+            self.combo_wb_mode.blockSignals(True)
             self._set_combo_data(self.combo_wb_mode, "camera_metadata")
+            self.combo_wb_mode.blockSignals(False)
         if profile.key == "srgb":
             self._set_combo_data(self.combo_tone_curve, "srgb")
             self.spin_gamma.setValue(2.2)
@@ -1053,6 +1061,37 @@ class SessionDevelopmentMixin:
         for field_name in self._raw_export_recipe_fields():
             if hasattr(raw_settings, field_name):
                 setattr(merged, field_name, getattr(raw_settings, field_name))
+        return merged
+
+    def _merge_libraw_color_state_into_recipe(self, base: Recipe, render_state: dict[str, Any] | None) -> Recipe:
+        merged = Recipe(**asdict(base))
+        state = render_state.get("libraw") if isinstance(render_state, dict) else None
+        if not isinstance(state, dict):
+            return merged
+        mapping = {
+            "white_balance_mode": "white_balance_mode",
+            "wb_multipliers": "wb_multipliers",
+            "auto_bright": "libraw_auto_bright",
+            "auto_bright_thr": "libraw_auto_bright_thr",
+            "adjust_maximum_thr": "libraw_adjust_maximum_thr",
+            "bright": "libraw_bright",
+            "highlight_mode": "libraw_highlight_mode",
+            "exp_shift": "libraw_exp_shift",
+            "exp_preserve_highlights": "libraw_exp_preserve_highlights",
+            "no_auto_scale": "libraw_no_auto_scale",
+            "gamma_power": "libraw_gamma_power",
+            "gamma_slope": "libraw_gamma_slope",
+            "chromatic_aberration_red": "libraw_chromatic_aberration_red",
+            "chromatic_aberration_blue": "libraw_chromatic_aberration_blue",
+        }
+        for source_key, field_name in mapping.items():
+            if source_key not in state:
+                continue
+            value = state[source_key]
+            if field_name == "wb_multipliers" and isinstance(value, (list, tuple)):
+                setattr(merged, field_name, [float(v) for v in value])
+            else:
+                setattr(merged, field_name, value)
         return merged
 
     def _active_named_adjustment_profile_id(self, category: str) -> str:
@@ -1306,6 +1345,7 @@ class SessionDevelopmentMixin:
                 bundle = self._sidecar_bundle_for_category_write(path)
                 if category == "color_contrast":
                     bundle["render_adjustments"] = state
+                    bundle["recipe"] = self._merge_libraw_color_state_into_recipe(bundle["recipe"], state)
                 elif category == "detail":
                     bundle["detail_adjustments"] = state
                 elif category == "raw_export":
@@ -1505,8 +1545,16 @@ class SessionDevelopmentMixin:
             }
 
         manifest = self._development_profile_manifest(profile)
-        detail_state = manifest.get("detail_adjustments") if isinstance(manifest.get("detail_adjustments"), dict) else {}
-        render_state = manifest.get("render_adjustments") if isinstance(manifest.get("render_adjustments"), dict) else {}
+        detail_state = (
+            manifest.get("detail_adjustments")
+            if isinstance(manifest.get("detail_adjustments"), dict)
+            else self._detail_adjustment_state()
+        )
+        render_state = (
+            manifest.get("render_adjustments")
+            if isinstance(manifest.get("render_adjustments"), dict)
+            else self._render_adjustment_state()
+        )
         icc_profile_path = self._session_stored_path(profile.get("icc_profile_path") or manifest.get("icc_profile_path"))
         output_icc_profile_path = self._session_stored_path(
             profile.get("output_icc_profile_path") or manifest.get("output_icc_profile_path")
@@ -1521,8 +1569,8 @@ class SessionDevelopmentMixin:
             "kind": kind,
             "profile_type": profile_type,
             "recipe": self._development_profile_recipe(profile, manifest),
-            "detail_adjustments": detail_state or self._detail_adjustment_state(),
-            "render_adjustments": render_state or self._render_adjustment_state(),
+            "detail_adjustments": detail_state,
+            "render_adjustments": render_state,
             "icc_profile_path": icc_profile_path,
             "output_icc_profile_path": output_icc_profile_path,
         }
@@ -2309,6 +2357,7 @@ class SessionDevelopmentMixin:
                         state = copied.get("render_adjustments")
                         if isinstance(state, dict):
                             bundle["render_adjustments"] = dict(state)
+                            bundle["recipe"] = self._merge_libraw_color_state_into_recipe(bundle["recipe"], state)
                     elif category == "detail":
                         state = copied.get("detail_adjustments")
                         if isinstance(state, dict):
@@ -2416,6 +2465,13 @@ class SessionDevelopmentMixin:
             self._log_preview(f"Aviso: no se pudo leer mochila ProbRAW ({raw_sidecar_path(path).name}): {exc}")
             return False
 
+        raw_suspend = int(getattr(self, "_suspend_raw_export_autosave", 0) or 0)
+        render_suspend = int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0)
+        detail_suspend = int(getattr(self, "_suspend_detail_adjustment_autosave", 0) or 0)
+        self._suspend_raw_export_autosave = raw_suspend + 1
+        self._suspend_render_adjustment_autosave = render_suspend + 1
+        self._suspend_detail_adjustment_autosave = detail_suspend + 1
+
         color = payload.get("color_management") if isinstance(payload.get("color_management"), dict) else {}
         icc_path = self._session_stored_path(color.get("icc_profile_path")) if color else None
         icc_role = str(color.get("icc_profile_role") or "") if color else ""
@@ -2469,8 +2525,31 @@ class SessionDevelopmentMixin:
         else:
             self._clear_active_input_profile_for_unconfigured_file()
 
+        self._suspend_raw_export_autosave = raw_suspend
+        self._suspend_render_adjustment_autosave = render_suspend
+        self._suspend_detail_adjustment_autosave = detail_suspend
         self._invalidate_preview_cache()
         self._log_preview(f"Mochila ProbRAW aplicada: {raw_sidecar_path(path).name}")
+        return True
+
+    def _sync_selected_sidecar_to_preview(self, path: Path, *, status_message: str | None = None) -> bool:
+        selected = getattr(self, "_selected_file", None)
+        if selected is None:
+            return False
+        try:
+            selected_key = self._normalized_path_key(Path(selected))
+            path_key = self._normalized_path_key(Path(path))
+        except Exception:
+            selected_key = str(selected)
+            path_key = str(path)
+        if selected_key != path_key:
+            return False
+        if not self._apply_raw_sidecar_to_controls(Path(selected)):
+            return False
+        if status_message:
+            self._log_preview(status_message)
+        if getattr(self, "_original_linear", None) is not None:
+            self._on_load_selected(show_message=False)
         return True
 
     def _write_raw_settings_sidecar(
@@ -2587,6 +2666,7 @@ class SessionDevelopmentMixin:
             self.path_recipe.setText(str(recipe_path))
         self._apply_detail_adjustment_state(settings["detail_adjustments"])
         self._apply_render_adjustment_state(settings["render_adjustments"])
+        self._apply_output_space_defaults_to_controls(recipe.output_space)
         icc_path = settings.get("icc_profile_path")
         if isinstance(icc_path, Path) and icc_path.exists() and self._profile_can_be_active(icc_path):
             self.path_profile_active.setText(str(icc_path))
@@ -2629,8 +2709,8 @@ class SessionDevelopmentMixin:
                     "recipe_path": self._session_relative_or_absolute(calibrated_recipe_path),
                     "icc_profile_path": self._session_relative_or_absolute(icc_profile_path),
                     "profile_report_path": self._session_relative_or_absolute(profile_report_path),
-                    "detail_adjustments": self._detail_adjustment_state(),
-                    "render_adjustments": self._render_adjustment_state(),
+                    "detail_adjustments": {},
+                    "render_adjustments": {},
                 }
             )
             write_json(development_profile_path, payload)

@@ -10,7 +10,7 @@ perfiles, hashes y artefactos de auditoría.
 
 ![ProbRAW: interfaz principal de revelado y perfilado](assets/screenshots/probraw-portada.png)
 
-Este manual cubre el flujo completo de ProbRAW 0.3.6: creación de sesión,
+Este manual cubre el flujo completo de ProbRAW 0.3.7: creación de sesión,
 perfilado con carta, perfil manual sin carta, copia de ajustes, cola de revelado,
 exportación TIFF, metadatos, Proof, C2PA, diagnóstico Gamut 3D, gestión de
 referencias de carta, estadísticas de sesión, histograma colorimétrico,

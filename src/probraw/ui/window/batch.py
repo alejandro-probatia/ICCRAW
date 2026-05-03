@@ -317,9 +317,36 @@ class BatchWorkflowMixin:
                 f"(OK={ok_count}, " + self.tr("errores") + f"={error_count})"
             )
             self._refresh_color_reference_thumbnail_markers()
+            self._sync_selected_after_batch_render(payload)
             self._save_active_session(silent=True)
 
         self._start_background_task(task_label, task, on_success)
+
+    def _sync_selected_after_batch_render(self, payload: dict[str, Any]) -> None:
+        selected = getattr(self, "_selected_file", None)
+        if selected is None:
+            return
+        selected_key = self._normalized_path_key(Path(selected))
+        outputs = payload.get("outputs")
+        if not isinstance(outputs, list):
+            return
+        for item in outputs:
+            if not isinstance(item, dict):
+                continue
+            source_text = str(item.get("source") or "").strip()
+            if not source_text:
+                continue
+            source_path = Path(source_text)
+            if self._normalized_path_key(source_path) != selected_key:
+                continue
+            self._sync_selected_sidecar_to_preview(
+                Path(selected),
+                status_message=(
+                    self.tr("Vista sincronizada con el TIFF renderizado por lote:")
+                    + f" {Path(str(item.get('output') or '')).name}"
+                ),
+            )
+            return
 
     def _use_generated_profile_as_active(self) -> None:
         p = self._normalized_profile_out_path()

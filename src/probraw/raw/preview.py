@@ -22,6 +22,7 @@ from .pipeline import develop_image_array, develop_standard_output_array, is_sta
 
 
 _PROFILE_PREVIEW_LUT_CACHE: dict[tuple[str, int], np.ndarray] = {}
+_STANDARD_TO_SRGB_MATRIX_CACHE: dict[str, np.ndarray] = {}
 PREVIEW_HQ_HALF_SIZE_ENV = "PROBRAW_PREVIEW_HQ_HALF_SIZE"
 
 
@@ -433,7 +434,21 @@ def apply_render_adjustments(
     black_point: float = 0.0,
     white_point: float = 1.0,
     contrast: float = 0.0,
+    highlights: float = 0.0,
+    shadows: float = 0.0,
+    whites: float = 0.0,
+    blacks: float = 0.0,
     midtone: float = 1.0,
+    vibrance: float = 0.0,
+    saturation: float = 0.0,
+    grade_shadows_hue: float = 240.0,
+    grade_shadows_saturation: float = 0.0,
+    grade_midtones_hue: float = 45.0,
+    grade_midtones_saturation: float = 0.0,
+    grade_highlights_hue: float = 50.0,
+    grade_highlights_saturation: float = 0.0,
+    grade_blending: float = 0.5,
+    grade_balance: float = 0.0,
     tone_curve_points: list[tuple[float, float]] | None = None,
     tone_curve_channel_points: dict[str, list[tuple[float, float]]] | None = None,
     tone_curve_black_point: float = 0.0,
@@ -447,10 +462,22 @@ def apply_render_adjustments(
     bp = float(np.clip(black_point, 0.0, 0.95))
     wp = float(np.clip(white_point, bp + 1e-4, 1.0))
     c = float(np.clip(contrast, -0.95, 2.0))
+    hi = float(np.clip(highlights, -1.0, 1.0))
+    sh = float(np.clip(shadows, -1.0, 1.0))
+    wh = float(np.clip(whites, -1.0, 1.0))
+    bl = float(np.clip(blacks, -1.0, 1.0))
     m = float(np.clip(midtone, 0.25, 4.0))
+    vib = float(np.clip(vibrance, -1.0, 1.0))
+    sat = float(np.clip(saturation, -1.0, 1.0))
+    grade_values = (
+        float(grade_shadows_saturation),
+        float(grade_midtones_saturation),
+        float(grade_highlights_saturation),
+    )
     channel_curves = _normalize_channel_tone_curves(tone_curve_channel_points)
     tone_enabled = bool(tone_curve_points) or bool(channel_curves)
     temperature_identity = abs(temp - neutral) <= 1e-6 and abs(tint_value) <= 1e-6
+    grade_enabled = any(abs(v) > 1e-6 for v in grade_values)
 
     if (
         temperature_identity
@@ -458,7 +485,14 @@ def apply_render_adjustments(
         and bp <= 1e-6
         and abs(wp - 1.0) <= 1e-6
         and abs(c) <= 1e-6
+        and abs(hi) <= 1e-6
+        and abs(sh) <= 1e-6
+        and abs(wh) <= 1e-6
+        and abs(bl) <= 1e-6
         and abs(m - 1.0) <= 1e-6
+        and abs(vib) <= 1e-6
+        and abs(sat) <= 1e-6
+        and not grade_enabled
         and not tone_enabled
     ):
         return np.clip(img, 0.0, 1.0).astype(np.float32, copy=False)
@@ -483,9 +517,28 @@ def apply_render_adjustments(
         factor = 1.0 + c
         out = (out - 0.5) * factor + 0.5
 
+    if any(abs(v) > 1e-6 for v in (hi, sh, wh, bl)):
+        out = _apply_tonal_region_adjustments(out, highlights=hi, shadows=sh, whites=wh, blacks=bl)
+
     if abs(m - 1.0) > 1e-6:
         gamma = 1.0 / m
         out = np.power(np.clip(out, 0.0, 1.0), gamma)
+
+    if abs(vib) > 1e-6 or abs(sat) > 1e-6:
+        out = _apply_vibrance_saturation(out, vibrance=vib, saturation=sat)
+
+    if grade_enabled:
+        out = _apply_color_grading(
+            out,
+            shadows_hue=grade_shadows_hue,
+            shadows_saturation=grade_shadows_saturation,
+            midtones_hue=grade_midtones_hue,
+            midtones_saturation=grade_midtones_saturation,
+            highlights_hue=grade_highlights_hue,
+            highlights_saturation=grade_highlights_saturation,
+            blending=grade_blending,
+            balance=grade_balance,
+        )
 
     if tone_enabled:
         if tone_curve_points:
@@ -503,6 +556,121 @@ def apply_render_adjustments(
                 white_point=tone_curve_white_point,
             )
 
+    return np.clip(out, 0.0, 1.0).astype(np.float32)
+
+
+def _linear_luminance(image: np.ndarray) -> np.ndarray:
+    rgb = np.asarray(image, dtype=np.float32)[..., :3]
+    return np.clip(
+        rgb[..., 0] * 0.2126 + rgb[..., 1] * 0.7152 + rgb[..., 2] * 0.0722,
+        0.0,
+        1.0,
+    ).astype(np.float32)
+
+
+def _smoothstep(edge0: float, edge1: float, x: np.ndarray) -> np.ndarray:
+    t = np.clip((x - float(edge0)) / max(1e-6, float(edge1) - float(edge0)), 0.0, 1.0)
+    return (t * t * (3.0 - 2.0 * t)).astype(np.float32)
+
+
+def _apply_signed_region_lift(image: np.ndarray, amount: float, mask: np.ndarray, *, scale: float) -> np.ndarray:
+    value = float(amount)
+    if abs(value) <= 1e-6:
+        return image
+    m = mask[..., None].astype(np.float32)
+    if value > 0.0:
+        return image + value * float(scale) * m * (1.0 - image)
+    return image + value * float(scale) * m * image
+
+
+def _apply_tonal_region_adjustments(
+    image: np.ndarray,
+    *,
+    highlights: float,
+    shadows: float,
+    whites: float,
+    blacks: float,
+) -> np.ndarray:
+    out = np.clip(np.asarray(image, dtype=np.float32), 0.0, 1.0)
+    y = _linear_luminance(out)
+    shadow_mask = (1.0 - _smoothstep(0.05, 0.55, y)) ** 1.25
+    highlight_mask = _smoothstep(0.45, 0.95, y) ** 1.25
+    black_mask = 1.0 - _smoothstep(0.0, 0.32, y)
+    white_mask = _smoothstep(0.68, 1.0, y)
+    out = _apply_signed_region_lift(out, shadows, shadow_mask, scale=0.65)
+    out = _apply_signed_region_lift(out, highlights, highlight_mask, scale=0.55)
+    out = _apply_signed_region_lift(out, blacks, black_mask, scale=0.75)
+    out = _apply_signed_region_lift(out, whites, white_mask, scale=0.75)
+    return np.clip(out, 0.0, 1.0).astype(np.float32)
+
+
+def _apply_vibrance_saturation(image: np.ndarray, *, vibrance: float, saturation: float) -> np.ndarray:
+    out = np.clip(np.asarray(image, dtype=np.float32), 0.0, 1.0)
+    y = _linear_luminance(out)[..., None]
+    sat_factor = max(0.0, 1.0 + float(saturation))
+    chroma = np.max(out, axis=2, keepdims=True) - np.min(out, axis=2, keepdims=True)
+    vibrance_factor = np.clip(1.0 + float(vibrance) * (1.0 - chroma), 0.0, 2.5)
+    adjusted = y + (out - y) * sat_factor * vibrance_factor
+    return np.clip(adjusted, 0.0, 1.0).astype(np.float32)
+
+
+def _hue_color(hue_degrees: float) -> np.ndarray:
+    hue = (float(hue_degrees) % 360.0) / 60.0
+    x = 1.0 - abs((hue % 2.0) - 1.0)
+    if hue < 1.0:
+        rgb = (1.0, x, 0.0)
+    elif hue < 2.0:
+        rgb = (x, 1.0, 0.0)
+    elif hue < 3.0:
+        rgb = (0.0, 1.0, x)
+    elif hue < 4.0:
+        rgb = (0.0, x, 1.0)
+    elif hue < 5.0:
+        rgb = (x, 0.0, 1.0)
+    else:
+        rgb = (1.0, 0.0, x)
+    color = np.asarray(rgb, dtype=np.float32)
+    return color / max(1e-6, float(np.mean(color)))
+
+
+def _apply_color_grading(
+    image: np.ndarray,
+    *,
+    shadows_hue: float,
+    shadows_saturation: float,
+    midtones_hue: float,
+    midtones_saturation: float,
+    highlights_hue: float,
+    highlights_saturation: float,
+    blending: float,
+    balance: float,
+) -> np.ndarray:
+    out = np.clip(np.asarray(image, dtype=np.float32), 0.0, 1.0)
+    y = _linear_luminance(out)
+    blend = float(np.clip(blending, 0.0, 1.0))
+    bal = float(np.clip(balance, -1.0, 1.0))
+    shadow_end = 0.42 + bal * 0.18
+    highlight_start = 0.58 + bal * 0.18
+    softness = 0.08 + blend * 0.28
+    shadow_w = 1.0 - _smoothstep(shadow_end - softness, shadow_end + softness, y)
+    highlight_w = _smoothstep(highlight_start - softness, highlight_start + softness, y)
+    mid_w = np.clip(1.0 - np.maximum(shadow_w, highlight_w), 0.0, 1.0)
+    weights = (
+        (shadow_w, shadows_hue, shadows_saturation),
+        (mid_w, midtones_hue, midtones_saturation),
+        (highlight_w, highlights_hue, highlights_saturation),
+    )
+    for weight, hue, sat in weights:
+        amount = float(np.clip(sat, -1.0, 1.0))
+        if abs(amount) <= 1e-6:
+            continue
+        color = _hue_color(hue).reshape((1, 1, 3))
+        if amount > 0.0:
+            target = out * color
+            out = out * (1.0 - weight[..., None] * amount) + target * (weight[..., None] * amount)
+        else:
+            gray = _linear_luminance(out)[..., None]
+            out = out * (1.0 + weight[..., None] * amount) + gray * (-amount * weight[..., None])
     return np.clip(out, 0.0, 1.0).astype(np.float32)
 
 
@@ -968,8 +1136,14 @@ def _apply_srgb_lut(image_linear_rgb: np.ndarray, lut: np.ndarray) -> np.ndarray
 def linear_to_srgb_display(image_linear_rgb: np.ndarray) -> np.ndarray:
     x = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
     a = 0.055
-    srgb = np.where(x <= 0.0031308, 12.92 * x, (1.0 + a) * np.power(x, 1.0 / 2.4) - a)
-    return np.clip(srgb, 0.0, 1.0)
+    srgb = np.empty_like(x, dtype=np.float32)
+    np.power(x, 1.0 / 2.4, out=srgb)
+    srgb *= 1.0 + a
+    srgb -= a
+    low = x <= 0.0031308
+    if np.any(low):
+        srgb[low] = 12.92 * x[low]
+    return np.clip(srgb, 0.0, 1.0, out=srgb)
 
 
 def standard_profile_to_srgb_display(image_rgb: np.ndarray, output_space: str) -> np.ndarray:
@@ -984,29 +1158,39 @@ def standard_profile_to_srgb_display(image_rgb: np.ndarray, output_space: str) -
     rgb_space = colour.RGB_COLOURSPACES[profile.colour_space]
     decoder = getattr(rgb_space, "cctf_decoding", None)
     if callable(decoder):
-        linear = np.asarray(decoder(encoded), dtype=np.float64)
+        linear = np.asarray(decoder(encoded), dtype=np.float32)
     else:
-        linear = np.power(encoded.astype(np.float64), float(profile.gamma))
+        linear = np.power(encoded, float(profile.gamma)).astype(np.float32)
 
     flat = linear.reshape((-1, 3))
-    matrix = np.asarray(rgb_space.matrix_RGB_to_XYZ, dtype=np.float64)
-    xyz_native = flat @ matrix.T
+    transform = _standard_rgb_to_srgb_linear_transform(profile.key, profile.colour_space)
+    srgb_linear = flat @ transform
+    srgb_linear = srgb_linear.reshape(encoded.shape)
+    return linear_to_srgb_display(srgb_linear)
 
-    source_white = np.asarray(colour.xy_to_XYZ(rgb_space.whitepoint), dtype=np.float64)
+
+def _standard_rgb_to_srgb_linear_transform(profile_key: str, colour_space_name: str) -> np.ndarray:
+    key = f"{profile_key}|{colour_space_name}"
+    cached = _STANDARD_TO_SRGB_MATRIX_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    rgb_space = colour.RGB_COLOURSPACES[colour_space_name]
+    source_white = np.asarray(colour.xy_to_XYZ(rgb_space.whitepoint), dtype=np.float32)
     d65_xy = np.asarray(colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D65"], dtype=np.float64)
-    d65_xyz = np.asarray(colour.xy_to_XYZ(d65_xy), dtype=np.float64)
+    d65_xyz = np.asarray(colour.xy_to_XYZ(d65_xy), dtype=np.float32)
     if np.allclose(source_white, d65_xyz, atol=1e-6):
-        xyz_d65 = xyz_native
+        adaptation = np.eye(3, dtype=np.float32)
     else:
         adaptation = matrix_chromatic_adaptation_VonKries(source_white, d65_xyz, transform="Bradford")
-        xyz_d65 = xyz_native @ np.asarray(adaptation, dtype=np.float64).T
+        adaptation = np.asarray(adaptation, dtype=np.float32)
 
-    srgb = colour.XYZ_to_sRGB(
-        xyz_d65.reshape(encoded.shape),
-        illuminant=d65_xy,
-        apply_cctf_encoding=True,
-    )
-    return np.clip(np.asarray(srgb, dtype=np.float32), 0.0, 1.0)
+    source_to_xyz = np.asarray(rgb_space.matrix_RGB_to_XYZ, dtype=np.float32)
+    srgb_space = colour.RGB_COLOURSPACES["sRGB"]
+    xyz_to_srgb = np.asarray(srgb_space.matrix_XYZ_to_RGB, dtype=np.float32)
+    transform = (source_to_xyz.T @ adaptation.T @ xyz_to_srgb.T).astype(np.float32)
+    _STANDARD_TO_SRGB_MATRIX_CACHE[key] = transform
+    return transform
 
 
 def srgb_to_linear_display(image_srgb: np.ndarray) -> np.ndarray:

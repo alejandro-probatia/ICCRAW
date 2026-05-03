@@ -142,6 +142,7 @@ class PreviewCacheMixin:
         self._loaded_preview_base_signature = None
         self._loaded_preview_fast_raw = None
         self._loaded_preview_source_max_side = 0
+        self._loaded_preview_max_side_request = None
         self._tone_curve_histogram_key = None
         self._preview_load_pending_request = None
         self._profile_preview_pending_request = None

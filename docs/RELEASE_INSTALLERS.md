@@ -72,6 +72,29 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.7
+
+Release 0.3.7 fixes visual equivalence between ProbRAW and external
+color-managed applications, and strengthens analysis tooling:
+
+- preview and exported TIFFs use the same effective recipe and ICC path,
+- 100% and higher zoom shows real pixels without interpolation and preserves
+  the center of the inspected area,
+- ESF/LSF/MTF plots show sample counts, pixel scale, MTF50 and MTF50P,
+- Auto Sharpness penalizes halos, oversharpened peaks and post-Nyquist energy,
+- chart ICC profiles stay separate from manual color, contrast and detail
+  adjustments,
+- automatic MTF recalculation pauses outside Sharpness so chromatic adjustments
+  do not run hidden MTF work.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.7-Setup.exe`
+- `ProbRAW-0.3.7-Setup.exe.sha256`
+- `probraw-0.3.7.tar.gz`
+- `probraw-0.3.7-py3-none-any.whl`
+- `probraw_0.3.7_python_artifacts.sha256`
+
 ## Release 0.3.6
 
 Release 0.3.6 consolidates per-image ICC, color/contrast, sharpness and RAW

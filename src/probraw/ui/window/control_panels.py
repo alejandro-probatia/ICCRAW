@@ -82,7 +82,110 @@ class ControlPanelsMixin:
         neutral_row.addWidget(self.label_neutral_picker, 1)
         grid.addLayout(neutral_row, 3, 0, 1, 3)
 
-        grid.addWidget(self._button(self.tr("Restablecer color"), self._reset_color_adjustments), 4, 0, 1, 3)
+        self.slider_vibrance, self.label_vibrance = self._slider(
+            minimum=-100,
+            maximum=100,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Intensidad") + f": {v:+d}",
+        )
+        grid.addWidget(self.label_vibrance, 4, 0, 1, 3)
+        grid.addWidget(self.slider_vibrance, 5, 0, 1, 3)
+
+        self.slider_saturation, self.label_saturation = self._slider(
+            minimum=-100,
+            maximum=100,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Saturacion") + f": {v:+d}",
+        )
+        grid.addWidget(self.label_saturation, 6, 0, 1, 3)
+        grid.addWidget(self.slider_saturation, 7, 0, 1, 3)
+
+        grid.addWidget(self._button(self.tr("Restablecer color"), self._reset_color_adjustments), 8, 0, 1, 3)
+        return tab
+
+    def _build_tab_color_grading(self) -> QtWidgets.QWidget:
+        tab = QtWidgets.QWidget()
+        grid = QtWidgets.QGridLayout(tab)
+
+        self.slider_grade_midtones_hue, self.label_grade_midtones_hue = self._slider(
+            minimum=0,
+            maximum=360,
+            value=45,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Medios tono") + f": {v} deg",
+        )
+        grid.addWidget(self.label_grade_midtones_hue, 0, 0, 1, 3)
+        grid.addWidget(self.slider_grade_midtones_hue, 1, 0, 1, 3)
+        self.slider_grade_midtones_sat, self.label_grade_midtones_sat = self._slider(
+            minimum=-100,
+            maximum=100,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Medios saturacion") + f": {v:+d}",
+        )
+        grid.addWidget(self.label_grade_midtones_sat, 2, 0, 1, 3)
+        grid.addWidget(self.slider_grade_midtones_sat, 3, 0, 1, 3)
+
+        self.slider_grade_shadows_hue, self.label_grade_shadows_hue = self._slider(
+            minimum=0,
+            maximum=360,
+            value=240,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Sombras tono") + f": {v} deg",
+        )
+        grid.addWidget(self.label_grade_shadows_hue, 4, 0, 1, 3)
+        grid.addWidget(self.slider_grade_shadows_hue, 5, 0, 1, 3)
+        self.slider_grade_shadows_sat, self.label_grade_shadows_sat = self._slider(
+            minimum=-100,
+            maximum=100,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Sombras saturacion") + f": {v:+d}",
+        )
+        grid.addWidget(self.label_grade_shadows_sat, 6, 0, 1, 3)
+        grid.addWidget(self.slider_grade_shadows_sat, 7, 0, 1, 3)
+
+        self.slider_grade_highlights_hue, self.label_grade_highlights_hue = self._slider(
+            minimum=0,
+            maximum=360,
+            value=50,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Iluminaciones tono") + f": {v} deg",
+        )
+        grid.addWidget(self.label_grade_highlights_hue, 8, 0, 1, 3)
+        grid.addWidget(self.slider_grade_highlights_hue, 9, 0, 1, 3)
+        self.slider_grade_highlights_sat, self.label_grade_highlights_sat = self._slider(
+            minimum=-100,
+            maximum=100,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Iluminaciones saturacion") + f": {v:+d}",
+        )
+        grid.addWidget(self.label_grade_highlights_sat, 10, 0, 1, 3)
+        grid.addWidget(self.slider_grade_highlights_sat, 11, 0, 1, 3)
+
+        self.slider_grade_blending, self.label_grade_blending = self._slider(
+            minimum=0,
+            maximum=100,
+            value=50,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Fusion") + f": {v}",
+        )
+        grid.addWidget(self.label_grade_blending, 12, 0, 1, 3)
+        grid.addWidget(self.slider_grade_blending, 13, 0, 1, 3)
+        self.slider_grade_balance, self.label_grade_balance = self._slider(
+            minimum=-100,
+            maximum=100,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Equilibrio") + f": {v:+d}",
+        )
+        grid.addWidget(self.label_grade_balance, 14, 0, 1, 3)
+        grid.addWidget(self.slider_grade_balance, 15, 0, 1, 3)
+
+        grid.addWidget(self._button(self.tr("Restablecer gradacion"), self._reset_color_grading), 16, 0, 1, 3)
         return tab
 
     def _build_tab_brightness_contrast(self) -> QtWidgets.QWidget:
@@ -94,30 +197,10 @@ class ControlPanelsMixin:
             maximum=200,
             value=0,
             on_change=self._on_render_control_change,
-            formatter=lambda v: self.tr("Brillo") + f": {v / 100:+.2f} EV",
+            formatter=lambda v: self.tr("Exposicion") + f": {v / 100:+.2f} EV",
         )
         grid.addWidget(self.label_brightness, 0, 0, 1, 3)
         grid.addWidget(self.slider_brightness, 1, 0, 1, 3)
-
-        self.slider_black_point, self.label_black_point = self._slider(
-            minimum=0,
-            maximum=300,
-            value=0,
-            on_change=self._on_render_control_change,
-            formatter=lambda v: self.tr("Nivel negro") + f": {v / 1000:.3f}",
-        )
-        grid.addWidget(self.label_black_point, 2, 0, 1, 3)
-        grid.addWidget(self.slider_black_point, 3, 0, 1, 3)
-
-        self.slider_white_point, self.label_white_point = self._slider(
-            minimum=500,
-            maximum=1000,
-            value=1000,
-            on_change=self._on_render_control_change,
-            formatter=lambda v: self.tr("Nivel blanco") + f": {v / 1000:.3f}",
-        )
-        grid.addWidget(self.label_white_point, 4, 0, 1, 3)
-        grid.addWidget(self.slider_white_point, 5, 0, 1, 3)
 
         self.slider_contrast, self.label_contrast = self._slider(
             minimum=-100,
@@ -126,8 +209,68 @@ class ControlPanelsMixin:
             on_change=self._on_render_control_change,
             formatter=lambda v: self.tr("Contraste") + f": {v / 100:+.2f}",
         )
-        grid.addWidget(self.label_contrast, 6, 0, 1, 3)
-        grid.addWidget(self.slider_contrast, 7, 0, 1, 3)
+        grid.addWidget(self.label_contrast, 2, 0, 1, 3)
+        grid.addWidget(self.slider_contrast, 3, 0, 1, 3)
+
+        self.slider_highlights, self.label_highlights = self._slider(
+            minimum=-100,
+            maximum=100,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Iluminaciones") + f": {v:+d}",
+        )
+        grid.addWidget(self.label_highlights, 4, 0, 1, 3)
+        grid.addWidget(self.slider_highlights, 5, 0, 1, 3)
+
+        self.slider_shadows, self.label_shadows = self._slider(
+            minimum=-100,
+            maximum=100,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Sombras") + f": {v:+d}",
+        )
+        grid.addWidget(self.label_shadows, 6, 0, 1, 3)
+        grid.addWidget(self.slider_shadows, 7, 0, 1, 3)
+
+        self.slider_whites, self.label_whites = self._slider(
+            minimum=-100,
+            maximum=100,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Blancos") + f": {v:+d}",
+        )
+        grid.addWidget(self.label_whites, 8, 0, 1, 3)
+        grid.addWidget(self.slider_whites, 9, 0, 1, 3)
+
+        self.slider_blacks, self.label_blacks = self._slider(
+            minimum=-100,
+            maximum=100,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Negros") + f": {v:+d}",
+        )
+        grid.addWidget(self.label_blacks, 10, 0, 1, 3)
+        grid.addWidget(self.slider_blacks, 11, 0, 1, 3)
+
+        self.slider_black_point, self.label_black_point = self._slider(
+            minimum=0,
+            maximum=300,
+            value=0,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Recorte negro") + f": {v / 1000:.3f}",
+        )
+        grid.addWidget(self.label_black_point, 12, 0, 1, 3)
+        grid.addWidget(self.slider_black_point, 13, 0, 1, 3)
+
+        self.slider_white_point, self.label_white_point = self._slider(
+            minimum=500,
+            maximum=1000,
+            value=1000,
+            on_change=self._on_render_control_change,
+            formatter=lambda v: self.tr("Recorte blanco") + f": {v / 1000:.3f}",
+        )
+        grid.addWidget(self.label_white_point, 14, 0, 1, 3)
+        grid.addWidget(self.slider_white_point, 15, 0, 1, 3)
 
         self.slider_midtone, self.label_midtone = self._slider(
             minimum=50,
@@ -136,15 +279,14 @@ class ControlPanelsMixin:
             on_change=self._on_render_control_change,
             formatter=lambda v: self.tr("Curva medios") + f": {v / 100:.2f}",
         )
-        grid.addWidget(self.label_midtone, 8, 0, 1, 3)
-        grid.addWidget(self.slider_midtone, 9, 0, 1, 3)
+        grid.addWidget(self.label_midtone, 16, 0, 1, 3)
+        grid.addWidget(self.slider_midtone, 17, 0, 1, 3)
 
         self.check_tone_curve_enabled = QtWidgets.QCheckBox(self.tr("Curva tonal avanzada"))
         self.check_tone_curve_enabled.setChecked(False)
         self.check_tone_curve_enabled.toggled.connect(self._on_tone_curve_enabled_changed)
-        grid.addWidget(self.check_tone_curve_enabled, 10, 0, 1, 3)
+        grid.addWidget(self.check_tone_curve_enabled, 18, 0, 1, 3)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Canal curva")), 11, 0)
         self.combo_tone_curve_channel = QtWidgets.QComboBox()
         for label, key in (
             (self.tr("Luminosidad"), "luminance"),
@@ -154,14 +296,15 @@ class ControlPanelsMixin:
         ):
             self.combo_tone_curve_channel.addItem(label, key)
         self.combo_tone_curve_channel.currentIndexChanged.connect(self._on_tone_curve_channel_changed)
-        grid.addWidget(self.combo_tone_curve_channel, 11, 1, 1, 2)
+        grid.addWidget(self.combo_tone_curve_channel, 19, 1, 1, 2)
 
-        grid.addWidget(QtWidgets.QLabel(self.tr("Preset curva")), 12, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Canal curva")), 19, 0)
+        grid.addWidget(QtWidgets.QLabel(self.tr("Preset curva")), 20, 0)
         self.combo_tone_curve_preset = QtWidgets.QComboBox()
         for label, key, _points in TONE_CURVE_PRESETS:
             self.combo_tone_curve_preset.addItem(self.tr(label), key)
         self.combo_tone_curve_preset.currentIndexChanged.connect(self._on_tone_curve_preset_changed)
-        grid.addWidget(self.combo_tone_curve_preset, 12, 1, 1, 2)
+        grid.addWidget(self.combo_tone_curve_preset, 20, 1, 1, 2)
 
         self.slider_tone_curve_black, self.label_tone_curve_black = self._slider(
             minimum=0,
@@ -170,8 +313,8 @@ class ControlPanelsMixin:
             on_change=self._on_tone_curve_range_changed,
             formatter=lambda v: self.tr("Negro curva") + f": {v / 1000:.3f}",
         )
-        grid.addWidget(self.label_tone_curve_black, 13, 0, 1, 3)
-        grid.addWidget(self.slider_tone_curve_black, 14, 0, 1, 3)
+        grid.addWidget(self.label_tone_curve_black, 21, 0, 1, 3)
+        grid.addWidget(self.slider_tone_curve_black, 22, 0, 1, 3)
 
         self.slider_tone_curve_white, self.label_tone_curve_white = self._slider(
             minimum=50,
@@ -180,24 +323,148 @@ class ControlPanelsMixin:
             on_change=self._on_tone_curve_range_changed,
             formatter=lambda v: self.tr("Blanco curva") + f": {v / 1000:.3f}",
         )
-        grid.addWidget(self.label_tone_curve_white, 15, 0, 1, 3)
-        grid.addWidget(self.slider_tone_curve_white, 16, 0, 1, 3)
+        grid.addWidget(self.label_tone_curve_white, 23, 0, 1, 3)
+        grid.addWidget(self.slider_tone_curve_white, 24, 0, 1, 3)
 
         self.tone_curve_editor = ToneCurveEditor()
         self.tone_curve_editor.pointsChanged.connect(self._on_tone_curve_points_changed)
         self.tone_curve_editor.interactionFinished.connect(self._on_render_control_change)
-        grid.addWidget(self.tone_curve_editor, 17, 0, 1, 3)
-        grid.addWidget(self._button(self.tr("Restablecer curva"), self._reset_tone_curve), 18, 0, 1, 3)
+        grid.addWidget(self.tone_curve_editor, 25, 0, 1, 3)
+        grid.addWidget(self._button(self.tr("Restablecer curva"), self._reset_tone_curve), 26, 0, 1, 3)
         self._set_tone_curve_controls_enabled(False)
 
-        grid.addWidget(self._button(self.tr("Restablecer brillo y contraste"), self._reset_tone_adjustments), 19, 0, 1, 3)
+        grid.addWidget(self._button(self.tr("Restablecer tono"), self._reset_tone_adjustments), 27, 0, 1, 3)
         grid.addWidget(
             self._build_named_adjustment_profile_panel("color_contrast", self.tr("Color y contraste")),
-            20,
+            28,
             0,
             1,
             3,
         )
+        return tab
+
+    def _build_tab_libraw_color_settings(self) -> QtWidgets.QWidget:
+        tab = QtWidgets.QWidget()
+        grid = QtWidgets.QGridLayout(tab)
+
+        self.check_libraw_auto_bright = QtWidgets.QCheckBox(self.tr("Ajuste automatico de brillo RAW"))
+        self.check_libraw_auto_bright.toggled.connect(lambda _checked: self._on_raw_decode_control_changed())
+        grid.addWidget(self.check_libraw_auto_bright, 0, 0, 1, 3)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Umbral auto brillo")), 1, 0)
+        self.spin_libraw_auto_bright_thr = QtWidgets.QDoubleSpinBox()
+        self.spin_libraw_auto_bright_thr.setRange(0.0, 1.0)
+        self.spin_libraw_auto_bright_thr.setDecimals(4)
+        self.spin_libraw_auto_bright_thr.setSingleStep(0.001)
+        self.spin_libraw_auto_bright_thr.setValue(0.01)
+        self.spin_libraw_auto_bright_thr.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        grid.addWidget(self.spin_libraw_auto_bright_thr, 1, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Brillo base RAW")), 2, 0)
+        self.spin_libraw_bright = QtWidgets.QDoubleSpinBox()
+        self.spin_libraw_bright.setRange(0.01, 8.0)
+        self.spin_libraw_bright.setDecimals(3)
+        self.spin_libraw_bright.setSingleStep(0.05)
+        self.spin_libraw_bright.setValue(1.0)
+        self.spin_libraw_bright.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        grid.addWidget(self.spin_libraw_bright, 2, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Ajuste maximo")), 3, 0)
+        self.spin_libraw_adjust_maximum_thr = QtWidgets.QDoubleSpinBox()
+        self.spin_libraw_adjust_maximum_thr.setRange(0.0, 1.0)
+        self.spin_libraw_adjust_maximum_thr.setDecimals(3)
+        self.spin_libraw_adjust_maximum_thr.setSingleStep(0.01)
+        self.spin_libraw_adjust_maximum_thr.setValue(0.75)
+        self.spin_libraw_adjust_maximum_thr.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        grid.addWidget(self.spin_libraw_adjust_maximum_thr, 3, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Altas luces")), 4, 0)
+        self.combo_libraw_highlight_mode = QtWidgets.QComboBox()
+        for label, value in LIBRAW_HIGHLIGHT_MODE_OPTIONS:
+            self.combo_libraw_highlight_mode.addItem(self.tr(label), value)
+        self.combo_libraw_highlight_mode.currentIndexChanged.connect(lambda _index: self._on_raw_decode_control_changed())
+        grid.addWidget(self.combo_libraw_highlight_mode, 4, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Exposicion base RAW")), 5, 0)
+        self.spin_libraw_exp_shift = QtWidgets.QDoubleSpinBox()
+        self.spin_libraw_exp_shift.setRange(0.25, 8.0)
+        self.spin_libraw_exp_shift.setDecimals(3)
+        self.spin_libraw_exp_shift.setSingleStep(0.05)
+        self.spin_libraw_exp_shift.setValue(1.0)
+        self.spin_libraw_exp_shift.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        grid.addWidget(self.spin_libraw_exp_shift, 5, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Preservar luces")), 6, 0)
+        self.spin_libraw_exp_preserve_highlights = QtWidgets.QDoubleSpinBox()
+        self.spin_libraw_exp_preserve_highlights.setRange(0.0, 1.0)
+        self.spin_libraw_exp_preserve_highlights.setDecimals(3)
+        self.spin_libraw_exp_preserve_highlights.setSingleStep(0.05)
+        self.spin_libraw_exp_preserve_highlights.setValue(0.0)
+        self.spin_libraw_exp_preserve_highlights.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        grid.addWidget(self.spin_libraw_exp_preserve_highlights, 6, 1, 1, 2)
+
+        self.check_libraw_no_auto_scale = QtWidgets.QCheckBox(self.tr("Desactivar escalado automatico RAW"))
+        self.check_libraw_no_auto_scale.toggled.connect(lambda _checked: self._on_raw_decode_control_changed())
+        grid.addWidget(self.check_libraw_no_auto_scale, 7, 0, 1, 3)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Gamma base RAW")), 8, 0)
+        gamma_row = QtWidgets.QHBoxLayout()
+        self.spin_libraw_gamma_power = QtWidgets.QDoubleSpinBox()
+        self.spin_libraw_gamma_power.setRange(0.1, 8.0)
+        self.spin_libraw_gamma_power.setDecimals(3)
+        self.spin_libraw_gamma_power.setValue(1.0)
+        self.spin_libraw_gamma_power.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        self.spin_libraw_gamma_slope = QtWidgets.QDoubleSpinBox()
+        self.spin_libraw_gamma_slope.setRange(0.1, 16.0)
+        self.spin_libraw_gamma_slope.setDecimals(3)
+        self.spin_libraw_gamma_slope.setValue(1.0)
+        self.spin_libraw_gamma_slope.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        gamma_row.addWidget(self.spin_libraw_gamma_power)
+        gamma_row.addWidget(self.spin_libraw_gamma_slope)
+        grid.addLayout(gamma_row, 8, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Aberracion cromatica")), 9, 0)
+        ca_row = QtWidgets.QHBoxLayout()
+        self.spin_libraw_ca_red = QtWidgets.QDoubleSpinBox()
+        self.spin_libraw_ca_red.setRange(0.5, 1.5)
+        self.spin_libraw_ca_red.setDecimals(5)
+        self.spin_libraw_ca_red.setSingleStep(0.0005)
+        self.spin_libraw_ca_red.setValue(1.0)
+        self.spin_libraw_ca_red.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        self.spin_libraw_ca_blue = QtWidgets.QDoubleSpinBox()
+        self.spin_libraw_ca_blue.setRange(0.5, 1.5)
+        self.spin_libraw_ca_blue.setDecimals(5)
+        self.spin_libraw_ca_blue.setSingleStep(0.0005)
+        self.spin_libraw_ca_blue.setValue(1.0)
+        self.spin_libraw_ca_blue.valueChanged.connect(lambda _value: self._on_raw_decode_control_changed())
+        ca_row.addWidget(self.spin_libraw_ca_red)
+        ca_row.addWidget(self.spin_libraw_ca_blue)
+        grid.addLayout(ca_row, 9, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Balance blancos RAW")), 10, 0)
+        self.combo_wb_mode = QtWidgets.QComboBox(tab)
+        for label, val in WB_MODE_OPTIONS:
+            self.combo_wb_mode.addItem(self.tr(label), val)
+        self.combo_wb_mode.currentIndexChanged.connect(lambda _index: self._on_raw_decode_control_changed())
+        grid.addWidget(self.combo_wb_mode, 10, 1, 1, 2)
+
+        grid.addWidget(QtWidgets.QLabel(self.tr("Multiplicadores WB")), 11, 0)
+        self.edit_wb_multipliers = QtWidgets.QLineEdit("1,1,1,1", tab)
+        self.edit_wb_multipliers.setToolTip(self.tr("Formato: R,G,B,G (o R,G,B)"))
+        self.edit_wb_multipliers.editingFinished.connect(self._on_raw_decode_control_changed)
+        grid.addWidget(self.edit_wb_multipliers, 11, 1, 1, 2)
+
+        grid.addWidget(self._button(self.tr("Restablecer revelado base"), self._reset_libraw_color_adjustments), 12, 0, 1, 3)
+
+        note = QtWidgets.QLabel(
+            self.tr(
+                "Ajustes de revelado RAW para casos sin carta. No generan ICC ni calibran la sesion; quedan guardados "
+                "como receta de revelado para reproducir el resultado."
+            )
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet("font-size: 12px; color: #6b7280;")
+        grid.addWidget(note, 13, 0, 1, 3)
         return tab
 
     def _build_tab_preview_settings(self) -> QtWidgets.QWidget:
@@ -408,12 +675,17 @@ class ControlPanelsMixin:
         return tab
 
     def _build_hidden_raw_compatibility_controls(self, parent: QtWidgets.QWidget) -> None:
-        self.combo_wb_mode = QtWidgets.QComboBox(parent)
-        for label, val in WB_MODE_OPTIONS:
-            self.combo_wb_mode.addItem(self.tr(label), val)
+        created_hidden_widgets: list[QtWidgets.QWidget] = []
+        if not hasattr(self, "combo_wb_mode"):
+            self.combo_wb_mode = QtWidgets.QComboBox(parent)
+            for label, val in WB_MODE_OPTIONS:
+                self.combo_wb_mode.addItem(self.tr(label), val)
+            created_hidden_widgets.append(self.combo_wb_mode)
 
-        self.edit_wb_multipliers = QtWidgets.QLineEdit("1,1,1,1", parent)
-        self.edit_wb_multipliers.setToolTip(self.tr("Formato: R,G,B,G (o R,G,B)"))
+        if not hasattr(self, "edit_wb_multipliers"):
+            self.edit_wb_multipliers = QtWidgets.QLineEdit("1,1,1,1", parent)
+            self.edit_wb_multipliers.setToolTip(self.tr("Formato: R,G,B,G (o R,G,B)"))
+            created_hidden_widgets.append(self.edit_wb_multipliers)
 
         self.spin_exposure = QtWidgets.QDoubleSpinBox(parent)
         self.spin_exposure.setRange(-8.0, 8.0)
@@ -451,8 +723,6 @@ class ControlPanelsMixin:
         self.edit_illuminant = QtWidgets.QLineEdit("", parent)
 
         for widget in (
-            self.combo_wb_mode,
-            self.edit_wb_multipliers,
             self.spin_exposure,
             self.combo_tone_curve,
             self.spin_gamma,
@@ -463,6 +733,7 @@ class ControlPanelsMixin:
             self.check_profiling_mode,
             self.edit_input_color,
             self.edit_illuminant,
+            *created_hidden_widgets,
         ):
             widget.hide()
 

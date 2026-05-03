@@ -35,7 +35,9 @@ def test_slanted_edge_mtf_reports_curve_and_metrics():
     assert result.frequency_extended[-1] > 0.5
     assert result.mtf[0] == pytest.approx(1.0)
     assert result.mtf50 is not None
+    assert result.mtf50p is not None
     assert 0.05 < result.mtf50 < 0.5
+    assert 0.05 < result.mtf50p < 0.5
     assert result.edge_contrast > 0.6
     assert abs(result.esf[-1] - result.esf[-5]) < 0.05
 
@@ -65,6 +67,25 @@ def test_slanted_edge_mtf_detects_blur_difference():
     assert soft.mtf50 is not None
     assert sharp.mtf50 > soft.mtf50
     assert sharp.acutance > soft.acutance
+
+
+def test_slanted_edge_mtf_uses_gradient_ridge_when_dark_side_is_textured():
+    size = 220
+    rng = np.random.default_rng(3)
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    dist = (xx - size * 0.55) - (yy - size / 2.0) * 0.10
+    edge = (dist > 0.0).astype(np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    texture = cv2.GaussianBlur(rng.normal(0.0, 0.08, (size, size)).astype(np.float32), (0, 0), sigmaX=1.0)
+    dark_ramp = 0.04 * xx / float(size)
+    image = np.clip(0.08 + 0.72 * edge + (1.0 - edge) * (texture + dark_ramp), 0.0, 1.0)
+    image_rgb = np.repeat(image[..., None], 3, axis=2)
+
+    result = analyze_slanted_edge_mtf(image_rgb, roi=(20, 20, 180, 180))
+
+    assert result.mtf50 is not None
+    assert result.mtf50 > 0.10
+    assert 83.0 < result.edge_angle_degrees < 86.0
 
 
 def test_slanted_edge_mtf_rejects_low_contrast_roi():

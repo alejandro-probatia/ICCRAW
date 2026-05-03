@@ -191,8 +191,9 @@ class PreviewLoadMixin:
         ):
             current_side = int(max(self._original_linear.shape[0], self._original_linear.shape[1]))
             loaded_fast_raw = bool(self._loaded_preview_fast_raw)
+            loaded_side_request = getattr(self, "_loaded_preview_max_side_request", None)
             same_or_higher_quality = (
-                (max_preview_side <= 0 and not loaded_fast_raw)
+                (max_preview_side <= 0 and not loaded_fast_raw and loaded_side_request == 0)
                 or (max_preview_side > 0 and current_side >= int(max_preview_side))
             )
             # Never downgrade quality/source size implicitly while staying on
@@ -219,6 +220,7 @@ class PreviewLoadMixin:
             self._last_loaded_preview_key = cache_key
             self._loaded_preview_base_signature = base_signature
             self._loaded_preview_fast_raw = bool(fast_raw)
+            self._loaded_preview_max_side_request = int(max_preview_side)
             self._loaded_preview_source_max_side = int(max(self._original_linear.shape[0], self._original_linear.shape[1]))
             self._clear_adjustment_caches()
             self._clear_mtf_roi_for_file_change()
@@ -300,6 +302,7 @@ class PreviewLoadMixin:
                     recipe=recipe,
                 )
                 self._loaded_preview_fast_raw = bool(fast_raw)
+                self._loaded_preview_max_side_request = int(max_preview_side)
                 self._loaded_preview_source_max_side = int(
                     max(self._original_linear.shape[0], self._original_linear.shape[1])
                 )

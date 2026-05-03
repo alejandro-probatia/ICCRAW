@@ -45,6 +45,51 @@ four_color_rgb: "true"
     assert recipe.four_color_rgb is True
 
 
+def test_recipe_loads_libraw_color_render_options(tmp_path: Path):
+    recipe_file = tmp_path / "recipe.yml"
+    recipe_file.write_text(
+        """
+white_balance_mode: auto
+libraw_auto_bright: true
+libraw_auto_bright_thr: "0.02"
+libraw_adjust_maximum_thr: "0.5"
+libraw_bright: "1.25"
+libraw_highlight_mode: blend
+libraw_exp_shift: "1.5"
+libraw_exp_preserve_highlights: "0.4"
+libraw_no_auto_scale: true
+libraw_gamma_power: "2.222"
+libraw_gamma_slope: "4.5"
+libraw_chromatic_aberration_red: "1.001"
+libraw_chromatic_aberration_blue: "0.999"
+""",
+        encoding="utf-8",
+    )
+
+    recipe = load_recipe(recipe_file)
+
+    assert recipe.white_balance_mode == "auto"
+    assert recipe.libraw_auto_bright is True
+    assert recipe.libraw_auto_bright_thr == 0.02
+    assert recipe.libraw_adjust_maximum_thr == 0.5
+    assert recipe.libraw_bright == 1.25
+    assert recipe.libraw_highlight_mode == "blend"
+    assert recipe.libraw_exp_shift == 1.5
+    assert recipe.libraw_exp_preserve_highlights == 0.4
+    assert recipe.libraw_no_auto_scale is True
+    assert recipe.libraw_gamma_power == 2.222
+    assert recipe.libraw_gamma_slope == 4.5
+    assert recipe.libraw_chromatic_aberration_red == 1.001
+    assert recipe.libraw_chromatic_aberration_blue == 0.999
+
+
+def test_scientific_guard_warns_libraw_render_adjustments_in_profiling():
+    guard = scientific_guard(Recipe(libraw_auto_bright=True))
+
+    assert not guard.is_scientific_safe
+    assert any("LibRaw" in warning for warning in guard.warnings)
+
+
 def test_recipe_nested_sampling_strategy_preserves_parameters(tmp_path: Path):
     recipe_file = tmp_path / "recipe.yml"
     recipe_file.write_text(

@@ -33,6 +33,14 @@ LIBRAW_DEMOSAIC_MAP = {
     "amaze": "AMAZE",
 }
 
+LIBRAW_HIGHLIGHT_MODE_MAP = {
+    "clip": "Clip",
+    "ignore": "Ignore",
+    "blend": "Blend",
+    "reconstruct": "ReconstructDefault",
+    "reconstruct_default": "ReconstructDefault",
+}
+
 GPL2_DEMOSAIC_ALGORITHMS = {"afd", "lmmse", "modified_ahd", "vcd", "vcd_modified_ahd"}
 GPL3_DEMOSAIC_ALGORITHMS = {"amaze"}
 
@@ -222,22 +230,41 @@ def _build_libraw_postprocess_kwargs(
 
     wb_mode = recipe.white_balance_mode.strip().lower()
     use_camera_wb = wb_mode == "camera_metadata"
+    use_auto_wb = wb_mode in {"auto", "auto_wb", "libraw_auto"}
     user_wb = _libraw_wb(recipe.wb_multipliers) if wb_mode == "fixed" else None
 
     kwargs = {
         "demosaic_algorithm": libraw_demosaic_value(recipe.demosaic_algorithm),
         "half_size": bool(half_size),
         "use_camera_wb": use_camera_wb,
-        "use_auto_wb": False,
+        "use_auto_wb": use_auto_wb,
         "user_wb": user_wb,
         "output_color": _libraw_output_color_value(output_color_space),
         "output_bps": 16,
         "user_flip": 0,
-        "no_auto_bright": True,
-        "bright": 1.0,
-        "highlight_mode": rawpy.HighlightMode.Clip,
-        "gamma": (1.0, 1.0),
+        "no_auto_bright": not bool(getattr(recipe, "libraw_auto_bright", False)),
+        "bright": _positive_float(getattr(recipe, "libraw_bright", 1.0), 1.0),
+        "highlight_mode": _libraw_highlight_mode_value(getattr(recipe, "libraw_highlight_mode", "clip")),
+        "gamma": (
+            _positive_float(getattr(recipe, "libraw_gamma_power", 1.0), 1.0),
+            _positive_float(getattr(recipe, "libraw_gamma_slope", 1.0), 1.0),
+        ),
     }
+
+    optional_kwargs = {
+        "auto_bright_thr": float(np.clip(float(getattr(recipe, "libraw_auto_bright_thr", 0.01)), 0.0, 1.0)),
+        "adjust_maximum_thr": float(np.clip(float(getattr(recipe, "libraw_adjust_maximum_thr", 0.75)), 0.0, 1.0)),
+        "exp_shift": float(np.clip(float(getattr(recipe, "libraw_exp_shift", 1.0)), 0.25, 8.0)),
+        "exp_preserve_highlights": float(np.clip(float(getattr(recipe, "libraw_exp_preserve_highlights", 0.0)), 0.0, 1.0)),
+        "no_auto_scale": bool(getattr(recipe, "libraw_no_auto_scale", False)),
+        "chromatic_aberration": (
+            _positive_float(getattr(recipe, "libraw_chromatic_aberration_red", 1.0), 1.0),
+            _positive_float(getattr(recipe, "libraw_chromatic_aberration_blue", 1.0), 1.0),
+        ),
+    }
+    for key, value in optional_kwargs.items():
+        if rawpy_postprocess_parameter_supported(key):
+            kwargs[key] = value
 
     if rawpy_postprocess_parameter_supported("four_color_rgb"):
         kwargs["four_color_rgb"] = bool(getattr(recipe, "four_color_rgb", False))
@@ -253,6 +280,27 @@ def _build_libraw_postprocess_kwargs(
         kwargs["median_filter_passes"] = false_color_steps
 
     return kwargs
+
+
+def _libraw_highlight_mode_value(mode: str):
+    if rawpy is None:
+        raise RuntimeError("No se puede configurar altas luces: dependencia 'rawpy' no disponible.")
+    key = str(mode or "clip").strip().lower()
+    enum_name = LIBRAW_HIGHLIGHT_MODE_MAP.get(key)
+    if enum_name is None:
+        supported = ", ".join(sorted(LIBRAW_HIGHLIGHT_MODE_MAP))
+        raise RuntimeError(f"libraw_highlight_mode no soportado: {mode!r}. Valores soportados: {supported}.")
+    return getattr(rawpy.HighlightMode, enum_name)
+
+
+def _positive_float(value: object, default: float) -> float:
+    try:
+        parsed = float(value)
+    except Exception:
+        return float(default)
+    if not np.isfinite(parsed) or parsed <= 0.0:
+        return float(default)
+    return float(parsed)
 
 
 def apply_raw_demosaic_postprocess(image: np.ndarray, recipe: Recipe) -> np.ndarray:
@@ -362,6 +410,12 @@ def rawpy_postprocess_parameter_supported(parameter: str) -> bool:
         "dcb_enhance": True,
         "median_filter_passes": 1,
         "fbdd_noise_reduction": 0,
+        "auto_bright_thr": 0.01,
+        "adjust_maximum_thr": 0.75,
+        "exp_shift": 1.0,
+        "exp_preserve_highlights": 0.0,
+        "no_auto_scale": False,
+        "chromatic_aberration": (1.0, 1.0),
     }
     if name not in test_values:
         return False
@@ -464,6 +518,18 @@ def _demosaic_cache_key(raw_path: Path, recipe: Recipe, *, output_color_space: s
         "demosaic_edge_quality": int(getattr(recipe, "demosaic_edge_quality", 0) or 0),
         "false_color_suppression_steps": int(getattr(recipe, "false_color_suppression_steps", 0) or 0),
         "four_color_rgb": bool(getattr(recipe, "four_color_rgb", False)),
+        "libraw_auto_bright": bool(getattr(recipe, "libraw_auto_bright", False)),
+        "libraw_auto_bright_thr": float(getattr(recipe, "libraw_auto_bright_thr", 0.01)),
+        "libraw_adjust_maximum_thr": float(getattr(recipe, "libraw_adjust_maximum_thr", 0.75)),
+        "libraw_bright": float(getattr(recipe, "libraw_bright", 1.0)),
+        "libraw_highlight_mode": str(getattr(recipe, "libraw_highlight_mode", "clip")),
+        "libraw_exp_shift": float(getattr(recipe, "libraw_exp_shift", 1.0)),
+        "libraw_exp_preserve_highlights": float(getattr(recipe, "libraw_exp_preserve_highlights", 0.0)),
+        "libraw_no_auto_scale": bool(getattr(recipe, "libraw_no_auto_scale", False)),
+        "libraw_gamma_power": float(getattr(recipe, "libraw_gamma_power", 1.0)),
+        "libraw_gamma_slope": float(getattr(recipe, "libraw_gamma_slope", 1.0)),
+        "libraw_chromatic_aberration_red": float(getattr(recipe, "libraw_chromatic_aberration_red", 1.0)),
+        "libraw_chromatic_aberration_blue": float(getattr(recipe, "libraw_chromatic_aberration_blue", 1.0)),
         "white_balance_mode": str(recipe.white_balance_mode),
         "wb_multipliers": [float(v) for v in (recipe.wb_multipliers or [])],
         "black_level_mode": str(recipe.black_level_mode),

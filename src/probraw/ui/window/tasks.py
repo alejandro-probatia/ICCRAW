@@ -89,6 +89,7 @@ class TaskStatusMixin:
             "_selection_load_timer",
             "_preview_load_progress_timer",
             "_preview_refresh_timer",
+            "_interactive_preview_global_timer",
             "_thumbnail_timer",
             "_metadata_timer",
             "_mtf_refresh_timer",
@@ -248,11 +249,42 @@ class TaskStatusMixin:
         self._interactive_preview_spinner.setMaximumHeight(9)
         self._interactive_preview_time_label = QtWidgets.QLabel(self.tr("Ultimo ajuste: -- ms"))
         self._interactive_preview_time_label.setStyleSheet("color: #4b5563;")
+        self._interactive_preview_global_timer = QtCore.QTimer(self)
+        self._interactive_preview_global_timer.setInterval(250)
+        self._interactive_preview_global_timer.timeout.connect(self._update_interactive_preview_global_progress)
         status = self.statusBar()
         status.addPermanentWidget(self._interactive_preview_spinner)
         status.addPermanentWidget(self._interactive_preview_time_label)
 
     def _set_interactive_preview_busy(self, busy: bool) -> None:
+        if bool(busy):
+            if getattr(self, "_interactive_preview_busy_started_at", None) is None:
+                self._interactive_preview_busy_started_at = time.perf_counter()
+                self._interactive_preview_global_visible = False
+            timer = getattr(self, "_interactive_preview_global_timer", None)
+            if timer is not None and not timer.isActive():
+                timer.start()
+        else:
+            timer = getattr(self, "_interactive_preview_global_timer", None)
+            if timer is not None:
+                timer.stop()
+            started = getattr(self, "_interactive_preview_busy_started_at", None)
+            elapsed = (time.perf_counter() - started) if started is not None else None
+            was_global_visible = bool(getattr(self, "_interactive_preview_global_visible", False))
+            self._interactive_preview_busy_started_at = None
+            self._interactive_preview_global_visible = False
+            owner = getattr(self, "_global_progress_owner", None)
+            if was_global_visible and owner in (None, "preview"):
+                self._set_global_operation_progress(
+                    "preview",
+                    self.tr("Ajuste completado"),
+                    time_text=(self.tr("Total:") + f" {elapsed:.1f} s") if elapsed is not None else self.tr("Finalizado"),
+                    phase_text=self.tr("Preview actualizada"),
+                    minimum=0,
+                    maximum=1,
+                    value=1,
+                )
+                QtCore.QTimer.singleShot(1200, lambda: self._reset_global_operation_progress(owner="preview"))
         spinner = getattr(self, "_interactive_preview_spinner", None)
         if spinner is not None:
             if busy:
@@ -265,6 +297,27 @@ class TaskStatusMixin:
             label.setText(self.tr("Ajustando..."))
         elif label is not None:
             self._update_interactive_preview_time_label()
+
+    def _update_interactive_preview_global_progress(self) -> None:
+        started = getattr(self, "_interactive_preview_busy_started_at", None)
+        if started is None:
+            return
+        elapsed = max(0.0, time.perf_counter() - float(started))
+        if elapsed < 1.0 and not bool(getattr(self, "_interactive_preview_global_visible", False)):
+            return
+        owner = getattr(self, "_global_progress_owner", None)
+        if owner not in (None, "preview"):
+            return
+        self._interactive_preview_global_visible = True
+        self._set_global_operation_progress(
+            "preview",
+            self.tr("Ajustando preview..."),
+            time_text=self.tr("Tiempo:") + f" {elapsed:.1f} s",
+            phase_text=self.tr("Aplicando ajustes de color y contraste"),
+            minimum=0,
+            maximum=0,
+            value=0,
+        )
 
     def _update_interactive_preview_time_label(self) -> None:
         label = getattr(self, "_interactive_preview_time_label", None)

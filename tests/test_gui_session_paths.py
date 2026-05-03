@@ -16,6 +16,7 @@ from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 import probraw.gui as gui_module  # noqa: E402
 import probraw.ui.window.preview_recipe as preview_recipe_module  # noqa: E402
+from probraw.analysis.mtf import MTFResult  # noqa: E402
 from probraw.chart.sampling import ReferenceCatalog  # noqa: E402
 from probraw.core.models import Recipe  # noqa: E402
 from probraw.core.utils import write_tiff16  # noqa: E402
@@ -506,6 +507,158 @@ def test_viewer_zoom_percentage_tracks_real_pixel_scale(qapp):
         window._viewer_zoom_100()
         assert window.viewer_zoom_label.text() == "100%"
         assert window.image_result_single.current_display_scale() == pytest.approx(1.0)
+    finally:
+        window.close()
+
+
+def test_image_panel_magnification_uses_pixel_exact_sampling(qapp):
+    panel = gui_module.ImagePanel("test", framed=False)
+    try:
+        panel.setFixedSize(4, 2)
+        image = gui_module.np.asarray([[[0, 0, 0], [255, 255, 255]]], dtype=gui_module.np.uint8)
+        panel.set_rgb_u8_image(image)
+        panel.show()
+        qapp.processEvents()
+
+        assert panel.current_display_scale() == pytest.approx(2.0)
+        assert panel._pixel_exact_rendering_enabled(panel.current_display_scale())
+
+        grabbed = panel.grab().toImage().convertToFormat(QtGui.QImage.Format_RGB888)
+        left = QtGui.QColor(grabbed.pixel(1, 1)).red()
+        right = QtGui.QColor(grabbed.pixel(2, 1)).red()
+
+        assert left == 0
+        assert right == 255
+    finally:
+        panel.close()
+
+
+def test_image_panel_pixel_grid_appears_only_at_analysis_magnification(qapp):
+    panel = gui_module.ImagePanel("test", framed=False)
+    try:
+        panel.setFixedSize(160, 160)
+        panel.set_rgb_u8_image(gui_module.np.zeros((16, 16, 3), dtype=gui_module.np.uint8))
+
+        assert panel._pixel_grid_visible(7.99) is False
+        assert panel._pixel_grid_visible(8.0) is True
+
+        panel.set_view_transform(zoom=1.0, rotation=90)
+        assert panel._pixel_grid_visible(10.0) is False
+    finally:
+        panel.close()
+
+
+def test_image_panel_zoom_preserves_current_view_center(qapp):
+    panel = gui_module.ImagePanel("test", framed=False)
+    try:
+        panel.setFixedSize(100, 100)
+        panel.set_rgb_u8_image(gui_module.np.zeros((100, 100, 3), dtype=gui_module.np.uint8))
+        panel.set_view_transform(zoom=2.0, rotation=0)
+        panel._pan = QtCore.QPointF(-50.0, 0.0)
+
+        center = QtCore.QPointF(50.0, 50.0)
+        before = panel._map_widget_to_image(center)
+        panel.set_view_transform(zoom=4.0, rotation=0)
+        after = panel._map_widget_to_image(center)
+
+        assert before is not None
+        assert after is not None
+        assert after[0] == pytest.approx(before[0])
+        assert after[1] == pytest.approx(before[1])
+    finally:
+        panel.close()
+
+
+def test_viewer_zoom_100_requests_full_detail_for_raw(tmp_path: Path, monkeypatch, qapp):
+    raw = tmp_path / "capture.NEF"
+    raw.write_bytes(b"raw")
+    window = ICCRawMainWindow()
+    try:
+        calls: list[dict[str, object]] = []
+        window._selected_file = raw
+        window._original_linear = gui_module.np.zeros((200, 400, 3), dtype=gui_module.np.float32)
+        window._loaded_preview_fast_raw = False
+        window._loaded_preview_max_side_request = 2600
+        window.image_result_single.setFixedSize(200, 100)
+        window.image_result_single.set_rgb_u8_image(
+            gui_module.np.zeros((200, 400, 3), dtype=gui_module.np.uint8)
+        )
+        monkeypatch.setattr(window, "_on_load_selected", lambda *args, **kwargs: calls.append(dict(kwargs)))
+
+        window._viewer_zoom_100()
+
+        assert window.viewer_zoom_label.text() == "100%"
+        assert window._viewer_full_detail_requested is True
+        assert window._effective_preview_max_side() == 0
+        assert calls == [{"show_message": False}]
+    finally:
+        window.close()
+
+
+def test_panel_zoom_to_real_scale_requests_full_detail_for_raw(tmp_path: Path, monkeypatch, qapp):
+    raw = tmp_path / "capture.NEF"
+    raw.write_bytes(b"raw")
+    window = ICCRawMainWindow()
+    try:
+        calls: list[dict[str, object]] = []
+        window._selected_file = raw
+        window._original_linear = gui_module.np.zeros((200, 400, 3), dtype=gui_module.np.float32)
+        window._loaded_preview_fast_raw = False
+        window._loaded_preview_max_side_request = 2600
+        window.image_result_single.setFixedSize(200, 100)
+        window.image_result_single.set_rgb_u8_image(
+            gui_module.np.zeros((200, 400, 3), dtype=gui_module.np.uint8)
+        )
+        monkeypatch.setattr(window, "_on_load_selected", lambda *args, **kwargs: calls.append(dict(kwargs)))
+
+        window.image_result_single.set_view_transform(zoom=2.0, rotation=0)
+
+        assert window.viewer_zoom_label.text() == "100%"
+        assert window._viewer_full_detail_requested is True
+        assert window._effective_preview_max_side() == 0
+        assert calls == [{"show_message": False}]
+    finally:
+        window.close()
+
+
+def test_full_detail_request_does_not_accept_reduced_hq_preview(tmp_path: Path, monkeypatch, qapp):
+    raw = tmp_path / "capture.NEF"
+    raw.write_bytes(b"raw")
+    window = ICCRawMainWindow()
+    try:
+        queued: list[tuple] = []
+        window._selected_file = raw
+        recipe = window._build_effective_recipe()
+        if raw.suffix.lower() in gui_module.RAW_EXTENSIONS:
+            recipe.demosaic_algorithm = window._balanced_preview_demosaic()
+        window._original_linear = gui_module.np.zeros((1732, 2600, 3), dtype=gui_module.np.float32)
+        window._loaded_preview_base_signature = window._preview_base_signature(selected=raw, recipe=recipe)
+        window._last_loaded_preview_key = "loaded-reduced-hq"
+        window._loaded_preview_fast_raw = False
+        window._loaded_preview_max_side_request = 2600
+        window._viewer_full_detail_requested = True
+        monkeypatch.setattr(window, "_queue_preview_load_request", lambda request: queued.append(request))
+
+        window._on_load_selected(show_message=False)
+
+        assert len(queued) == 1
+        _selected, _recipe, fast_raw, max_preview_side, _cache_key = queued[0]
+        assert fast_raw is False
+        assert max_preview_side == 0
+    finally:
+        window.close()
+
+
+def test_standard_output_space_preview_keeps_source_profile_for_monitor_conversion(qapp):
+    window = ICCRawMainWindow()
+    try:
+        recipe = Recipe(output_space="prophoto_rgb")
+
+        source_profile = window._source_profile_for_preview_recipe(recipe)
+
+        assert source_profile is not None
+        assert source_profile.exists()
+        assert source_profile.suffix.lower() in {".icc", ".icm"}
     finally:
         window.close()
 
@@ -1129,10 +1282,14 @@ def test_color_managed_preview_keeps_bounded_preview_size(tmp_path: Path, monkey
 
         assert window._preview_requires_max_quality()
         assert window._effective_preview_max_side() == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
+        assert window._final_adjustment_preview_max_side() == gui_module.PREVIEW_FINAL_ADJUSTMENT_MAX_SIDE
         assert window._should_async_final_preview()
 
         window.check_precision_detail_preview.setChecked(True)
+        assert window._effective_preview_max_side() == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
+        window._viewer_full_detail_requested = True
         assert window._effective_preview_max_side() == 0
+        assert window._final_adjustment_preview_max_side() == 0
     finally:
         window.close()
 
@@ -1145,11 +1302,13 @@ def test_interactive_preview_source_reuses_downscaled_cache(qapp):
         first = window._interactive_preview_source(image, max_side_limit=300)
         second = window._interactive_preview_source(image, max_side_limit=300)
         third = window._interactive_preview_source(image, max_side_limit=240)
+        fourth = window._interactive_preview_source(image, max_side_limit=300)
 
         assert first.shape == (225, 300, 3)
         assert second is first
         assert third.shape == (180, 240, 3)
         assert third is not first
+        assert fourth is first
     finally:
         window.close()
 
@@ -1931,6 +2090,60 @@ def test_queue_process_uses_inline_raw_sidecar_sharpening(tmp_path: Path, monkey
         assert captured["development_profile"]["profile_type"] == "basic"
         assert captured["recipe"].output_space == "prophoto_rgb"
         assert window._develop_queue[0]["status"] == "done"
+    finally:
+        window.close()
+
+
+def test_batch_render_syncs_open_preview_with_written_sidecar(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion lote sync")
+    recipe = Recipe(output_space="prophoto_rgb", output_linear=False, tone_curve="gamma:1.8")
+    out_tiff = root / "02_DRV" / "capture.tiff"
+    proof = out_tiff.with_suffix(out_tiff.suffix + ".probraw.proof.json")
+    write_raw_sidecar(
+        raw,
+        recipe=recipe,
+        development_profile={"id": "", "name": "Ajustes lote", "kind": "manual", "profile_type": "basic"},
+        detail_adjustments={"sharpen": 190, "radius": 8, "noise_luma": 0, "noise_color": 63, "ca_red": 0, "ca_blue": 0},
+        render_adjustments={"temperature_kelvin": 6360, "tint": 100.0, "brightness_ev": 0.58, "white_point": 0.879},
+        session_root=root,
+        output_tiff=out_tiff,
+        proof_path=proof,
+        status="rendered",
+    )
+    reloads: list[dict[str, object]] = []
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._selected_file = raw
+        window._original_linear = gui_module.np.zeros((12, 16, 3), dtype=gui_module.np.float32)
+        monkeypatch.setattr(window, "_on_load_selected", lambda *args, **kwargs: reloads.append(dict(kwargs)))
+        window.spin_render_tint.setValue(0)
+        window.slider_brightness.setValue(0)
+        window.slider_sharpen.setValue(0)
+        reloads.clear()
+
+        window._sync_selected_after_batch_render(
+            {
+                "outputs": [
+                    {
+                        "source": str(raw),
+                        "output": str(out_tiff),
+                        "raw_sidecar": str(raw_sidecar_path(raw)),
+                    }
+                ]
+            }
+        )
+
+        assert window.spin_render_tint.value() == pytest.approx(100.0)
+        assert window.slider_brightness.value() == 58
+        assert window.slider_sharpen.value() == 190
+        assert window.slider_noise_color.value() == 63
+        assert reloads == [{"show_message": False}]
     finally:
         window.close()
 
@@ -2759,11 +2972,17 @@ def test_separate_adjustment_profiles_are_saved_and_applied_to_raw_sidecars(tmp_
         window.color_contrast_profile_name_edit.setText("Color caso")
         window.slider_brightness.setValue(24)
         window.slider_contrast.setValue(13)
+        window.spin_libraw_bright.setValue(1.25)
+        window._set_combo_data(window.combo_libraw_highlight_mode, "blend")
         window._save_named_adjustment_profile("color_contrast")
         color_profile_id = window._active_color_contrast_profile_id
         window.slider_brightness.setValue(0)
+        window.spin_libraw_bright.setValue(1.0)
+        window._set_combo_data(window.combo_libraw_highlight_mode, "clip")
         window._apply_named_adjustment_profile_to_controls("color_contrast", color_profile_id)
         assert window.slider_brightness.value() == 24
+        assert window.spin_libraw_bright.value() == pytest.approx(1.25)
+        assert window.combo_libraw_highlight_mode.currentData() == "blend"
 
         window.detail_profile_name_edit.setText("Nitidez caso")
         window.slider_sharpen.setValue(86)
@@ -2795,6 +3014,10 @@ def test_separate_adjustment_profiles_are_saved_and_applied_to_raw_sidecars(tmp_
         sidecar = load_raw_sidecar(raw)
         assert sidecar["render_adjustments"]["brightness_ev"] == pytest.approx(0.24)
         assert sidecar["render_adjustments"]["contrast"] == pytest.approx(0.13)
+        assert sidecar["render_adjustments"]["libraw"]["bright"] == pytest.approx(1.25)
+        assert sidecar["render_adjustments"]["libraw"]["highlight_mode"] == "blend"
+        assert sidecar["recipe"]["libraw_bright"] == pytest.approx(1.25)
+        assert sidecar["recipe"]["libraw_highlight_mode"] == "blend"
         assert sidecar["detail_adjustments"]["sharpen"] == 86
         assert sidecar["detail_adjustments"]["radius"] == 18
         assert sidecar["recipe"]["black_level_mode"] == "fixed:64"
@@ -2853,8 +3076,10 @@ def test_raw_adjustment_groups_follow_editor_flow(qapp):
 
         panel_labels = [window.config_tabs.itemText(i) for i in range(window.config_tabs.count())]
         assert panel_labels == [
-            "Brillo y contraste",
             "Color",
+            "Claro",
+            "Gradacion de color",
+            "Revelado base",
         ]
         raw_export_labels = [
             window.raw_export_tabs.itemText(i)
@@ -3260,6 +3485,7 @@ def test_mtf_auto_update_is_scheduled_from_detail_slider_change(tmp_path: Path, 
     image_path = tmp_path / "edge.tiff"
     write_tiff16(image_path, image)
     try:
+        window._go_to_nitidez_tab()
         window._selected_file = image_path
         window._original_linear = image
         window._preview_srgb = image
@@ -3289,6 +3515,7 @@ def test_mtf_auto_update_defers_when_restored_roi_cache_is_cold(tmp_path: Path, 
     image_path = tmp_path / "edge.tiff"
     write_tiff16(image_path, image)
     try:
+        window._go_to_nitidez_tab()
         window._selected_file = image_path
         window._original_linear = image
         window._preview_srgb = image
@@ -3308,6 +3535,41 @@ def test_mtf_auto_update_defers_when_restored_roi_cache_is_cold(tmp_path: Path, 
         assert window._mtf_refresh_timer.isActive()
         window._clear_mtf_image_caches()
         assert not window._mtf_refresh_timer.isActive()
+    finally:
+        window._mtf_refresh_timer.stop()
+        window.close()
+
+
+def test_mtf_auto_update_waits_until_sharpness_tab_is_visible(tmp_path: Path, qapp):
+    size = 180
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.15
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, image)
+    try:
+        window._go_to_nitidez_tab()
+        window._selected_file = image_path
+        window._original_linear = image
+        window._preview_srgb = image
+        window._on_mtf_roi_selected(55, 55, 70, 70)
+        assert window._mtf_has_hot_base_roi_cache(window._mtf_roi)
+        window._mtf_refresh_timer.stop()
+        window.check_mtf_auto_update.setChecked(True)
+
+        window.right_workflow_tabs.setCurrentIndex(1)
+        window._schedule_mtf_refresh(interactive=False)
+
+        assert not window._mtf_refresh_timer.isActive()
+        assert window._mtf_auto_refresh_deferred_until_visible is True
+
+        window._go_to_nitidez_tab()
+
+        assert window._mtf_refresh_timer.isActive()
     finally:
         window._mtf_refresh_timer.stop()
         window.close()
@@ -3464,6 +3726,50 @@ def test_global_progress_panel_tracks_preview_load_threshold(tmp_path: Path, qap
         window.close()
 
 
+def test_global_progress_panel_promotes_slow_interactive_adjustments(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._set_interactive_preview_busy(True)
+        window._interactive_preview_busy_started_at = time.perf_counter() - 1.2
+        window._update_interactive_preview_global_progress()
+
+        assert window._global_progress_owner == "preview"
+        assert "Ajustando preview" in window.global_status_label.text()
+        assert "1." in window.global_progress_time_label.text()
+        assert window.global_progress.minimum() == 0
+        assert window.global_progress.maximum() == 0
+
+        window._set_interactive_preview_busy(False)
+
+        assert window._global_progress_owner == "preview"
+        assert "Ajuste completado" in window.global_status_label.text()
+    finally:
+        window.close()
+
+
+def test_slow_interactive_adjustment_completion_does_not_replace_active_task(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._set_interactive_preview_busy(True)
+        window._interactive_preview_busy_started_at = time.perf_counter() - 1.2
+        window._update_interactive_preview_global_progress()
+
+        window._set_global_operation_progress(
+            "task",
+            "Exportando lote",
+            time_text="En curso",
+            phase_text="Exportacion",
+            minimum=0,
+            maximum=0,
+        )
+        window._set_interactive_preview_busy(False)
+
+        assert window._global_progress_owner == "task"
+        assert "Exportando lote" in window.global_status_label.text()
+    finally:
+        window.close()
+
+
 def test_mtf_lateral_ca_roi_block_matches_full_resolution_adjustment(tmp_path: Path, monkeypatch, qapp):
     size = 420
     yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
@@ -3559,6 +3865,67 @@ def test_mtf_auto_sharpening_updates_sliders_and_improves_roi_mtf(tmp_path: Path
         window.close()
 
 
+def test_mtf_auto_sharpening_prefers_mtf50p_over_oversharpened_peak(qapp):
+    window = ICCRawMainWindow()
+
+    def make_candidate(
+        *,
+        amount_slider: int,
+        radius_slider: int,
+        mtf50: float,
+        mtf50p: float,
+        mtf30: float,
+        halo: float,
+        mtf_peak: float,
+    ) -> dict:
+        result = MTFResult(
+            roi=(0, 0, 80, 80),
+            roi_shape=(80, 80),
+            edge_angle_degrees=85.0,
+            edge_contrast=0.70,
+            overshoot=halo / 2.0,
+            undershoot=halo / 2.0,
+            mtf50=mtf50,
+            mtf50p=mtf50p,
+            mtf30=mtf30,
+            mtf10=0.34,
+            acutance=0.70,
+            esf_distance=[float(i) for i in range(20)],
+            esf=[float(v) for v in gui_module.np.linspace(0.0, 1.0, 20)],
+            lsf_distance=[float(i) for i in range(20)],
+            lsf=[0.0] * 20,
+            frequency=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+            mtf=[mtf_peak, 0.96, 0.72, 0.42, 0.18, 0.08],
+            frequency_extended=[0.0, 0.5, 0.75, 1.0],
+            mtf_extended=[mtf_peak, 0.08, 0.04, 0.02],
+            warnings=[],
+        )
+        candidate = {
+            "amount_slider": amount_slider,
+            "radius_slider": radius_slider,
+            "result": result,
+        }
+        candidate.update(window._mtf_auto_sharpen_quality_metrics(result))
+        candidate.update(window._mtf_auto_sharpen_halo_metrics(result))
+        candidate["score"] = window._mtf_auto_sharpen_score(
+            result,
+            amount=float(amount_slider) / 100.0,
+            radius=float(radius_slider) / 10.0,
+        )
+        return candidate
+
+    try:
+        baseline = make_candidate(amount_slider=0, radius_slider=10, mtf50=0.12, mtf50p=0.12, mtf30=0.16, halo=0.0, mtf_peak=1.0)
+        balanced = make_candidate(amount_slider=80, radius_slider=10, mtf50=0.19, mtf50p=0.18, mtf30=0.24, halo=0.008, mtf_peak=1.04)
+        oversharpened = make_candidate(amount_slider=160, radius_slider=22, mtf50=0.30, mtf50p=0.13, mtf30=0.27, halo=0.012, mtf_peak=1.36)
+
+        best = window._mtf_auto_sharpen_select_best([baseline, balanced, oversharpened])
+
+        assert best is balanced
+    finally:
+        window.close()
+
+
 def test_mtf_persisted_comparison_rows(qapp):
     window = ICCRawMainWindow()
     try:
@@ -3568,6 +3935,8 @@ def test_mtf_persisted_comparison_rows(qapp):
                 "roi": [1, 2, 40, 50],
                 "mtf50": 0.20,
                 "mtf50_lp_per_mm": 40.0,
+                "mtf50p": 0.18,
+                "mtf50p_lp_per_mm": 36.0,
                 "mtf30": 0.32,
                 "mtf30_lp_per_mm": 64.0,
                 "mtf10": None,
@@ -3587,6 +3956,8 @@ def test_mtf_persisted_comparison_rows(qapp):
                 "roi": [3, 4, 40, 50],
                 "mtf50": 0.25,
                 "mtf50_lp_per_mm": 50.0,
+                "mtf50p": 0.23,
+                "mtf50p_lp_per_mm": 46.0,
                 "mtf30": 0.36,
                 "mtf30_lp_per_mm": 72.0,
                 "mtf10": 0.48,
@@ -3606,6 +3977,7 @@ def test_mtf_persisted_comparison_rows(qapp):
         by_label = {row[0]: row for row in rows}
         assert by_label["MTF50 (c/p)"][1:] == ("0.200000 c/p", "0.250000 c/p", "+0.050000 c/p")
         assert by_label["MTF50 (lp/mm)"][1:] == ("40.00 lp/mm", "50.00 lp/mm", "+10.00 lp/mm")
+        assert by_label["MTF50P (c/p)"][1:] == ("0.180000 c/p", "0.230000 c/p", "+0.050000 c/p")
         assert by_label["MTF10 (c/p)"][1:] == ("sin dato", "0.480000 c/p", "")
         assert by_label["Sobreimpulso (%)"][1:] == ("1.000%", "3.000%", "+2.000%")
         assert by_label["Post-Nyquist pico (c/p)"][2] == "0.820000 c/p"
@@ -3617,12 +3989,16 @@ def test_mtf_plot_displays_nyquist_range_and_coordinate_labels(qapp):
     widget = gui_module.MTFPlotWidget("mtf")
 
     class Result:
+        roi_shape = (80, 120)
+        mtf50 = 0.31
+        mtf50p = 0.29
         frequency = [0.0, 0.1, 0.2, 0.35, 0.5]
         mtf = [1.0, 0.86, 0.62, 0.31, 0.08]
         frequency_extended = [0.0, 0.25, 0.5, 0.75, 1.0]
         mtf_extended = [1.0, 0.5, 0.1, 0.04, 0.02]
 
     try:
+        widget.set_result(Result())
         x_values = gui_module.np.asarray([0.0, 0.2, 0.4], dtype=gui_module.np.float64)
 
         assert widget._x_range(x_values) == (0.0, 0.5)
@@ -3632,9 +4008,31 @@ def test_mtf_plot_displays_nyquist_range_and_coordinate_labels(qapp):
         assert widget._axis_ticks(0.0, 1.0) == [0.0, 0.5, 1.0]
         assert widget._coordinate_label(0.5, 0.75) == "x=0.5  y=0.75"
         assert "post-Nyquist" in widget._coordinate_label(0.75, 0.2)
+        assert widget._analysis_summary_lines()[0] == "ROI: 120 x 80 px (0.010 Mpix)"
         widget.resize(460, 300)
-        widget.set_result(Result())
         widget._hover_pos = QtCore.QPointF(230, 120)
+        pixmap = widget.grab()
+        assert not pixmap.isNull()
+    finally:
+        widget.close()
+
+
+def test_mtf_esf_plot_reports_pixel_scale_and_rise(qapp):
+    widget = gui_module.MTFPlotWidget("esf")
+
+    class Result:
+        roi_shape = (84, 128)
+        esf_distance = [-6.0, -4.0, -2.0, -1.0, 0.0, 1.0, 2.0, 4.0, 6.0]
+        esf = [0.0, 0.0, 0.05, 0.18, 0.5, 0.82, 0.95, 1.0, 1.0]
+
+    try:
+        widget.set_result(Result())
+
+        assert widget._axis_ticks(-6.0, 6.0) == [-6.0, -4.0, -2.0, 0.0, 2.0, 4.0, 6.0]
+        assert 1.0 in widget._minor_axis_ticks(-6.0, 6.0)
+        assert widget._esf_rise_10_90() == pytest.approx((-1.6153846, 1.6153846, 3.2307692))
+        assert widget._curve_sample_count() == len(Result.esf)
+        widget.resize(460, 300)
         pixmap = widget.grab()
         assert not pixmap.isNull()
     finally:

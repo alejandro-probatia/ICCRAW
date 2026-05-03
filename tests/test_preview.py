@@ -149,6 +149,42 @@ def test_apply_render_adjustments_uses_per_channel_tone_curves():
     assert float(out[..., 2].mean()) < float(img[..., 2].mean())
 
 
+def test_apply_render_adjustments_uses_extended_tone_and_color_controls():
+    img = np.zeros((8, 9, 3), dtype=np.float32)
+    img[:, :3] = [0.12, 0.10, 0.08]
+    img[:, 3:6] = [0.40, 0.36, 0.30]
+    img[:, 6:] = [0.78, 0.74, 0.68]
+
+    out = apply_render_adjustments(
+        img,
+        highlights=-0.35,
+        shadows=0.45,
+        whites=0.20,
+        blacks=-0.15,
+        vibrance=0.40,
+        saturation=0.15,
+    )
+
+    assert out.shape == img.shape
+    assert np.isfinite(out).all()
+    assert not np.allclose(out, img)
+    assert float(out[:, :3].mean()) > float(img[:, :3].mean())
+
+
+def test_apply_render_adjustments_uses_color_grading():
+    img = np.full((6, 7, 3), 0.35, dtype=np.float32)
+
+    out = apply_render_adjustments(
+        img,
+        grade_midtones_hue=210,
+        grade_midtones_saturation=0.45,
+        grade_blending=0.5,
+    )
+
+    assert out.shape == img.shape
+    assert not np.allclose(out[..., 0], out[..., 2])
+
+
 def test_tone_curve_lut_is_smooth_monotonic_and_honors_black_white_points():
     lut_x, lut_y = tone_curve_lut(
         [(0.0, 0.0), (0.25, 0.12), (0.55, 0.72), (1.0, 1.0)],
@@ -204,6 +240,29 @@ def test_standard_profile_to_srgb_display_converts_prophoto_neutral_without_cast
     assert np.isfinite(out).all()
     assert float(np.max(np.abs(out[..., 0] - out[..., 1]))) < 0.01
     assert float(np.max(np.abs(out[..., 1] - out[..., 2]))) < 0.01
+
+
+def test_standard_profile_to_srgb_display_matches_colour_reference_for_prophoto():
+    encoded = np.random.default_rng(14).uniform(0.0, 1.0, size=(8, 9, 3)).astype(np.float32)
+    rgb_space = colour.RGB_COLOURSPACES["ProPhoto RGB"]
+    linear = np.asarray(rgb_space.cctf_decoding(encoded), dtype=np.float64)
+    flat = linear.reshape((-1, 3))
+    xyz_native = flat @ np.asarray(rgb_space.matrix_RGB_to_XYZ, dtype=np.float64).T
+    source_white = np.asarray(colour.xy_to_XYZ(rgb_space.whitepoint), dtype=np.float64)
+    d65_xy = np.asarray(colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D65"], dtype=np.float64)
+    d65_xyz = np.asarray(colour.xy_to_XYZ(d65_xy), dtype=np.float64)
+    adaptation = preview_module.matrix_chromatic_adaptation_VonKries(source_white, d65_xyz, transform="Bradford")
+    xyz_d65 = xyz_native @ np.asarray(adaptation, dtype=np.float64).T
+    reference = colour.XYZ_to_sRGB(
+        xyz_d65.reshape(encoded.shape),
+        illuminant=d65_xy,
+        apply_cctf_encoding=True,
+    )
+    reference = np.clip(np.asarray(reference, dtype=np.float32), 0.0, 1.0)
+
+    out = standard_profile_to_srgb_display(encoded, "prophoto_rgb")
+
+    assert np.allclose(out, reference, atol=2e-6)
 
 
 def test_preview_analysis_text_includes_global_stats():

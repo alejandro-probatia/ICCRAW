@@ -132,6 +132,7 @@ if QtWidgets is not None:
             self._loaded_preview_base_signature: str | None = None
             self._loaded_preview_fast_raw: bool | None = None
             self._loaded_preview_source_max_side: int = 0
+            self._loaded_preview_max_side_request: int | None = None
             self._preview_cache: dict[str, np.ndarray] = {}
             self._preview_cache_order: list[str] = []
             self._profile_preview_cache: dict[str, np.ndarray] = {}
@@ -161,6 +162,8 @@ if QtWidgets is not None:
             ] | None = None
             self._interactive_preview_expected_key: str | None = None
             self._interactive_preview_last_ms: float | None = None
+            self._interactive_preview_busy_started_at: float | None = None
+            self._interactive_preview_global_visible = False
             self._interactive_preview_request_seq = 0
             self._display_color_error_key: str | None = None
             self._manual_chart_marking = False
@@ -187,6 +190,7 @@ if QtWidgets is not None:
             self._mtf_auto_candidate_cache_order: list[str] = []
             self._mtf_persisted_payload_key: str | None = None
             self._mtf_deferred_auto_refresh_key: str | None = None
+            self._mtf_auto_refresh_deferred_until_visible = False
             self._mtf_base_roi_task_active = False
             self._mtf_base_roi_inflight_key: str | None = None
             self._mtf_base_roi_pending_request: dict[str, Any] | None = None
@@ -258,12 +262,15 @@ if QtWidgets is not None:
             self._original_compare_panel_key: str | None = None
             self._interactive_source_cache_key: tuple[object, ...] | None = None
             self._interactive_source_cache_image: np.ndarray | None = None
+            self._interactive_source_cache_images: dict[tuple[object, ...], np.ndarray] = {}
             self._interactive_bypass_display_icc = _env_flag(
                 PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC_ENV,
                 default=True,
             )
             self._viewer_zoom = 1.0
             self._viewer_rotation = 0
+            self._viewer_full_detail_requested = False
+            self._syncing_viewer_transform = False
             self._selection_load_timer = QtCore.QTimer(self)
             self._selection_load_timer.setSingleShot(True)
             self._selection_load_timer.timeout.connect(self._load_selected_from_timer)

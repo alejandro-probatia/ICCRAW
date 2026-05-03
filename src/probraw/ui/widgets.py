@@ -668,6 +668,7 @@ if QtWidgets is not None:
                 self._draw_mtf_reference_levels(painter, plot, ymin, ymax)
             else:
                 self._draw_curve_path(painter, plot, x_values, y_values, xmin, xmax, ymin, ymax)
+            self._draw_analysis_annotations(painter, plot, xmin, xmax, ymin, ymax)
             self._draw_hover_coordinates(painter, plot, xmin, xmax, ymin, ymax)
             painter.end()
 
@@ -769,6 +770,14 @@ if QtWidgets is not None:
             font.setPointSize(max(7, font.pointSize() - 1))
             painter.setFont(font)
 
+            minor_ticks = self._minor_axis_ticks(xmin, xmax)
+            if minor_ticks:
+                painter.setPen(QtGui.QPen(QtGui.QColor("#25303a"), 1))
+                for value in minor_ticks:
+                    px, _py = self._data_to_plot(value, ymin, plot, xmin, xmax, ymin, ymax)
+                    painter.drawLine(px, plot.top(), px, plot.bottom())
+
+            painter.setPen(QtGui.QPen(QtGui.QColor("#334155"), 1))
             for value in self._axis_ticks(xmin, xmax):
                 px, _py = self._data_to_plot(value, ymin, plot, xmin, xmax, ymin, ymax)
                 painter.drawLine(px, plot.top(), px, plot.bottom())
@@ -885,6 +894,210 @@ if QtWidgets is not None:
                 if plot.top() <= py <= plot.bottom():
                     painter.drawLine(plot.left(), py, plot.right(), py)
 
+        def _draw_analysis_annotations(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+        ) -> None:
+            result = self._result
+            if result is None:
+                return
+            lines = self._analysis_summary_lines()
+            if lines:
+                self._draw_annotation_box(painter, plot.adjusted(8, 8, -8, -8), lines, align_right=False)
+            if self._curve == "esf":
+                self._draw_esf_rise_annotation(painter, plot, xmin, xmax, ymin, ymax)
+            elif self._curve == "mtf":
+                self._draw_mtf_metric_annotations(painter, plot, xmin, xmax, ymin, ymax)
+
+        def _analysis_summary_lines(self) -> list[str]:
+            result = self._result
+            if result is None:
+                return []
+            lines: list[str] = []
+            shape = getattr(result, "roi_shape", None)
+            if isinstance(shape, (list, tuple)) and len(shape) >= 2:
+                h = max(0, int(shape[0]))
+                w = max(0, int(shape[1]))
+                pixels = int(w * h)
+                if pixels > 0:
+                    lines.append(f"ROI: {w} x {h} px ({pixels / 1_000_000.0:.3f} Mpix)")
+            count = self._curve_sample_count()
+            if count > 0:
+                lines.append(self.tr("Muestras") + f": {count}")
+            return lines
+
+        def _curve_sample_count(self) -> int:
+            result = self._result
+            if result is None:
+                return 0
+            if self._curve == "esf":
+                return len(getattr(result, "esf", []) or [])
+            if self._curve == "lsf":
+                return len(getattr(result, "lsf", []) or [])
+            values = getattr(result, "mtf_extended", None)
+            if values is None or len(values) == 0:
+                values = getattr(result, "mtf", []) or []
+            return len(values)
+
+        def _draw_esf_rise_annotation(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+        ) -> None:
+            rise = self._esf_rise_10_90()
+            if rise is None:
+                return
+            x10, x90, width = rise
+            if not (xmin <= x10 <= xmax or xmin <= x90 <= xmax):
+                return
+            y10 = 0.10
+            y90 = 0.90
+            px10, py10 = self._data_to_plot(x10, y10, plot, xmin, xmax, ymin, ymax)
+            px90, py90 = self._data_to_plot(x90, y90, plot, xmin, xmax, ymin, ymax)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#e879f9"), 1, QtCore.Qt.DashLine))
+            painter.drawLine(px10, plot.top(), px10, plot.bottom())
+            painter.drawLine(px90, plot.top(), px90, plot.bottom())
+            painter.setPen(QtGui.QPen(QtGui.QColor("#f8fafc"), 1))
+            bracket_y = min(max(plot.top() + 34, (py10 + py90) * 0.5), plot.bottom() - 24)
+            painter.drawLine(px10, bracket_y, px90, bracket_y)
+            painter.drawLine(px10, bracket_y - 4, px10, bracket_y + 4)
+            painter.drawLine(px90, bracket_y - 4, px90, bracket_y + 4)
+            text = self.tr("10-90 rise") + f": {width:.2f} px"
+            metrics = painter.fontMetrics()
+            rect = QtCore.QRectF(
+                min(max(plot.left() + 8, (px10 + px90) * 0.5 - metrics.horizontalAdvance(text) / 2 - 8), plot.right() - metrics.horizontalAdvance(text) - 20),
+                bracket_y - metrics.height() - 8,
+                metrics.horizontalAdvance(text) + 16,
+                metrics.height() + 6,
+            )
+            self._draw_annotation_box(painter, rect, [text], align_right=False)
+
+        def _draw_mtf_metric_annotations(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+        ) -> None:
+            result = self._result
+            if result is None:
+                return
+            lines: list[str] = []
+            mtf50 = self._optional_float(getattr(result, "mtf50", None))
+            mtf50p = self._optional_float(getattr(result, "mtf50p", None))
+            if mtf50 is not None:
+                lines.append(f"MTF50: {mtf50:.3f} c/p")
+                self._draw_frequency_marker(painter, plot, xmin, xmax, ymin, ymax, mtf50, 0.5, "#f8fafc")
+            if mtf50p is not None:
+                lines.append(f"MTF50P: {mtf50p:.3f} c/p")
+                self._draw_frequency_marker(painter, plot, xmin, xmax, ymin, ymax, mtf50p, 0.5, "#a78bfa")
+            if lines:
+                self._draw_annotation_box(painter, plot.adjusted(8, 8, -8, -8), lines, align_right=True)
+
+        def _draw_frequency_marker(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+            x: float,
+            y: float,
+            color: str,
+        ) -> None:
+            if not (xmin <= float(x) <= xmax):
+                return
+            px, py = self._data_to_plot(float(x), float(y), plot, xmin, xmax, ymin, ymax)
+            painter.setPen(QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.DashLine))
+            painter.drawLine(px, py, px, plot.bottom())
+            painter.drawLine(plot.left(), py, px, py)
+
+        def _draw_annotation_box(
+            self,
+            painter: QtGui.QPainter,
+            anchor: QtCore.QRectF | QtCore.QRect,
+            lines: list[str],
+            *,
+            align_right: bool,
+        ) -> None:
+            if not lines:
+                return
+            metrics = painter.fontMetrics()
+            width = max(metrics.horizontalAdvance(line) for line in lines) + 14
+            height = metrics.height() * len(lines) + 8
+            anchor_rect = QtCore.QRectF(anchor)
+            x = anchor_rect.right() - width if align_right else anchor_rect.left()
+            y = anchor_rect.top()
+            rect = QtCore.QRectF(x, y, width, height)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#334155"), 1))
+            painter.setBrush(QtGui.QColor(15, 23, 42, 210))
+            painter.drawRoundedRect(rect, 4, 4)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#e2e8f0"), 1))
+            for index, line in enumerate(lines):
+                line_rect = QtCore.QRectF(
+                    rect.left() + 7,
+                    rect.top() + 4 + metrics.height() * index,
+                    rect.width() - 14,
+                    metrics.height(),
+                )
+                flags = QtCore.Qt.AlignVCenter | (QtCore.Qt.AlignRight if align_right else QtCore.Qt.AlignLeft)
+                painter.drawText(line_rect, flags, line)
+
+        def _esf_rise_10_90(self) -> tuple[float, float, float] | None:
+            result = self._result
+            if result is None:
+                return None
+            x = np.asarray(getattr(result, "esf_distance", []), dtype=np.float64)
+            y = np.asarray(getattr(result, "esf", []), dtype=np.float64)
+            valid = np.isfinite(x) & np.isfinite(y)
+            x = x[valid]
+            y = y[valid]
+            if x.size < 4:
+                return None
+            order = np.argsort(x)
+            x = x[order]
+            y = y[order]
+            if float(y[-1]) < float(y[0]):
+                x = -x[::-1]
+                y = y[::-1]
+            y_mono = np.maximum.accumulate(y)
+            span = float(np.nanmax(y_mono) - np.nanmin(y_mono))
+            if not np.isfinite(span) or span <= 1e-6:
+                return None
+            y_norm = (y_mono - float(np.nanmin(y_mono))) / span
+            x10 = self._level_crossing(x, y_norm, 0.10)
+            x90 = self._level_crossing(x, y_norm, 0.90)
+            if x10 is None or x90 is None:
+                return None
+            return float(x10), float(x90), abs(float(x90) - float(x10))
+
+        def _level_crossing(self, x: np.ndarray, y: np.ndarray, level: float) -> float | None:
+            if x.size < 2 or y.size < 2:
+                return None
+            for index in range(1, x.size):
+                y0 = float(y[index - 1])
+                y1 = float(y[index])
+                if y0 <= level <= y1:
+                    x0 = float(x[index - 1])
+                    x1 = float(x[index])
+                    if abs(y1 - y0) <= 1e-12:
+                        return x1
+                    t = (float(level) - y0) / (y1 - y0)
+                    return x0 + t * (x1 - x0)
+            return None
+
         def _draw_hover_coordinates(
             self,
             painter: QtGui.QPainter,
@@ -940,7 +1153,50 @@ if QtWidgets is not None:
                     return [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
                 top = float(np.ceil(float(maximum) / 0.5) * 0.5)
                 return [float(v) for v in np.arange(0.0, top + 0.25, 0.5)]
+            if self._curve in {"esf", "lsf"}:
+                return self._nice_pixel_ticks(minimum, maximum, max_ticks=9)
             return [float(v) for v in np.linspace(float(minimum), float(maximum), 5)]
+
+        def _minor_axis_ticks(self, minimum: float, maximum: float) -> list[float]:
+            if self._curve not in {"esf", "lsf"}:
+                return []
+            major = self._axis_ticks(minimum, maximum)
+            if len(major) < 2:
+                return []
+            step = float(major[1] - major[0])
+            if step <= 1.0:
+                return []
+            minor_step = max(1.0, step / 5.0)
+            values = np.arange(
+                np.floor(float(minimum) / minor_step) * minor_step,
+                float(maximum) + minor_step * 0.5,
+                minor_step,
+            )
+            major_set = {round(float(v), 6) for v in major}
+            return [
+                float(v)
+                for v in values
+                if float(minimum) <= float(v) <= float(maximum)
+                and round(float(v), 6) not in major_set
+            ]
+
+        def _nice_pixel_ticks(self, minimum: float, maximum: float, *, max_ticks: int) -> list[float]:
+            span = float(maximum) - float(minimum)
+            if not np.isfinite(span) or span <= 0.0:
+                return [float(minimum), float(maximum)]
+            target = max(1.0, span / max(2, int(max_ticks) - 1))
+            magnitude = 10.0 ** np.floor(np.log10(target))
+            step = magnitude
+            for factor in (1.0, 2.0, 5.0, 10.0):
+                step = float(factor * magnitude)
+                if span / step <= max_ticks:
+                    break
+            start = np.ceil(float(minimum) / step) * step
+            end = np.floor(float(maximum) / step) * step
+            ticks = [float(v) for v in np.arange(start, end + step * 0.5, step)]
+            if not ticks:
+                return [float(minimum), float(maximum)]
+            return ticks
 
         def _format_axis_value(self, value: float) -> str:
             value = float(value)
@@ -955,6 +1211,13 @@ if QtWidgets is not None:
         def _coordinate_label(self, x: float, y: float) -> str:
             suffix = " post-Nyquist" if self._curve == "mtf" and float(x) > 0.5 else ""
             return f"x={self._format_axis_value(x)}  y={self._format_axis_value(y)}{suffix}"
+
+        def _optional_float(self, value: Any) -> float | None:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                return None
+            return number if np.isfinite(number) else None
 
 
     class MTFComparisonPlotWidget(MTFPlotWidget):
@@ -1698,6 +1961,9 @@ if QtWidgets is not None:
     class ImagePanel(QtWidgets.QLabel):
         imageClicked = QtCore.Signal(float, float)
         roiSelected = QtCore.Signal(float, float, float, float)
+        viewTransformChanged = QtCore.Signal(float, int)
+        PIXEL_EXACT_MIN_SCALE = 1.0
+        PIXEL_GRID_MIN_SCALE = 8.0
 
         def __init__(
             self,
@@ -1821,12 +2087,22 @@ if QtWidgets is not None:
             self._refresh_scaled_pixmap()
 
         def set_view_transform(self, *, zoom: float, rotation: int) -> None:
+            anchor_widget = QtCore.QPointF(float(self.width()) / 2.0, float(self.height()) / 2.0)
+            anchor_image = self._map_widget_to_image(anchor_widget)
+            old_zoom = float(self._view_zoom)
+            old_rotation = int(self._view_rotation) % 360
             self._view_zoom = float(np.clip(zoom, 0.05, 64.0))
             self._view_rotation = int(rotation) % 360
+            if (
+                anchor_image is not None
+                and (abs(float(self._view_zoom) - old_zoom) > 1e-9 or int(self._view_rotation) != old_rotation)
+            ):
+                self._pan = self._pan_for_image_anchor(anchor_image, anchor_widget)
             if not self._image_can_pan():
                 self._pan = QtCore.QPointF(0.0, 0.0)
             self._refresh_scaled_pixmap()
             self._apply_idle_cursor()
+            self.viewTransformChanged.emit(float(self._view_zoom), int(self._view_rotation))
 
         def current_display_scale(self) -> float | None:
             geometry = self._display_geometry()
@@ -1933,12 +2209,15 @@ if QtWidgets is not None:
                 return super().paintEvent(event)
 
             pixmap, rect, scale, transform, bounds = geometry
+            pixel_exact = self._pixel_exact_rendering_enabled(scale)
             painter = QtGui.QPainter(self)
-            painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform)
+            painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, not pixel_exact)
             painter.fillRect(self.rect(), QtGui.QColor(self._background))
             painter.drawPixmap(rect, pixmap, QtCore.QRectF(pixmap.rect()))
             if self._clip_overlay_enabled and self._clip_overlay_pixmap is not None:
                 painter.drawPixmap(rect, self._clip_overlay_pixmap, QtCore.QRectF(self._clip_overlay_pixmap.rect()))
+            if self._pixel_grid_visible(scale):
+                self._draw_pixel_grid(painter, rect, scale)
 
             if self._overlay_points and self._image_size is not None:
                 painter.setRenderHint(QtGui.QPainter.Antialiasing)
@@ -1981,6 +2260,49 @@ if QtWidgets is not None:
         def _refresh_scaled_pixmap(self) -> None:
             self.update()
 
+        def _pixel_exact_rendering_enabled(self, scale: float) -> bool:
+            return float(scale) >= float(self.PIXEL_EXACT_MIN_SCALE)
+
+        def _pixel_grid_visible(self, scale: float) -> bool:
+            return (
+                self._image_size is not None
+                and int(self._view_rotation) % 360 == 0
+                and float(scale) >= float(self.PIXEL_GRID_MIN_SCALE)
+            )
+
+        def _draw_pixel_grid(self, painter: QtGui.QPainter, rect: QtCore.QRectF, scale: float) -> None:
+            if self._image_size is None:
+                return
+            image_w, image_h = self._image_size
+            if image_w <= 0 or image_h <= 0:
+                return
+            scale = max(float(scale), 1e-6)
+            visible = rect.intersected(QtCore.QRectF(self.rect()))
+            if visible.isEmpty():
+                return
+            x0 = max(0, int(np.floor((visible.left() - rect.left()) / scale)))
+            x1 = min(int(image_w), int(np.ceil((visible.right() - rect.left()) / scale)))
+            y0 = max(0, int(np.floor((visible.top() - rect.top()) / scale)))
+            y1 = min(int(image_h), int(np.ceil((visible.bottom() - rect.top()) / scale)))
+            if x1 < x0 or y1 < y0:
+                return
+
+            painter.save()
+            painter.setRenderHint(QtGui.QPainter.Antialiasing, False)
+            alpha = 42 if scale < 16.0 else 58
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, alpha), 0))
+            top = max(visible.top(), rect.top())
+            bottom = min(visible.bottom(), rect.bottom())
+            left = max(visible.left(), rect.left())
+            right = min(visible.right(), rect.right())
+            for x in range(x0, x1 + 1):
+                px = rect.left() + float(x) * scale
+                painter.drawLine(QtCore.QPointF(px, top), QtCore.QPointF(px, bottom))
+            for y in range(y0, y1 + 1):
+                py = rect.top() + float(y) * scale
+                painter.drawLine(QtCore.QPointF(left, py), QtCore.QPointF(right, py))
+            painter.restore()
+
         def _apply_idle_cursor(self) -> None:
             if self._space_pan_active and self._base_pixmap is not None:
                 self.setCursor(QtCore.Qt.OpenHandCursor)
@@ -2013,6 +2335,46 @@ if QtWidgets is not None:
                 return None
             return float(mapped.x()), float(mapped.y())
 
+        def _pan_for_image_anchor(
+            self,
+            image_pos: tuple[float, float],
+            widget_pos: QtCore.QPointF,
+        ) -> QtCore.QPointF:
+            if self._base_pixmap is None:
+                return QtCore.QPointF(0.0, 0.0)
+            transform = QtGui.QTransform()
+            transform.rotate(int(self._view_rotation) % 360)
+            bounds = transform.mapRect(
+                QtCore.QRectF(
+                    0.0,
+                    0.0,
+                    float(self._base_pixmap.width()),
+                    float(self._base_pixmap.height()),
+                )
+            )
+            pixmap = (
+                self._base_pixmap
+                if int(self._view_rotation) % 360 == 0
+                else self._base_pixmap.transformed(transform, QtCore.Qt.FastTransformation)
+            )
+            pw = max(1.0, float(pixmap.width()))
+            ph = max(1.0, float(pixmap.height()))
+            fit = self._display_fit_scale(pixmap=pixmap)
+            scale = fit * float(self._view_zoom)
+            draw_w = pw * scale
+            draw_h = ph * scale
+            mapped = transform.map(QtCore.QPointF(float(image_pos[0]), float(image_pos[1])))
+            anchor_x = (mapped.x() - bounds.left()) * scale
+            anchor_y = (mapped.y() - bounds.top()) * scale
+            pan_x = float(widget_pos.x()) - (float(self.width()) - draw_w) / 2.0 - anchor_x
+            pan_y = float(widget_pos.y()) - (float(self.height()) - draw_h) / 2.0 - anchor_y
+            max_pan_x = max(0.0, (draw_w - float(self.width())) / 2.0)
+            max_pan_y = max(0.0, (draw_h - float(self.height())) / 2.0)
+            return QtCore.QPointF(
+                float(np.clip(pan_x, -max_pan_x, max_pan_x)),
+                float(np.clip(pan_y, -max_pan_y, max_pan_y)),
+            )
+
         def _display_geometry(self):
             if self._base_pixmap is None:
                 return None
@@ -2029,7 +2391,7 @@ if QtWidgets is not None:
             pixmap = (
                 self._base_pixmap
                 if self._view_rotation == 0
-                else self._base_pixmap.transformed(transform, QtCore.Qt.SmoothTransformation)
+                else self._base_pixmap.transformed(transform, QtCore.Qt.FastTransformation)
             )
             pw = max(1.0, float(pixmap.width()))
             ph = max(1.0, float(pixmap.height()))
@@ -2059,7 +2421,7 @@ if QtWidgets is not None:
                     if self._view_rotation == 0
                     else self._base_pixmap.transformed(
                         QtGui.QTransform().rotate(self._view_rotation),
-                        QtCore.Qt.SmoothTransformation,
+                        QtCore.Qt.FastTransformation,
                     )
                 )
             pw = max(1.0, float(pixmap.width()))
