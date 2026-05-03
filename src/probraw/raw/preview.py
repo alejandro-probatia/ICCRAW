@@ -4,6 +4,7 @@ import io
 from pathlib import Path
 import os
 import subprocess
+from dataclasses import asdict
 
 import cv2
 import numpy as np
@@ -33,6 +34,8 @@ def load_image_for_preview(
     recipe: Recipe | None = None,
     fast_raw: bool = True,
     max_preview_side: int = 2600,
+    input_profile_path: Path | None = None,
+    cache_dir: Path | None = None,
 ) -> tuple[np.ndarray, str]:
     if not input_path.exists():
         raise FileNotFoundError(f"No existe el archivo de entrada: {input_path}")
@@ -50,17 +53,25 @@ def load_image_for_preview(
         recipe = load_recipe(recipe_path)
 
     if fast_raw:
-        image = _develop_raw_fast_preview(input_path, recipe, max_preview_side=max_preview_side)
+        image = _develop_raw_fast_preview(
+            input_path,
+            recipe,
+            max_preview_side=max_preview_side,
+            input_profile_path=input_profile_path,
+            cache_dir=cache_dir,
+        )
         image = _downscale_for_preview(image, max_preview_side=max_preview_side)
         image = _camera_rgb_display_balance_if_needed(image, recipe)
-        return image, f"RAW previsualizado en modo rapido: {input_path.name}"
+        return image, f"RAW previsualizado en modo rapido LibRaw: {input_path.name}"
 
     # Preview de alta calidad: mismo render que develop_controlled, sin TIFF temporal.
     half_size_hq = _prefer_half_size_high_quality_preview(input_path, max_preview_side=max_preview_side)
+    develop_recipe = _recipe_with_preview_cache_enabled(recipe) if cache_dir is not None and not half_size_hq else recipe
+    develop_cache_dir = cache_dir if cache_dir is not None and not half_size_hq else None
     image = (
-        develop_standard_output_array(input_path, recipe, half_size=half_size_hq)
-        if is_standard_output_space(recipe.output_space)
-        else develop_image_array(input_path, recipe, half_size=half_size_hq)
+        develop_standard_output_array(input_path, develop_recipe, half_size=half_size_hq, cache_dir=develop_cache_dir)
+        if _preview_uses_standard_output_source(recipe, input_profile_path=input_profile_path)
+        else develop_image_array(input_path, develop_recipe, half_size=half_size_hq, cache_dir=develop_cache_dir)
     )
     image = _downscale_for_preview(image, max_preview_side=max_preview_side)
     image = _camera_rgb_display_balance_if_needed(image, recipe)
@@ -69,14 +80,34 @@ def load_image_for_preview(
     return image, f"RAW revelado completo para preview de alta calidad: {input_path.name}"
 
 
-def _develop_raw_fast_preview(input_path: Path, recipe: Recipe, *, max_preview_side: int = 2600) -> np.ndarray:
-    embedded = extract_embedded_preview(input_path, max_preview_side=max_preview_side)
-    if embedded is not None:
-        return embedded
+def _preview_uses_standard_output_source(recipe: Recipe, *, input_profile_path: Path | None = None) -> bool:
+    return input_profile_path is None and is_standard_output_space(recipe.output_space)
 
-    if is_standard_output_space(recipe.output_space):
-        return develop_standard_output_array(input_path, recipe, half_size=True)
-    return develop_image_array(input_path, recipe, half_size=True)
+
+def _develop_raw_fast_preview(
+    input_path: Path,
+    recipe: Recipe,
+    *,
+    max_preview_side: int = 2600,
+    input_profile_path: Path | None = None,
+    allow_embedded_preview: bool = False,
+    cache_dir: Path | None = None,
+) -> np.ndarray:
+    if allow_embedded_preview and input_profile_path is None:
+        embedded = extract_embedded_preview(input_path, max_preview_side=max_preview_side)
+        if embedded is not None:
+            return embedded
+
+    cached_recipe = _recipe_with_preview_cache_enabled(recipe) if cache_dir is not None else recipe
+    if _preview_uses_standard_output_source(recipe, input_profile_path=input_profile_path):
+        return develop_standard_output_array(input_path, cached_recipe, half_size=True, cache_dir=cache_dir)
+    return develop_image_array(input_path, cached_recipe, half_size=True, cache_dir=cache_dir)
+
+
+def _recipe_with_preview_cache_enabled(recipe: Recipe) -> Recipe:
+    cached = Recipe(**asdict(recipe))
+    cached.use_cache = True
+    return cached
 
 
 def _prefer_half_size_high_quality_preview(input_path: Path, *, max_preview_side: int) -> bool:

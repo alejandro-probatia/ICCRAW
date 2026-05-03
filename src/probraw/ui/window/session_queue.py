@@ -214,21 +214,26 @@ class SessionQueueMixin:
             ok_by_source = {str(o["source"]): str(o["output"]) for o in payload.get("outputs", [])}
             err_by_source = {str(e["source"]): str(e["error"]) for e in payload.get("errors", [])}
 
+            kept_queue: list[dict[str, str]] = []
+            removed_count = 0
             for item in self._develop_queue:
                 source = str(item.get("source") or "")
                 if source in ok_by_source:
-                    item["status"] = "done"
-                    item["output_tiff"] = ok_by_source[source]
-                    item["message"] = "OK"
+                    removed_count += 1
+                    continue
                 elif source in err_by_source:
                     item["status"] = "error"
                     item["output_tiff"] = ""
                     item["message"] = err_by_source[source]
+                kept_queue.append(item)
 
+            if removed_count:
+                self._develop_queue = kept_queue
             self._refresh_queue_table()
             self._save_active_session(silent=True)
             self._set_status(
-                f"Cola procesada: {len(payload.get('outputs', []))} OK / {len(payload.get('errors', []))} errores"
+                f"Cola procesada: {len(payload.get('outputs', []))} OK retirados / "
+                f"{len(payload.get('errors', []))} errores"
             )
 
         self._start_background_task(self.tr("Procesar cola de revelado"), task, on_success)

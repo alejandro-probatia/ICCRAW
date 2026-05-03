@@ -149,10 +149,13 @@ class BatchWorkflowMixin:
         ) -> tuple[int, dict[str, str] | None, dict[str, str] | None]:
             try:
                 if src.suffix.lower() in RAW_EXTENSIONS:
+                    decode_recipe = Recipe(**asdict(recipe))
+                    decode_recipe.use_cache = True
+                    decode_cache_dir = self._preview_decode_cache_dir(src)
                     image = (
-                        develop_standard_output_array(src, recipe)
+                        develop_standard_output_array(src, decode_recipe, cache_dir=decode_cache_dir)
                         if not use_profile and is_generic_output_space(recipe.output_space)
-                        else develop_image_array(src, recipe)
+                        else develop_image_array(src, decode_recipe, cache_dir=decode_cache_dir)
                     )
                 else:
                     image = read_image(src)

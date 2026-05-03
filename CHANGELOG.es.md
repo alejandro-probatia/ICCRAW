@@ -20,6 +20,27 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 - Sin cambios pendientes.
 
+## [0.3.8] - 2026-05-03
+
+### Changed
+
+- La previsualizacion RAW mantiene el render exacto compartido con la
+  exportacion, pero anade una cache persistente de demosaico para acelerar
+  recargas, refinados exactos y revelados posteriores sin cambiar la ruta de
+  color ni la receta efectiva.
+- La exportacion individual, el lote y la cola reutilizan esa cache de demosaico
+  cuando procede, reduciendo trabajo repetido en RAW grandes y manteniendo la
+  trazabilidad de la receta original.
+
+### Fixed
+
+- La previsualizacion vuelve a coincidir con el TIFF revelado en aplicaciones
+  con gestion de color al evitar rutas de visualizacion alternativas que podian
+  ocultar dominantes o ajustes cromaticos visibles en la exportacion.
+- Los elementos de la cola de revelado se retiran automaticamente cuando se
+  revelan correctamente, evitando reprocesarlos por accidente; los errores
+  permanecen en cola con su mensaje para poder corregirlos o reintentarlos.
+
 ## [0.3.7] - 2026-05-03
 
 ### Added

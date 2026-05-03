@@ -78,6 +78,26 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.8
+
+La release 0.3.8 corrige una divergencia grave entre preview y TIFF revelado y
+mantiene el render exacto con mejor rendimiento:
+
+- la preview RAW y la exportacion usan la misma ruta efectiva de render y color,
+- el demosaico RAW exacto se cachea para recargas, refinado exacto, exportacion,
+  lotes y cola,
+- la lectura de cache reduce copias completas de memoria en imagenes grandes,
+- la cola de revelado retira los elementos completados para evitar revelarlos
+  de nuevo y conserva los fallidos con su mensaje.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.8-Setup.exe`
+- `ProbRAW-0.3.8-Setup.exe.sha256`
+- `probraw-0.3.8.tar.gz`
+- `probraw-0.3.8-py3-none-any.whl`
+- `probraw_0.3.8_python_artifacts.sha256`
+
 ## Release 0.3.7
 
 La release 0.3.7 corrige la equivalencia visual entre ProbRAW y aplicaciones

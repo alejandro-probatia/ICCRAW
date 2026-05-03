@@ -162,7 +162,7 @@ def develop_standard_linear_array(
 
 
 def render_recipe_output_array(image_linear_rgb: np.ndarray, recipe: Recipe) -> np.ndarray:
-    image = np.clip(image_linear_rgb.astype(np.float32), 0.0, 1.0)
+    image = np.clip(np.asarray(image_linear_rgb, dtype=np.float32), 0.0, 1.0)
 
     if recipe.exposure_compensation != 0.0:
         image = np.clip(image * (2.0 ** float(recipe.exposure_compensation)), 0.0, 1.0)
@@ -564,8 +564,7 @@ def _read_demosaic_cache(
     try:
         if not path.is_file():
             return None
-        with path.open("rb") as handle:
-            image = np.load(handle, allow_pickle=False)
+        image = np.load(str(path), mmap_mode="r", allow_pickle=False)
         image = np.asarray(image, dtype=np.float32)
         if image.ndim != 3 or image.shape[-1] < 3:
             return None
@@ -573,7 +572,7 @@ def _read_demosaic_cache(
             os.utime(path, None)
         except OSError:
             pass
-        return np.ascontiguousarray(image[..., :3])
+        return image[..., :3]
     except Exception:
         return None
 

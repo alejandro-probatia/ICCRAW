@@ -322,6 +322,7 @@ class SettingsMixin:
     def _cache_dirs_for_cleanup(self) -> list[Path]:
         dirs: list[Path] = [
             self._user_disk_cache_dir("previews"),
+            self._user_disk_cache_dir("raw-demosaic"),
             self._user_disk_cache_dir("thumbnails"),
         ]
         if self._active_session_root is not None:
@@ -329,6 +330,7 @@ class SettingsMixin:
             dirs.extend(
                 [
                     work_cache / "previews",
+                    work_cache / "raw-demosaic",
                     work_cache / "thumbnails",
                 ]
             )
@@ -398,7 +400,9 @@ class SettingsMixin:
         return bool(checkbox is not None and checkbox.isChecked())
 
     def _effective_preview_max_side(self) -> int:
-        if bool(getattr(self, "_viewer_full_detail_requested", False)):
+        if bool(getattr(self, "_viewer_full_detail_requested", False)) or bool(
+            getattr(self, "_preview_export_parity_requested", False)
+        ):
             return 0
         compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
         if compare_enabled or bool(getattr(self, "_manual_chart_marking_after_reload", False)):

@@ -642,7 +642,7 @@ def test_full_detail_request_does_not_accept_reduced_hq_preview(tmp_path: Path, 
         window._on_load_selected(show_message=False)
 
         assert len(queued) == 1
-        _selected, _recipe, fast_raw, max_preview_side, _cache_key = queued[0]
+        _selected, _recipe, fast_raw, max_preview_side, _cache_key, _input_profile_path = queued[0]
         assert fast_raw is False
         assert max_preview_side == 0
     finally:
@@ -996,10 +996,12 @@ def test_raw_preview_uses_balanced_fast_mode_outside_compare(tmp_path: Path, mon
     raw_path.write_bytes(b"raw")
     captured: dict[str, object] = {}
 
-    def fake_load_image_for_preview(_path, *, recipe, fast_raw, max_preview_side):
+    def fake_load_image_for_preview(_path, *, recipe, fast_raw, max_preview_side, input_profile_path=None, cache_dir=None):
         captured["demosaic"] = recipe.demosaic_algorithm
         captured["fast_raw"] = bool(fast_raw)
         captured["max_preview_side"] = int(max_preview_side)
+        captured["input_profile_path"] = input_profile_path
+        captured["cache_dir"] = cache_dir
         return gui_module.np.zeros((24, 32, 3), dtype=gui_module.np.float32), "ok"
 
     monkeypatch.setattr(gui_module, "load_image_for_preview", fake_load_image_for_preview)
@@ -1020,13 +1022,55 @@ def test_raw_preview_uses_balanced_fast_mode_outside_compare(tmp_path: Path, mon
         window.close()
 
 
+def test_generic_output_preview_loads_bounded_then_exact_with_recipe_demosaic(tmp_path: Path, monkeypatch, qapp):
+    raw_path = tmp_path / "sample.NEF"
+    raw_path.write_bytes(b"raw")
+    calls: list[dict[str, object]] = []
+
+    def fake_load_image_for_preview(_path, *, recipe, fast_raw, max_preview_side, input_profile_path=None, cache_dir=None):
+        calls.append(
+            {
+                "demosaic": recipe.demosaic_algorithm,
+                "fast_raw": bool(fast_raw),
+                "max_preview_side": int(max_preview_side),
+                "input_profile_path": input_profile_path,
+                "cache_dir": cache_dir,
+            }
+        )
+        return gui_module.np.zeros((24, 32, 3), dtype=gui_module.np.float32), "ok"
+
+    monkeypatch.setattr(gui_module, "load_image_for_preview", fake_load_image_for_preview)
+
+    window = ICCRawMainWindow()
+    try:
+        window._selected_file = raw_path
+        window._set_combo_text(window.combo_output_space, "prophoto_rgb")
+        window._set_combo_data(window.combo_demosaic, "amaze")
+        window.chk_compare.setChecked(False)
+
+        window._on_load_selected(show_message=False)
+
+        assert len(calls) == 2
+        assert calls[0]["fast_raw"] is False
+        assert calls[0]["max_preview_side"] == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
+        assert calls[0]["demosaic"] == "amaze"
+        assert calls[0]["input_profile_path"] is None
+        assert calls[1]["fast_raw"] is False
+        assert calls[1]["max_preview_side"] == 0
+        assert calls[1]["demosaic"] == "amaze"
+    finally:
+        window.close()
+
+
 def test_compare_toggle_switches_raw_preview_between_fast_and_max_quality(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "sample.NEF"
     raw_path.write_bytes(b"raw")
     calls: list[bool] = []
 
-    def fake_load_image_for_preview(_path, *, recipe, fast_raw, max_preview_side):
+    def fake_load_image_for_preview(_path, *, recipe, fast_raw, max_preview_side, input_profile_path=None, cache_dir=None):
         _ = recipe, max_preview_side
+        assert input_profile_path is None
+        assert cache_dir is not None
         calls.append(bool(fast_raw))
         return gui_module.np.full((24, 32, 3), 0.5, dtype=gui_module.np.float32), "ok"
 
@@ -1267,7 +1311,7 @@ def test_generic_icc_selection_reloads_raw_preview_once(tmp_path: Path, monkeypa
         window.close()
 
 
-def test_color_managed_preview_keeps_bounded_preview_size(tmp_path: Path, monkeypatch, qapp):
+def test_color_managed_preview_keeps_fast_initial_size_then_allows_export_parity(tmp_path: Path, monkeypatch, qapp):
     root = tmp_path / "session"
     payload = create_session(root, name="Sesion rendimiento")
     profile = root / "00_configuraciones" / "profiles" / "session.icc"
@@ -1284,6 +1328,10 @@ def test_color_managed_preview_keeps_bounded_preview_size(tmp_path: Path, monkey
         assert window._effective_preview_max_side() == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
         assert window._final_adjustment_preview_max_side() == gui_module.PREVIEW_FINAL_ADJUSTMENT_MAX_SIDE
         assert window._should_async_final_preview()
+
+        window._preview_export_parity_requested = True
+        assert window._effective_preview_max_side() == 0
+        window._preview_export_parity_requested = False
 
         window.check_precision_detail_preview.setChecked(True)
         assert window._effective_preview_max_side() == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
@@ -2089,7 +2137,7 @@ def test_queue_process_uses_inline_raw_sidecar_sharpening(tmp_path: Path, monkey
         assert captured["development_profile"]["name"] == "Ajustes imagen"
         assert captured["development_profile"]["profile_type"] == "basic"
         assert captured["recipe"].output_space == "prophoto_rgb"
-        assert window._develop_queue[0]["status"] == "done"
+        assert window._develop_queue == []
     finally:
         window.close()
 
@@ -2275,7 +2323,55 @@ def test_queue_process_prefers_raw_sidecar_over_registered_profile_id(tmp_path: 
         assert captured["render_adjustments"]["brightness_ev"] == pytest.approx(0.44)
         assert captured["render_adjustments"]["contrast"] == pytest.approx(0.21)
         assert captured["development_profile"]["id"] == profile_id
-        assert window._develop_queue[0]["status"] == "done"
+        assert window._develop_queue == []
+    finally:
+        window.close()
+
+
+def test_queue_process_removes_successes_but_keeps_errors(tmp_path: Path, monkeypatch, qapp):
+    root = tmp_path / "session"
+    ok_raw = root / "01_ORG" / "ok.NEF"
+    bad_raw = root / "01_ORG" / "bad.NEF"
+    ok_raw.parent.mkdir(parents=True)
+    ok_raw.write_bytes(b"raw")
+    bad_raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion cola mixta")
+
+    def run_task(_label, task, on_success):
+        on_success(task())
+
+    def fake_process_batch_files(**kwargs):
+        outputs = []
+        errors = []
+        for src in kwargs["files"]:
+            if Path(src).name == "ok.NEF":
+                outputs.append({"source": str(src), "output": str(Path(kwargs["out_dir"]) / f"{src.stem}.tiff")})
+            else:
+                errors.append({"source": str(src), "error": "fallo simulado"})
+        return {
+            "input_files": len(kwargs["files"]),
+            "output_dir": str(kwargs["out_dir"]),
+            "outputs": outputs,
+            "errors": errors,
+        }
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        _activate_fake_session_icc(window, root)
+        window._start_background_task = run_task
+        window._process_batch_files = fake_process_batch_files
+        monkeypatch.setattr(window, "_resolve_proof_config_for_gui", lambda: ProbRawProofConfig(private_key_path=None))
+        monkeypatch.setattr(window, "_resolve_c2pa_config_for_gui", lambda: None)
+
+        window._queue_add_files([ok_raw, bad_raw])
+        window._queue_process()
+
+        assert [Path(item["source"]).name for item in window._develop_queue] == ["bad.NEF"]
+        assert window._develop_queue[0]["status"] == "error"
+        assert window._develop_queue[0]["message"] == "fallo simulado"
+        saved_queue = load_session(root)["queue"]
+        assert [Path(item["source"]).name for item in saved_queue] == ["bad.NEF"]
     finally:
         window.close()
 

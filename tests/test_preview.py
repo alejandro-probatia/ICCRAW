@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import tifffile
 import colour
+import pytest
 
 from probraw.core.models import Recipe
 from probraw.profile.export import apply_profile_matrix
@@ -383,7 +384,8 @@ def test_load_image_for_preview_hq_uses_half_size_when_preview_is_smaller(tmp_pa
     monkeypatch.setattr(preview_module, "_raw_preview_source_max_side", lambda _path: 6200)
     monkeypatch.delenv("PROBRAW_PREVIEW_HQ_HALF_SIZE", raising=False)
 
-    def fake_develop(_path, _recipe, *, half_size=False):
+    def fake_develop(_path, _recipe, *, half_size=False, cache_dir=None):
+        assert cache_dir is None
         called["half_size"] = bool(half_size)
         shape = (3000, 2000, 3) if half_size else (6000, 4000, 3)
         return np.full(shape, 0.25, dtype=np.float32)
@@ -405,7 +407,8 @@ def test_load_image_for_preview_hq_uses_standard_space_renderer(tmp_path: Path, 
 
     monkeypatch.setattr(preview_module, "_raw_preview_source_max_side", lambda _path: 6200)
 
-    def fake_standard_develop(_path, _recipe, *, half_size=False):
+    def fake_standard_develop(_path, _recipe, *, half_size=False, cache_dir=None):
+        assert cache_dir is None
         called["standard"] = True
         called["half_size"] = bool(half_size)
         return np.full((3000, 2000, 3), 0.25, dtype=np.float32)
@@ -419,6 +422,95 @@ def test_load_image_for_preview_hq_uses_standard_space_renderer(tmp_path: Path, 
     assert max(loaded.shape[0], loaded.shape[1]) <= 2400
 
 
+def test_load_image_for_preview_fast_uses_libraw_source_not_embedded(tmp_path: Path, monkeypatch):
+    raw_path = tmp_path / "sample.nef"
+    raw_path.write_bytes(b"raw")
+    recipe = Recipe(output_space="prophoto_rgb", output_linear=False, tone_curve="gamma:1.8")
+    called: dict[str, bool] = {}
+
+    def fail_embedded(_path, *, max_preview_side=0):
+        called["embedded"] = True
+        return np.full((12, 16, 3), [1.0, 0.0, 1.0], dtype=np.float32)
+
+    def fake_standard_develop(_path, _recipe, *, half_size=False, cache_dir=None):
+        assert cache_dir is None
+        called["standard"] = True
+        called["half_size"] = bool(half_size)
+        return np.full((120, 160, 3), 0.25, dtype=np.float32)
+
+    monkeypatch.setattr(preview_module, "extract_embedded_preview", fail_embedded)
+    monkeypatch.setattr(preview_module, "develop_standard_output_array", fake_standard_develop)
+
+    loaded, msg = load_image_for_preview(raw_path, recipe=recipe, fast_raw=True, max_preview_side=100)
+
+    assert called == {"standard": True, "half_size": True}
+    assert "LibRaw" in msg
+    assert max(loaded.shape[0], loaded.shape[1]) <= 100
+    assert float(np.mean(loaded[..., 1])) == pytest.approx(0.25)
+
+
+def test_load_image_for_preview_input_profile_uses_camera_rgb_source(tmp_path: Path, monkeypatch):
+    raw_path = tmp_path / "sample.nef"
+    raw_path.write_bytes(b"raw")
+    profile_path = tmp_path / "camera.icc"
+    profile_path.write_bytes(b"profile")
+    recipe = Recipe(output_space="prophoto_rgb", output_linear=False, tone_curve="gamma:1.8")
+    called: dict[str, bool] = {}
+
+    def fail_standard(_path, _recipe, *, half_size=False, cache_dir=None):
+        raise AssertionError("standard output source should not be used with an input ICC")
+
+    def fake_camera_develop(_path, _recipe, *, half_size=False, cache_dir=None):
+        assert cache_dir is None
+        called["camera"] = True
+        called["half_size"] = bool(half_size)
+        return np.full((120, 160, 3), 0.4, dtype=np.float32)
+
+    monkeypatch.setattr(preview_module, "develop_standard_output_array", fail_standard)
+    monkeypatch.setattr(preview_module, "develop_image_array", fake_camera_develop)
+
+    loaded, _msg = load_image_for_preview(
+        raw_path,
+        recipe=recipe,
+        fast_raw=True,
+        max_preview_side=100,
+        input_profile_path=profile_path,
+    )
+
+    assert called == {"camera": True, "half_size": True}
+    assert max(loaded.shape[0], loaded.shape[1]) <= 100
+
+
+def test_load_image_for_preview_exact_enables_demosaic_cache(tmp_path: Path, monkeypatch):
+    raw_path = tmp_path / "sample.nef"
+    raw_path.write_bytes(b"raw")
+    cache_dir = tmp_path / "cache"
+    recipe = Recipe(output_space="prophoto_rgb", output_linear=False, tone_curve="gamma:1.8", use_cache=False)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(preview_module, "_raw_preview_source_max_side", lambda _path: 6200)
+
+    def fake_standard_develop(_path, used_recipe, *, half_size=False, cache_dir=None):
+        captured["use_cache"] = bool(used_recipe.use_cache)
+        captured["half_size"] = bool(half_size)
+        captured["cache_dir"] = cache_dir
+        return np.full((120, 160, 3), 0.25, dtype=np.float32)
+
+    monkeypatch.setattr(preview_module, "develop_standard_output_array", fake_standard_develop)
+
+    loaded, _msg = load_image_for_preview(
+        raw_path,
+        recipe=recipe,
+        fast_raw=False,
+        max_preview_side=0,
+        cache_dir=cache_dir,
+    )
+
+    assert captured == {"use_cache": True, "half_size": False, "cache_dir": cache_dir}
+    assert loaded.shape == (120, 160, 3)
+    assert recipe.use_cache is False
+
+
 def test_load_image_for_preview_hq_can_disable_half_size_by_env(tmp_path: Path, monkeypatch):
     raw_path = tmp_path / "sample.nef"
     raw_path.write_bytes(b"raw")
@@ -428,7 +520,8 @@ def test_load_image_for_preview_hq_can_disable_half_size_by_env(tmp_path: Path, 
     monkeypatch.setattr(preview_module, "_raw_preview_source_max_side", lambda _path: 6200)
     monkeypatch.setenv("PROBRAW_PREVIEW_HQ_HALF_SIZE", "0")
 
-    def fake_develop(_path, _recipe, *, half_size=False):
+    def fake_develop(_path, _recipe, *, half_size=False, cache_dir=None):
+        assert cache_dir is None
         called["half_size"] = bool(half_size)
         return np.full((3000, 2000, 3), 0.25, dtype=np.float32)
 

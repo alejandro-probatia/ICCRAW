@@ -22,6 +22,26 @@ To maintain full traceability, each change must:
 
 - No pending changes.
 
+## [0.3.8] - 2026-05-03
+
+### Changed
+
+- RAW preview keeps the exact render path shared with export, while adding a
+  persistent demosaic cache to speed up reloads, exact refinements and later
+  renders without changing color routing or the effective recipe.
+- Single-image export, batch export and the development queue reuse that
+  demosaic cache when applicable, reducing repeated work on large RAW files
+  while preserving original-recipe traceability.
+
+### Fixed
+
+- Preview again matches the rendered TIFF in color-managed applications by
+  avoiding alternate display paths that could hide color casts or chromatic
+  adjustments visible in the exported file.
+- Development queue items are removed automatically after successful rendering,
+  preventing accidental reprocessing; failed items stay in the queue with their
+  error message for correction or retry.
+
 ## [0.3.7] - 2026-05-03
 
 ### Added

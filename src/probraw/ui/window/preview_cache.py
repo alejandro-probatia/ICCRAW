@@ -25,6 +25,7 @@ class PreviewCacheMixin:
         *,
         selected: Path,
         recipe: Recipe,
+        input_profile_path: Path | None = None,
     ) -> str:
         try:
             st = selected.stat()
@@ -32,7 +33,8 @@ class PreviewCacheMixin:
         except Exception:
             stamp = "nostat"
         recipe_sig = self._preview_recipe_signature(recipe)
-        return f"{self._cache_path_identity(selected)}|{stamp}|preview-v4|{recipe_sig}"
+        input_profile_sig = self._preview_input_profile_signature(input_profile_path)
+        return f"{self._cache_path_identity(selected)}|{stamp}|preview-v5|{recipe_sig}|ip={input_profile_sig}"
 
     def _preview_cache_key(
         self,
@@ -41,13 +43,25 @@ class PreviewCacheMixin:
         recipe: Recipe,
         fast_raw: bool,
         max_preview_side: int,
+        input_profile_path: Path | None = None,
     ) -> str:
         base_sig = self._preview_base_signature(
             selected=selected,
             recipe=recipe,
+            input_profile_path=input_profile_path,
         )
         fast_token = int(bool(fast_raw))
         return f"{base_sig}|{fast_token}|fr={fast_token}|ms={int(max_preview_side)}"
+
+    def _preview_input_profile_signature(self, input_profile_path: Path | None) -> str:
+        if input_profile_path is None:
+            return "none"
+        try:
+            resolved = Path(input_profile_path).expanduser().resolve()
+            st = resolved.stat()
+            return f"{resolved}|{st.st_mtime_ns}|{st.st_size}"
+        except Exception:
+            return str(input_profile_path)
 
     @staticmethod
     def _run_preview_load_inline() -> bool:
@@ -89,6 +103,9 @@ class PreviewCacheMixin:
 
     def _preview_disk_cache_dir(self, selected: Path | None = None) -> Path:
         return self._disk_cache_dirs(selected, "previews")[0]
+
+    def _preview_decode_cache_dir(self, selected: Path | None = None) -> Path:
+        return self._disk_cache_dirs(selected, "raw-demosaic")[0]
 
     def _preview_disk_cache_path(self, key: str, *, base_dir: Path | None = None, selected: Path | None = None) -> Path:
         return self._disk_cache_path(base_dir or self._preview_disk_cache_dir(selected), key, ".npy")

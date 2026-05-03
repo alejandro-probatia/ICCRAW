@@ -168,20 +168,23 @@ class PreviewLoadMixin:
         max_quality_preview = self._preview_requires_max_quality()
         is_raw = selected.suffix.lower() in RAW_EXTENSIONS
         fast_raw = bool(is_raw and not max_quality_preview)
-        if is_raw:
+        if is_raw and fast_raw:
             # Preview policy: always use the most responsive demosaic path.
             # Final render keeps the recipe-selected algorithm (e.g. AMaZE).
             recipe.demosaic_algorithm = self._balanced_preview_demosaic()
         max_preview_side = self._effective_preview_max_side()
+        input_profile_path = self._active_session_icc_for_settings()
         base_signature = self._preview_base_signature(
             selected=selected,
             recipe=recipe,
+            input_profile_path=input_profile_path,
         )
         cache_key = self._preview_cache_key(
             selected=selected,
             recipe=recipe,
             fast_raw=fast_raw,
             max_preview_side=max_preview_side,
+            input_profile_path=input_profile_path,
         )
 
         if (
@@ -229,19 +232,24 @@ class PreviewLoadMixin:
             self._restore_persisted_mtf_analysis_for_selected(selected)
             self._log_preview(f"Preview cargada desde cache: {selected.name}")
             self._set_status(self.tr("Preview en cache:") + f" {selected.name}")
+            self._schedule_export_parity_preview_if_needed(
+                selected=selected,
+                max_preview_side=max_preview_side,
+                fast_raw=fast_raw,
+            )
             if self._manual_chart_marking_after_reload:
                 self._manual_chart_marking_after_reload = False
                 self._begin_manual_chart_marking()
             return
 
         recipe_request = Recipe(**asdict(recipe))
-        self._queue_preview_load_request((selected, recipe_request, fast_raw, max_preview_side, cache_key))
+        self._queue_preview_load_request((selected, recipe_request, fast_raw, max_preview_side, cache_key, input_profile_path))
 
     def _queue_preview_load_request(
         self,
-        request: tuple[Path, Recipe, bool, int, str],
+        request: tuple[Path, Recipe, bool, int, str, Path | None],
     ) -> None:
-        selected, _recipe, _fast_raw, _max_preview_side, cache_key = request
+        selected, _recipe, _fast_raw, _max_preview_side, cache_key, _input_profile_path = request
         if self._preview_load_task_active:
             if self._preview_load_inflight_key == cache_key:
                 return
@@ -253,9 +261,9 @@ class PreviewLoadMixin:
 
     def _start_preview_load_task(
         self,
-        request: tuple[Path, Recipe, bool, int, str],
+        request: tuple[Path, Recipe, bool, int, str, Path | None],
     ) -> None:
-        selected, recipe, fast_raw, max_preview_side, cache_key = request
+        selected, recipe, fast_raw, max_preview_side, cache_key, input_profile_path = request
 
         def task():
             started = time.perf_counter()
@@ -264,6 +272,8 @@ class PreviewLoadMixin:
                 recipe=recipe,
                 fast_raw=fast_raw,
                 max_preview_side=max_preview_side,
+                input_profile_path=input_profile_path,
+                cache_dir=self._preview_decode_cache_dir(selected),
             )
             return selected, cache_key, image_linear, msg, float(time.perf_counter() - started)
 
@@ -300,6 +310,7 @@ class PreviewLoadMixin:
                 self._loaded_preview_base_signature = self._preview_base_signature(
                     selected=selected,
                     recipe=recipe,
+                    input_profile_path=input_profile_path,
                 )
                 self._loaded_preview_fast_raw = bool(fast_raw)
                 self._loaded_preview_max_side_request = int(max_preview_side)
@@ -318,6 +329,11 @@ class PreviewLoadMixin:
                     success=True,
                     detail=self.tr("Preview cargada:") + f" {loaded_selected.name}",
                     elapsed_seconds=elapsed,
+                )
+                self._schedule_export_parity_preview_if_needed(
+                    selected=loaded_selected,
+                    max_preview_side=max_preview_side,
+                    fast_raw=fast_raw,
                 )
                 if self._manual_chart_marking_after_reload:
                     self._manual_chart_marking_after_reload = False
@@ -349,6 +365,39 @@ class PreviewLoadMixin:
         thread.succeeded.connect(ok)
         thread.failed.connect(fail)
         thread.start()
+
+    def _schedule_export_parity_preview_if_needed(
+        self,
+        *,
+        selected: Path,
+        max_preview_side: int,
+        fast_raw: bool,
+    ) -> None:
+        if int(max_preview_side) <= 0:
+            return
+        if bool(fast_raw):
+            return
+        if selected.suffix.lower() not in RAW_EXTENSIONS:
+            return
+        if bool(getattr(self, "_preview_export_parity_requested", False)):
+            return
+        try:
+            if not self._preview_requires_max_quality():
+                return
+        except Exception:
+            return
+        try:
+            if self._normalized_path_key(getattr(self, "_selected_file", selected)) != self._normalized_path_key(selected):
+                return
+        except Exception:
+            if getattr(self, "_selected_file", selected) != selected:
+                return
+        self._preview_export_parity_requested = True
+        self._set_status(self.tr("Refinando preview exacta de exportacion:") + f" {selected.name}")
+        try:
+            self._on_load_selected(show_message=False)
+        finally:
+            self._preview_export_parity_requested = False
 
     def _on_precache_visible_previews(self, *, full_resolution: bool) -> None:
         files = [p for p in self._file_list_paths() if p.suffix.lower() in RAW_EXTENSIONS]
@@ -386,13 +435,14 @@ class PreviewLoadMixin:
                     recipe = Recipe(**recipe_base_payload)
                     is_raw = src.suffix.lower() in RAW_EXTENSIONS
                     fast_raw = bool(is_raw and not max_quality_preview)
-                    if is_raw:
+                    if is_raw and fast_raw:
                         recipe.demosaic_algorithm = self._balanced_preview_demosaic()
                     cache_key = self._preview_cache_key(
                         selected=src,
                         recipe=recipe,
                         fast_raw=fast_raw,
                         max_preview_side=max_preview_side,
+                        input_profile_path=self._active_session_icc_for_settings(),
                     )
                     if self._read_preview_from_disk_cache(cache_key, selected=src) is not None:
                         skipped += 1
@@ -402,6 +452,8 @@ class PreviewLoadMixin:
                         recipe=recipe,
                         fast_raw=fast_raw,
                         max_preview_side=max_preview_side,
+                        input_profile_path=self._active_session_icc_for_settings(),
+                        cache_dir=self._preview_decode_cache_dir(src),
                     )
                     self._write_preview_to_disk_cache(
                         cache_key,

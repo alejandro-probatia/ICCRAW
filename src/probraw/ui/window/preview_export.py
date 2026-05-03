@@ -92,10 +92,13 @@ class PreviewExportMixin:
             return
 
         def task():
+            decode_recipe = Recipe(**asdict(recipe))
+            decode_recipe.use_cache = True
+            decode_cache_dir = self._preview_decode_cache_dir(in_path)
             image = (
-                develop_standard_output_array(in_path, recipe)
+                develop_standard_output_array(in_path, decode_recipe, cache_dir=decode_cache_dir)
                 if profile_path is None and is_generic_output_space(recipe.output_space)
-                else develop_image_array(in_path, recipe)
+                else develop_image_array(in_path, decode_recipe, cache_dir=decode_cache_dir)
             )
             image = self._apply_output_adjustments(
                 image,

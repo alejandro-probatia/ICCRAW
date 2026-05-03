@@ -72,6 +72,26 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.8
+
+Release 0.3.8 fixes a serious divergence between preview and rendered TIFF while
+keeping the exact render path with better performance:
+
+- RAW preview and export use the same effective render and color path,
+- exact RAW demosaic output is cached for reloads, exact refinement, export,
+  batches and queue processing,
+- cache reads reduce full-frame memory copies on large images,
+- the development queue removes completed items to avoid rendering them again
+  and keeps failed items with their error message.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.8-Setup.exe`
+- `ProbRAW-0.3.8-Setup.exe.sha256`
+- `probraw-0.3.8.tar.gz`
+- `probraw-0.3.8-py3-none-any.whl`
+- `probraw_0.3.8_python_artifacts.sha256`
+
 ## Release 0.3.7
 
 Release 0.3.7 fixes visual equivalence between ProbRAW and external
