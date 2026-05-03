@@ -40,6 +40,8 @@ def test_slanted_edge_mtf_reports_curve_and_metrics():
     assert 0.05 < result.mtf50p < 0.5
     assert result.edge_contrast > 0.6
     assert abs(result.esf[-1] - result.esf[-5]) < 0.05
+    assert len(result.ca_distance) == len(result.ca_red) == len(result.ca_green) == len(result.ca_blue)
+    assert result.ca_area_pixels is not None
 
 
 def test_slanted_edge_mtf_converts_luminance_after_roi_crop(monkeypatch):
@@ -67,6 +69,36 @@ def test_slanted_edge_mtf_detects_blur_difference():
     assert soft.mtf50 is not None
     assert sharp.mtf50 > soft.mtf50
     assert sharp.acutance > soft.acutance
+
+
+def test_slanted_edge_mtf_reports_lateral_chromatic_aberration():
+    size = 180
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    angle = np.deg2rad(5.0)
+    normal = np.asarray([np.cos(angle), np.sin(angle)], dtype=np.float32)
+    dist = (xx - size / 2.0) * normal[0] + (yy - size / 2.0) * normal[1]
+
+    def edge_profile(shift: float) -> np.ndarray:
+        return 1.0 / (1.0 + np.exp(-(dist - float(shift)) / 1.2))
+
+    image = np.stack(
+        [
+            edge_profile(1.25),
+            edge_profile(0.0),
+            edge_profile(-0.75),
+        ],
+        axis=2,
+    ).astype(np.float32)
+
+    result = analyze_slanted_edge_mtf(image, roi=(25, 25, 130, 130))
+
+    assert result.ca_red_green_shift_pixels == pytest.approx(1.25, abs=0.12)
+    assert result.ca_blue_green_shift_pixels == pytest.approx(-0.75, abs=0.12)
+    assert result.ca_red_blue_shift_pixels == pytest.approx(2.0, abs=0.18)
+    assert result.ca_crossing_pixels == pytest.approx(1.25, abs=0.12)
+    assert result.ca_area_pixels is not None
+    assert result.ca_area_pixels > 0.4
+    assert result.ca_edge_width_10_90_pixels is not None
 
 
 def test_slanted_edge_mtf_uses_gradient_ridge_when_dark_side_is_textured():

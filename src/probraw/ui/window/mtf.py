@@ -15,6 +15,15 @@ from ._imports import *  # noqa: F401,F403
 
 
 class MTFAnalysisMixin:
+    """Sharpness-panel controller for full-resolution slanted-edge analysis.
+
+    The mixin owns UI construction, ROI selection, full-resolution ROI caching,
+    background MTF/CA calculation, sidecar persistence, comparison dialogs and
+    auto-sharpening. Numeric analysis lives in ``probraw.analysis.mtf`` and plot
+    rendering lives in ``MTFPlotWidget``; this class coordinates those layers
+    with the main window state and recipe controls.
+    """
+
     MTF_EXTENDED_ANALYSIS_MAX_FREQUENCY = 1.0
 
     def _build_mtf_analysis_panel(self) -> QtWidgets.QWidget:
@@ -28,12 +37,14 @@ class MTFAnalysisMixin:
         self.mtf_plot_esf = MTFPlotWidget("esf")
         self.mtf_plot_lsf = MTFPlotWidget("lsf")
         self.mtf_plot_mtf = MTFPlotWidget("mtf")
+        self.mtf_plot_ca = MTFPlotWidget("ca")
         self.mtf_metrics_table = self._make_mtf_result_table()
         self.mtf_context_table = self._make_mtf_result_table()
         self.mtf_details_table = self.mtf_context_table
         self.mtf_graph_tabs.addTab(self.mtf_plot_esf, "ESF")
         self.mtf_graph_tabs.addTab(self.mtf_plot_lsf, "LSF")
         self.mtf_graph_tabs.addTab(self.mtf_plot_mtf, "MTF")
+        self.mtf_graph_tabs.addTab(self.mtf_plot_ca, self.tr("CA lateral"))
         self.mtf_graph_tabs.addTab(self.mtf_metrics_table, self.tr("Métricas MTF"))
         self.mtf_graph_tabs.addTab(self.mtf_context_table, self.tr("Contexto técnico"))
         self.mtf_result_tabs = self.mtf_graph_tabs
@@ -688,6 +699,9 @@ class MTFAnalysisMixin:
             "frequency_cycles_per_pixel",
             "modulation",
         )
+        ca_distance, ca_red, ca_green, ca_blue, ca_diff = self._mtf_payload_ca_curve(curves.get("chromatic_aberration"))
+        ca_pixel_distance, ca_pixel_red, ca_pixel_green, ca_pixel_blue = self._mtf_payload_ca_pixel_strip(curves.get("chromatic_aberration_pixels"))
+        ca_summary = summary.get("chromatic_aberration") if isinstance(summary.get("chromatic_aberration"), dict) else {}
         warnings_value = summary.get("warnings")
         warnings = [str(value) for value in warnings_value] if isinstance(warnings_value, list) else []
         return MTFResult(
@@ -711,6 +725,21 @@ class MTFAnalysisMixin:
             frequency_extended=frequency_extended,
             mtf_extended=mtf_extended,
             warnings=warnings,
+            ca_distance=ca_distance,
+            ca_red=ca_red,
+            ca_green=ca_green,
+            ca_blue=ca_blue,
+            ca_diff=ca_diff,
+            ca_pixel_distance=ca_pixel_distance,
+            ca_pixel_red=ca_pixel_red,
+            ca_pixel_green=ca_pixel_green,
+            ca_pixel_blue=ca_pixel_blue,
+            ca_area_pixels=self._mtf_payload_optional_float(ca_summary.get("area_pixels")),
+            ca_crossing_pixels=self._mtf_payload_optional_float(ca_summary.get("crossing_pixels")),
+            ca_red_green_shift_pixels=self._mtf_payload_optional_float(ca_summary.get("red_green_shift_pixels")),
+            ca_blue_green_shift_pixels=self._mtf_payload_optional_float(ca_summary.get("blue_green_shift_pixels")),
+            ca_red_blue_shift_pixels=self._mtf_payload_optional_float(ca_summary.get("red_blue_shift_pixels")),
+            ca_edge_width_10_90_pixels=self._mtf_payload_optional_float(ca_summary.get("edge_width_10_90_pixels")),
         )
 
     def _restore_mtf_pixel_pitch_from_payload(self, payload: dict[str, Any]) -> None:
@@ -780,6 +809,53 @@ class MTFAnalysisMixin:
             x_values.append(x)
             y_values.append(y)
         return x_values, y_values
+
+    def _mtf_payload_ca_curve(self, value: Any) -> tuple[list[float], list[float], list[float], list[float], list[float]]:
+        if not isinstance(value, list):
+            return [], [], [], [], []
+        distance: list[float] = []
+        red: list[float] = []
+        green: list[float] = []
+        blue: list[float] = []
+        diff: list[float] = []
+        for point in value:
+            if not isinstance(point, dict):
+                continue
+            x = self._mtf_payload_optional_float(point.get("distance_px"))
+            r = self._mtf_payload_optional_float(point.get("red"))
+            g = self._mtf_payload_optional_float(point.get("green"))
+            b = self._mtf_payload_optional_float(point.get("blue"))
+            d = self._mtf_payload_optional_float(point.get("difference"))
+            if x is None or r is None or g is None or b is None or d is None:
+                continue
+            distance.append(x)
+            red.append(r)
+            green.append(g)
+            blue.append(b)
+            diff.append(d)
+        return distance, red, green, blue, diff
+
+    def _mtf_payload_ca_pixel_strip(self, value: Any) -> tuple[list[float], list[float], list[float], list[float]]:
+        if not isinstance(value, list):
+            return [], [], [], []
+        distance: list[float] = []
+        red: list[float] = []
+        green: list[float] = []
+        blue: list[float] = []
+        for point in value:
+            if not isinstance(point, dict):
+                continue
+            x = self._mtf_payload_optional_float(point.get("distance_px"))
+            r = self._mtf_payload_optional_float(point.get("red"))
+            g = self._mtf_payload_optional_float(point.get("green"))
+            b = self._mtf_payload_optional_float(point.get("blue"))
+            if x is None or r is None or g is None or b is None:
+                continue
+            distance.append(x)
+            red.append(r)
+            green.append(g)
+            blue.append(b)
+        return distance, red, green, blue
 
     def _mtf_payload_float(self, value: Any, *, default: float) -> float:
         parsed = self._mtf_payload_optional_float(value)
@@ -2165,7 +2241,7 @@ class MTFAnalysisMixin:
 
     def _update_mtf_result_widgets(self, *, error: str | None = None) -> None:
         result = getattr(self, "_mtf_last_result", None)
-        for plot_name in ("mtf_plot_esf", "mtf_plot_lsf", "mtf_plot_mtf"):
+        for plot_name in ("mtf_plot_esf", "mtf_plot_lsf", "mtf_plot_mtf", "mtf_plot_ca"):
             plot = getattr(self, plot_name, None)
             if plot is not None:
                 plot.set_result(result)
@@ -2219,6 +2295,11 @@ class MTFAnalysisMixin:
         lpmm = self._mtf_lpmm(cycles_per_pixel)
         return "sin pitch" if lpmm is None else f"{lpmm:.2f} lp/mm"
 
+    def _format_mtf_pixels(self, value: float | None, *, signed: bool = False) -> str:
+        if value is None:
+            return self.tr("sin dato")
+        return f"{float(value):+.4f} px" if signed else f"{float(value):.4f} px"
+
     def _update_mtf_details_table(self, result: MTFResult | None, *, error: str | None = None) -> None:
         metrics_table = getattr(self, "mtf_metrics_table", None)
         context_table = getattr(self, "mtf_context_table", None)
@@ -2258,6 +2339,12 @@ class MTFAnalysisMixin:
             (self.tr("MTF10"), f"{self._format_mtf_cycles(result.mtf10)} | {self._format_mtf_lpmm(result.mtf10)}"),
             (self.tr("Nyquist"), f"0.500000 c/p | {self._format_mtf_lpmm(0.5)}"),
             (self.tr("Acutancia"), f"{float(result.acutance):.6f}"),
+            (self.tr("CA area"), self._format_mtf_pixels(getattr(result, "ca_area_pixels", None))),
+            (self.tr("CA cruce max"), self._format_mtf_pixels(getattr(result, "ca_crossing_pixels", None))),
+            (self.tr("CA R-G"), self._format_mtf_pixels(getattr(result, "ca_red_green_shift_pixels", None), signed=True)),
+            (self.tr("CA B-G"), self._format_mtf_pixels(getattr(result, "ca_blue_green_shift_pixels", None), signed=True)),
+            (self.tr("CA R-B"), self._format_mtf_pixels(getattr(result, "ca_red_blue_shift_pixels", None), signed=True)),
+            (self.tr("Borde 10-90 RGB"), self._format_mtf_pixels(getattr(result, "ca_edge_width_10_90_pixels", None))),
             (self.tr("Ángulo de borde"), f"{float(result.edge_angle_degrees):.3f}°"),
             (self.tr("Contraste de borde"), f"{float(result.edge_contrast):.6f}"),
             (self.tr("Sobreimpulso / subimpulso"), f"{float(result.overshoot) * 100.0:.3f}% / {float(result.undershoot) * 100.0:.3f}%"),
@@ -2299,6 +2386,7 @@ class MTFAnalysisMixin:
             (self.tr("Muestras LSF"), str(len(result.lsf))),
             (self.tr("Muestras MTF"), str(len(result.mtf))),
             (self.tr("Muestras MTF extendida"), str(len(self._mtf_limited_extended_frequencies(result)))),
+            (self.tr("Muestras CA lateral"), str(len(getattr(result, "ca_distance", []) or []))),
             (self.tr("Rango frecuencia MTF"), self._mtf_frequency_range_label(result)),
             (self.tr("Rango frecuencia extendida"), self._mtf_extended_frequency_range_label(result)),
             (self.tr("Nota post-Nyquist"), self.tr("diagnóstico exploratorio; no interpretar como resolución real por encima del límite de muestreo")),
@@ -2431,6 +2519,27 @@ class MTFAnalysisMixin:
                         strict=False,
                     )
                     if float(x) <= float(self.MTF_EXTENDED_ANALYSIS_MAX_FREQUENCY)
+                ],
+                "chromatic_aberration": [
+                    {"distance_px": x, "red": r, "green": g, "blue": b, "difference": d}
+                    for x, r, g, b, d in zip(
+                        getattr(result, "ca_distance", []) or [],
+                        getattr(result, "ca_red", []) or [],
+                        getattr(result, "ca_green", []) or [],
+                        getattr(result, "ca_blue", []) or [],
+                        getattr(result, "ca_diff", []) or [],
+                        strict=False,
+                    )
+                ],
+                "chromatic_aberration_pixels": [
+                    {"distance_px": x, "red": r, "green": g, "blue": b}
+                    for x, r, g, b in zip(
+                        getattr(result, "ca_pixel_distance", []) or [],
+                        getattr(result, "ca_pixel_red", []) or [],
+                        getattr(result, "ca_pixel_green", []) or [],
+                        getattr(result, "ca_pixel_blue", []) or [],
+                        strict=False,
+                    )
                 ],
             }
         return payload
@@ -2571,7 +2680,7 @@ class MTFAnalysisMixin:
                 item.setFlags(item.flags() & ~QtCore.Qt.ItemIsEditable)
                 table.setItem(row, column, item)
         tabs.addTab(table, self.tr("Métricas MTF"))
-        for label, curve in (("ESF", "esf"), ("LSF", "lsf"), ("MTF", "mtf")):
+        for label, curve in (("ESF", "esf"), ("LSF", "lsf"), ("MTF", "mtf"), (self.tr("CA lateral"), "ca")):
             plot = MTFComparisonPlotWidget(curve)
             plot.set_payloads([(left_path.name, left_payload), (right_path.name, right_payload)])
             tabs.addTab(plot, label)
@@ -2620,6 +2729,10 @@ class MTFAnalysisMixin:
             (self.tr("Contraste de borde"), ("edge_contrast",), 6, "", 1.0),
             (self.tr("Sobreimpulso"), ("overshoot",), 3, "%", 100.0),
             (self.tr("Subimpulso"), ("undershoot",), 3, "%", 100.0),
+            (self.tr("CA area"), ("chromatic_aberration", "area_pixels"), 4, " px", 1.0),
+            (self.tr("CA cruce max"), ("chromatic_aberration", "crossing_pixels"), 4, " px", 1.0),
+            (self.tr("CA R-G"), ("chromatic_aberration", "red_green_shift_pixels"), 4, " px", 1.0),
+            (self.tr("CA B-G"), ("chromatic_aberration", "blue_green_shift_pixels"), 4, " px", 1.0),
             (self.tr("Post-Nyquist pico"), ("post_nyquist", "peak_frequency"), 6, " c/p", 1.0),
             (self.tr("Post-Nyquist pico"), ("post_nyquist", "peak_modulation"), 6, "", 1.0),
             (self.tr("Energía post/Nyquist"), ("post_nyquist", "energy_ratio"), 6, "", 1.0),
@@ -2758,6 +2871,38 @@ class MTFAnalysisMixin:
                 "post_nyquist",
                 point.get("post_nyquist"),
             ])
+        for idx, point in enumerate(curves.get("chromatic_aberration", []) or []):
+            writer.writerow([
+                "chromatic_aberration",
+                idx,
+                point.get("distance_px"),
+                point.get("difference"),
+                "rgb",
+                json.dumps(
+                    {
+                        "red": point.get("red"),
+                        "green": point.get("green"),
+                        "blue": point.get("blue"),
+                    },
+                    ensure_ascii=False,
+                ),
+            ])
+        for idx, point in enumerate(curves.get("chromatic_aberration_pixels", []) or []):
+            writer.writerow([
+                "chromatic_aberration_pixels",
+                idx,
+                point.get("distance_px"),
+                "",
+                "rgb",
+                json.dumps(
+                    {
+                        "red": point.get("red"),
+                        "green": point.get("green"),
+                        "blue": point.get("blue"),
+                    },
+                    ensure_ascii=False,
+                ),
+            ])
         return output.getvalue()
 
     def _mtf_suggestion(self, result: MTFResult) -> str:
@@ -2775,7 +2920,7 @@ class MTFAnalysisMixin:
         dialog.resize(980, 720)
         layout = QtWidgets.QVBoxLayout(dialog)
         tabs = QtWidgets.QTabWidget()
-        for label, curve in (("ESF", "esf"), ("LSF", "lsf"), ("MTF", "mtf")):
+        for label, curve in (("ESF", "esf"), ("LSF", "lsf"), ("MTF", "mtf"), (self.tr("CA lateral"), "ca")):
             plot = MTFPlotWidget(curve)
             plot.setMinimumHeight(560)
             plot.set_result(result)

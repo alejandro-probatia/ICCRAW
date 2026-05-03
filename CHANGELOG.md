@@ -22,6 +22,22 @@ To maintain full traceability, each change must:
 
 - No pending changes.
 
+## [0.3.9] - 2026-05-03
+
+### Added
+
+- Lateral chromatic-aberration analysis now reuses the selected slanted-edge
+  ROI and displays RGB edge-profile differences, CA area, channel shifts and a
+  nearest-neighbour pixel strip for scientific inspection.
+
+### Changed
+
+- ESF and MTF plots are easier to read: ESF focuses on the local edge window
+  with a pixel-tone strip, and MTF shows clearer cycles/pixel scales plus
+  MTF50/MTF30/MTF10 reference levels.
+- MTF/CA analysis classes and helpers now include focused annotations and
+  sectioning to make future team development safer.
+
 ## [0.3.8] - 2026-05-03
 
 ### Changed

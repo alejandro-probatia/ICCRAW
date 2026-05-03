@@ -493,7 +493,7 @@ effect on luminance.
 
 The top of the tab includes MTF analysis for a slanted edge. Press
 `Seleccionar borde`, drag an ROI over the photographed edge, and use the `ESF`,
-`LSF` and `MTF` subtabs to inspect the response. `Actualizar` recalculates the
+`LSF`, `MTF` and `CA lateral` subtabs to inspect the response. `Actualizar` recalculates the
 measurement; when `Actualizar MTF con los ajustes` is enabled, it recalculates
 as sharpness, noise or chromatic aberration controls change. `Ampliar` opens a
 larger graph window.
@@ -502,7 +502,12 @@ The ROI, metrics and curves are saved in the RAW sidecar. When the capture is
 loaded again, ProbRAW restores the rectangle and the curves without requiring a
 new edge selection; `Actualizar` recalculates the curve with that same ROI. From
 two thumbnails with saved MTF data, use `Comparar MTF de selección` to inspect
-the numeric table plus overlaid `ESF`, `LSF` and `MTF` curves.
+the numeric table plus overlaid `ESF`, `LSF`, `MTF` and `CA lateral` curves.
+
+`CA lateral` reuses the same slanted-edge ROI to show the normalised R, G and B
+edge profiles, the RGB difference curve and lateral chromatic-aberration
+metrics: `CA area`, R-G/B-G/R-B crossing shifts and 10-90 edge width. It is an
+image-analysis view; it does not change the correction controls by itself.
 
 MTF is not calculated from a thumbnail or downscaled preview: ProbRAW loads the
 real image at full resolution, applies the active adjustments without resizing,

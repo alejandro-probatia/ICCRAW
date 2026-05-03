@@ -505,7 +505,7 @@ el efecto global sobre la luminosidad.
 
 La parte superior de la pestaña incluye análisis MTF para un borde inclinado.
 Pulsa `Seleccionar borde`, arrastra una ROI sobre el borde fotografiado y usa
-las subpestañas `ESF`, `LSF` y `MTF` para revisar la respuesta. `Actualizar`
+las subpestañas `ESF`, `LSF`, `MTF` y `CA lateral` para revisar la respuesta. `Actualizar`
 recalcula la medida; si `Actualizar MTF con los ajustes` está activo, se
 recalcula al modificar nitidez, ruido o aberración cromática. `Ampliar` abre el
 gráfico en una ventana mayor.
@@ -514,8 +514,13 @@ La ROI, las métricas y las curvas quedan guardadas en la mochila sidecar del
 RAW. Al volver a cargar la captura, ProbRAW recupera el rectángulo y las curvas
 sin tener que seleccionar de nuevo el borde; `Actualizar` recalcula la curva con
 esa misma ROI. Desde dos miniaturas con MTF guardada puedes usar `Comparar MTF
-de selección` para ver la tabla numérica y las curvas `ESF`, `LSF` y `MTF`
+de selección` para ver la tabla numérica y las curvas `ESF`, `LSF`, `MTF` y `CA lateral`
 superpuestas.
+
+`CA lateral` reutiliza la misma ROI de borde inclinado para mostrar los perfiles
+normalizados R, G y B, la diferencia RGB y las métricas de aberración lateral:
+`CA area`, desplazamientos de cruce R-G/B-G/R-B y anchura 10-90 del borde. Es un
+análisis de imagen; no modifica por sí mismo los controles de corrección.
 
 El cálculo MTF no se hace sobre la miniatura ni sobre una preview reducida:
 ProbRAW carga la imagen real a resolución completa, aplica los ajustes activos

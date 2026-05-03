@@ -10,7 +10,7 @@ Reproducible and auditable RAW/TIFF development for scientific, forensic and
 heritage photography, with session ICC profiling, per-file parametric settings
 and open AGPL traceability.
 
-![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.8-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.9-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![ProbRAW main interface](docs/assets/screenshots/probraw-portada.png)
 
@@ -31,14 +31,13 @@ The current workflow is intentionally ICC-centered:
 
 ## Current Status
 
-ProbRAW 0.3.8 is suitable for controlled testing, method review and release
+ProbRAW 0.3.9 is suitable for controlled testing, method review and release
 candidate validation. It is not yet a certified scientific or forensic
 production system.
 
-The current version tightens preview/export parity and performance: preview
-uses the same color-managed render path as exported TIFFs, exact RAW demosaic
-work is cached for reloads and exports, and rendered development-queue items are
-removed automatically to avoid accidental reprocessing.
+The current version improves sharpness analysis: MTF/ESF views are easier to
+read, lateral chromatic aberration can be inspected from the same slanted-edge
+ROI, and the analysis code is annotated for team development.
 
 The latest packaging validation passed with:
 

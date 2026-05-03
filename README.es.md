@@ -10,7 +10,7 @@ Revelado RAW/TIFF reproducible y auditable para fotografía científica, forense
 patrimonial, con perfilado ICC por sesión, ajustes paramétricos por archivo y
 trazabilidad abierta AGPL.
 
-![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.8-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.9-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![Interfaz principal de ProbRAW](docs/assets/screenshots/probraw-portada.png)
 
@@ -31,14 +31,14 @@ El flujo actual está centrado de forma deliberada en ICC:
 
 ## Estado Actual
 
-ProbRAW 0.3.8 es adecuado para pruebas controladas, revisión metodológica y
+ProbRAW 0.3.9 es adecuado para pruebas controladas, revisión metodológica y
 validación de candidata a release. Todavía no es un sistema certificado para
 producción científica o forense.
 
-La versión actual refuerza la equivalencia preview/exportación y el
-rendimiento: la preview usa la misma ruta de render con gestión de color que el
-TIFF exportado, el demosaico RAW exacto se cachea para recargas y revelados, y
-los elementos ya revelados se retiran de la cola para evitar reprocesarlos.
+La versión actual mejora el análisis de nitidez: las vistas MTF/ESF son más
+legibles, la aberración cromática lateral puede inspeccionarse desde la misma
+ROI de borde inclinado y el código de análisis queda anotado para trabajo en
+equipo.
 
 La última validación de empaquetado pasó con:
 

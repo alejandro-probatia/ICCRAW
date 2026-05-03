@@ -78,6 +78,26 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.9
+
+La release 0.3.9 mejora la lectura del analisis de nitidez y anade inspeccion
+de aberracion cromatica lateral:
+
+- grafico CA lateral desde la misma ROI de borde inclinado, con diferencias
+  RGB, area CA, desplazamientos entre canales y tira de pixeles del borde por
+  vecino mas proximo,
+- ventana local ESF con tira tonal de pixeles,
+- escala ciclos/pixel MTF mas clara y referencias estandar MTF50/MTF30/MTF10,
+- clases y helpers MTF/CA anotados para futuros desarrollos en equipo.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.9-Setup.exe`
+- `ProbRAW-0.3.9-Setup.exe.sha256`
+- `probraw-0.3.9.tar.gz`
+- `probraw-0.3.9-py3-none-any.whl`
+- `probraw_0.3.9_python_artifacts.sha256`
+
 ## Release 0.3.8
 
 La release 0.3.8 corrige una divergencia grave entre preview y TIFF revelado y

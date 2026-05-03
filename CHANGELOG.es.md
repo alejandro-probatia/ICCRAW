@@ -20,6 +20,23 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 - Sin cambios pendientes.
 
+## [0.3.9] - 2026-05-03
+
+### Added
+
+- El análisis de aberración cromática lateral reutiliza ahora la ROI de borde
+  inclinado seleccionada y muestra diferencias de perfiles RGB, área CA,
+  desplazamientos entre canales y una tira de píxeles por vecino más próximo
+  para inspección científica.
+
+### Changed
+
+- Los gráficos ESF y MTF son más legibles: ESF se centra en la ventana local del
+  borde con tira tonal de píxeles, y MTF muestra una escala ciclos/píxel más
+  clara junto a niveles de referencia MTF50/MTF30/MTF10.
+- Las clases y helpers de análisis MTF/CA incorporan anotaciones y secciones
+  focalizadas para facilitar futuros desarrollos en equipo.
+
 ## [0.3.8] - 2026-05-03
 
 ### Changed

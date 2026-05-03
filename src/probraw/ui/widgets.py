@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import numpy as np
@@ -610,6 +611,16 @@ if QtWidgets is not None:
 
 
     class MTFPlotWidget(QtWidgets.QWidget):
+        """Render one MTF analysis curve family for the sharpness panel.
+
+        ``curve`` selects the view: ``esf``, ``lsf``, ``mtf`` or ``ca``. The
+        widget is deliberately data-only: callers provide an ``MTFResult``-like
+        object and the painter derives all axes, labels and analysis overlays
+        locally. This keeps the persistence format and the visual presentation
+        decoupled while sharing one rendering path for the docked and expanded
+        dialogs.
+        """
+
         EXTENDED_DISPLAY_MAX_FREQUENCY = 1.0
 
         def __init__(self, curve: str = "mtf") -> None:
@@ -660,12 +671,17 @@ if QtWidgets is not None:
                 return
 
             self._draw_axes(painter, plot, xmin, xmax, ymin, ymax)
+            if self._curve == "esf":
+                self._draw_top_pixel_scale(painter, plot, xmin, xmax, ymin, ymax)
+                self._draw_esf_pixel_strip(painter, plot, xmin, xmax)
             if self._curve == "mtf":
                 self._draw_nyquist_marker(painter, plot, xmin, xmax)
 
             if self._curve == "mtf":
                 self._draw_mtf_curve(painter, plot, x_values, y_values, xmin, xmax, ymin, ymax)
                 self._draw_mtf_reference_levels(painter, plot, ymin, ymax)
+            elif self._curve == "ca":
+                self._draw_ca_profiles(painter, plot, xmin, xmax, ymin, ymax)
             else:
                 self._draw_curve_path(painter, plot, x_values, y_values, xmin, xmax, ymin, ymax)
             self._draw_analysis_annotations(painter, plot, xmin, xmax, ymin, ymax)
@@ -681,6 +697,8 @@ if QtWidgets is not None:
             self._hover_pos = None
             self.update()
             super().leaveEvent(event)
+
+        # Data extraction -------------------------------------------------
 
         def _curve_payload(self) -> tuple[np.ndarray, np.ndarray, str, str, str]:
             result = self._result
@@ -702,6 +720,16 @@ if QtWidgets is not None:
                     self.tr("distancia al borde (px)"),
                     self.tr("derivada"),
                 )
+            if self._curve == "ca":
+                x, red, green, blue, diff = self._ca_payload()
+                y = np.concatenate([red - green, blue - green, diff]) if red.size and green.size and blue.size else diff
+                return (
+                    x,
+                    y,
+                    "CA lateral: diferencias RGB",
+                    self.tr("pixeles"),
+                    self.tr("diferencia normalizada"),
+                )
             frequency = getattr(result, "frequency_extended", None)
             mtf = getattr(result, "mtf_extended", None)
             if frequency is None or len(frequency) == 0:
@@ -717,7 +745,9 @@ if QtWidgets is not None:
             )
 
         def _title(self) -> str:
-            return {"esf": "ESF", "lsf": "LSF"}.get(self._curve, "MTF")
+            return {"esf": "ESF", "lsf": "LSF", "ca": "CA lateral RGB"}.get(self._curve, "MTF")
+
+        # Axis ranges and scales -----------------------------------------
 
         def _x_range(self, values: np.ndarray) -> tuple[float, float]:
             finite = np.asarray(values, dtype=np.float64)
@@ -734,11 +764,23 @@ if QtWidgets is not None:
                         self.EXTENDED_DISPLAY_MAX_FREQUENCY,
                         float(np.ceil(xmax / 0.5) * 0.5),
                     )
+            elif self._curve == "ca":
+                xmin, xmax = self._ca_zoomed_x_range(xmin, xmax)
+            elif self._curve == "esf":
+                xmin, xmax = self._esf_zoomed_x_range(xmin, xmax)
             if xmax <= xmin:
                 return xmin - 0.5, xmax + 0.5
             return xmin, xmax
 
         def _y_range(self, values: np.ndarray) -> tuple[float, float]:
+            if self._curve == "ca":
+                finite = np.asarray(values, dtype=np.float64)
+                finite = finite[np.isfinite(finite)]
+                if finite.size == 0:
+                    return -0.02, 0.02
+                span = max(abs(float(np.min(finite))), abs(float(np.max(finite))), 0.005)
+                limit = min(0.35, max(0.02, span * 1.35))
+                return -limit, limit
             if self._curve == "mtf":
                 return 0.0, max(1.0, float(np.nanmax(values)) * 1.05)
             ymin = float(np.nanmin(values))
@@ -812,6 +854,8 @@ if QtWidgets is not None:
                 painter.fillRect(post_rect, QtGui.QColor(239, 68, 68, 18))
             painter.setPen(QtGui.QPen(QtGui.QColor("#ef4444"), 1, QtCore.Qt.DashDotLine))
             painter.drawLine(px, plot.top(), px, plot.bottom())
+
+        # Curve rendering -------------------------------------------------
 
         def _draw_curve_path(
             self,
@@ -888,11 +932,92 @@ if QtWidgets is not None:
             ymin: float,
             ymax: float,
         ) -> None:
-            painter.setPen(QtGui.QPen(QtGui.QColor("#f59e0b"), 1, QtCore.Qt.DashLine))
+            metrics = painter.fontMetrics()
             for level in (0.5, 0.3, 0.1):
                 py = plot.bottom() - (level - ymin) / (ymax - ymin) * plot.height()
                 if plot.top() <= py <= plot.bottom():
+                    painter.setPen(QtGui.QPen(QtGui.QColor("#f59e0b"), 1, QtCore.Qt.DashLine))
                     painter.drawLine(plot.left(), py, plot.right(), py)
+                    label = f"MTF{int(level * 100)}"
+                    label_rect = QtCore.QRectF(plot.left() + 5, py - metrics.height() - 2, metrics.horizontalAdvance(label) + 10, metrics.height() + 4)
+                    painter.setPen(QtGui.QPen(QtGui.QColor("#92400e"), 1))
+                    painter.setBrush(QtGui.QColor(15, 23, 42, 190))
+                    painter.drawRoundedRect(label_rect, 3, 3)
+                    painter.setPen(QtGui.QPen(QtGui.QColor("#fde68a"), 1))
+                    painter.drawText(label_rect, QtCore.Qt.AlignCenter, label)
+
+        def _draw_top_pixel_scale(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+        ) -> None:
+            painter.setPen(QtGui.QPen(QtGui.QColor("#64748b"), 1))
+            top_y = plot.top()
+            for value in self._axis_ticks(xmin, xmax):
+                px, _py = self._data_to_plot(value, ymax, plot, xmin, xmax, ymin, ymax)
+                painter.drawLine(px, top_y, px, top_y + 6)
+                label = self._format_axis_value(value)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#cbd5e1"), 1))
+                painter.drawText(QtCore.QRectF(px - 24, top_y + 6, 48, 14), QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop, label)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#64748b"), 1))
+
+        # Pixel strips ----------------------------------------------------
+
+        def _draw_esf_pixel_strip(self, painter: QtGui.QPainter, plot: QtCore.QRect, xmin: float, xmax: float) -> None:
+            x, values = self._esf_pixel_strip_payload()
+            if x.size == 0 or values.size == 0:
+                return
+            strip = QtCore.QRectF(plot.left(), plot.top() + 21, plot.width(), 16)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#475569"), 1))
+            painter.drawRect(strip)
+            for distance, value in zip(x, values, strict=False):
+                x0 = float(distance) - 0.5
+                x1 = float(distance) + 0.5
+                if x1 < xmin or x0 > xmax:
+                    continue
+                px0 = plot.left() + (max(x0, xmin) - xmin) / (xmax - xmin) * plot.width()
+                px1 = plot.left() + (min(x1, xmax) - xmin) / (xmax - xmin) * plot.width()
+                if px1 <= px0:
+                    px1 = px0 + 1.0
+                gray = int(np.clip(round(float(value) * 255.0), 0, 255))
+                painter.fillRect(QtCore.QRectF(px0, strip.top() + 1, px1 - px0, strip.height() - 2), QtGui.QColor(gray, gray, gray))
+            painter.setPen(QtGui.QPen(QtGui.QColor("#cbd5e1"), 1))
+            painter.drawText(strip.adjusted(6, 0, -6, 0), QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, self.tr("tonos de pixeles del borde"))
+
+        def _esf_pixel_strip_payload(self) -> tuple[np.ndarray, np.ndarray]:
+            x, rgb = self._ca_pixel_strip_payload()
+            if x.size and rgb.size:
+                return x, np.clip(0.2126 * rgb[:, 0] + 0.7152 * rgb[:, 1] + 0.0722 * rgb[:, 2], 0.0, 1.0)
+            result = self._result
+            if result is None:
+                return np.asarray([], dtype=np.float64), np.asarray([], dtype=np.float64)
+            distance = np.asarray(getattr(result, "esf_distance", []), dtype=np.float64)
+            signal = np.asarray(getattr(result, "esf", []), dtype=np.float64)
+            count = min(distance.size, signal.size)
+            if count <= 0:
+                return np.asarray([], dtype=np.float64), np.asarray([], dtype=np.float64)
+            samples = np.arange(math.floor(float(np.min(distance[:count]))), math.ceil(float(np.max(distance[:count]))) + 1, dtype=np.float64)
+            return samples, np.interp(samples, distance[:count], signal[:count])
+
+        def _esf_zoomed_x_range(self, xmin: float, xmax: float) -> tuple[float, float]:
+            result = self._result
+            if result is None:
+                return xmin, xmax
+            x = np.asarray(getattr(result, "esf_distance", []), dtype=np.float64)
+            y = np.asarray(getattr(result, "esf", []), dtype=np.float64)
+            valid = np.isfinite(x) & np.isfinite(y)
+            x = x[valid]
+            y = y[valid]
+            center = self._level_crossing(x, np.maximum.accumulate(y), 0.5) if x.size >= 2 else None
+            if center is None or not np.isfinite(float(center)):
+                center = 0.5 * (float(xmin) + float(xmax))
+            return max(float(xmin), float(center) - 10.0), min(float(xmax), float(center) + 10.0)
+
+        # Analysis overlays ----------------------------------------------
 
         def _draw_analysis_annotations(
             self,
@@ -908,11 +1033,14 @@ if QtWidgets is not None:
                 return
             lines = self._analysis_summary_lines()
             if lines:
-                self._draw_annotation_box(painter, plot.adjusted(8, 8, -8, -8), lines, align_right=False)
+                summary_top = 42 if self._curve in {"esf", "ca"} else 8
+                self._draw_annotation_box(painter, plot.adjusted(8, summary_top, -8, -8), lines, align_right=False)
             if self._curve == "esf":
                 self._draw_esf_rise_annotation(painter, plot, xmin, xmax, ymin, ymax)
             elif self._curve == "mtf":
                 self._draw_mtf_metric_annotations(painter, plot, xmin, xmax, ymin, ymax)
+            elif self._curve == "ca":
+                self._draw_ca_annotations(painter, plot, xmin, xmax, ymin, ymax)
 
         def _analysis_summary_lines(self) -> list[str]:
             result = self._result
@@ -939,10 +1067,158 @@ if QtWidgets is not None:
                 return len(getattr(result, "esf", []) or [])
             if self._curve == "lsf":
                 return len(getattr(result, "lsf", []) or [])
+            if self._curve == "ca":
+                return len(getattr(result, "ca_distance", []) or [])
             values = getattr(result, "mtf_extended", None)
             if values is None or len(values) == 0:
                 values = getattr(result, "mtf", []) or []
             return len(values)
+
+        # Chromatic-aberration helpers -----------------------------------
+
+        def _ca_payload(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+            result = self._result
+            if result is None:
+                empty = np.asarray([], dtype=np.float64)
+                return empty, empty, empty, empty, empty
+            x = np.asarray(getattr(result, "ca_distance", []), dtype=np.float64)
+            red = np.asarray(getattr(result, "ca_red", []), dtype=np.float64)
+            green = np.asarray(getattr(result, "ca_green", []), dtype=np.float64)
+            blue = np.asarray(getattr(result, "ca_blue", []), dtype=np.float64)
+            diff = np.asarray(getattr(result, "ca_diff", []), dtype=np.float64)
+            count = min(x.size, red.size, green.size, blue.size, diff.size)
+            if count <= 0:
+                empty = np.asarray([], dtype=np.float64)
+                return empty, empty, empty, empty, empty
+            return x[:count], red[:count], green[:count], blue[:count], diff[:count]
+
+        def _ca_pixel_strip_payload(self) -> tuple[np.ndarray, np.ndarray]:
+            result = self._result
+            if result is None:
+                return np.asarray([], dtype=np.float64), np.empty((0, 3), dtype=np.float64)
+            x = np.asarray(getattr(result, "ca_pixel_distance", []), dtype=np.float64)
+            red = np.asarray(getattr(result, "ca_pixel_red", []), dtype=np.float64)
+            green = np.asarray(getattr(result, "ca_pixel_green", []), dtype=np.float64)
+            blue = np.asarray(getattr(result, "ca_pixel_blue", []), dtype=np.float64)
+            count = min(x.size, red.size, green.size, blue.size)
+            if count <= 0:
+                return np.asarray([], dtype=np.float64), np.empty((0, 3), dtype=np.float64)
+            rgb = np.column_stack([red[:count], green[:count], blue[:count]])
+            return x[:count], rgb
+
+        def _ca_zoomed_x_range(self, xmin: float, xmax: float) -> tuple[float, float]:
+            x, _red, green, _blue, _diff = self._ca_payload()
+            center = None
+            if x.size >= 2 and green.size >= 2:
+                center = self._level_crossing(x, np.maximum.accumulate(green), 0.5)
+            width = self._optional_float(getattr(self._result, "ca_edge_width_10_90_pixels", None))
+            crossing = self._optional_float(getattr(self._result, "ca_crossing_pixels", None))
+            half_span = max(6.0, (width or 0.0) * 3.0, (crossing or 0.0) * 8.0)
+            half_span = min(30.0, half_span)
+            if center is None or not np.isfinite(float(center)):
+                center = 0.5 * (float(xmin) + float(xmax))
+            left = max(float(xmin), float(center) - half_span)
+            right = min(float(xmax), float(center) + half_span)
+            if right - left < 4.0:
+                left = max(float(xmin), float(center) - 2.0)
+                right = min(float(xmax), float(center) + 2.0)
+            return left, right
+
+        def _draw_ca_profiles(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+        ) -> None:
+            x, red, green, blue, diff = self._ca_payload()
+            self._draw_ca_pixel_strip(painter, plot, xmin, xmax)
+            if ymin < 0.0 < ymax:
+                _px, py = self._data_to_plot(xmin, 0.0, plot, xmin, xmax, ymin, ymax)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#64748b"), 1, QtCore.Qt.DashLine))
+                painter.drawLine(plot.left(), py, plot.right(), py)
+            self._draw_curve_path(painter, plot, x, red - green, xmin, xmax, ymin, ymax, pen=QtGui.QPen(QtGui.QColor("#ef4444"), 2))
+            self._draw_curve_path(painter, plot, x, blue - green, xmin, xmax, ymin, ymax, pen=QtGui.QPen(QtGui.QColor("#3b82f6"), 2))
+            self._draw_curve_path(painter, plot, x, diff, xmin, xmax, ymin, ymax, pen=QtGui.QPen(QtGui.QColor("#d946ef"), 2, QtCore.Qt.DotLine))
+            self._draw_channel_legend(painter, plot)
+
+        def _draw_ca_pixel_strip(self, painter: QtGui.QPainter, plot: QtCore.QRect, xmin: float, xmax: float) -> None:
+            distances, rgb = self._ca_pixel_strip_payload()
+            if distances.size == 0 or rgb.size == 0:
+                return
+            strip = QtCore.QRectF(plot.left(), plot.top() + 4, plot.width(), 18)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#475569"), 1))
+            painter.drawRect(strip)
+            for distance, color in zip(distances, rgb, strict=False):
+                x0 = float(distance) - 0.5
+                x1 = float(distance) + 0.5
+                if x1 < xmin or x0 > xmax:
+                    continue
+                px0 = plot.left() + (max(x0, xmin) - xmin) / (xmax - xmin) * plot.width()
+                px1 = plot.left() + (min(x1, xmax) - xmin) / (xmax - xmin) * plot.width()
+                if px1 <= px0:
+                    px1 = px0 + 1.0
+                r, g, b = [int(np.clip(round(float(v) * 255.0), 0, 255)) for v in color[:3]]
+                painter.fillRect(QtCore.QRectF(px0, strip.top() + 1, px1 - px0, strip.height() - 2), QtGui.QColor(r, g, b))
+            painter.setPen(QtGui.QPen(QtGui.QColor("#cbd5e1"), 1))
+            painter.drawText(strip.adjusted(6, 0, -6, 0), QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, self.tr("fila de pixeles del borde"))
+
+        def _draw_channel_legend(self, painter: QtGui.QPainter, plot: QtCore.QRect) -> None:
+            entries = [("R-G", "#ef4444"), ("B-G", "#3b82f6"), ("CA", "#d946ef")]
+            metrics = painter.fontMetrics()
+            width = 146
+            height = metrics.height() + 12
+            rect = QtCore.QRectF(plot.right() - width - 8, plot.bottom() - height - 8, width, height)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#334155"), 1))
+            painter.setBrush(QtGui.QColor(15, 23, 42, 210))
+            painter.drawRoundedRect(rect, 4, 4)
+            x = rect.left() + 8
+            for label, color in entries:
+                painter.setPen(QtGui.QPen(QtGui.QColor(color), 3))
+                y = rect.center().y()
+                painter.drawLine(x, y, x + 12, y)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#e2e8f0"), 1))
+                painter.drawText(QtCore.QRectF(x + 16, rect.top() + 4, 34, metrics.height()), QtCore.Qt.AlignVCenter, label)
+                x += 44
+
+        def _draw_ca_annotations(
+            self,
+            painter: QtGui.QPainter,
+            plot: QtCore.QRect,
+            xmin: float,
+            xmax: float,
+            ymin: float,
+            ymax: float,
+        ) -> None:
+            result = self._result
+            if result is None:
+                return
+            lines: list[str] = []
+            area = self._optional_float(getattr(result, "ca_area_pixels", None))
+            crossing = self._optional_float(getattr(result, "ca_crossing_pixels", None))
+            rg = self._optional_float(getattr(result, "ca_red_green_shift_pixels", None))
+            bg = self._optional_float(getattr(result, "ca_blue_green_shift_pixels", None))
+            width = self._optional_float(getattr(result, "ca_edge_width_10_90_pixels", None))
+            if area is not None:
+                lines.append(f"CA area: {area:.3f} px")
+            if crossing is not None:
+                lines.append(f"CA cruce: {crossing:.3f} px")
+            if rg is not None or bg is not None:
+                lines.append(f"R-G: {rg:+.3f} px  B-G: {bg:+.3f} px")
+            if width is not None:
+                lines.append(f"10-90: {width:.2f} px")
+            if lines:
+                self._draw_annotation_box(painter, plot.adjusted(8, 34, -8, -8), lines, align_right=True)
+            x, red, green, blue, _diff = self._ca_payload()
+            for values, color in ((red, "#ef4444"), (green, "#22c55e"), (blue, "#3b82f6")):
+                crossing_x = self._level_crossing(x, np.maximum.accumulate(values), 0.5)
+                if crossing_x is not None and xmin <= crossing_x <= xmax:
+                    marker_y = 0.0 if ymin <= 0.0 <= ymax else 0.5 * (ymin + ymax)
+                    self._draw_frequency_marker(painter, plot, xmin, xmax, ymin, ymax, crossing_x, marker_y, color)
+
+        # ESF/MTF metric annotations -------------------------------------
 
         def _draw_esf_rise_annotation(
             self,
@@ -996,12 +1272,20 @@ if QtWidgets is not None:
             lines: list[str] = []
             mtf50 = self._optional_float(getattr(result, "mtf50", None))
             mtf50p = self._optional_float(getattr(result, "mtf50p", None))
+            mtf30 = self._optional_float(getattr(result, "mtf30", None))
+            mtf10 = self._optional_float(getattr(result, "mtf10", None))
             if mtf50 is not None:
                 lines.append(f"MTF50: {mtf50:.3f} c/p")
                 self._draw_frequency_marker(painter, plot, xmin, xmax, ymin, ymax, mtf50, 0.5, "#f8fafc")
             if mtf50p is not None:
                 lines.append(f"MTF50P: {mtf50p:.3f} c/p")
                 self._draw_frequency_marker(painter, plot, xmin, xmax, ymin, ymax, mtf50p, 0.5, "#a78bfa")
+            if mtf30 is not None:
+                lines.append(f"MTF30: {mtf30:.3f} c/p")
+                self._draw_frequency_marker(painter, plot, xmin, xmax, ymin, ymax, mtf30, 0.3, "#fb923c")
+            if mtf10 is not None:
+                lines.append(f"MTF10: {mtf10:.3f} c/p")
+                self._draw_frequency_marker(painter, plot, xmin, xmax, ymin, ymax, mtf10, 0.1, "#facc15")
             if lines:
                 self._draw_annotation_box(painter, plot.adjusted(8, 8, -8, -8), lines, align_right=True)
 
@@ -1023,6 +1307,9 @@ if QtWidgets is not None:
             painter.setPen(QtGui.QPen(QtGui.QColor(color), 1, QtCore.Qt.DashLine))
             painter.drawLine(px, py, px, plot.bottom())
             painter.drawLine(plot.left(), py, px, py)
+            painter.setBrush(QtGui.QColor(color))
+            painter.setPen(QtGui.QPen(QtGui.QColor(color), 1))
+            painter.drawEllipse(QtCore.QPointF(px, py), 4, 4)
 
         def _draw_annotation_box(
             self,
@@ -1149,16 +1436,24 @@ if QtWidgets is not None:
 
         def _axis_ticks(self, minimum: float, maximum: float) -> list[float]:
             if self._curve == "mtf" and minimum <= 0.0 and maximum >= 0.5:
-                if maximum <= 0.5:
-                    return [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
-                top = float(np.ceil(float(maximum) / 0.5) * 0.5)
-                return [float(v) for v in np.arange(0.0, top + 0.25, 0.5)]
-            if self._curve in {"esf", "lsf"}:
+                top = min(1.0, max(0.5, float(maximum)))
+                return [float(v) for v in np.arange(0.0, top + 0.0625, 0.125)]
+            if self._curve in {"esf", "lsf", "ca"}:
                 return self._nice_pixel_ticks(minimum, maximum, max_ticks=9)
             return [float(v) for v in np.linspace(float(minimum), float(maximum), 5)]
 
         def _minor_axis_ticks(self, minimum: float, maximum: float) -> list[float]:
-            if self._curve not in {"esf", "lsf"}:
+            if self._curve == "mtf":
+                step = 0.025 if maximum <= 0.55 else 0.0625
+                values = np.arange(0.0, float(maximum) + step * 0.5, step)
+                major_set = {round(float(v), 6) for v in self._axis_ticks(minimum, maximum)}
+                return [
+                    float(v)
+                    for v in values
+                    if float(minimum) <= float(v) <= float(maximum)
+                    and round(float(v), 6) not in major_set
+                ]
+            if self._curve not in {"esf", "lsf", "ca"}:
                 return []
             major = self._axis_ticks(minimum, maximum)
             if len(major) < 2:
@@ -1221,6 +1516,8 @@ if QtWidgets is not None:
 
 
     class MTFComparisonPlotWidget(MTFPlotWidget):
+        """Overlay persisted ESF/LSF/MTF/CA curves from two or more images."""
+
         SERIES_COLORS = ("#38bdf8", "#f97316", "#a78bfa", "#22c55e")
 
         def __init__(self, curve: str = "mtf") -> None:
@@ -1327,6 +1624,8 @@ if QtWidgets is not None:
                 return "ESF", self.tr("distancia al borde (px)"), self.tr("señal normalizada")
             if self._curve == "lsf":
                 return "LSF", self.tr("distancia al borde (px)"), self.tr("derivada")
+            if self._curve == "ca":
+                return "CA lateral", self.tr("pixeles"), self.tr("diferencia RGB")
             return "MTF", self.tr("ciclos/píxel"), self.tr("modulación")
 
         def _curve_from_payload(self, payload: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
@@ -1336,6 +1635,8 @@ if QtWidgets is not None:
                 return self._extract_payload_points(curves.get("esf"), "distance_px", "signal")
             if self._curve == "lsf":
                 return self._extract_payload_points(curves.get("lsf"), "distance_px", "derivative")
+            if self._curve == "ca":
+                return self._extract_payload_points(curves.get("chromatic_aberration"), "distance_px", "difference")
             mtf_extended = curves.get("mtf_extended")
             if isinstance(mtf_extended, list) and mtf_extended:
                 return self._extract_payload_points(mtf_extended, "frequency_cycles_per_pixel", "modulation")

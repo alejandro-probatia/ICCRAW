@@ -72,6 +72,25 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.9
+
+Release 0.3.9 improves sharpness-analysis readability and adds lateral
+chromatic-aberration inspection:
+
+- CA lateral graph from the same slanted-edge ROI, with RGB differences, CA
+  area, channel shifts and nearest-neighbour edge pixel strip,
+- ESF local edge window with pixel-tone strip,
+- clearer MTF cycles/pixel scale and standard MTF50/MTF30/MTF10 references,
+- annotated MTF/CA classes and helpers for future team development.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.9-Setup.exe`
+- `ProbRAW-0.3.9-Setup.exe.sha256`
+- `probraw-0.3.9.tar.gz`
+- `probraw-0.3.9-py3-none-any.whl`
+- `probraw_0.3.9_python_artifacts.sha256`
+
 ## Release 0.3.8
 
 Release 0.3.8 fixes a serious divergence between preview and rendered TIFF while

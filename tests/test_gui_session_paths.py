@@ -3218,8 +3218,9 @@ def test_raw_adjustment_groups_follow_editor_flow(qapp):
             window.mtf_graph_tabs.tabText(i)
             for i in range(window.mtf_graph_tabs.count())
         ]
-        assert mtf_tab_labels == ["ESF", "LSF", "MTF", "Métricas MTF", "Contexto técnico"]
+        assert mtf_tab_labels == ["ESF", "LSF", "MTF", "CA lateral", "Métricas MTF", "Contexto técnico"]
         assert isinstance(window.mtf_plot_mtf, gui_module.MTFPlotWidget)
+        assert isinstance(window.mtf_plot_ca, gui_module.MTFPlotWidget)
         assert window.mtf_result_tabs is window.mtf_graph_tabs
 
         window._go_to_nitidez_tab()
@@ -3293,6 +3294,8 @@ def test_mtf_roi_analysis_updates_metrics_and_lpmm(tmp_path: Path, qapp):
         assert "MTF30" in metric_rows
         assert "MTF10" in metric_rows
         assert "Nyquist" in metric_rows
+        assert "CA area" in metric_rows
+        assert "CA R-G" in metric_rows
         assert "125.00 lp/mm" in metric_rows["Nyquist"]
         assert "Post-Nyquist pico" in metric_rows
         assert "Fuente" in context_rows
@@ -3303,19 +3306,23 @@ def test_mtf_roi_analysis_updates_metrics_and_lpmm(tmp_path: Path, qapp):
         assert payload["summary"]["nyquist_lp_per_mm"] == pytest.approx(125.0)
         assert payload["summary"]["post_nyquist"]["samples"] > 0
         assert payload["summary"]["extended_frequency_range_cycles_per_pixel"][1] <= 1.0
+        assert payload["summary"]["chromatic_aberration"]["samples"] > 0
         assert payload["curves"]["mtf"]
         assert payload["curves"]["mtf_extended"]
+        assert payload["curves"]["chromatic_aberration"]
         assert max(point["frequency_cycles_per_pixel"] for point in payload["curves"]["mtf_extended"]) <= 1.0
         sidecar = load_raw_sidecar(image_path)
         assert sidecar["mtf_analysis"]["summary"]["mtf50"] == pytest.approx(payload["summary"]["mtf50"])
         assert sidecar["mtf_analysis"]["summary"]["mtf50_lp_per_mm"] == pytest.approx(payload["summary"]["mtf50_lp_per_mm"])
         assert sidecar["mtf_analysis"]["curves"]["mtf_extended"]
+        assert sidecar["mtf_analysis"]["curves"]["chromatic_aberration"]
         assert "MTF guardada" in window._raw_sidecar_mtf_summary(image_path)
         assert window._raw_sidecar_development_summary(image_path) == ""
         csv_text = window._mtf_payload_to_csv(payload)
         assert "section,index,x,y,key,value" in csv_text
         assert "frequency_lp_per_mm" in csv_text
         assert "mtf_extended" in csv_text
+        assert "chromatic_aberration" in csv_text
         assert not window.btn_mtf_select_roi.isChecked()
     finally:
         window.close()
@@ -3348,6 +3355,10 @@ def test_mtf_sidecar_restores_roi_and_curves_without_reselecting_edge(tmp_path: 
             point["modulation"]
             for point in persisted_payload["curves"]["mtf_extended"]
         ]
+        persisted_ca = [
+            point["difference"]
+            for point in persisted_payload["curves"]["chromatic_aberration"]
+        ]
 
         window._clear_mtf_roi_for_file_change()
         window.spin_mtf_pixel_pitch_um.setValue(0.0)
@@ -3367,7 +3378,9 @@ def test_mtf_sidecar_restores_roi_and_curves_without_reselecting_edge(tmp_path: 
         assert window.image_result_single._roi_rect is None
         assert restored.mtf50 == pytest.approx(persisted_mtf50)
         assert restored.mtf_extended == pytest.approx(persisted_extended)
+        assert restored.ca_diff == pytest.approx(persisted_ca)
         assert window.mtf_plot_mtf._result is restored
+        assert window.mtf_plot_ca._result is restored
         assert window.spin_mtf_pixel_pitch_um.value() == pytest.approx(4.0)
         assert not window.btn_mtf_select_roi.isChecked()
 
@@ -4100,8 +4113,8 @@ def test_mtf_plot_displays_nyquist_range_and_coordinate_labels(qapp):
         assert widget._x_range(x_values) == (0.0, 0.5)
         assert widget._x_range(gui_module.np.asarray([0.0, 0.75])) == (0.0, 1.0)
         assert widget._x_range(gui_module.np.asarray([0.0, 2.0])) == (0.0, 1.0)
-        assert widget._axis_ticks(0.0, 0.5) == [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
-        assert widget._axis_ticks(0.0, 1.0) == [0.0, 0.5, 1.0]
+        assert widget._axis_ticks(0.0, 0.5) == pytest.approx([0.0, 0.125, 0.25, 0.375, 0.5])
+        assert widget._axis_ticks(0.0, 1.0) == pytest.approx([0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0])
         assert widget._coordinate_label(0.5, 0.75) == "x=0.5  y=0.75"
         assert "post-Nyquist" in widget._coordinate_label(0.75, 0.2)
         assert widget._analysis_summary_lines()[0] == "ROI: 120 x 80 px (0.010 Mpix)"
@@ -4128,6 +4141,39 @@ def test_mtf_esf_plot_reports_pixel_scale_and_rise(qapp):
         assert 1.0 in widget._minor_axis_ticks(-6.0, 6.0)
         assert widget._esf_rise_10_90() == pytest.approx((-1.6153846, 1.6153846, 3.2307692))
         assert widget._curve_sample_count() == len(Result.esf)
+        widget.resize(460, 300)
+        pixmap = widget.grab()
+        assert not pixmap.isNull()
+    finally:
+        widget.close()
+
+
+def test_mtf_ca_plot_reports_channel_profiles_and_metrics(qapp):
+    widget = gui_module.MTFPlotWidget("ca")
+
+    class Result:
+        roi_shape = (84, 128)
+        ca_distance = [-2.0, -1.0, 0.0, 1.0, 2.0]
+        ca_red = [0.0, 0.1, 0.45, 0.9, 1.0]
+        ca_green = [0.0, 0.2, 0.5, 0.8, 1.0]
+        ca_blue = [0.0, 0.3, 0.6, 0.9, 1.0]
+        ca_diff = [0.0, 0.15, 0.16, 0.14, 0.0]
+        ca_area_pixels = 0.33
+        ca_crossing_pixels = 0.22
+        ca_red_green_shift_pixels = 0.12
+        ca_blue_green_shift_pixels = -0.22
+        ca_edge_width_10_90_pixels = 2.75
+
+    try:
+        widget.set_result(Result())
+
+        x_values, y_values, title, x_label, y_label = widget._curve_payload()
+        assert title == "CA lateral: diferencias RGB"
+        assert x_label
+        assert y_label
+        assert x_values.tolist() == Result.ca_distance
+        assert widget._curve_sample_count() == len(Result.ca_distance)
+        assert widget._axis_ticks(-2.0, 2.0) == [-2.0, -1.0, 0.0, 1.0, 2.0]
         widget.resize(460, 300)
         pixmap = widget.grab()
         assert not pixmap.isNull()

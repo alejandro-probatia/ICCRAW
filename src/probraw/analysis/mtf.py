@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from typing import Any
 
@@ -10,6 +10,15 @@ import numpy as np
 
 @dataclass(frozen=True)
 class MTFResult:
+    """Immutable result for one slanted-edge analysis ROI.
+
+    The first block stores the traditional luminance ESF/LSF/MTF measurement.
+    The optional ``ca_*`` fields share the same fitted edge geometry and expose
+    lateral chromatic-aberration diagnostics for the UI, sidecar persistence and
+    CSV export. Distances are expressed in pixels along the edge normal; MTF
+    frequencies are expressed in cycles/pixel.
+    """
+
     roi: tuple[int, int, int, int]
     roi_shape: tuple[int, int]
     edge_angle_degrees: float
@@ -30,6 +39,21 @@ class MTFResult:
     frequency_extended: list[float]
     mtf_extended: list[float]
     warnings: list[str]
+    ca_distance: list[float] = field(default_factory=list)
+    ca_red: list[float] = field(default_factory=list)
+    ca_green: list[float] = field(default_factory=list)
+    ca_blue: list[float] = field(default_factory=list)
+    ca_diff: list[float] = field(default_factory=list)
+    ca_pixel_distance: list[float] = field(default_factory=list)
+    ca_pixel_red: list[float] = field(default_factory=list)
+    ca_pixel_green: list[float] = field(default_factory=list)
+    ca_pixel_blue: list[float] = field(default_factory=list)
+    ca_area_pixels: float | None = None
+    ca_crossing_pixels: float | None = None
+    ca_red_green_shift_pixels: float | None = None
+    ca_blue_green_shift_pixels: float | None = None
+    ca_red_blue_shift_pixels: float | None = None
+    ca_edge_width_10_90_pixels: float | None = None
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -52,6 +76,15 @@ class MTFResult:
                 self.frequency_extended[0] if self.frequency_extended else None,
                 self.frequency_extended[-1] if self.frequency_extended else None,
             ],
+            "chromatic_aberration": {
+                "area_pixels": self.ca_area_pixels,
+                "crossing_pixels": self.ca_crossing_pixels,
+                "red_green_shift_pixels": self.ca_red_green_shift_pixels,
+                "blue_green_shift_pixels": self.ca_blue_green_shift_pixels,
+                "red_blue_shift_pixels": self.ca_red_blue_shift_pixels,
+                "edge_width_10_90_pixels": self.ca_edge_width_10_90_pixels,
+                "samples": len(self.ca_distance),
+            },
             "warnings": list(self.warnings),
         }
 
@@ -63,13 +96,14 @@ def analyze_slanted_edge_mtf(
     oversampling: int = 4,
     min_size: int = 24,
 ) -> MTFResult:
-    """Estimate slanted-edge ESF, LSF and MTF from an RGB image or ROI.
+    """Estimate slanted-edge ESF, LSF, MTF and lateral CA from an RGB image.
 
     The implementation is intentionally self-contained and deterministic. It is
     not a full ISO 12233 conformance harness, but it follows the same practical
     slanted-edge idea: fit the edge, oversample the edge spread function from
     pixel distances to that edge, differentiate into an LSF, then transform the
-    LSF into an MTF curve up to Nyquist.
+    LSF into an MTF curve. RGB channel profiles reuse the fitted edge so lateral
+    chromatic aberration is measured against the same geometry as MTF.
     """
     crop_rgb, normalized_roi = _crop_image_roi(image_rgb, roi)
     crop = _luminance_image(crop_rgb)
@@ -89,7 +123,9 @@ def analyze_slanted_edge_mtf(
     edge_count = max(4, len(esf) // 10)
     low = float(np.median(esf[:edge_count]))
     high = float(np.median(esf[-edge_count:]))
+    flipped = False
     if high < low:
+        flipped = True
         distances = -distances[::-1]
         esf = esf[::-1]
         low, high = high, low
@@ -109,6 +145,14 @@ def analyze_slanted_edge_mtf(
     acutance = _mtf_acutance(frequency, mtf)
     overshoot = float(max(0.0, np.max(esf_normalized) - 1.0))
     undershoot = float(max(0.0, -np.min(esf_normalized)))
+    ca = _chromatic_aberration_profiles(
+        crop_rgb,
+        edge["normal"],
+        edge["centroid"],
+        bin_width=bin_width,
+        reference_distances=distances,
+        flipped=flipped,
+    )
 
     warnings: list[str] = []
     angle = float(edge["angle"])
@@ -138,6 +182,21 @@ def analyze_slanted_edge_mtf(
         mtf=_finite_list(mtf),
         frequency_extended=_finite_list(frequency_extended),
         mtf_extended=_finite_list(mtf_extended),
+        ca_distance=_finite_list(ca["distance"]),
+        ca_red=_finite_list(ca["red"]),
+        ca_green=_finite_list(ca["green"]),
+        ca_blue=_finite_list(ca["blue"]),
+        ca_diff=_finite_list(ca["diff"]),
+        ca_pixel_distance=_finite_list(ca["pixel_distance"]),
+        ca_pixel_red=_finite_list(ca["pixel_red"]),
+        ca_pixel_green=_finite_list(ca["pixel_green"]),
+        ca_pixel_blue=_finite_list(ca["pixel_blue"]),
+        ca_area_pixels=_finite_optional(ca["area_pixels"]),
+        ca_crossing_pixels=_finite_optional(ca["crossing_pixels"]),
+        ca_red_green_shift_pixels=_finite_optional(ca["red_green_shift_pixels"]),
+        ca_blue_green_shift_pixels=_finite_optional(ca["blue_green_shift_pixels"]),
+        ca_red_blue_shift_pixels=_finite_optional(ca["red_blue_shift_pixels"]),
+        ca_edge_width_10_90_pixels=_finite_optional(ca["edge_width_10_90_pixels"]),
         warnings=warnings,
     )
 
@@ -159,6 +218,165 @@ def _luminance_image(image_rgb: np.ndarray) -> np.ndarray:
     if not np.isfinite(gray).all():
         gray = np.nan_to_num(gray, nan=0.0, posinf=1.0, neginf=0.0)
     return np.clip(gray, 0.0, 1.0)
+
+
+def _chromatic_aberration_profiles(
+    image_rgb: np.ndarray,
+    normal: np.ndarray,
+    centroid: np.ndarray,
+    *,
+    bin_width: float,
+    reference_distances: np.ndarray,
+    flipped: bool,
+) -> dict[str, Any]:
+    """Measure per-channel edge shifts using the already fitted luminance edge.
+
+    The returned profiles are normalized RGB ESFs on the luminance distance grid.
+    ``diff`` is the channel spread at each distance and ``area_pixels`` is its
+    integral over the visible transition. The pixel strip is intentionally not
+    interpolated; it is a nearest-neighbour sample along the edge normal for the
+    scientific inspection strip in the CA/ESF plots.
+    """
+
+    empty = {
+        "distance": np.asarray([], dtype=np.float64),
+        "red": np.asarray([], dtype=np.float64),
+        "green": np.asarray([], dtype=np.float64),
+        "blue": np.asarray([], dtype=np.float64),
+        "diff": np.asarray([], dtype=np.float64),
+        "pixel_distance": np.asarray([], dtype=np.float64),
+        "pixel_red": np.asarray([], dtype=np.float64),
+        "pixel_green": np.asarray([], dtype=np.float64),
+        "pixel_blue": np.asarray([], dtype=np.float64),
+        "area_pixels": None,
+        "crossing_pixels": None,
+        "red_green_shift_pixels": None,
+        "blue_green_shift_pixels": None,
+        "red_blue_shift_pixels": None,
+        "edge_width_10_90_pixels": None,
+    }
+    rgb = np.asarray(image_rgb, dtype=np.float32)
+    if rgb.ndim != 3 or rgb.shape[2] < 3:
+        return empty
+    reference = np.asarray(reference_distances, dtype=np.float64)
+    reference = reference[np.isfinite(reference)]
+    if reference.size < 12:
+        return empty
+
+    try:
+        pixel_distance, pixel_rgb = _edge_pixel_strip(rgb[..., :3], normal, centroid)
+        raw_distances, raw_profiles = _edge_spread_function_rgb(
+            np.clip(rgb[..., :3], 0.0, 1.0),
+            normal,
+            centroid,
+            bin_width=bin_width,
+        )
+        profiles: list[np.ndarray] = []
+        for channel in range(3):
+            distances = raw_distances
+            values = raw_profiles[:, channel]
+            distances, values = _regularize_esf(distances, values)
+            if flipped:
+                distances = -distances[::-1]
+                values = values[::-1]
+            profiles.append(_normalize_channel_esf(reference, distances, values))
+    except ValueError:
+        return empty
+    if flipped and pixel_distance.size:
+        order = np.argsort(-pixel_distance)
+        pixel_distance = -pixel_distance[order]
+        pixel_rgb = pixel_rgb[order]
+
+    red, green, blue = profiles
+    valid = np.isfinite(red) & np.isfinite(green) & np.isfinite(blue)
+    if int(np.count_nonzero(valid)) < 12:
+        return empty
+    distance = reference[valid]
+    red = red[valid]
+    green = green[valid]
+    blue = blue[valid]
+    channel_stack = np.vstack([red, green, blue])
+    diff = np.max(channel_stack, axis=0) - np.min(channel_stack, axis=0)
+
+    red50 = _esf_level_crossing(distance, red, 0.50)
+    green50 = _esf_level_crossing(distance, green, 0.50)
+    blue50 = _esf_level_crossing(distance, blue, 0.50)
+    green10 = _esf_level_crossing(distance, green, 0.10)
+    green90 = _esf_level_crossing(distance, green, 0.90)
+    rg_shift = float(red50 - green50) if red50 is not None and green50 is not None else None
+    bg_shift = float(blue50 - green50) if blue50 is not None and green50 is not None else None
+    rb_shift = float(red50 - blue50) if red50 is not None and blue50 is not None else None
+    crossing = None
+    shifts = [abs(v) for v in (rg_shift, bg_shift) if v is not None and np.isfinite(v)]
+    if shifts:
+        crossing = float(max(shifts))
+    edge_width = float(abs(green90 - green10)) if green10 is not None and green90 is not None else None
+    area = None
+    if distance.size > 1:
+        area = float(np.trapezoid(diff, distance))
+
+    return {
+        "distance": distance,
+        "red": red,
+        "green": green,
+        "blue": blue,
+        "diff": diff,
+        "pixel_distance": pixel_distance,
+        "pixel_red": pixel_rgb[:, 0] if pixel_rgb.size else np.asarray([], dtype=np.float64),
+        "pixel_green": pixel_rgb[:, 1] if pixel_rgb.size else np.asarray([], dtype=np.float64),
+        "pixel_blue": pixel_rgb[:, 2] if pixel_rgb.size else np.asarray([], dtype=np.float64),
+        "area_pixels": area,
+        "crossing_pixels": crossing,
+        "red_green_shift_pixels": rg_shift,
+        "blue_green_shift_pixels": bg_shift,
+        "red_blue_shift_pixels": rb_shift,
+        "edge_width_10_90_pixels": edge_width,
+    }
+
+
+def _normalize_channel_esf(reference: np.ndarray, distances: np.ndarray, values: np.ndarray) -> np.ndarray:
+    d = np.asarray(distances, dtype=np.float64)
+    y = np.asarray(values, dtype=np.float64)
+    order = np.argsort(d)
+    d = d[order]
+    y = y[order]
+    interpolated = np.interp(reference, d, y)
+    edge_count = max(4, interpolated.size // 10)
+    low = float(np.median(interpolated[:edge_count]))
+    high = float(np.median(interpolated[-edge_count:]))
+    contrast = high - low
+    if abs(contrast) <= 1e-6:
+        return np.full_like(reference, np.nan, dtype=np.float64)
+    normalized = (interpolated - low) / contrast
+    return _smooth_esf(np.clip(normalized, -0.5, 1.5))
+
+
+def _esf_level_crossing(distance: np.ndarray, signal: np.ndarray, level: float) -> float | None:
+    x = np.asarray(distance, dtype=np.float64)
+    y = np.asarray(signal, dtype=np.float64)
+    valid = np.isfinite(x) & np.isfinite(y)
+    x = x[valid]
+    y = y[valid]
+    if x.size < 2:
+        return None
+    order = np.argsort(x)
+    x = x[order]
+    y = np.maximum.accumulate(y[order])
+    y_min = float(np.min(y))
+    y_max = float(np.max(y))
+    if not (y_min <= float(level) <= y_max) or y_max - y_min <= 1e-8:
+        return None
+    for idx in range(1, x.size):
+        y0 = float(y[idx - 1])
+        y1 = float(y[idx])
+        if y0 <= float(level) <= y1:
+            x0 = float(x[idx - 1])
+            x1 = float(x[idx])
+            if abs(y1 - y0) <= 1e-12:
+                return x1
+            t = (float(level) - y0) / (y1 - y0)
+            return float(x0 + t * (x1 - x0))
+    return None
 
 
 def _crop_image_roi(image: np.ndarray, roi: tuple[int, int, int, int] | None) -> tuple[np.ndarray, tuple[int, int, int, int]]:
@@ -418,6 +636,89 @@ def _edge_spread_function(
     return centers[valid], sums[valid] / np.maximum(1, counts[valid])
 
 
+def _edge_pixel_strip(
+    rgb: np.ndarray,
+    normal: np.ndarray,
+    centroid: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Sample one nearest-neighbour pixel row across the fitted edge normal."""
+
+    image = np.asarray(rgb, dtype=np.float64)
+    if image.ndim != 3 or image.shape[2] < 3:
+        raise ValueError(f"Imagen inesperada para tira CA: shape={image.shape}")
+    h, w = image.shape[:2]
+    normal = np.asarray(normal, dtype=np.float64)
+    norm = float(np.linalg.norm(normal))
+    if not np.isfinite(norm) or norm <= 1e-8:
+        raise ValueError("Normal de borde invalida para tira CA.")
+    normal = normal / norm
+    centroid = np.asarray(centroid, dtype=np.float64)
+    if centroid.shape != (2,) or not np.isfinite(centroid).all():
+        raise ValueError("Centroide de borde invalido para tira CA.")
+
+    corners = np.asarray(
+        [
+            [0.0, 0.0],
+            [float(w - 1), 0.0],
+            [0.0, float(h - 1)],
+            [float(w - 1), float(h - 1)],
+        ],
+        dtype=np.float64,
+    )
+    corner_distances = (corners[:, 0] - centroid[0]) * normal[0] + (corners[:, 1] - centroid[1]) * normal[1]
+    d_min = int(math.ceil(float(np.min(corner_distances))))
+    d_max = int(math.floor(float(np.max(corner_distances))))
+    distances: list[float] = []
+    pixels: list[np.ndarray] = []
+    for distance in range(d_min, d_max + 1):
+        point = centroid + normal * float(distance)
+        x = int(round(float(point[0])))
+        y = int(round(float(point[1])))
+        if 0 <= x < w and 0 <= y < h:
+            distances.append(float(distance))
+            pixels.append(np.clip(image[y, x, :3], 0.0, 1.0))
+    if not distances:
+        return np.asarray([], dtype=np.float64), np.empty((0, 3), dtype=np.float64)
+    return np.asarray(distances, dtype=np.float64), np.asarray(pixels, dtype=np.float64)
+
+
+def _edge_spread_function_rgb(
+    rgb: np.ndarray,
+    normal: np.ndarray,
+    centroid: np.ndarray,
+    *,
+    bin_width: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Bin RGB edge-spread profiles with one shared distance/bin pass."""
+
+    image = np.asarray(rgb, dtype=np.float64)
+    if image.ndim != 3 or image.shape[2] < 3:
+        raise ValueError(f"Imagen inesperada para CA: shape={image.shape}")
+    h, w = image.shape[:2]
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float64)
+    distances = (xs - float(centroid[0])) * float(normal[0]) + (ys - float(centroid[1])) * float(normal[1])
+    d = distances.reshape(-1)
+    low = math.floor(float(np.min(d)) / bin_width) * bin_width
+    high = math.ceil(float(np.max(d)) / bin_width) * bin_width
+    n_bins = max(0, int(math.ceil((high - low) / bin_width)))
+    if n_bins < 7:
+        raise ValueError("La ROI no ofrece rango suficiente alrededor del borde.")
+    bin_indices = np.floor((d - low) / bin_width).astype(np.int64, copy=False)
+    bin_indices = np.clip(bin_indices, 0, n_bins - 1)
+    counts = np.bincount(bin_indices, minlength=n_bins)
+    valid = counts > 0
+    if int(np.count_nonzero(valid)) < 12:
+        raise ValueError("No hay suficientes bins CA validos; aumenta la ROI.")
+    centers = low + (np.arange(n_bins, dtype=np.float64) + 0.5) * bin_width
+    profiles = np.empty((n_bins, 3), dtype=np.float64)
+    flat = image[..., :3].reshape((-1, 3))
+    denom = np.maximum(1, counts).astype(np.float64)
+    for channel in range(3):
+        sums = np.bincount(bin_indices, weights=flat[:, channel], minlength=n_bins)
+        profiles[:, channel] = sums / denom
+    return centers[valid], profiles[valid, :3]
+
+
 def _regularize_esf(distances: np.ndarray, esf: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     d = np.asarray(distances, dtype=np.float64)
     y = np.asarray(esf, dtype=np.float64)
@@ -515,3 +816,13 @@ def _mtf_acutance(frequency: np.ndarray, mtf: np.ndarray) -> float:
 def _finite_list(values: np.ndarray) -> list[float]:
     arr = np.asarray(values, dtype=np.float64)
     return [float(v) for v in arr if np.isfinite(v)]
+
+
+def _finite_optional(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
