@@ -23,7 +23,9 @@ from probraw.raw.preview import (
     load_image_for_preview,
     normalize_tone_curve_points,
     preview_analysis_text,
+    render_adjustments_affine_u8,
     standard_profile_to_srgb_display,
+    standard_profile_to_srgb_u8_display,
     srgb_to_linear_display,
     tone_curve_lut,
 )
@@ -148,6 +150,44 @@ def test_apply_render_adjustments_uses_per_channel_tone_curves():
     assert float(out[..., 0].mean()) > float(img[..., 0].mean())
     assert np.allclose(out[..., 1], img[..., 1], atol=1e-6)
     assert float(out[..., 2].mean()) < float(img[..., 2].mean())
+
+
+def test_render_adjustments_affine_u8_matches_float_path():
+    image = np.linspace(0.0, 1.0, 48 * 64 * 3, dtype=np.float32).reshape((48, 64, 3))
+    kwargs = {
+        "temperature_kelvin": 6200.0,
+        "neutral_kelvin": 5003.0,
+        "tint": 8.0,
+        "brightness_ev": 0.35,
+        "black_point": 0.02,
+        "white_point": 0.94,
+        "contrast": 0.18,
+    }
+
+    fast = render_adjustments_affine_u8(image, **kwargs)
+    reference = np.round(np.clip(apply_render_adjustments(image, **kwargs), 0.0, 1.0) * 255.0).astype(np.uint8)
+
+    assert fast is not None
+    assert np.array_equal(fast, reference)
+
+
+def test_render_adjustments_affine_u8_rejects_non_affine_controls():
+    image = np.zeros((12, 16, 3), dtype=np.float32)
+
+    assert render_adjustments_affine_u8(image, brightness_ev=0.2, shadows=0.1) is None
+    assert render_adjustments_affine_u8(
+        image,
+        tone_curve_points=[(0.0, 0.0), (0.5, 0.6), (1.0, 1.0)],
+    ) is None
+
+
+def test_standard_profile_to_srgb_u8_matches_float_quantization():
+    image = np.linspace(0.0, 1.0, 32 * 40 * 3, dtype=np.float32).reshape((32, 40, 3))
+
+    expected = np.round(np.clip(standard_profile_to_srgb_display(image, "scene_linear_camera_rgb"), 0.0, 1.0) * 255).astype(np.uint8)
+    actual = standard_profile_to_srgb_u8_display(image, "scene_linear_camera_rgb")
+
+    assert np.array_equal(actual, expected)
 
 
 def test_apply_render_adjustments_uses_extended_tone_and_color_controls():

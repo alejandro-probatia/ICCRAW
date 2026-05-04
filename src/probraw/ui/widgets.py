@@ -210,6 +210,14 @@ if QtWidgets is not None:
             if emit:
                 self.pointsChanged.emit(self.points())
 
+        def cancel_interaction(self) -> None:
+            if self._drag_index is None:
+                return
+            self._drag_index = None
+            self._points = normalize_tone_curve_points(self._points)
+            self._channel_curves[self._active_channel] = list(self._points)
+            self.update()
+
         def set_active_channel(self, channel: str) -> None:
             key = str(channel or "luminance").strip().lower()
             if key not in {"luminance", "red", "green", "blue"}:
@@ -572,6 +580,11 @@ if QtWidgets is not None:
 
         def is_dragging(self) -> bool:
             return self._drag_index is not None
+
+        def changeEvent(self, event) -> None:  # noqa: N802
+            if event.type() == QtCore.QEvent.EnabledChange and not self.isEnabled():
+                self.cancel_interaction()
+            return super().changeEvent(event)
 
         def _plot_rect(self) -> QtCore.QRectF:
             available_w = max(20.0, float(self.width() - 24))
@@ -2274,14 +2287,15 @@ if QtWidgets is not None:
             background: str = IMAGE_PANEL_BACKGROUND,
         ) -> None:
             super().__init__()
-            self._base_pixmap: QtGui.QPixmap | None = None
+            self._base_pixmap: QtGui.QImage | QtGui.QPixmap | None = None
+            self._base_color_space = "device"
             self._image_size: tuple[int, int] | None = None
             self._overlay_points: list[tuple[float, float]] = []
             self._view_zoom = 1.0
             self._view_rotation = 0
             self._framed = bool(framed)
             self._background = str(background or IMAGE_PANEL_BACKGROUND)
-            self._clip_overlay_pixmap: QtGui.QPixmap | None = None
+            self._clip_overlay_pixmap: QtGui.QImage | QtGui.QPixmap | None = None
             self._clip_overlay_enabled = False
             self._roi_rect: tuple[float, float, float, float] | None = None
             self._roi_selection_enabled = False
@@ -2307,12 +2321,12 @@ if QtWidgets is not None:
                 "}"
             )
 
-        def set_rgb_float_image(self, image_rgb: np.ndarray) -> None:
+        def set_rgb_float_image(self, image_rgb: np.ndarray, *, color_space: str = "device") -> None:
             rgb = np.clip(image_rgb, 0.0, 1.0)
             u8 = np.clip(np.round(rgb * 255.0), 0, 255).astype(np.uint8)
-            self.set_rgb_u8_image(u8)
+            self.set_rgb_u8_image(u8, color_space=color_space)
 
-        def set_rgb_u8_image(self, image_rgb_u8: np.ndarray) -> None:
+        def set_rgb_u8_image(self, image_rgb_u8: np.ndarray, *, color_space: str = "device") -> None:
             u8 = np.ascontiguousarray(image_rgb_u8.astype(np.uint8))
             if u8.ndim == 2:
                 u8 = np.repeat(u8[..., None], 3, axis=2)
@@ -2322,9 +2336,66 @@ if QtWidgets is not None:
             h, w, _ = u8.shape
             self._image_size = (w, h)
             qimg = QtGui.QImage(u8.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
-            self._base_pixmap = QtGui.QPixmap.fromImage(qimg)
+            self._base_color_space = self._normalized_color_space(color_space)
+            self._tag_qimage_color_space(qimg, self._base_color_space)
+            self._base_pixmap = qimg
             self._clip_overlay_pixmap = None
             self._refresh_scaled_pixmap()
+
+        def update_rgb_u8_region(
+            self,
+            x: int,
+            y: int,
+            image_rgb_u8: np.ndarray,
+            *,
+            color_space: str | None = None,
+        ) -> None:
+            if self._base_pixmap is None or self._image_size is None:
+                self.set_rgb_u8_image(image_rgb_u8, color_space=color_space or "device")
+                return
+            if not isinstance(self._base_pixmap, QtGui.QImage):
+                self.set_rgb_u8_image(image_rgb_u8, color_space=color_space or "device")
+                return
+            u8 = np.ascontiguousarray(np.asarray(image_rgb_u8, dtype=np.uint8))
+            if u8.ndim == 2:
+                u8 = np.repeat(u8[..., None], 3, axis=2)
+            if u8.ndim != 3 or u8.shape[2] < 3:
+                raise RuntimeError(f"Region RGB inesperada para visor: shape={u8.shape}")
+            u8 = np.ascontiguousarray(u8[..., :3])
+            image_w, image_h = self._image_size
+            x0 = int(np.clip(int(x), 0, image_w))
+            y0 = int(np.clip(int(y), 0, image_h))
+            if x0 >= image_w or y0 >= image_h:
+                return
+            h, w, _ = u8.shape
+            w = min(int(w), image_w - x0)
+            h = min(int(h), image_h - y0)
+            if w <= 0 or h <= 0:
+                return
+            qimg = QtGui.QImage(u8[:h, :w].data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
+            patch_color_space = self._normalized_color_space(color_space or self._base_color_space)
+            self._tag_qimage_color_space(qimg, patch_color_space)
+            painter = QtGui.QPainter(self._base_pixmap)
+            painter.drawImage(QtCore.QPoint(int(x0), int(y0)), qimg)
+            painter.end()
+            self.update()
+
+        @staticmethod
+        def _normalized_color_space(color_space: str | None) -> str:
+            value = str(color_space or "device").strip().lower()
+            return "srgb" if value == "srgb" else "device"
+
+        @staticmethod
+        def _tag_qimage_color_space(qimg: QtGui.QImage, color_space: str) -> None:
+            if color_space != "srgb":
+                return
+            try:
+                qimg.setColorSpace(QtGui.QColorSpace(QtGui.QColorSpace.NamedColorSpace.SRgb))
+            except Exception:
+                try:
+                    qimg.setColorSpace(QtGui.QColorSpace(QtGui.QColorSpace.SRgb))
+                except Exception:
+                    pass
 
         def image_size(self) -> tuple[int, int] | None:
             return self._image_size
@@ -2379,13 +2450,52 @@ if QtWidgets is not None:
                 self._refresh_scaled_pixmap()
                 return
             qimg = QtGui.QImage(classes.data, w, h, w, QtGui.QImage.Format_Indexed8).copy()
+            self._set_clip_overlay_color_table(qimg)
+            self._clip_overlay_pixmap = qimg
+            self._refresh_scaled_pixmap()
+
+        def update_clip_overlay_classes_region(self, x: int, y: int, classes_u8: np.ndarray | None) -> None:
+            if classes_u8 is None or self._image_size is None:
+                return
+            classes = np.ascontiguousarray(np.asarray(classes_u8, dtype=np.uint8))
+            if classes.ndim != 2:
+                return
+            image_w, image_h = self._image_size
+            x0 = int(np.clip(int(x), 0, image_w))
+            y0 = int(np.clip(int(y), 0, image_h))
+            if x0 >= image_w or y0 >= image_h:
+                return
+            h, w = int(classes.shape[0]), int(classes.shape[1])
+            w = min(w, image_w - x0)
+            h = min(h, image_h - y0)
+            if w <= 0 or h <= 0:
+                return
+
+            if (
+                not isinstance(self._clip_overlay_pixmap, QtGui.QImage)
+                or int(self._clip_overlay_pixmap.width()) != image_w
+                or int(self._clip_overlay_pixmap.height()) != image_h
+                or self._clip_overlay_pixmap.format() != QtGui.QImage.Format_Indexed8
+            ):
+                base = QtGui.QImage(image_w, image_h, QtGui.QImage.Format_Indexed8)
+                self._set_clip_overlay_color_table(base)
+                base.fill(0)
+                self._clip_overlay_pixmap = base
+
+            overlay = self._clip_overlay_pixmap
+            bpl = int(overlay.bytesPerLine())
+            bits = overlay.bits()
+            overlay_view = np.ndarray((image_h, bpl), dtype=np.uint8, buffer=bits)
+            overlay_view[y0 : y0 + h, x0 : x0 + w] = classes[:h, :w]
+            self.update()
+
+        @staticmethod
+        def _set_clip_overlay_color_table(qimg: QtGui.QImage) -> None:
             qimg.setColorCount(4)
             qimg.setColor(0, QtGui.qRgba(0, 0, 0, 0))
             qimg.setColor(1, QtGui.qRgba(44, 156, 255, 110))
             qimg.setColor(2, QtGui.qRgba(255, 68, 68, 120))
             qimg.setColor(3, QtGui.qRgba(196, 65, 255, 140))
-            self._clip_overlay_pixmap = QtGui.QPixmap.fromImage(qimg)
-            self._refresh_scaled_pixmap()
 
         def set_view_transform(self, *, zoom: float, rotation: int) -> None:
             anchor_widget = QtCore.QPointF(float(self.width()) / 2.0, float(self.height()) / 2.0)
@@ -2415,6 +2525,29 @@ if QtWidgets is not None:
         def view_zoom_for_display_scale(self, scale: float) -> float:
             fit = self._display_fit_scale()
             return float(np.clip(float(scale) / max(1e-6, fit), 0.05, 64.0))
+
+        def visible_image_rect(self, *, margin: int = 0) -> tuple[int, int, int, int] | None:
+            if self._base_pixmap is None or self._image_size is None:
+                return None
+            if int(self._view_rotation) % 360 != 0:
+                return None
+            geometry = self._display_geometry()
+            if geometry is None:
+                return None
+            _pixmap, rect, scale, _transform, _bounds = geometry
+            visible = rect.intersected(QtCore.QRectF(self.rect()))
+            if visible.isEmpty():
+                return None
+            image_w, image_h = self._image_size
+            scale = max(float(scale), 1e-6)
+            pad = max(0, int(margin))
+            x0 = max(0, int(np.floor((visible.left() - rect.left()) / scale)) - pad)
+            y0 = max(0, int(np.floor((visible.top() - rect.top()) / scale)) - pad)
+            x1 = min(int(image_w), int(np.ceil((visible.right() - rect.left()) / scale)) + pad)
+            y1 = min(int(image_h), int(np.ceil((visible.bottom() - rect.top()) / scale)) + pad)
+            if x1 <= x0 or y1 <= y0:
+                return None
+            return x0, y0, x1 - x0, y1 - y0
 
         def mousePressEvent(self, event) -> None:  # noqa: N802
             if event.button() == QtCore.Qt.LeftButton and self._base_pixmap is not None and self._space_pan_active:
@@ -2483,6 +2616,8 @@ if QtWidgets is not None:
                 mapped = self._map_widget_to_image(event.position())
                 if mapped is not None and not self._drag_moved:
                     self.imageClicked.emit(float(mapped[0]), float(mapped[1]))
+                elif self._drag_moved:
+                    self.viewTransformChanged.emit(float(self._view_zoom), int(self._view_rotation))
                 self._drag_start = None
                 self._drag_last = None
                 self._drag_moved = False
@@ -2514,9 +2649,15 @@ if QtWidgets is not None:
             painter = QtGui.QPainter(self)
             painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, not pixel_exact)
             painter.fillRect(self.rect(), QtGui.QColor(self._background))
-            painter.drawPixmap(rect, pixmap, QtCore.QRectF(pixmap.rect()))
+            if isinstance(pixmap, QtGui.QImage):
+                painter.drawImage(rect, pixmap, QtCore.QRectF(pixmap.rect()))
+            else:
+                painter.drawPixmap(rect, pixmap, QtCore.QRectF(pixmap.rect()))
             if self._clip_overlay_enabled and self._clip_overlay_pixmap is not None:
-                painter.drawPixmap(rect, self._clip_overlay_pixmap, QtCore.QRectF(self._clip_overlay_pixmap.rect()))
+                if isinstance(self._clip_overlay_pixmap, QtGui.QImage):
+                    painter.drawImage(rect, self._clip_overlay_pixmap, QtCore.QRectF(self._clip_overlay_pixmap.rect()))
+                else:
+                    painter.drawPixmap(rect, self._clip_overlay_pixmap, QtCore.QRectF(self._clip_overlay_pixmap.rect()))
             if self._pixel_grid_visible(scale):
                 self._draw_pixel_grid(painter, rect, scale)
 

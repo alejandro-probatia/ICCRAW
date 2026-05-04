@@ -20,6 +20,46 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 - Sin cambios pendientes.
 
+## [0.3.10] - 2026-05-04
+
+### Added
+
+- La preview con gestion ICC mantiene una cache densa de LUT RGB de 8 bits por
+  par `perfil de imagen -> perfil de monitor`, generada con LittleCMS y
+  persistida en disco, para acelerar renders visibles repetidos sin cambiar el
+  resultado colorimetrico.
+- El benchmark GUI mide ahora interacciones reales a 100%, overlay de clipping,
+  gestion ICC de monitor, tamano de ventana y receta efectiva colorimetrica.
+
+### Changed
+
+- La ruta de preview obliga a que toda imagen tenga perfil de entrada: ICC de
+  sesion/imagen cuando existe, o perfil generico real ProPhoto/sRGB/Adobe RGB
+  cuando no hay ICC especifico.
+- Los ajustes interactivos actualizan solo el recorte visible a 100% cuando es
+  posible, reutilizan QImage por regiones y evitan recalcular la imagen completa
+  para sliders, curvas e indicadores de clipping.
+- Las curvas tonales reutilizan LUTs normalizadas y comparten la cuantizacion RGB
+  previa a las conversiones ICC necesarias para pantalla e instrumentos.
+- La seleccion automatica de workers interactivos tiene en cuenta CPU, RAM y
+  mediciones locales para aprovechar estaciones de trabajo sin bloquear la GUI.
+- El zoom 1:1 queda sincronizado con pixeles reales, pero ya no fuerza volver a
+  100% cuando el usuario amplia por encima de esa escala.
+
+### Fixed
+
+- La preview perfilada deja de pasar por rutas estandar sRGB cuando existe un
+  perfil de entrada; la conversion visible es directa `ICC fuente -> ICC monitor`.
+- Los botones de cache distinguen entre cachear la imagen seleccionada a 1:1 y
+  cachear el directorio visible, evitando procesar siempre todas las imagenes.
+- El histograma y el overlay de clipping se actualizan desde la senal
+  colorimetrica correcta, sin mezclar la conversion de monitor ni buffers `uint8`
+  sin normalizar.
+- Los ajustes de color/contraste ya no disparan recalculos MTF innecesarios; la
+  nitidez mantiene su ruta de analisis a resolucion real cuando se analiza.
+- La carga y cambio de imagen invalidan correctamente el perfil fuente asociado
+  a la preview cacheada para no reutilizar estado ICC obsoleto.
+
 ## [0.3.9] - 2026-05-03
 
 ### Added

@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 from PIL import ImageCms
 
+import probraw.display_color as display_color_module
 from probraw.display_color import (
     _colord_display_device_candidates,
     _parse_colord_profile_filename,
@@ -10,6 +11,7 @@ from probraw.display_color import (
     display_profile_label,
     profiled_float_to_display_u8,
     profiled_u8_to_display_u8,
+    rgb_float_to_u8,
     srgb_float_to_u8,
     srgb_to_display_u8,
     srgb_u8_to_display_u8,
@@ -23,6 +25,12 @@ def test_srgb_float_to_u8_clamps_and_quantizes():
 
     assert out.dtype == np.uint8
     assert out.tolist() == [[[0, 128, 255]]]
+
+
+def test_rgb_float_to_u8_matches_legacy_srgb_quantization():
+    image = np.asarray([[[0.0, 0.25, 1.0], [0.5, -0.2, 1.2]]], dtype=np.float32)
+
+    assert np.array_equal(rgb_float_to_u8(image), srgb_float_to_u8(image))
 
 
 def test_srgb_to_display_u8_without_monitor_profile_is_srgb():
@@ -45,6 +53,34 @@ def test_srgb_to_display_u8_with_srgb_monitor_profile_is_stable(tmp_path: Path):
     assert out.shape == rgb.shape
     assert np.max(np.abs(out.astype(np.int16) - rgb.astype(np.int16))) <= 1
     assert display_profile_label(profile)
+
+
+def test_srgb_to_display_u8_uses_dense_lut_when_available(tmp_path: Path, monkeypatch):
+    profile = tmp_path / "monitor_srgb.icc"
+    profile.write_bytes(ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes())
+    rgb = np.asarray([[[12, 128, 240], [255, 64, 0]]], dtype=np.uint8)
+    expected = np.asarray([[[13, 129, 241], [254, 63, 1]]], dtype=np.uint8)
+    sentinel = object()
+    calls: dict[str, object] = {}
+
+    def fake_lut(monitor_profile, rgb_u8):
+        calls["profile"] = monitor_profile
+        calls["rgb"] = rgb_u8.copy()
+        return sentinel
+
+    def fake_apply(rgb_u8, lut):
+        calls["lut"] = lut
+        assert np.array_equal(rgb_u8, rgb)
+        return expected
+
+    monkeypatch.setattr(display_color_module, "_srgb_to_display_dense_lut_for_image", fake_lut)
+    monkeypatch.setattr(display_color_module, "_apply_dense_u8_lut", fake_apply)
+
+    out = srgb_u8_to_display_u8(rgb, profile)
+
+    assert out is expected
+    assert calls["profile"] == profile
+    assert calls["lut"] is sentinel
 
 
 def test_profiled_display_direct_srgb_to_srgb_is_stable(tmp_path: Path):

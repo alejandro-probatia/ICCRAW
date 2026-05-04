@@ -45,7 +45,10 @@ from ...core.utils import RAW_EXTENSIONS, read_image as _read_image, versioned_o
 from ...display_color import (
     detect_system_display_profile as _detect_system_display_profile,
     display_profile_label,
+    prewarm_profiled_display_lut,
     profiled_float_to_display_u8,
+    profiled_u8_to_display_u8,
+    rgb_float_to_u8,
     srgb_to_display_u8,
     srgb_u8_to_display_u8,
 )
@@ -88,7 +91,9 @@ from ...raw.preview import (
     load_image_for_preview as _load_image_for_preview,
     normalize_tone_curve_points,
     preview_analysis_text,
+    render_adjustments_affine_u8,
     standard_profile_to_srgb_display,
+    standard_profile_to_srgb_u8_display,
 )
 from ...reporting import check_amaze_backend, check_external_tools
 from ...session import create_session, ensure_session_structure, load_session, save_session, session_file_path

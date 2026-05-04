@@ -217,8 +217,8 @@ class SessionStateMixin:
             "preview_apply_profile": active_profile_valid,
             "batch_embed_profile": True,
             "batch_apply_adjustments": bool(self.batch_apply_adjustments.isChecked()),
-            "fast_raw_preview": True,
-            "preview_max_side": int(self.spin_preview_max_side.value()),
+            "fast_raw_preview": False,
+            "preview_max_side": 0,
             "adjustments": self._detail_adjustment_state(),
             "render_adjustments": self._render_adjustment_state(),
             "recipe": asdict(self._build_effective_recipe()),
@@ -329,8 +329,8 @@ class SessionStateMixin:
             "preview_apply_profile": False,
             "batch_embed_profile": True,
             "batch_apply_adjustments": True,
-            "fast_raw_preview": True,
-            "preview_max_side": int(self.spin_preview_max_side.value()),
+            "fast_raw_preview": False,
+            "preview_max_side": 0,
             "adjustments": self._default_detail_adjustment_state(),
             "render_adjustments": self._default_render_adjustment_state(),
             "recipe": asdict(Recipe()),
@@ -482,7 +482,7 @@ class SessionStateMixin:
         self.batch_apply_adjustments.setChecked(bool(state.get("batch_apply_adjustments", self.batch_apply_adjustments.isChecked())))
 
         try:
-            self.spin_preview_max_side.setValue(int(state.get("preview_max_side", self.spin_preview_max_side.value())))
+            self.spin_preview_max_side.setValue(0)
         except Exception:
             pass
 

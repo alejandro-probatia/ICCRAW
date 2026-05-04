@@ -14,6 +14,7 @@ class PreviewMenuMixin:
         selected = self._selected_file
         if selected is not None and selected.suffix.lower() in RAW_EXTENSIONS:
             self._last_loaded_preview_key = None
+            self._loaded_preview_source_profile_path = None
             self._on_load_selected(show_message=False)
             return
         if self._original_linear is not None:

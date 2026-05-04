@@ -4,7 +4,7 @@ _English version: [COLOR_PIPELINE.md](COLOR_PIPELINE.md)_
 
 ## Estado Operativo
 
-ProbRAW 0.3.7 implementa el flujo ICC principal y la interfaz de trabajo por
+ProbRAW 0.3.10 implementa el flujo ICC principal y la interfaz de trabajo por
 sesión. La aplicación es apta para pruebas controladas y validación de release,
 pero todavía no debe presentarse como sistema certificado de producción
 científica/forense.
@@ -82,6 +82,9 @@ registrados como perfiles de sesión activables.
     colorimétrica de preview antes de aplicar el ICC del monitor.
 12. El diagnóstico Gamut 3D es una comparación visual de perfiles; no modifica
     recetas, píxeles, perfiles activos ni manifiestos.
+13. Ninguna preview ni imagen gestionada por la GUI puede quedar sin perfil de
+    entrada: debe existir un ICC de sesion/imagen o un perfil generico estandar
+    real que de significado colorimetrico a los valores RGB.
 
 ## Gestión de Color del Monitor
 
@@ -94,8 +97,9 @@ Detección:
 - macOS: ColorSync.
 - Linux/BSD: `colord`, `colormgr` o `_ICC_PROFILE`.
 
-Si el perfil desaparece o no puede abrirse, ProbRAW registra el problema y usa
-sRGB como fallback visual.
+Si el perfil de monitor desaparece o no puede abrirse, ProbRAW registra el
+problema y solo puede usar sRGB como supuesto de monitor. Ese fallback no elimina
+ni sustituye el perfil de entrada de la imagen.
 
 ## Previsualización e Histograma
 
@@ -107,8 +111,9 @@ La GUI distingue entre señal de análisis y señal de pantalla:
 2. Los ajustes paramétricos se aplican antes de la conversión de salida.
 3. Si hay un ICC fuente activo, los pixeles que llegan al widget se convierten
    directamente desde ese ICC fuente al ICC del monitor configurado.
-4. La senal sRGB interna queda limitada a histograma RGB, overlay de clipping,
-   diagnostico y fallback si la CMM no puede abrir algun perfil.
+4. La senal sRGB interna queda limitada a histograma RGB, overlay de clipping y
+   diagnostico; no sustituye la conversion directa al monitor cuando hay ICC
+   fuente.
 5. El ICC del monitor nunca se mezcla con los datos de analisis, recetas ni
    TIFF exportados.
 
@@ -123,8 +128,11 @@ Para evitar aplicar ICC sobre una preview embebida que no corresponde al RAW
 revelado, las vistas con ICC de sesion o perfil generico evitan la miniatura
 embebida y usan revelado LibRaw. La preview normal se mantiene acotada por
 `PREVIEW_AUTO_BASE_MAX_SIDE`; solo precision 1:1, comparar y marcado de carta
-fuerzan resolucion completa. Las interacciones de curva usan una fuente reducida
-cacheada y la preview final pesada se ejecuta en worker asincrono.
+fuerzan resolucion completa. En trabajo a 100%, las interacciones aplican los
+ajustes al recorte visible, actualizan regiones del visor y reutilizan caches de
+LUT ICC densas generadas por LittleCMS para no sacrificar precision
+colorimetrica. Las curvas reutilizan LUTs tonales y comparten la cuantizacion
+RGB previa a las conversiones `ICC fuente -> ICC monitor` e instrumentos.
 
 ## Validez del Perfil
 

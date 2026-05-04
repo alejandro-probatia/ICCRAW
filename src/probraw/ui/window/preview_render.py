@@ -4,41 +4,21 @@ from ._imports import *  # noqa: F401,F403
 
 
 class PreviewRenderMixin:
+    def _mark_preview_control_interaction(self, *, duration_ms: int = 900) -> None:
+        self._preview_recent_interaction_until = max(
+            float(getattr(self, "_preview_recent_interaction_until", 0.0) or 0.0),
+            time.perf_counter() + max(1, int(duration_ms)) / 1000.0,
+        )
+
+    def _recent_preview_control_interaction_active(self) -> bool:
+        return time.perf_counter() < float(getattr(self, "_preview_recent_interaction_until", 0.0) or 0.0)
+
     def _on_slider_change(self) -> None:
         if (
             int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0) > 0
             or int(getattr(self, "_suspend_detail_adjustment_autosave", 0) or 0) > 0
         ):
             return
-        if self._original_linear is not None:
-            self._schedule_preview_refresh()
-        sender = self.sender()
-        detail_sliders = (
-            getattr(self, "slider_sharpen", None),
-            getattr(self, "slider_radius", None),
-            getattr(self, "slider_noise_luma", None),
-            getattr(self, "slider_noise_color", None),
-            getattr(self, "slider_ca_red", None),
-            getattr(self, "slider_ca_blue", None),
-        )
-        if sender in detail_sliders:
-            if hasattr(self, "_set_active_named_adjustment_profile_id"):
-                self._set_active_named_adjustment_profile_id("detail", "")
-            if hasattr(self, "_refresh_named_adjustment_profile_combo"):
-                self._refresh_named_adjustment_profile_combo("detail")
-            if hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
-                self._schedule_detail_adjustment_sidecar_persist()
-        if hasattr(self, "_schedule_mtf_refresh"):
-            self._schedule_mtf_refresh(interactive=self._is_preview_interaction_active())
-
-    def _on_slider_release(self) -> None:
-        if (
-            int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0) > 0
-            or int(getattr(self, "_suspend_detail_adjustment_autosave", 0) or 0) > 0
-        ):
-            return
-        if self._original_linear is not None:
-            self._schedule_preview_refresh()
         sender = self.sender()
         render_sliders = (
             getattr(self, "slider_brightness", None),
@@ -71,6 +51,67 @@ class PreviewRenderMixin:
             getattr(self, "slider_ca_red", None),
             getattr(self, "slider_ca_blue", None),
         )
+        if self._original_linear is not None:
+            if sender in detail_sliders and not bool(getattr(sender, "isSliderDown", lambda: False)()):
+                self._preview_recent_interaction_until = 0.0
+            elif sender in render_sliders or sender is None:
+                self._mark_preview_control_interaction(duration_ms=900)
+            self._schedule_preview_refresh()
+        if sender in detail_sliders:
+            if hasattr(self, "_set_active_named_adjustment_profile_id"):
+                self._set_active_named_adjustment_profile_id("detail", "")
+            if hasattr(self, "_refresh_named_adjustment_profile_combo"):
+                self._refresh_named_adjustment_profile_combo("detail")
+            if hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
+                self._schedule_detail_adjustment_sidecar_persist()
+        if hasattr(self, "_schedule_mtf_refresh"):
+            self._schedule_mtf_refresh(interactive=self._is_preview_interaction_active())
+
+    def _on_slider_release(self) -> None:
+        if (
+            int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0) > 0
+            or int(getattr(self, "_suspend_detail_adjustment_autosave", 0) or 0) > 0
+        ):
+            return
+        sender = self.sender()
+        render_sliders = (
+            getattr(self, "slider_brightness", None),
+            getattr(self, "slider_black_point", None),
+            getattr(self, "slider_white_point", None),
+            getattr(self, "slider_contrast", None),
+            getattr(self, "slider_highlights", None),
+            getattr(self, "slider_shadows", None),
+            getattr(self, "slider_whites", None),
+            getattr(self, "slider_blacks", None),
+            getattr(self, "slider_midtone", None),
+            getattr(self, "slider_vibrance", None),
+            getattr(self, "slider_saturation", None),
+            getattr(self, "slider_grade_midtones_hue", None),
+            getattr(self, "slider_grade_midtones_sat", None),
+            getattr(self, "slider_grade_shadows_hue", None),
+            getattr(self, "slider_grade_shadows_sat", None),
+            getattr(self, "slider_grade_highlights_hue", None),
+            getattr(self, "slider_grade_highlights_sat", None),
+            getattr(self, "slider_grade_blending", None),
+            getattr(self, "slider_grade_balance", None),
+            getattr(self, "slider_tone_curve_black", None),
+            getattr(self, "slider_tone_curve_white", None),
+        )
+        detail_sliders = (
+            getattr(self, "slider_sharpen", None),
+            getattr(self, "slider_radius", None),
+            getattr(self, "slider_noise_luma", None),
+            getattr(self, "slider_noise_color", None),
+            getattr(self, "slider_ca_red", None),
+            getattr(self, "slider_ca_blue", None),
+        )
+        if self._original_linear is not None:
+            if sender in render_sliders:
+                self._mark_preview_control_interaction(duration_ms=250)
+                self._schedule_preview_refresh()
+                self._schedule_deferred_final_preview_refresh()
+            else:
+                self._schedule_preview_refresh()
         if sender in render_sliders and hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
             self._schedule_render_adjustment_sidecar_persist(immediate=True)
         if sender in detail_sliders and hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
@@ -78,7 +119,7 @@ class PreviewRenderMixin:
         if hasattr(self, "_schedule_mtf_refresh"):
             self._schedule_mtf_refresh(interactive=False)
 
-    def _is_preview_interaction_active(self) -> bool:
+    def _is_direct_preview_interaction_active(self) -> bool:
         slider_names = (
             "slider_sharpen",
             "slider_radius",
@@ -115,6 +156,9 @@ class PreviewRenderMixin:
         editor = getattr(self, "tone_curve_editor", None)
         return bool(editor is not None and editor.is_dragging())
 
+    def _is_preview_interaction_active(self) -> bool:
+        return self._is_direct_preview_interaction_active() or self._recent_preview_control_interaction_active()
+
     def _is_detail_interaction_active(self) -> bool:
         detail_slider_names = (
             "slider_sharpen",
@@ -134,48 +178,9 @@ class PreviewRenderMixin:
         self,
         image: np.ndarray,
         *,
-        max_side_limit: int = PREVIEW_INTERACTIVE_MAX_SIDE,
+        max_side_limit: int = 0,
     ) -> np.ndarray:
-        rgb = np.asarray(image, dtype=np.float32)
-        if max_side_limit <= 0:
-            return rgb
-        cache_key = (
-            id(image),
-            tuple(int(v) for v in rgb.shape),
-            str(rgb.dtype),
-            int(max_side_limit),
-        )
-        if (
-            getattr(self, "_interactive_source_cache_key", None) == cache_key
-            and getattr(self, "_interactive_source_cache_image", None) is not None
-        ):
-            return self._interactive_source_cache_image
-        cache_images = getattr(self, "_interactive_source_cache_images", None)
-        if isinstance(cache_images, dict):
-            cached = cache_images.get(cache_key)
-            if cached is not None:
-                self._interactive_source_cache_key = cache_key
-                self._interactive_source_cache_image = cached
-                return cached
-        h, w = int(rgb.shape[0]), int(rgb.shape[1])
-        max_side = max(h, w)
-        if max_side <= int(max_side_limit):
-            return rgb
-        scale = float(max_side_limit) / float(max_side)
-        nw = max(1, int(round(w * scale)))
-        nh = max(1, int(round(h * scale)))
-        resized = np.clip(
-            cv2.resize(rgb, (nw, nh), interpolation=cv2.INTER_AREA),
-            0.0,
-            1.0,
-        ).astype(np.float32)
-        self._interactive_source_cache_key = cache_key
-        self._interactive_source_cache_image = resized
-        if isinstance(cache_images, dict):
-            cache_images[cache_key] = resized
-            while len(cache_images) > 4:
-                cache_images.pop(next(iter(cache_images)))
-        return resized
+        return np.asarray(image, dtype=np.float32)
 
     def _profile_preview_profile_stamp(self, profile_path: Path) -> str:
         try:
@@ -264,22 +269,10 @@ class PreviewRenderMixin:
         )
 
     def _profile_preview_max_side_limit(self) -> int:
-        scale = self._viewer_display_scale()
-        if (
-            bool(getattr(self, "_viewer_full_detail_requested", False))
-            or (scale is not None and float(scale) >= 0.98)
-        ):
-            return 0
-        return int(PREVIEW_PROFILE_APPLY_MAX_SIDE)
+        return 0
 
     def _final_adjustment_preview_max_side(self) -> int:
-        effective = int(self._effective_preview_max_side())
-        if effective <= 0 or bool(getattr(self, "_viewer_full_detail_requested", False)):
-            return effective
-        compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
-        if compare_enabled or bool(getattr(self, "_manual_chart_marking_after_reload", False)):
-            return effective
-        return int(min(effective, PREVIEW_FINAL_ADJUSTMENT_MAX_SIDE))
+        return 0
 
     def _interactive_preview_timeout_ms(self, *, source_linear: np.ndarray, max_side_limit: int) -> int:
         try:
@@ -291,6 +284,344 @@ class PreviewRenderMixin:
         if pixels > 8_000_000:
             return 30_000
         return int(PREVIEW_INTERACTIVE_STUCK_TIMEOUT_MS)
+
+    def _detail_kwargs_have_effect(self, detail_kwargs: dict[str, float]) -> bool:
+        return any(
+            abs(float(detail_kwargs.get(name, default)) - float(default)) > 1e-6
+            for name, default in (
+                ("denoise_luminance", 0.0),
+                ("denoise_color", 0.0),
+                ("sharpen_amount", 0.0),
+                ("lateral_ca_red_scale", 1.0),
+                ("lateral_ca_blue_scale", 1.0),
+            )
+        ) or abs(float(detail_kwargs.get("sharpen_radius", 1.0)) - 1.0) > 1e-6
+
+    def _apply_render_adjustments_tiled(
+        self,
+        source: np.ndarray,
+        render_kwargs: dict[str, Any],
+        *,
+        target_tile_pixels: int = 1_200_000,
+    ) -> np.ndarray:
+        rgb = np.asarray(source, dtype=np.float32)
+        h, w = int(rgb.shape[0]), int(rgb.shape[1])
+        if h <= 0 or w <= 0:
+            return apply_render_adjustments(rgb, **render_kwargs)
+        pixels = h * w
+        if pixels <= int(target_tile_pixels):
+            return apply_render_adjustments(rgb, **render_kwargs)
+
+        rows = max(32, min(h, int(target_tile_pixels) // max(1, w)))
+        out = np.empty_like(rgb, dtype=np.float32)
+        for y0 in range(0, h, rows):
+            y1 = min(h, y0 + rows)
+            out[y0:y1] = apply_render_adjustments(rgb[y0:y1], **render_kwargs)
+            time.sleep(0)
+        return out
+
+    def _row_tile_slices(self, image: np.ndarray, *, target_tile_pixels: int = 1_200_000):
+        h, w = int(image.shape[0]), int(image.shape[1])
+        if h <= 0 or w <= 0:
+            return
+        rows = max(32, min(h, int(target_tile_pixels) // max(1, w)))
+        for y0 in range(0, h, rows):
+            yield y0, min(h, y0 + rows)
+
+    def _standard_profile_to_srgb_display_tiled(self, image_rgb: np.ndarray, output_space: str) -> np.ndarray:
+        rgb = np.asarray(image_rgb, dtype=np.float32)
+        if int(rgb.shape[0]) * int(rgb.shape[1]) <= 1_200_000:
+            return standard_profile_to_srgb_display(rgb, output_space)
+        out = np.empty_like(rgb, dtype=np.float32)
+        for y0, y1 in self._row_tile_slices(rgb):
+            out[y0:y1] = standard_profile_to_srgb_display(rgb[y0:y1], output_space)
+            time.sleep(0)
+        return out
+
+    def _srgb_to_display_u8_tiled(self, image_srgb: np.ndarray, monitor_profile: Path | None) -> np.ndarray:
+        srgb = np.asarray(image_srgb, dtype=np.float32)
+        if int(srgb.shape[0]) * int(srgb.shape[1]) <= 1_200_000:
+            return srgb_to_display_u8(srgb, monitor_profile)
+        out = np.empty(srgb.shape[:2] + (3,), dtype=np.uint8)
+        for y0, y1 in self._row_tile_slices(srgb):
+            out[y0:y1] = srgb_to_display_u8(srgb[y0:y1], monitor_profile)
+            time.sleep(0)
+        return out
+
+    def _profiled_float_to_display_u8_tiled(
+        self,
+        image_rgb: np.ndarray,
+        source_profile: Path,
+        monitor_profile: Path | None,
+    ) -> np.ndarray:
+        rgb = np.asarray(image_rgb, dtype=np.float32)
+        if int(rgb.shape[0]) * int(rgb.shape[1]) <= 1_200_000:
+            return profiled_float_to_display_u8(rgb, source_profile, monitor_profile)
+        out = np.empty(rgb.shape[:2] + (3,), dtype=np.uint8)
+        for y0, y1 in self._row_tile_slices(rgb):
+            out[y0:y1] = profiled_float_to_display_u8(rgb[y0:y1], source_profile, monitor_profile)
+            time.sleep(0)
+        return out
+
+    def _interactive_preview_worker_count(self, pixels: int) -> int:
+        px = max(0, int(pixels))
+        if px < int(PREVIEW_INTERACTIVE_PARALLEL_MIN_PIXELS):
+            return 1
+        override = self._interactive_preview_worker_override()
+        if override is not None:
+            return override
+        candidates = self._interactive_preview_worker_candidates(px)
+        if not candidates:
+            return 1
+        bucket = self._interactive_worker_perf_bucket(px)
+        perf = getattr(self, "_interactive_worker_perf", {}).get(bucket, {})
+        for candidate in candidates[:2]:
+            if candidate not in perf:
+                return int(candidate)
+        return int(min(candidates, key=lambda item: float(perf.get(item, float("inf")))))
+
+    def _interactive_preview_worker_override(self) -> int | None:
+        settings_value = None
+        if hasattr(self, "_settings"):
+            try:
+                settings_value = self._settings.value("performance/interactive_render_workers", None)
+            except Exception:
+                settings_value = None
+        raw = os.environ.get("PROBRAW_INTERACTIVE_RENDER_WORKERS", "").strip()
+        for candidate in (raw, settings_value):
+            if candidate is None or str(candidate).strip() == "":
+                continue
+            try:
+                configured = int(candidate)
+            except Exception:
+                configured = 0
+            if configured > 0:
+                return max(1, min(16, configured))
+        return None
+
+    def _interactive_preview_worker_candidates(self, pixels: int) -> list[int]:
+        cap = self._interactive_preview_worker_hardware_cap(int(pixels))
+        if cap <= 1:
+            return [1]
+        px = max(0, int(pixels))
+        if px >= 2_800_000:
+            raw = [8, 6, 10, 4, 12]
+        elif px >= 800_000:
+            raw = [4, 6, 8, 2, 10]
+        elif px >= 250_000:
+            raw = [4, 6, 2, 8]
+        else:
+            raw = [2, 4]
+        return [
+            value
+            for value in dict.fromkeys(max(1, int(v)) for v in raw)
+            if 1 < value <= int(cap)
+        ]
+
+    def _interactive_preview_worker_hardware_cap(self, pixels: int) -> int:
+        px = max(0, int(pixels))
+        if px < int(PREVIEW_INTERACTIVE_PARALLEL_MIN_PIXELS):
+            return 1
+        cpu_count = os.cpu_count() or 1
+        if cpu_count <= 2:
+            return 1
+        total = self._system_total_memory_bytes() if hasattr(self, "_system_total_memory_bytes") else None
+        available = self._system_available_memory_bytes() if hasattr(self, "_system_available_memory_bytes") else None
+        gib = 1024 * 1024 * 1024
+        if available is not None and int(available) < 2 * gib:
+            memory_cap = 2
+        elif total is not None and int(total) >= 96 * gib:
+            memory_cap = 12
+        elif total is not None and int(total) >= 48 * gib:
+            memory_cap = 10
+        elif total is not None and int(total) >= 24 * gib:
+            memory_cap = 8
+        else:
+            memory_cap = 6
+        if px >= 1_200_000:
+            pixel_cap = 12
+        elif px >= 800_000:
+            pixel_cap = 10
+        elif px >= 500_000:
+            pixel_cap = 8
+        elif px >= 250_000:
+            pixel_cap = 6
+        else:
+            pixel_cap = 4
+        return max(1, min(int(cpu_count) - 1, int(memory_cap), int(pixel_cap), 16))
+
+    @staticmethod
+    def _interactive_worker_perf_bucket(pixels: int) -> int:
+        px = max(0, int(pixels))
+        if px < 250_000:
+            return 250_000
+        if px < 500_000:
+            return 500_000
+        if px < 800_000:
+            return 800_000
+        if px < 1_200_000:
+            return 1_200_000
+        if px < 2_500_000:
+            return 2_500_000
+        if px < 5_000_000:
+            return 5_000_000
+        return 8_000_000
+
+    def _record_interactive_worker_performance(self, pixels: int, workers: int, elapsed_ms: float) -> None:
+        worker_count = int(workers)
+        elapsed = float(elapsed_ms)
+        if worker_count <= 1 or not np.isfinite(elapsed) or elapsed <= 0.0:
+            return
+        bucket = self._interactive_worker_perf_bucket(int(pixels))
+        perf = getattr(self, "_interactive_worker_perf", None)
+        if not isinstance(perf, dict):
+            perf = {}
+            self._interactive_worker_perf = perf
+        bucket_perf = perf.setdefault(bucket, {})
+        previous = bucket_perf.get(worker_count)
+        bucket_perf[worker_count] = elapsed if previous is None else float(previous) * 0.72 + elapsed * 0.28
+
+    def _interactive_parallel_row_ranges(self, height: int, workers: int) -> list[tuple[int, int]]:
+        h = max(0, int(height))
+        count = max(1, int(workers))
+        if h <= 0:
+            return []
+        rows = max(32, int(np.ceil(float(h) / float(count))))
+        return [(y0, min(h, y0 + rows)) for y0 in range(0, h, rows)]
+
+    def _render_interactive_viewport_parallel(
+        self,
+        source: np.ndarray,
+        render_kwargs: dict[str, Any],
+        *,
+        output_space: str,
+        source_profile: Path | None,
+        monitor_profile: Path | None,
+        include_histogram: bool,
+        workers: int,
+    ) -> tuple[np.ndarray | None, np.ndarray]:
+        rgb = np.asarray(source, dtype=np.float32)
+        h, w = int(rgb.shape[0]), int(rgb.shape[1])
+        row_ranges = self._interactive_parallel_row_ranges(h, workers)
+        if len(row_ranges) <= 1:
+            if source_profile is not None:
+                rgb_u8 = render_adjustments_affine_u8(rgb, **render_kwargs)
+                if rgb_u8 is not None:
+                    display_u8 = profiled_u8_to_display_u8(rgb_u8, source_profile, monitor_profile)
+                    if include_histogram:
+                        srgb_u8 = profiled_u8_to_display_u8(rgb_u8, source_profile, None)
+                        return np.asarray(srgb_u8, dtype=np.uint8), np.asarray(display_u8, dtype=np.uint8)
+                    return None, np.asarray(display_u8, dtype=np.uint8)
+                adjusted = apply_render_adjustments(rgb, **render_kwargs)
+                adjusted_u8 = rgb_float_to_u8(adjusted)
+                display_u8 = profiled_u8_to_display_u8(adjusted_u8, source_profile, monitor_profile)
+                if include_histogram:
+                    srgb_u8 = profiled_u8_to_display_u8(adjusted_u8, source_profile, None)
+                    return np.asarray(srgb_u8, dtype=np.uint8), np.asarray(display_u8, dtype=np.uint8)
+                return None, np.asarray(display_u8, dtype=np.uint8)
+            adjusted = apply_render_adjustments(rgb, **render_kwargs)
+            srgb_u8 = standard_profile_to_srgb_u8_display(adjusted, output_space)
+            display_u8 = srgb_u8_to_display_u8(srgb_u8, monitor_profile)
+            return (
+                np.asarray(srgb_u8, dtype=np.uint8) if include_histogram else None,
+                np.asarray(display_u8, dtype=np.uint8),
+            )
+
+        display_u8 = np.empty((h, w, 3), dtype=np.uint8)
+        if source_profile is not None:
+            srgb_u8 = np.empty((h, w, 3), dtype=np.uint8) if include_histogram else None
+            # Build/cache the LCMS transforms and, on workstation-class memory,
+            # the exact 8-bit dense ICC LUT before parallel work. The LUT is
+            # derived from LCMS for every possible RGB triplet, so it accelerates
+            # repeated viewport renders without changing the color result.
+            profiled_float_to_display_u8(rgb[:1, :1], source_profile, monitor_profile)
+            if include_histogram:
+                profiled_float_to_display_u8(rgb[:1, :1], source_profile, None)
+            if h * w >= int(PREVIEW_INTERACTIVE_PARALLEL_MIN_PIXELS):
+                prewarm_profiled_display_lut(source_profile, monitor_profile)
+                if include_histogram:
+                    prewarm_profiled_display_lut(source_profile, None)
+
+            def profile_job(row_range: tuple[int, int]):
+                y0, y1 = row_range
+                source_rows = rgb[y0:y1]
+                rgb_u8 = render_adjustments_affine_u8(source_rows, **render_kwargs)
+                if rgb_u8 is not None:
+                    display = profiled_u8_to_display_u8(rgb_u8, source_profile, monitor_profile)
+                    srgb = profiled_u8_to_display_u8(rgb_u8, source_profile, None) if include_histogram else None
+                    return y0, y1, display, srgb
+                adjusted = apply_render_adjustments(source_rows, **render_kwargs)
+                adjusted_u8 = rgb_float_to_u8(adjusted)
+                display = profiled_u8_to_display_u8(adjusted_u8, source_profile, monitor_profile)
+                srgb = profiled_u8_to_display_u8(adjusted_u8, source_profile, None) if include_histogram else None
+                return y0, y1, display, srgb
+
+            with ThreadPoolExecutor(max_workers=max(1, int(workers))) as executor:
+                for y0, y1, display, srgb in executor.map(profile_job, row_ranges):
+                    display_u8[y0:y1] = display
+                    if srgb_u8 is not None and srgb is not None:
+                        srgb_u8[y0:y1] = srgb
+            if srgb_u8 is None:
+                return None, display_u8
+            return srgb_u8, display_u8
+
+        result_srgb = np.empty((h, w, 3), dtype=np.uint8) if include_histogram else None
+        if monitor_profile is not None:
+            srgb_to_display_u8(np.zeros((1, 1, 3), dtype=np.float32), monitor_profile)
+
+        def standard_job(row_range: tuple[int, int]):
+            y0, y1 = row_range
+            adjusted = apply_render_adjustments(rgb[y0:y1], **render_kwargs)
+            srgb = standard_profile_to_srgb_u8_display(adjusted, output_space)
+            display = srgb_u8_to_display_u8(srgb, monitor_profile)
+            return y0, y1, display, srgb
+
+        with ThreadPoolExecutor(max_workers=max(1, int(workers))) as executor:
+            for y0, y1, display, srgb in executor.map(standard_job, row_ranges):
+                display_u8[y0:y1] = display
+                if result_srgb is not None:
+                    result_srgb[y0:y1] = srgb
+        return result_srgb, display_u8
+
+    @staticmethod
+    def _preview_candidate_to_float(candidate: np.ndarray | None) -> np.ndarray | None:
+        if candidate is None:
+            return None
+        arr = np.asarray(candidate)
+        if arr.dtype == np.uint8:
+            return arr.astype(np.float32) / np.float32(255.0)
+        return np.asarray(arr, dtype=np.float32)
+
+    def _interactive_viewport_rect(self, *, compare_enabled: bool, apply_detail: bool) -> tuple[int, int, int, int] | None:
+        if compare_enabled or apply_detail:
+            return None
+        if self._original_linear is None:
+            return None
+        panel = getattr(self, "image_result_single", None)
+        if panel is None or not hasattr(panel, "visible_image_rect"):
+            return None
+        rect = panel.visible_image_rect(margin=PREVIEW_INTERACTIVE_VIEWPORT_MARGIN_PX)
+        if rect is None:
+            return None
+        x, y, w, h = (int(v) for v in rect)
+        if w <= 0 or h <= 0:
+            return None
+        current_display = getattr(self, "_current_result_display_u8", None)
+        if current_display is None:
+            return None
+        current_display = np.asarray(current_display)
+        if current_display.ndim != 3:
+            return None
+        source_h, source_w = int(self._original_linear.shape[0]), int(self._original_linear.shape[1])
+        if current_display.shape[0] != source_h or current_display.shape[1] != source_w:
+            return None
+        if x >= source_w or y >= source_h:
+            return None
+        w = min(w, source_w - x)
+        h = min(h, source_h - y)
+        if w * h >= source_w * source_h:
+            return None
+        return x, y, w, h
 
     def _tone_curve_histogram_render_kwargs(self, render_kwargs: dict[str, Any]) -> dict[str, Any]:
         return dict(render_kwargs)
@@ -391,7 +722,7 @@ class PreviewRenderMixin:
     def _update_tone_curve_histogram_for_current_controls(
         self,
         *,
-        max_side_limit: int = PREVIEW_INTERACTIVE_TONAL_MAX_SIDE,
+        max_side_limit: int = 0,
         force: bool = False,
     ) -> None:
         if self._original_linear is None:
@@ -409,6 +740,19 @@ class PreviewRenderMixin:
             source_key=source_key,
             force=force,
         )
+
+    def _update_tone_curve_histogram_from_preview(self, preview_srgb: np.ndarray) -> None:
+        if not self._tone_curve_histogram_enabled():
+            return
+        try:
+            self.tone_curve_editor.set_histogram_from_image(
+                preview_srgb,
+                channel=self._tone_curve_channel_key(),
+            )
+            self._tone_curve_histogram_key = self._last_loaded_preview_key or str(id(self._original_linear))
+        except Exception as exc:
+            self._tone_curve_histogram_key = None
+            self._log_preview(f"Aviso: no se pudo actualizar histograma de curva: {exc}")
 
     def _cached_profile_preview_image(self, key: str) -> np.ndarray | None:
         image = self._profile_preview_cache.get(key)
@@ -435,17 +779,7 @@ class PreviewRenderMixin:
         max_side_limit: int,
     ) -> tuple[np.ndarray, bool]:
         rgb = np.asarray(image, dtype=np.float32)
-        if int(max_side_limit) <= 0:
-            return rgb, False
-        h, w = int(rgb.shape[0]), int(rgb.shape[1])
-        max_side = max(h, w)
-        if max_side <= int(max_side_limit):
-            return rgb, False
-        scale = float(max_side_limit) / float(max_side)
-        nw = max(1, int(round(w * scale)))
-        nh = max(1, int(round(h * scale)))
-        resized = cv2.resize(rgb, (nw, nh), interpolation=cv2.INTER_AREA)
-        return np.clip(resized, 0.0, 1.0).astype(np.float32), True
+        return rgb, False
 
     def _queue_profile_preview_request(
         self,
@@ -546,12 +880,15 @@ class PreviewRenderMixin:
         thread.failed.connect(fail)
         thread.start()
 
-    def _source_profile_for_preview_recipe(self, recipe: Recipe) -> Path | None:
+    def _source_profile_for_preview_recipe(self, recipe: Recipe) -> Path:
         profile_path = self._active_session_icc_for_settings()
         if profile_path is not None:
             return profile_path
         if not is_generic_output_space(recipe.output_space):
-            return None
+            raise RuntimeError(
+                "La preview no puede continuar sin perfil ICC de entrada. "
+                f"Receta no gestionada: output_space={recipe.output_space!r}."
+            )
         try:
             return ensure_generic_output_profile(
                 recipe.output_space,
@@ -562,7 +899,30 @@ class PreviewRenderMixin:
             if self._profile_preview_error_key != key:
                 self._profile_preview_error_key = key
                 self._log_preview(f"Aviso: perfil ICC estandar no disponible para preview directa: {exc}")
-            return None
+            raise RuntimeError(
+                f"No se puede visualizar {recipe.output_space} con garantia colorimetrica: "
+                "falta el perfil ICC estandar. Instala/configura el ICC correspondiente."
+            ) from exc
+
+    def _color_managed_preview_recipe(self, recipe: Recipe) -> Recipe:
+        input_profile_path = self._active_session_icc_for_settings()
+        if hasattr(self, "_visible_export_recipe_for_color_management"):
+            managed = self._visible_export_recipe_for_color_management(
+                recipe,
+                input_profile_path=input_profile_path,
+            )
+        else:
+            managed = Recipe(**asdict(recipe))
+            if input_profile_path is None and not is_generic_output_space(managed.output_space):
+                profile = generic_output_profile("prophoto_rgb")
+                managed.output_space = profile.key
+                managed.output_linear = False
+                managed.tone_curve = f"gamma:{profile.gamma:.3g}"
+                managed.profiling_mode = False
+        # Hard invariant: from here on the preview has a real source ICC
+        # (session-specific or generic). Unprofiled display is a color bug.
+        self._source_profile_for_preview_recipe(managed)
+        return managed
 
     def _queue_interactive_preview_request(
         self,
@@ -580,6 +940,8 @@ class PreviewRenderMixin:
             str,
             Path | None,
             Path | None,
+            tuple[int, int, int, int] | None,
+            bool,
         ],
     ) -> None:
         (
@@ -596,13 +958,48 @@ class PreviewRenderMixin:
             _output_space,
             _source_profile,
             _monitor_profile,
+            viewport_rect,
+            _include_histogram,
         ) = request
         self._interactive_preview_expected_key = request_key
         if self._interactive_preview_task_active:
             if self._interactive_preview_inflight_key == request_key:
                 return
+            inflight_viewport_rect = getattr(self, "_interactive_preview_inflight_viewport_rect", None)
+            inflight_include_analysis = bool(getattr(self, "_interactive_preview_inflight_include_analysis", False))
+            if viewport_rect is not None and (inflight_viewport_rect is None or inflight_include_analysis):
+                self._preempt_interactive_preview_task(request)
+                return
             self._interactive_preview_pending_request = request
             return
+        self._interactive_preview_pending_request = None
+        self._start_interactive_preview_task(request)
+
+    def _preempt_interactive_preview_task(
+        self,
+        request: tuple[
+            str,
+            str | None,
+            np.ndarray,
+            dict[str, float],
+            dict[str, Any],
+            bool,
+            bool,
+            int,
+            bool,
+            bool,
+            str,
+            Path | None,
+            Path | None,
+            tuple[int, int, int, int] | None,
+            bool,
+        ],
+    ) -> None:
+        self._interactive_preview_task_token = int(getattr(self, "_interactive_preview_task_token", 0)) + 1
+        self._interactive_preview_task_active = False
+        self._interactive_preview_inflight_key = None
+        self._interactive_preview_inflight_viewport_rect = None
+        self._interactive_preview_inflight_include_analysis = False
         self._interactive_preview_pending_request = None
         self._start_interactive_preview_task(request)
 
@@ -622,6 +1019,8 @@ class PreviewRenderMixin:
             str,
             Path | None,
             Path | None,
+            tuple[int, int, int, int] | None,
+            bool,
         ],
     ) -> None:
         (
@@ -638,6 +1037,8 @@ class PreviewRenderMixin:
             output_space,
             source_profile,
             monitor_profile,
+            viewport_rect,
+            include_histogram,
         ) = request
         self._interactive_preview_task_token = int(getattr(self, "_interactive_preview_task_token", 0)) + 1
         task_token = int(self._interactive_preview_task_token)
@@ -647,17 +1048,55 @@ class PreviewRenderMixin:
 
             def srgb_display_u8(image_srgb: np.ndarray) -> np.ndarray:
                 try:
+                    if render_tiled:
+                        return self._srgb_to_display_u8_tiled(image_srgb, monitor_profile)
                     return srgb_to_display_u8(image_srgb, monitor_profile)
                 except Exception as exc:
-                    warnings.append(
-                        f"Aviso: gestion ICC de monitor no disponible en preview; se usa sRGB: {exc}"
-                    )
-                    return srgb_to_display_u8(image_srgb, None)
+                    raise RuntimeError(f"No se pudo convertir la preview sRGB al ICC de monitor: {exc}") from exc
 
             source = self._interactive_preview_source(
                 np.asarray(source_linear, dtype=np.float32),
                 max_side_limit=int(max_side_limit),
             )
+            if viewport_rect is not None:
+                vx, vy, vw, vh = (int(v) for v in viewport_rect)
+                source = source[vy : vy + vh, vx : vx + vw]
+            render_tiled = (
+                int(max_side_limit) <= 0
+                and int(source.shape[0]) * int(source.shape[1]) > 4_000_000
+                and (not bool(apply_detail) or not self._detail_kwargs_have_effect(detail_kwargs))
+            )
+            viewport_workers = (
+                self._interactive_preview_worker_count(int(source.shape[0]) * int(source.shape[1]))
+                if viewport_rect is not None and not bool(apply_detail)
+                else 1
+            )
+            if viewport_workers > 1:
+                source_pixels = int(source.shape[0]) * int(source.shape[1])
+                work_started = time.perf_counter()
+                result_srgb, display_u8 = self._render_interactive_viewport_parallel(
+                    source,
+                    render_kwargs,
+                    output_space=output_space,
+                    source_profile=source_profile,
+                    monitor_profile=monitor_profile,
+                    include_histogram=bool(include_histogram),
+                    workers=viewport_workers,
+                )
+                worker_perf = (source_pixels, int(viewport_workers), (time.perf_counter() - work_started) * 1000.0)
+                analysis_text = None
+                return (
+                    request_key,
+                    source_key,
+                    None if result_srgb is None else np.asarray(result_srgb),
+                    np.asarray(display_u8, dtype=np.uint8),
+                    bool(compare_enabled),
+                    bool(bypass_display_profile),
+                    viewport_rect,
+                    analysis_text,
+                    "; ".join(dict.fromkeys(warnings)) if warnings else None,
+                    worker_perf,
+                )
             if apply_detail:
                 detail_adjusted = apply_adjustments(
                     source,
@@ -672,39 +1111,63 @@ class PreviewRenderMixin:
                 # During tonal curve/slider drag prioritize responsiveness and
                 # defer detail operators to the final non-interactive refresh.
                 detail_adjusted = source
-            adjusted = apply_render_adjustments(detail_adjusted, **render_kwargs)
-            if source_profile is not None:
-                try:
-                    result_srgb = (
-                        profiled_float_to_display_u8(adjusted, source_profile, None).astype(np.float32) / 255.0
-                    )
-                except Exception as exc:
-                    warnings.append(f"Aviso: no se pudo convertir preview ICC a sRGB tecnico: {exc}")
-                    result_srgb = standard_profile_to_srgb_display(adjusted, output_space)
-                try:
-                    display_u8 = profiled_float_to_display_u8(adjusted, source_profile, monitor_profile)
-                except Exception as exc:
-                    warnings.append(f"Aviso: no se pudo convertir preview ICC directa a monitor; se usa fallback sRGB: {exc}")
-                    display_u8 = srgb_display_u8(result_srgb)
+            if render_tiled:
+                adjusted = self._apply_render_adjustments_tiled(detail_adjusted, render_kwargs)
             else:
-                result_srgb = standard_profile_to_srgb_display(adjusted, output_space)
-                display_u8 = srgb_display_u8(result_srgb)
+                adjusted = apply_render_adjustments(detail_adjusted, **render_kwargs)
+            if source_profile is not None:
+                result_srgb = None
+                try:
+                    if render_tiled:
+                        adjusted_u8 = None
+                        display_u8 = self._profiled_float_to_display_u8_tiled(adjusted, source_profile, monitor_profile)
+                    else:
+                        adjusted_u8 = rgb_float_to_u8(adjusted)
+                        display_u8 = profiled_u8_to_display_u8(adjusted_u8, source_profile, monitor_profile)
+                except Exception as exc:
+                    raise RuntimeError(f"No se pudo convertir la preview del ICC de imagen al ICC de monitor: {exc}") from exc
+                if bool(include_histogram) or viewport_rect is None:
+                    try:
+                        result_srgb_u8 = (
+                            self._profiled_float_to_display_u8_tiled(adjusted, source_profile, None)
+                            if render_tiled
+                            else profiled_u8_to_display_u8(adjusted_u8, source_profile, None)
+                        )
+                        result_srgb = np.asarray(result_srgb_u8, dtype=np.uint8)
+                    except Exception as exc:
+                        raise RuntimeError(f"No se pudo convertir la preview con el ICC de imagen: {exc}") from exc
+            else:
+                if render_tiled:
+                    result_srgb = self._standard_profile_to_srgb_display_tiled(adjusted, output_space)
+                    display_u8 = srgb_display_u8(result_srgb)
+                else:
+                    result_srgb_u8 = standard_profile_to_srgb_u8_display(adjusted, output_space)
+                    display_u8 = srgb_u8_to_display_u8(result_srgb_u8, monitor_profile)
+                    result_srgb = (
+                        np.asarray(result_srgb_u8, dtype=np.uint8)
+                        if bool(include_histogram) or viewport_rect is None
+                        else None
+                    )
             analysis_text = preview_analysis_text(source, adjusted) if include_analysis else None
             return (
                 request_key,
                 source_key,
-                np.asarray(result_srgb, dtype=np.float32),
+                None if result_srgb is None else np.asarray(result_srgb),
                 np.asarray(display_u8, dtype=np.uint8),
                 bool(compare_enabled),
                 bool(bypass_display_profile),
+                viewport_rect,
                 analysis_text,
                 "; ".join(dict.fromkeys(warnings)) if warnings else None,
+                None,
             )
 
         thread = TaskThread(task)
         started_at = time.perf_counter()
         self._interactive_preview_task_active = True
         self._interactive_preview_inflight_key = request_key
+        self._interactive_preview_inflight_viewport_rect = viewport_rect
+        self._interactive_preview_inflight_include_analysis = bool(include_analysis)
         self._set_interactive_preview_busy(True)
         self._threads.append(thread)
 
@@ -720,6 +1183,8 @@ class PreviewRenderMixin:
                 return
             self._interactive_preview_task_active = False
             self._interactive_preview_inflight_key = None
+            self._interactive_preview_inflight_viewport_rect = None
+            self._interactive_preview_inflight_include_analysis = False
             pending = self._interactive_preview_pending_request
             self._interactive_preview_pending_request = None
             if pending is not None:
@@ -736,20 +1201,52 @@ class PreviewRenderMixin:
                     display_u8,
                     payload_compare_enabled,
                     payload_bypass_display_profile,
+                    payload_viewport_rect,
                     analysis_text,
                     warning,
+                    worker_perf,
                 ) = payload
+                if isinstance(worker_perf, tuple) and len(worker_perf) == 3:
+                    self._record_interactive_worker_performance(
+                        int(worker_perf[0]),
+                        int(worker_perf[1]),
+                        float(worker_perf[2]),
+                    )
                 applied = False
-                if key != self._interactive_preview_expected_key:
+                stale_task = (
+                    int(getattr(self, "_interactive_preview_task_token", 0)) != task_token
+                    or self._interactive_preview_inflight_key != request_key
+                )
+                if stale_task:
                     return
                 if payload_source_key is not None and payload_source_key != self._last_loaded_preview_key:
                     return
-                self._preview_srgb = np.asarray(candidate, dtype=np.float32)
-                self._set_result_display_u8(
-                    display_u8,
-                    compare_enabled=bool(payload_compare_enabled and self.chk_compare.isChecked()),
-                )
-                applied = True
+                if payload_viewport_rect is None and key != self._interactive_preview_expected_key:
+                    return
+                if payload_viewport_rect is not None:
+                    preview_patch = None if candidate is None else np.asarray(candidate)
+                    applied = self._apply_result_display_u8_region(
+                        display_u8,
+                        preview_patch,
+                        payload_viewport_rect,
+                        compare_enabled=bool(payload_compare_enabled and self.chk_compare.isChecked()),
+                        bypass_profile=bool(payload_bypass_display_profile),
+                    )
+                    if preview_patch is not None:
+                        preview_patch_float = self._preview_candidate_to_float(preview_patch)
+                        if preview_patch_float is not None:
+                            self._update_tone_curve_histogram_from_preview(preview_patch_float)
+                else:
+                    if candidate is None:
+                        return
+                    self._preview_srgb = self._preview_candidate_to_float(candidate)
+                    self._update_tone_curve_histogram_from_preview(self._preview_srgb)
+                    self._set_result_display_u8(
+                        display_u8,
+                        compare_enabled=bool(payload_compare_enabled and self.chk_compare.isChecked()),
+                        bypass_profile=bool(payload_bypass_display_profile),
+                    )
+                    applied = True
                 if applied:
                     if warning:
                         key_warning = f"interactive-preview-profile|{warning}"
@@ -794,6 +1291,8 @@ class PreviewRenderMixin:
         self._interactive_preview_task_token = int(getattr(self, "_interactive_preview_task_token", 0)) + 1
         self._interactive_preview_task_active = False
         self._interactive_preview_inflight_key = None
+        self._interactive_preview_inflight_viewport_rect = None
+        self._interactive_preview_inflight_include_analysis = False
         pending = self._interactive_preview_pending_request
         self._interactive_preview_pending_request = None
         self._log_preview("Aviso: preview interactiva cancelada por tiempo de espera; se reanuda la cola de ajustes.")
@@ -815,13 +1314,13 @@ class PreviewRenderMixin:
         if hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
             self._schedule_detail_adjustment_sidecar_persist(immediate=True)
 
-    def _refresh_preview(self) -> None:
+    def _refresh_preview(self, *, force_final: bool = False) -> None:
         if self._original_linear is None:
             return
         self._preview_refresh_timer.stop()
         try:
-            recipe = self._build_effective_recipe()
-            interactive = self._is_preview_interaction_active()
+            recipe = self._color_managed_preview_recipe(self._build_effective_recipe())
+            interactive = False if bool(force_final) else self._is_preview_interaction_active()
             detail_interactive = interactive and self._is_detail_interaction_active()
             bypass_display_profile = bool(interactive and self._interactive_bypass_display_icc)
             nl = self.slider_noise_luma.value() / 100.0
@@ -848,18 +1347,20 @@ class PreviewRenderMixin:
             monitor_profile = None if bypass_display_profile else self._active_display_profile_path()
             if interactive:
                 apply_detail = bool(detail_interactive)
-                if apply_detail and self._precision_detail_preview_enabled():
-                    max_side_limit = 0
-                else:
-                    max_side_limit = (
-                        PREVIEW_INTERACTIVE_DRAG_MAX_SIDE
-                        if apply_detail
-                        else PREVIEW_INTERACTIVE_TONAL_MAX_SIDE
-                    )
-                if self._tone_curve_histogram_interaction_active():
-                    self._update_tone_curve_histogram_for_current_controls(
-                        max_side_limit=int(max_side_limit),
-                    )
+                max_side_limit = 0
+                viewport_rect = self._interactive_viewport_rect(
+                    compare_enabled=compare_enabled,
+                    apply_detail=bool(apply_detail),
+                )
+                overlay_enabled = bool(
+                    getattr(self, "check_image_clip_overlay", None)
+                    and self.check_image_clip_overlay.isChecked()
+                )
+                include_histogram = (
+                    True
+                    if viewport_rect is None or overlay_enabled
+                    else self._interactive_histogram_due()
+                )
                 self._interactive_preview_request_seq += 1
                 request_key = f"{source_key}|interactive|{self._interactive_preview_request_seq}"
                 self._profile_preview_expected_key = None
@@ -879,6 +1380,8 @@ class PreviewRenderMixin:
                         str(recipe.output_space),
                         source_profile,
                         monitor_profile,
+                        viewport_rect,
+                        bool(include_histogram),
                     )
                 )
                 return
@@ -888,9 +1391,6 @@ class PreviewRenderMixin:
             self._set_interactive_preview_busy(False)
 
             if self._should_async_final_preview():
-                self._update_tone_curve_histogram_for_current_controls(
-                    max_side_limit=PREVIEW_INTERACTIVE_TONAL_MAX_SIDE,
-                )
                 self._interactive_preview_request_seq += 1
                 request_key = f"{source_key}|final|{self._interactive_preview_request_seq}"
                 self._queue_interactive_preview_request(
@@ -908,6 +1408,8 @@ class PreviewRenderMixin:
                         str(recipe.output_space),
                         source_profile,
                         self._active_display_profile_path(),
+                        None,
+                        True,
                     )
                 )
                 return
@@ -917,7 +1419,7 @@ class PreviewRenderMixin:
                 max_side_limit=int(self._final_adjustment_preview_max_side()),
             )
             self._update_tone_curve_histogram_for_current_controls(
-                max_side_limit=PREVIEW_INTERACTIVE_TONAL_MAX_SIDE,
+                max_side_limit=0,
             )
             detail_adjusted = self._detail_adjusted_preview(
                 preview_source,
@@ -933,12 +1435,13 @@ class PreviewRenderMixin:
             active_session_profile = self._active_session_icc_for_settings()
             raw_profile_text = self.path_profile_active.text().strip() if hasattr(self, "path_profile_active") else ""
 
-            result_srgb = standard_profile_to_srgb_display(adjusted, recipe.output_space)
             if source_profile is not None:
                 try:
                     result_srgb = profiled_float_to_display_u8(adjusted, source_profile, None).astype(np.float32) / 255.0
                 except Exception as exc:
-                    self._log_preview(f"Aviso: no se pudo calcular preview colorimetrica sRGB desde ICC: {exc}")
+                    raise RuntimeError(f"No se pudo calcular la preview colorimetrica desde el ICC de entrada: {exc}") from exc
+            else:
+                result_srgb = standard_profile_to_srgb_display(adjusted, recipe.output_space)
 
             if raw_profile_text and active_session_profile is None:
                 p = Path(raw_profile_text).expanduser()
@@ -978,6 +1481,79 @@ class PreviewRenderMixin:
                 self._preview_refresh_timer.start(PREVIEW_REFRESH_THROTTLE_MS)
             return
         self._preview_refresh_timer.start(PREVIEW_REFRESH_DEBOUNCE_MS)
+
+    def _schedule_tone_curve_drag_preview_refresh(self) -> None:
+        if self._original_linear is None:
+            return
+        self._mark_preview_control_interaction(duration_ms=450)
+        timer = getattr(self, "_tone_curve_preview_timer", None)
+        delay = max(1, int(PREVIEW_TONE_CURVE_DRAG_THROTTLE_MS))
+        if timer is None:
+            QtCore.QTimer.singleShot(delay, self._run_tone_curve_drag_preview_refresh)
+            return
+        if not timer.isActive():
+            timer.start(delay)
+
+    def _run_tone_curve_drag_preview_refresh(self) -> None:
+        if self._original_linear is None:
+            return
+        if not bool(getattr(self, "check_tone_curve_enabled", None) and self.check_tone_curve_enabled.isChecked()):
+            return
+        if self._is_direct_preview_interaction_active():
+            self._mark_preview_control_interaction(duration_ms=450)
+        self._schedule_preview_refresh()
+
+    def _schedule_visible_viewport_preview_refresh(self, *, duration_ms: int = 450) -> None:
+        if self._original_linear is None:
+            return
+        if getattr(self, "_current_result_display_u8", None) is None:
+            return
+        panel = getattr(self, "image_result_single", None)
+        if panel is not None and hasattr(panel, "current_display_scale"):
+            scale = panel.current_display_scale()
+            if scale is None or float(scale) < 0.98:
+                return
+        self._mark_preview_control_interaction(duration_ms=max(1, int(duration_ms)))
+        self._schedule_preview_refresh()
+
+    def _automatic_full_final_preview_enabled(self) -> bool:
+        raw = os.environ.get(PREVIEW_AUTOMATIC_FULL_FINAL_REFRESH_ENV, "").strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            return True
+        if raw in {"0", "false", "no", "off"}:
+            return False
+        return False
+
+    def _schedule_deferred_final_preview_refresh(self, *, delay_ms: int = PREVIEW_FINAL_REFRESH_IDLE_DELAY_MS) -> None:
+        if self._original_linear is None:
+            return
+        if not self._automatic_full_final_preview_enabled():
+            timer = getattr(self, "_preview_final_refresh_timer", None)
+            if timer is not None:
+                timer.stop()
+            return
+        timer = getattr(self, "_preview_final_refresh_timer", None)
+        if timer is None:
+            QtCore.QTimer.singleShot(max(1, int(delay_ms)), lambda: self._refresh_preview(force_final=True))
+            return
+        timer.start(max(1, int(delay_ms)))
+
+    def _run_deferred_final_preview_refresh(self) -> None:
+        if self._original_linear is None:
+            return
+        if self._is_direct_preview_interaction_active():
+            self._schedule_deferred_final_preview_refresh()
+            return
+        self._preview_recent_interaction_until = 0.0
+        self._refresh_preview(force_final=True)
+
+    def _interactive_histogram_due(self, *, interval_ms: int = 120) -> bool:
+        now = time.perf_counter()
+        last = float(getattr(self, "_interactive_histogram_last_started_at", 0.0) or 0.0)
+        if last <= 0.0 or (now - last) * 1000.0 >= max(1, int(interval_ms)):
+            self._interactive_histogram_last_started_at = now
+            return True
+        return False
 
     def _should_async_final_preview(self) -> bool:
         if self._original_linear is None:

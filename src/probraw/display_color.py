@@ -10,21 +10,31 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 
 import numpy as np
 from PIL import Image, ImageCms
 
 
 _TRANSFORM_CACHE: OrderedDict[str, ImageCms.ImageCmsTransform] = OrderedDict()
+_DENSE_U8_LUT_CACHE: OrderedDict[str, np.ndarray] = OrderedDict()
+_DENSE_U8_LUT_LOCK = threading.RLock()
 _SRGB_PROFILE = ImageCms.createProfile("sRGB")
+_DENSE_U8_LUT_ENTRIES = 256 * 256 * 256
+_DENSE_U8_LUT_MAX_ENTRIES = 4
+_DENSE_U8_LUT_CHUNK_PIXELS = 1_048_576
+_DENSE_U8_LUT_MIN_PIXELS_DEFAULT = 180_000
+_DENSE_U8_LUT_ENV = "PROBRAW_DISPLAY_ICC_DENSE_LUT"
+_DENSE_U8_LUT_MIN_PIXELS_ENV = "PROBRAW_DISPLAY_ICC_DENSE_LUT_MIN_PIXELS"
 
 
-def srgb_float_to_u8(image_srgb: np.ndarray) -> np.ndarray:
-    image = np.asarray(image_srgb)
+def rgb_float_to_u8(image_rgb: np.ndarray) -> np.ndarray:
+    image = np.asarray(image_rgb)
     if image.ndim == 2:
         image = np.repeat(image[..., None], 3, axis=2)
     if image.ndim != 3 or image.shape[2] < 3:
-        raise RuntimeError(f"Imagen sRGB inesperada para display: shape={image.shape}")
+        raise RuntimeError(f"Imagen RGB inesperada para display: shape={image.shape}")
     image = image[..., :3]
     if np.issubdtype(image.dtype, np.integer):
         maxv = float(np.iinfo(image.dtype).max)
@@ -34,8 +44,12 @@ def srgb_float_to_u8(image_srgb: np.ndarray) -> np.ndarray:
     return np.ascontiguousarray(np.round(image_f * 255.0).astype(np.uint8))
 
 
+def srgb_float_to_u8(image_srgb: np.ndarray) -> np.ndarray:
+    return rgb_float_to_u8(image_srgb)
+
+
 def srgb_to_display_u8(image_srgb: np.ndarray, monitor_profile: Path | None) -> np.ndarray:
-    rgb_u8 = srgb_float_to_u8(image_srgb)
+    rgb_u8 = rgb_float_to_u8(image_srgb)
     if monitor_profile is None:
         return rgb_u8
     return srgb_u8_to_display_u8(rgb_u8, monitor_profile)
@@ -46,7 +60,7 @@ def profiled_float_to_display_u8(
     source_profile: Path,
     monitor_profile: Path | None,
 ) -> np.ndarray:
-    rgb_u8 = srgb_float_to_u8(image_rgb)
+    rgb_u8 = rgb_float_to_u8(image_rgb)
     return profiled_u8_to_display_u8(rgb_u8, source_profile, monitor_profile)
 
 
@@ -60,7 +74,10 @@ def profiled_u8_to_display_u8(
         rgb = np.repeat(rgb[..., None], 3, axis=2)
     if rgb.ndim != 3 or rgb.shape[2] < 3:
         raise RuntimeError(f"Imagen RGB inesperada para display ICC: shape={rgb.shape}")
-    rgb = np.ascontiguousarray(rgb[..., :3].astype(np.uint8))
+    rgb = np.ascontiguousarray(rgb[..., :3].astype(np.uint8, copy=False))
+    lut = _profile_to_display_dense_lut_for_image(source_profile, monitor_profile, rgb)
+    if lut is not None:
+        return _apply_dense_u8_lut(rgb, lut)
     transform = _profile_to_display_transform(source_profile, monitor_profile)
     image = Image.fromarray(rgb, "RGB")
     converted = ImageCms.applyTransform(image, transform)
@@ -69,16 +86,26 @@ def profiled_u8_to_display_u8(
     return np.asarray(converted, dtype=np.uint8).copy()
 
 
+def prewarm_profiled_display_lut(source_profile: Path, monitor_profile: Path | None) -> bool:
+    if not _dense_u8_lut_enabled():
+        return False
+    _profile_to_display_dense_lut(source_profile, monitor_profile)
+    return True
+
+
 def srgb_u8_to_display_u8(rgb_u8: np.ndarray, monitor_profile: Path | None) -> np.ndarray:
     rgb = np.asarray(rgb_u8)
     if rgb.ndim == 2:
         rgb = np.repeat(rgb[..., None], 3, axis=2)
     if rgb.ndim != 3 or rgb.shape[2] < 3:
         raise RuntimeError(f"Imagen sRGB inesperada para display: shape={rgb.shape}")
-    rgb = np.ascontiguousarray(rgb[..., :3].astype(np.uint8))
+    rgb = np.ascontiguousarray(rgb[..., :3].astype(np.uint8, copy=False))
     if monitor_profile is None:
         return rgb
 
+    lut = _srgb_to_display_dense_lut_for_image(monitor_profile, rgb)
+    if lut is not None:
+        return _apply_dense_u8_lut(rgb, lut)
     transform = _display_transform(monitor_profile)
     image = Image.fromarray(rgb, "RGB")
     converted = ImageCms.applyTransform(image, transform)
@@ -184,6 +211,212 @@ def _profile_to_display_transform(source_profile: Path, monitor_profile: Path | 
     while len(_TRANSFORM_CACHE) > 8:
         _TRANSFORM_CACHE.popitem(last=False)
     return transform
+
+
+def _profile_to_display_dense_lut_for_image(
+    source_profile: Path,
+    monitor_profile: Path | None,
+    rgb_u8: np.ndarray,
+) -> np.ndarray | None:
+    if not _dense_u8_lut_enabled():
+        return None
+    key = _profile_to_display_dense_lut_key(source_profile, monitor_profile)
+    cached = _DENSE_U8_LUT_CACHE.get(key)
+    if cached is not None:
+        _DENSE_U8_LUT_CACHE.move_to_end(key)
+        return cached
+    pixels = int(rgb_u8.shape[0]) * int(rgb_u8.shape[1]) if rgb_u8.ndim >= 2 else 0
+    if pixels < _dense_u8_lut_min_pixels():
+        return None
+    return _profile_to_display_dense_lut(source_profile, monitor_profile)
+
+
+def _srgb_to_display_dense_lut_for_image(
+    monitor_profile: Path,
+    rgb_u8: np.ndarray,
+) -> np.ndarray | None:
+    if not _dense_u8_lut_enabled():
+        return None
+    key = _srgb_to_display_dense_lut_key(monitor_profile)
+    cached = _DENSE_U8_LUT_CACHE.get(key)
+    if cached is not None:
+        _DENSE_U8_LUT_CACHE.move_to_end(key)
+        return cached
+    pixels = int(rgb_u8.shape[0]) * int(rgb_u8.shape[1]) if rgb_u8.ndim >= 2 else 0
+    if pixels < _dense_u8_lut_min_pixels():
+        return None
+    return _srgb_to_display_dense_lut(monitor_profile)
+
+
+def _profile_to_display_dense_lut(source_profile: Path, monitor_profile: Path | None) -> np.ndarray:
+    key = _profile_to_display_dense_lut_key(source_profile, monitor_profile)
+    with _DENSE_U8_LUT_LOCK:
+        cached = _DENSE_U8_LUT_CACHE.get(key)
+        if cached is not None:
+            _DENSE_U8_LUT_CACHE.move_to_end(key)
+            return cached
+        disk = _read_dense_u8_lut_from_disk(key)
+        if disk is not None:
+            _DENSE_U8_LUT_CACHE[key] = disk
+            _prune_dense_u8_lut_memory_cache()
+            return disk
+        transform = _profile_to_display_transform(source_profile, monitor_profile)
+        lut = _build_dense_u8_lut(transform)
+        _DENSE_U8_LUT_CACHE[key] = lut
+        _prune_dense_u8_lut_memory_cache()
+        _write_dense_u8_lut_to_disk(key, lut)
+        return lut
+
+
+def _srgb_to_display_dense_lut(monitor_profile: Path) -> np.ndarray:
+    key = _srgb_to_display_dense_lut_key(monitor_profile)
+    with _DENSE_U8_LUT_LOCK:
+        cached = _DENSE_U8_LUT_CACHE.get(key)
+        if cached is not None:
+            _DENSE_U8_LUT_CACHE.move_to_end(key)
+            return cached
+        disk = _read_dense_u8_lut_from_disk(key)
+        if disk is not None:
+            _DENSE_U8_LUT_CACHE[key] = disk
+            _prune_dense_u8_lut_memory_cache()
+            return disk
+        transform = _display_transform(monitor_profile)
+        lut = _build_dense_u8_lut(transform)
+        _DENSE_U8_LUT_CACHE[key] = lut
+        _prune_dense_u8_lut_memory_cache()
+        _write_dense_u8_lut_to_disk(key, lut)
+        return lut
+
+
+def _profile_to_display_dense_lut_key(source_profile: Path, monitor_profile: Path | None) -> str:
+    source_key = display_profile_cache_key(source_profile)
+    destination_key = "srgb" if monitor_profile is None else display_profile_cache_key(monitor_profile)
+    return f"dense-u8-v1|{source_key}|{destination_key}"
+
+
+def _srgb_to_display_dense_lut_key(monitor_profile: Path) -> str:
+    return f"dense-u8-srgb-v1|{display_profile_cache_key(monitor_profile)}"
+
+
+def _build_dense_u8_lut(transform: ImageCms.ImageCmsTransform) -> np.ndarray:
+    lut = np.empty((_DENSE_U8_LUT_ENTRIES, 3), dtype=np.uint8)
+    chunk = int(max(65_536, _DENSE_U8_LUT_CHUNK_PIXELS))
+    chunk -= chunk % 256
+    if chunk <= 0:
+        chunk = 65_536
+    width = 256
+    for start in range(0, _DENSE_U8_LUT_ENTRIES, chunk):
+        end = min(_DENSE_U8_LUT_ENTRIES, start + chunk)
+        count = end - start
+        values = np.arange(start, end, dtype=np.uint32)
+        rgb = np.empty((count, 3), dtype=np.uint8)
+        rgb[:, 0] = ((values >> 16) & 0xFF).astype(np.uint8)
+        rgb[:, 1] = ((values >> 8) & 0xFF).astype(np.uint8)
+        rgb[:, 2] = (values & 0xFF).astype(np.uint8)
+        rows = count // width
+        image = Image.fromarray(rgb.reshape((rows, width, 3)), "RGB")
+        converted = ImageCms.applyTransform(image, transform)
+        if converted is None:
+            raise RuntimeError("La conversion ICC para LUT densa no devolvio imagen.")
+        lut[start:end] = np.asarray(converted, dtype=np.uint8).reshape((count, 3))
+    return lut
+
+
+def _apply_dense_u8_lut(rgb_u8: np.ndarray, lut: np.ndarray) -> np.ndarray:
+    rgb = np.ascontiguousarray(np.asarray(rgb_u8, dtype=np.uint8)[..., :3])
+    indices = rgb[..., 0].astype(np.uint32)
+    indices <<= np.uint32(16)
+    indices |= rgb[..., 1].astype(np.uint32) << np.uint32(8)
+    indices |= rgb[..., 2].astype(np.uint32)
+    return np.ascontiguousarray(lut[indices])
+
+
+def _dense_u8_lut_enabled() -> bool:
+    raw = os.environ.get(_DENSE_U8_LUT_ENV, "").strip().lower()
+    if not raw:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    return True
+
+
+def _dense_u8_lut_min_pixels() -> int:
+    raw = os.environ.get(_DENSE_U8_LUT_MIN_PIXELS_ENV, "").strip()
+    if not raw:
+        return _DENSE_U8_LUT_MIN_PIXELS_DEFAULT
+    try:
+        return max(0, int(raw))
+    except Exception:
+        return _DENSE_U8_LUT_MIN_PIXELS_DEFAULT
+
+
+def _dense_u8_lut_cache_dir() -> Path:
+    xdg_cache = os.environ.get("XDG_CACHE_HOME", "").strip()
+    if xdg_cache:
+        return Path(xdg_cache).expanduser() / "probraw" / "display-luts"
+    return Path.home().expanduser() / ".cache" / "probraw" / "display-luts"
+
+
+def _dense_u8_lut_cache_path(key: str) -> Path:
+    digest = hashlib.sha256(key.encode("utf-8", errors="ignore")).hexdigest()
+    return _dense_u8_lut_cache_dir() / f"{digest}.npy"
+
+
+def _read_dense_u8_lut_from_disk(key: str) -> np.ndarray | None:
+    path = _dense_u8_lut_cache_path(key)
+    if not path.exists():
+        return None
+    try:
+        lut = np.load(path, allow_pickle=False)
+    except Exception:
+        return None
+    if lut.shape != (_DENSE_U8_LUT_ENTRIES, 3) or lut.dtype != np.uint8:
+        return None
+    return np.ascontiguousarray(lut)
+
+
+def _write_dense_u8_lut_to_disk(key: str, lut: np.ndarray) -> None:
+    path = _dense_u8_lut_cache_path(key)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            prefix=path.stem + "-",
+            suffix=".npy",
+            dir=str(path.parent),
+            delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+            np.save(tmp, np.asarray(lut, dtype=np.uint8))
+        tmp_path.replace(path)
+        _prune_dense_u8_lut_disk_cache(path.parent)
+    except Exception:
+        try:
+            if "tmp_path" in locals() and tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
+
+def _prune_dense_u8_lut_memory_cache() -> None:
+    while len(_DENSE_U8_LUT_CACHE) > _DENSE_U8_LUT_MAX_ENTRIES:
+        _DENSE_U8_LUT_CACHE.popitem(last=False)
+
+
+def _prune_dense_u8_lut_disk_cache(cache_dir: Path) -> None:
+    try:
+        files = [p for p in cache_dir.glob("*.npy") if p.is_file()]
+    except Exception:
+        return
+    if len(files) <= _DENSE_U8_LUT_MAX_ENTRIES:
+        return
+    files.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0.0)
+    for path in files[: max(0, len(files) - _DENSE_U8_LUT_MAX_ENTRIES)]:
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
 
 def _detect_windows_display_profile() -> Path | None:

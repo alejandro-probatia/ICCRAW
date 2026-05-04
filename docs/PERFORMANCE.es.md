@@ -157,17 +157,32 @@ sesion o perfil generico, porque esa miniatura puede estar ya cocinada en otro
 espacio y no sirve para validar color. Para que esto no bloquee al ajustar
 curvas:
 
+- ninguna imagen gestionada queda sin perfil de entrada; si no hay ICC de
+  sesion/imagen, la preview usa un perfil generico real;
 - la carga usa revelado LibRaw acotado por `PREVIEW_AUTO_BASE_MAX_SIDE`, salvo
   precision 1:1, comparar o marcado de carta;
-- las curvas y sliders trabajan sobre una fuente interactiva reducida y cacheada;
-- la preview final pesada, incluyendo conversion `ICC fuente -> ICC monitor`, se
-  ejecuta en un worker asincrono cuando la imagen supera 2 MP.
+- a 100%, sliders y curvas actualizan el recorte visible y copian solo regiones
+  del `QImage` cuando es posible;
+- la conversion visible se mantiene como `ICC fuente -> ICC monitor`; las LUT
+  densas de 8 bits se generan con LittleCMS, se cachean en RAM/disco y aceleran
+  la transformacion sin cambiar el resultado;
+- las curvas reutilizan LUTs tonales y comparten la cuantizacion RGB antes de
+  aplicar las conversiones ICC para pantalla e instrumentos;
+- la preview final pesada se ejecuta en un worker asincrono cuando la imagen
+  supera 2 MP;
 - un watchdog abandona workers interactivos que no responden y reanuda la cola
   de ajustes para evitar que la interfaz quede atrapada en "Ajustando...".
 
-Esto preserva la seriedad de la gestion de color y reduce los bloqueos largos.
-La siguiente optimizacion pendiente es cachear tambien transformaciones ICC
-reducidas por perfil/receta para bajar uso de CPU durante arrastres continuos.
+Benchmark GUI real con `G:\ProbRAW-TEST\01_ORG\f_16,0.NEF`, DCB, 100%,
+ProPhoto RGB, ICC de monitor y overlay activo:
+
+| Control | Ultima preview visible |
+| --- | ---: |
+| Brillo/cambios normales | ~41-44 ms |
+| Curva tonal | ~62 ms |
+
+Esto preserva la seriedad de la gestion de color y reduce los bloqueos largos
+sin sacrificar colorimetria ni nitidez.
 
 ## Estrategia MTF RAW y visor global de operaciones
 

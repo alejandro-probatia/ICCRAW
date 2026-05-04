@@ -1844,10 +1844,17 @@ class MTFAnalysisMixin:
     def _apply_mtf_auto_sharpening(self, best: dict[str, Any], prepared: dict[str, Any]) -> None:
         amount_slider = int(best["amount_slider"])
         radius_slider = int(best["radius_slider"])
-        if hasattr(self, "slider_sharpen"):
-            self.slider_sharpen.setValue(amount_slider)
-        if hasattr(self, "slider_radius"):
-            self.slider_radius.setValue(radius_slider)
+        self._suspend_detail_adjustment_autosave = int(getattr(self, "_suspend_detail_adjustment_autosave", 0) or 0) + 1
+        try:
+            if hasattr(self, "slider_sharpen"):
+                self.slider_sharpen.setValue(amount_slider)
+            if hasattr(self, "slider_radius"):
+                self.slider_radius.setValue(radius_slider)
+        finally:
+            self._suspend_detail_adjustment_autosave = max(
+                0,
+                int(getattr(self, "_suspend_detail_adjustment_autosave", 1) or 1) - 1,
+            )
         if hasattr(self, "_set_active_named_adjustment_profile_id"):
             self._set_active_named_adjustment_profile_id("detail", "")
         if hasattr(self, "_refresh_named_adjustment_profile_combo"):

@@ -15,15 +15,20 @@ pytest.importorskip("PySide6")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 import probraw.gui as gui_module  # noqa: E402
+import probraw.ui.window.display as display_module  # noqa: E402
+import probraw.ui.window.preview_export as preview_export_module  # noqa: E402
 import probraw.ui.window.preview_recipe as preview_recipe_module  # noqa: E402
+import probraw.ui.window.preview_render as preview_render_module  # noqa: E402
 from probraw.analysis.mtf import MTFResult  # noqa: E402
 from probraw.chart.sampling import ReferenceCatalog  # noqa: E402
 from probraw.core.models import Recipe  # noqa: E402
 from probraw.core.utils import write_tiff16  # noqa: E402
 from probraw.gui import ICCRawMainWindow  # noqa: E402
+from probraw.display_color import profiled_float_to_display_u8, srgb_to_display_u8  # noqa: E402
 from probraw.provenance.c2pa import C2PASignConfig  # noqa: E402
 from probraw.provenance.probraw_proof import ProbRawProofConfig, ProbRawProofResult  # noqa: E402
 from probraw.raw import pipeline  # noqa: E402
+from probraw.raw.preview import standard_profile_to_srgb_display  # noqa: E402
 from probraw.session import create_session, load_session  # noqa: E402
 from probraw.sidecar import load_raw_sidecar, raw_sidecar_path, write_raw_sidecar  # noqa: E402
 
@@ -595,6 +600,58 @@ def test_viewer_zoom_100_requests_full_detail_for_raw(tmp_path: Path, monkeypatc
         window.close()
 
 
+def test_viewer_zoom_100_realigns_after_full_detail_replaces_preview(tmp_path: Path, qapp):
+    raw = tmp_path / "capture.NEF"
+    raw.write_bytes(b"raw")
+    window = ICCRawMainWindow()
+    try:
+        window._selected_file = raw
+        window.image_result_single.setFixedSize(200, 100)
+        window.image_result_single.set_rgb_u8_image(
+            gui_module.np.zeros((200, 400, 3), dtype=gui_module.np.uint8)
+        )
+        window._viewer_zoom_100()
+
+        assert window.image_result_single.current_display_scale() == pytest.approx(1.0)
+
+        window._loaded_preview_fast_raw = False
+        window._loaded_preview_max_side_request = 0
+        window._set_result_display_u8(
+            gui_module.np.zeros((400, 800, 3), dtype=gui_module.np.uint8),
+            compare_enabled=False,
+        )
+
+        assert window.viewer_zoom_label.text() == "100%"
+        assert window.image_result_single.current_display_scale() == pytest.approx(1.0)
+    finally:
+        window.close()
+
+
+def test_viewer_zoom_above_100_is_not_reset_by_preview_update(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._loaded_preview_fast_raw = False
+        window._loaded_preview_max_side_request = 0
+        window.image_result_single.setFixedSize(200, 100)
+        window.image_result_single.set_rgb_u8_image(
+            gui_module.np.zeros((200, 400, 3), dtype=gui_module.np.uint8)
+        )
+
+        window._viewer_zoom_100()
+        window._viewer_zoom_in()
+        assert window.viewer_zoom_label.text() == "125%"
+
+        window._set_result_display_u8(
+            gui_module.np.zeros((200, 400, 3), dtype=gui_module.np.uint8),
+            compare_enabled=False,
+        )
+
+        assert window.viewer_zoom_label.text() == "125%"
+        assert window.image_result_single.current_display_scale() == pytest.approx(1.25)
+    finally:
+        window.close()
+
+
 def test_panel_zoom_to_real_scale_requests_full_detail_for_raw(tmp_path: Path, monkeypatch, qapp):
     raw = tmp_path / "capture.NEF"
     raw.write_bytes(b"raw")
@@ -617,6 +674,33 @@ def test_panel_zoom_to_real_scale_requests_full_detail_for_raw(tmp_path: Path, m
         assert window._viewer_full_detail_requested is True
         assert window._effective_preview_max_side() == 0
         assert calls == [{"show_message": False}]
+    finally:
+        window.close()
+
+
+def test_precache_selected_preview_only_uses_current_raw(tmp_path: Path, monkeypatch, qapp):
+    raw_a = tmp_path / "a.NEF"
+    raw_b = tmp_path / "b.NEF"
+    raw_a.write_bytes(b"a")
+    raw_b.write_bytes(b"b")
+    window = ICCRawMainWindow()
+    try:
+        captured: dict[str, object] = {}
+        window._selected_file = raw_a
+        window._file_list_paths = lambda: [raw_a, raw_b]
+
+        def fake_start(files, *, full_resolution, scope_label=None):
+            captured["files"] = list(files)
+            captured["full_resolution"] = bool(full_resolution)
+            captured["scope_label"] = scope_label
+
+        monkeypatch.setattr(window, "_start_precache_visible_previews", fake_start)
+
+        window._on_precache_selected_preview()
+
+        assert captured["files"] == [raw_a]
+        assert captured["full_resolution"] is True
+        assert captured["scope_label"]
     finally:
         window.close()
 
@@ -659,6 +743,108 @@ def test_standard_output_space_preview_keeps_source_profile_for_monitor_conversi
         assert source_profile is not None
         assert source_profile.exists()
         assert source_profile.suffix.lower() in {".icc", ".icm"}
+    finally:
+        window.close()
+
+
+def test_color_managed_preview_recipe_defaults_unprofiled_camera_rgb_to_prophoto(qapp):
+    window = ICCRawMainWindow()
+    try:
+        recipe = window._color_managed_preview_recipe(
+            Recipe(output_space="scene_linear_camera_rgb", output_linear=True)
+        )
+        source_profile = window._source_profile_for_preview_recipe(recipe)
+
+        assert recipe.output_space == "prophoto_rgb"
+        assert recipe.output_linear is False
+        assert source_profile is not None
+        assert source_profile.exists()
+    finally:
+        window.close()
+
+
+def test_source_profile_for_preview_rejects_unmanaged_recipe(qapp):
+    window = ICCRawMainWindow()
+    try:
+        with pytest.raises(RuntimeError, match="sin perfil ICC de entrada"):
+            window._source_profile_for_preview_recipe(Recipe(output_space="scene_linear_camera_rgb"))
+    finally:
+        window.close()
+
+
+def test_preview_load_uses_color_managed_recipe_without_session_icc(tmp_path: Path, monkeypatch, qapp):
+    raw = tmp_path / "capture.NEF"
+    raw.write_bytes(b"raw")
+    window = ICCRawMainWindow()
+    try:
+        queued: list[tuple] = []
+        window._selected_file = raw
+        monkeypatch.setattr(window, "_queue_preview_load_request", lambda request: queued.append(request))
+
+        window._on_load_selected(show_message=False)
+
+        assert len(queued) == 1
+        recipe = queued[0][1]
+        assert recipe.output_space == "prophoto_rgb"
+        assert recipe.output_linear is False
+    finally:
+        window.close()
+
+
+def test_profiled_preview_never_uses_standard_srgb_route(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.full((24, 32, 3), 0.25, dtype=gui_module.np.float32)
+        expected = gui_module.np.full((24, 32, 3), 64, dtype=gui_module.np.uint8)
+        calls: list[tuple[Path, Path | None]] = []
+        window._original_linear = image
+        window._last_loaded_preview_key = "profiled-preview"
+        monkeypatch.setattr(window, "_build_effective_recipe", lambda: Recipe(output_space="prophoto_rgb"))
+        monkeypatch.setattr(
+            preview_render_module,
+            "standard_profile_to_srgb_display",
+            lambda *_args, **_kwargs: pytest.fail("profiled preview must not route through standard sRGB display"),
+        )
+
+        def fake_profiled_float_to_display_u8(_image, source_profile, monitor_profile):
+            calls.append((Path(source_profile), monitor_profile))
+            return expected
+
+        monkeypatch.setattr(preview_render_module, "profiled_float_to_display_u8", fake_profiled_float_to_display_u8)
+        monkeypatch.setattr(window, "_profiled_display_u8_for_screen", lambda *_args, **_kwargs: expected)
+
+        window._refresh_preview(force_final=True)
+
+        assert calls
+        assert all(source.suffix.lower() in {".icc", ".icm"} for source, _monitor in calls)
+        assert gui_module.np.array_equal(window._current_result_display_u8, expected)
+    finally:
+        window.close()
+
+
+def test_profiled_interactive_render_never_uses_standard_srgb_route(tmp_path: Path, qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        profile = tmp_path / "source.icc"
+        profile.write_bytes(ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes())
+        image = gui_module.np.full((64, 80, 3), 0.25, dtype=gui_module.np.float32)
+        monkeypatch.setattr(
+            preview_render_module,
+            "standard_profile_to_srgb_u8_display",
+            lambda *_args, **_kwargs: pytest.fail("profiled interactive preview must not route through standard sRGB"),
+        )
+
+        _srgb, display = window._render_interactive_viewport_parallel(
+            image,
+            {"brightness_ev": 0.2},
+            output_space="prophoto_rgb",
+            source_profile=profile,
+            monitor_profile=None,
+            include_histogram=False,
+            workers=1,
+        )
+
+        assert display.shape == image.shape
     finally:
         window.close()
 
@@ -991,13 +1177,68 @@ def test_session_preview_cache_survives_memory_clear(tmp_path: Path, qapp):
         window.close()
 
 
-def test_raw_preview_uses_balanced_fast_mode_outside_compare(tmp_path: Path, monkeypatch, qapp):
+def test_preview_memory_cache_budget_scales_with_workstation_ram(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        monkeypatch.delenv("PROBRAW_PREVIEW_CACHE_MB", raising=False)
+        monkeypatch.delenv("NEXORAW_PREVIEW_CACHE_MB", raising=False)
+        monkeypatch.setattr(window, "_system_total_memory_bytes", lambda: 64 * 1024 * 1024 * 1024)
+
+        assert window._preview_cache_max_bytes() >= 7 * 1024 * 1024 * 1024
+    finally:
+        window.close()
+
+
+def test_preview_memory_cache_retains_large_full_resolution_source(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((128, 256, 3), dtype=gui_module.np.float32)
+        key = "large-full-resolution"
+        monkeypatch.setattr(window, "_preview_cache_max_bytes", lambda: int(image.nbytes) + 1024)
+
+        window._cache_preview_memory(key, image)
+
+        assert key in window._preview_cache
+        assert window._cached_preview_image(key) is not None
+    finally:
+        window.close()
+
+
+def test_preview_disk_cache_restores_with_single_working_copy(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_path = root / "01_ORG" / "capture.NEF"
+    raw_path.parent.mkdir(parents=True)
+    raw_path.write_bytes(b"raw")
+
+    window = ICCRawMainWindow()
+    try:
+        window._active_session_root = root.resolve()
+        key = window._preview_cache_key(
+            selected=raw_path,
+            recipe=Recipe(),
+            fast_raw=False,
+            max_preview_side=0,
+        )
+        image = gui_module.np.linspace(0.0, 1.0, 8 * 6 * 3, dtype=gui_module.np.float32).reshape(8, 6, 3)
+
+        window._write_preview_to_disk_cache(key, image, selected=raw_path)
+        restored = window._cached_preview_image(key, selected=raw_path)
+
+        assert restored is not None
+        assert window._preview_cache[key] is restored
+    finally:
+        window.close()
+
+
+def test_raw_preview_uses_exact_full_resolution_mode(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "sample.NEF"
     raw_path.write_bytes(b"raw")
     captured: dict[str, object] = {}
 
     def fake_load_image_for_preview(_path, *, recipe, fast_raw, max_preview_side, input_profile_path=None, cache_dir=None):
         captured["demosaic"] = recipe.demosaic_algorithm
+        captured["output_space"] = recipe.output_space
+        captured["output_linear"] = recipe.output_linear
         captured["fast_raw"] = bool(fast_raw)
         captured["max_preview_side"] = int(max_preview_side)
         captured["input_profile_path"] = input_profile_path
@@ -1015,14 +1256,18 @@ def test_raw_preview_uses_balanced_fast_mode_outside_compare(tmp_path: Path, mon
 
         window._on_load_selected(show_message=False)
 
-        assert captured["fast_raw"] is True
-        assert captured["demosaic"] == "dcb"
-        assert captured["max_preview_side"] == int(window.spin_preview_max_side.value())
+        assert captured["fast_raw"] is False
+        assert captured["demosaic"] == "linear"
+        assert captured["max_preview_side"] == 0
+        assert captured["output_space"] == "prophoto_rgb"
+        assert captured["output_linear"] is False
+        assert window._loaded_preview_source_profile_path is not None
+        assert window._loaded_preview_source_profile_path.exists()
     finally:
         window.close()
 
 
-def test_generic_output_preview_loads_bounded_then_exact_with_recipe_demosaic(tmp_path: Path, monkeypatch, qapp):
+def test_generic_output_preview_loads_exact_with_recipe_demosaic(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "sample.NEF"
     raw_path.write_bytes(b"raw")
     calls: list[dict[str, object]] = []
@@ -1031,6 +1276,7 @@ def test_generic_output_preview_loads_bounded_then_exact_with_recipe_demosaic(tm
         calls.append(
             {
                 "demosaic": recipe.demosaic_algorithm,
+                "output_space": recipe.output_space,
                 "fast_raw": bool(fast_raw),
                 "max_preview_side": int(max_preview_side),
                 "input_profile_path": input_profile_path,
@@ -1050,28 +1296,28 @@ def test_generic_output_preview_loads_bounded_then_exact_with_recipe_demosaic(tm
 
         window._on_load_selected(show_message=False)
 
-        assert len(calls) == 2
+        assert len(calls) == 1
         assert calls[0]["fast_raw"] is False
-        assert calls[0]["max_preview_side"] == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
+        assert calls[0]["max_preview_side"] == 0
         assert calls[0]["demosaic"] == "amaze"
+        assert calls[0]["output_space"] == "prophoto_rgb"
         assert calls[0]["input_profile_path"] is None
-        assert calls[1]["fast_raw"] is False
-        assert calls[1]["max_preview_side"] == 0
-        assert calls[1]["demosaic"] == "amaze"
+        assert window._loaded_preview_source_profile_path is not None
+        assert window._loaded_preview_source_profile_path.exists()
     finally:
         window.close()
 
 
-def test_compare_toggle_switches_raw_preview_between_fast_and_max_quality(tmp_path: Path, monkeypatch, qapp):
+def test_compare_toggle_keeps_raw_preview_at_exact_quality(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "sample.NEF"
     raw_path.write_bytes(b"raw")
-    calls: list[bool] = []
+    calls: list[dict[str, object]] = []
 
     def fake_load_image_for_preview(_path, *, recipe, fast_raw, max_preview_side, input_profile_path=None, cache_dir=None):
-        _ = recipe, max_preview_side
+        _ = recipe
         assert input_profile_path is None
         assert cache_dir is not None
-        calls.append(bool(fast_raw))
+        calls.append({"fast_raw": bool(fast_raw), "max_preview_side": int(max_preview_side)})
         return gui_module.np.full((24, 32, 3), 0.5, dtype=gui_module.np.float32), "ok"
 
     monkeypatch.setattr(gui_module, "load_image_for_preview", fake_load_image_for_preview)
@@ -1082,16 +1328,16 @@ def test_compare_toggle_switches_raw_preview_between_fast_and_max_quality(tmp_pa
         window._selected_file = raw_path
         window.chk_compare.setChecked(False)
         window._on_load_selected(show_message=False)
-        assert calls[-1] is True
+        assert calls[-1] == {"fast_raw": False, "max_preview_side": 0}
 
         window.chk_compare.setChecked(True)
         qapp.processEvents()
-        assert calls[-1] is False
+        assert calls[-1] == {"fast_raw": False, "max_preview_side": 0}
         assert "|0|" in (window._last_loaded_preview_key or "")
 
         window.chk_compare.setChecked(False)
         qapp.processEvents()
-        assert "|1|" in (window._last_loaded_preview_key or "")
+        assert "|0|" in (window._last_loaded_preview_key or "")
     finally:
         window.close()
 
@@ -1325,8 +1571,8 @@ def test_color_managed_preview_keeps_fast_initial_size_then_allows_export_parity
         monkeypatch.setattr(window, "_active_session_icc_for_settings", lambda: profile)
 
         assert window._preview_requires_max_quality()
-        assert window._effective_preview_max_side() == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
-        assert window._final_adjustment_preview_max_side() == gui_module.PREVIEW_FINAL_ADJUSTMENT_MAX_SIDE
+        assert window._effective_preview_max_side() == 0
+        assert window._final_adjustment_preview_max_side() == 0
         assert window._should_async_final_preview()
 
         window._preview_export_parity_requested = True
@@ -1334,7 +1580,7 @@ def test_color_managed_preview_keeps_fast_initial_size_then_allows_export_parity
         window._preview_export_parity_requested = False
 
         window.check_precision_detail_preview.setChecked(True)
-        assert window._effective_preview_max_side() == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
+        assert window._effective_preview_max_side() == 0
         window._viewer_full_detail_requested = True
         assert window._effective_preview_max_side() == 0
         assert window._final_adjustment_preview_max_side() == 0
@@ -1342,7 +1588,7 @@ def test_color_managed_preview_keeps_fast_initial_size_then_allows_export_parity
         window.close()
 
 
-def test_interactive_preview_source_reuses_downscaled_cache(qapp):
+def test_interactive_preview_source_never_downscales(qapp):
     window = ICCRawMainWindow()
     try:
         image = gui_module.np.linspace(0.0, 1.0, 900 * 1200 * 3, dtype=gui_module.np.float32).reshape((900, 1200, 3))
@@ -1350,13 +1596,577 @@ def test_interactive_preview_source_reuses_downscaled_cache(qapp):
         first = window._interactive_preview_source(image, max_side_limit=300)
         second = window._interactive_preview_source(image, max_side_limit=300)
         third = window._interactive_preview_source(image, max_side_limit=240)
-        fourth = window._interactive_preview_source(image, max_side_limit=300)
 
-        assert first.shape == (225, 300, 3)
-        assert second is first
-        assert third.shape == (180, 240, 3)
-        assert third is not first
-        assert fourth is first
+        assert first is image
+        assert second is image
+        assert third is image
+    finally:
+        window.close()
+
+
+def test_interactive_refresh_requests_full_resolution_source(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((900, 1400, 3), dtype=gui_module.np.float32)
+        captured: dict[str, object] = {}
+        window._original_linear = image
+        window._last_loaded_preview_key = "full-res-source"
+        window.slider_brightness.setSliderDown(True)
+
+        def fake_queue(request):
+            captured["request"] = request
+
+        monkeypatch.setattr(window, "_queue_interactive_preview_request", fake_queue)
+
+        window._refresh_preview()
+
+        request = captured["request"]
+        assert request[2] is image
+        assert request[7] == 0
+    finally:
+        window.slider_brightness.setSliderDown(False)
+        window.close()
+
+
+def test_interactive_refresh_uses_visible_viewport_rect_without_downscaling(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.float32)
+        display = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.uint8)
+        captured: dict[str, object] = {}
+        window._original_linear = image
+        window._preview_srgb = image.copy()
+        window._current_result_display_u8 = display.copy()
+        window._last_loaded_preview_key = "full-res-source"
+        window.check_image_clip_overlay.setChecked(False)
+        window.image_result_single.resize(240, 160)
+        window.image_result_single.set_rgb_u8_image(display)
+        window.image_result_single.set_view_transform(
+            zoom=window.image_result_single.view_zoom_for_display_scale(1.0),
+            rotation=0,
+        )
+        window.slider_brightness.setSliderDown(True)
+
+        monkeypatch.setattr(window, "_queue_interactive_preview_request", lambda request: captured.setdefault("request", request))
+
+        window._refresh_preview()
+
+        request = captured["request"]
+        assert request[2] is image
+        assert request[7] == 0
+        assert request[13] is not None
+        x, y, w, h = request[13]
+        assert 0 <= x < image.shape[1]
+        assert 0 <= y < image.shape[0]
+        assert 0 < w <= image.shape[1] - x
+        assert 0 < h <= image.shape[0] - y
+        assert w * h < image.shape[0] * image.shape[1]
+    finally:
+        window.slider_brightness.setSliderDown(False)
+        window.close()
+
+
+def test_interactive_refresh_uses_visible_viewport_rect_with_clip_overlay(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.float32)
+        display = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.uint8)
+        captured: dict[str, object] = {}
+        window._original_linear = image
+        window._preview_srgb = image.copy()
+        window._current_result_display_u8 = display.copy()
+        window._last_loaded_preview_key = "full-res-source"
+        window.check_image_clip_overlay.setChecked(True)
+        window.image_result_single.resize(240, 160)
+        window.image_result_single.set_rgb_u8_image(display)
+        window.image_result_single.set_view_transform(
+            zoom=window.image_result_single.view_zoom_for_display_scale(1.0),
+            rotation=0,
+        )
+        window.slider_brightness.setSliderDown(True)
+
+        monkeypatch.setattr(window, "_queue_interactive_preview_request", lambda request: captured.setdefault("request", request))
+
+        window._refresh_preview()
+
+        request = captured["request"]
+        assert request[13] is not None
+        assert request[14] is True
+    finally:
+        window.slider_brightness.setSliderDown(False)
+        window.close()
+
+
+def test_region_preview_updates_clip_overlay_region(qapp):
+    window = ICCRawMainWindow()
+    try:
+        base_display = gui_module.np.zeros((4, 5, 3), dtype=gui_module.np.uint8)
+        window._preview_srgb = gui_module.np.zeros((4, 5, 3), dtype=gui_module.np.float32)
+        window._current_result_display_u8 = base_display.copy()
+        window._current_result_colorimetric_u8 = base_display.copy()
+        window.check_image_clip_overlay.setChecked(True)
+        window.image_result_single.set_rgb_u8_image(base_display)
+
+        preview_patch = gui_module.np.asarray(
+            [
+                [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+                [[1.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
+            ],
+            dtype=gui_module.np.float32,
+        )
+        display_patch = gui_module.np.round(preview_patch * 255).astype(gui_module.np.uint8)
+
+        applied = window._apply_result_display_u8_region(
+            display_patch,
+            preview_patch,
+            (1, 1, 2, 2),
+            compare_enabled=False,
+            bypass_profile=False,
+        )
+
+        overlay = window.image_result_single._clip_overlay_pixmap
+        assert applied is True
+        assert isinstance(overlay, QtGui.QImage)
+        assert overlay.pixelIndex(1, 1) == 1
+        assert overlay.pixelIndex(2, 1) == 2
+        assert overlay.pixelIndex(1, 2) == 2
+        assert overlay.pixelIndex(2, 2) == 0
+    finally:
+        window.close()
+
+
+def test_preview_candidate_to_float_normalizes_u8(qapp):
+    window = ICCRawMainWindow()
+    try:
+        patch = gui_module.np.asarray([[[0, 128, 255]]], dtype=gui_module.np.uint8)
+
+        normalized = window._preview_candidate_to_float(patch)
+
+        assert normalized.dtype == gui_module.np.float32
+        assert normalized[0, 0, 0] == pytest.approx(0.0)
+        assert normalized[0, 0, 1] == pytest.approx(128.0 / 255.0)
+        assert normalized[0, 0, 2] == pytest.approx(1.0)
+    finally:
+        window.close()
+
+
+def test_recent_render_control_change_uses_visible_viewport_even_without_slider_down(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.float32)
+        display = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.uint8)
+        captured: dict[str, object] = {}
+        window._original_linear = image
+        window._preview_srgb = image.copy()
+        window._current_result_display_u8 = display.copy()
+        window._last_loaded_preview_key = "full-res-source"
+        window.check_image_clip_overlay.setChecked(False)
+        window.image_result_single.resize(240, 160)
+        window.image_result_single.set_rgb_u8_image(display)
+        window.image_result_single.set_view_transform(
+            zoom=window.image_result_single.view_zoom_for_display_scale(1.0),
+            rotation=0,
+        )
+
+        monkeypatch.setattr(window, "_queue_interactive_preview_request", lambda request: captured.setdefault("request", request))
+
+        window._mark_preview_control_interaction()
+        window._refresh_preview()
+
+        request = captured["request"]
+        assert request[7] == 0
+        assert request[9] is False
+        assert request[13] is not None
+    finally:
+        window.close()
+
+
+def test_slider_value_change_without_drag_uses_visible_viewport(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.float32)
+        display = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.uint8)
+        captured: dict[str, object] = {}
+        window._original_linear = image
+        window._preview_srgb = image.copy()
+        window._current_result_display_u8 = display.copy()
+        window._last_loaded_preview_key = "full-res-source"
+        window.check_image_clip_overlay.setChecked(False)
+        window.image_result_single.resize(240, 160)
+        window.image_result_single.set_rgb_u8_image(display)
+        window.image_result_single.set_view_transform(
+            zoom=window.image_result_single.view_zoom_for_display_scale(1.0),
+            rotation=0,
+        )
+
+        monkeypatch.setattr(window, "_queue_interactive_preview_request", lambda request: captured.setdefault("request", request))
+
+        window._on_slider_change()
+        window._refresh_preview()
+
+        request = captured["request"]
+        assert request[7] == 0
+        assert request[9] is False
+        assert request[13] is not None
+    finally:
+        window.close()
+
+
+def test_deferred_full_final_refresh_is_opt_in(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        window._original_linear = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.float32)
+        monkeypatch.delenv("PROBRAW_AUTOMATIC_FULL_FINAL_REFRESH", raising=False)
+
+        window._schedule_deferred_final_preview_refresh()
+        assert not window._preview_final_refresh_timer.isActive()
+
+        monkeypatch.setenv("PROBRAW_AUTOMATIC_FULL_FINAL_REFRESH", "1")
+        window._schedule_deferred_final_preview_refresh(delay_ms=50)
+        assert window._preview_final_refresh_timer.isActive()
+        window._preview_final_refresh_timer.stop()
+    finally:
+        window.close()
+
+
+def test_deferred_final_refresh_forces_full_resolution_request(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((1500, 1500, 3), dtype=gui_module.np.float32)
+        display = gui_module.np.zeros((1500, 1500, 3), dtype=gui_module.np.uint8)
+        captured: dict[str, object] = {}
+        window._original_linear = image
+        window._preview_srgb = image.copy()
+        window._current_result_display_u8 = display.copy()
+        window._last_loaded_preview_key = "full-res-source"
+        window.check_image_clip_overlay.setChecked(False)
+        window.image_result_single.resize(240, 160)
+        window.image_result_single.set_rgb_u8_image(display)
+        window.image_result_single.set_view_transform(
+            zoom=window.image_result_single.view_zoom_for_display_scale(1.0),
+            rotation=0,
+        )
+
+        monkeypatch.setattr(window, "_queue_interactive_preview_request", lambda request: captured.setdefault("request", request))
+
+        window._mark_preview_control_interaction()
+        window._refresh_preview(force_final=True)
+
+        request = captured["request"]
+        assert request[7] == 0
+        assert request[9] is True
+        assert request[13] is None
+    finally:
+        window.close()
+
+
+def test_profile_preview_source_never_downscales(qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((900, 1400, 3), dtype=gui_module.np.float32)
+
+        source, downscaled = window._profile_preview_source_for_async(image, max_side_limit=128)
+
+        assert source is image
+        assert downscaled is False
+        assert window._profile_preview_max_side_limit() == 0
+        assert window._profile_preview_request_key(Path("monitor.icc")).endswith("|pm=0")
+    finally:
+        window.close()
+
+
+def test_tiled_render_adjustments_match_full_render(qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.linspace(0.0, 1.0, 96 * 128 * 3, dtype=gui_module.np.float32).reshape((96, 128, 3))
+        kwargs = {
+            "brightness_ev": 0.15,
+            "contrast": 0.12,
+            "vibrance": 0.18,
+            "saturation": -0.08,
+            "tone_curve_points": [(0.0, 0.0), (0.45, 0.58), (1.0, 1.0)],
+        }
+
+        full = gui_module.apply_render_adjustments(image, **kwargs)
+        tiled = window._apply_render_adjustments_tiled(image, kwargs, target_tile_pixels=2048)
+
+        assert gui_module.np.allclose(tiled, full, atol=2e-6)
+    finally:
+        window.close()
+
+
+def test_tiled_display_conversion_matches_full_conversion(qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.linspace(0.0, 1.0, 80 * 90 * 3, dtype=gui_module.np.float32).reshape((80, 90, 3))
+
+        full_srgb = standard_profile_to_srgb_display(image, "scene_linear_camera_rgb")
+        tiled_srgb = window._standard_profile_to_srgb_display_tiled(image, "scene_linear_camera_rgb")
+        full_u8 = srgb_to_display_u8(full_srgb, None)
+        tiled_u8 = window._srgb_to_display_u8_tiled(tiled_srgb, None)
+
+        assert gui_module.np.allclose(tiled_srgb, full_srgb, atol=2e-6)
+        assert gui_module.np.array_equal(tiled_u8, full_u8)
+    finally:
+        window.close()
+
+
+def test_parallel_interactive_viewport_matches_sequential_icc(tmp_path: Path, qapp, monkeypatch):
+    monkeypatch.setenv("PROBRAW_INTERACTIVE_RENDER_WORKERS", "4")
+    window = ICCRawMainWindow()
+    try:
+        profile = tmp_path / "srgb.icc"
+        profile.write_bytes(ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes())
+        image = gui_module.np.linspace(0.0, 1.0, 96 * 128 * 3, dtype=gui_module.np.float32).reshape((96, 128, 3))
+        kwargs = {
+            "brightness_ev": 0.35,
+            "contrast": 0.1,
+            "blacks": -0.18,
+            "tone_curve_points": [(0.0, 0.0), (0.42, 0.55), (1.0, 1.0)],
+        }
+
+        expected_adjusted = gui_module.apply_render_adjustments(image, **kwargs)
+        expected_display = profiled_float_to_display_u8(expected_adjusted, profile, profile)
+        expected_srgb = profiled_float_to_display_u8(expected_adjusted, profile, None)
+
+        actual_srgb, actual_display = window._render_interactive_viewport_parallel(
+            image,
+            kwargs,
+            output_space="srgb",
+            source_profile=profile,
+            monitor_profile=profile,
+            include_histogram=True,
+            workers=4,
+        )
+
+        assert gui_module.np.array_equal(actual_display, expected_display)
+        assert actual_srgb is not None
+        assert gui_module.np.array_equal(actual_srgb, expected_srgb)
+    finally:
+        window.close()
+
+
+def test_export_preview_color_parity_accepts_matching_tiff(tmp_path: Path, qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((20, 24, 3), dtype=gui_module.np.float32)
+        image[..., 0] = 0.25
+        image[..., 1] = 0.50
+        image[..., 2] = 0.75
+        out = tmp_path / "matching.tiff"
+        Image.fromarray(gui_module.np.round(image * 255).astype(gui_module.np.uint8), "RGB").save(out)
+
+        metrics = window._verify_export_preview_color_parity(
+            out,
+            image,
+            recipe=Recipe(output_space="srgb", output_linear=False),
+            profile_path=None,
+        )
+
+        assert metrics is not None
+        assert metrics["max_delta_u8"] == 0
+    finally:
+        window.close()
+
+
+def test_export_preview_color_parity_uses_icc_for_generic_profile(tmp_path: Path, monkeypatch, qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((6, 8, 3), dtype=gui_module.np.float32)
+        expected = gui_module.np.full((6, 8, 3), 123, dtype=gui_module.np.uint8)
+        profile = tmp_path / "ProPhoto.icm"
+        profile.write_bytes(b"profile" * 64)
+        calls: dict[str, object] = {}
+
+        monkeypatch.setattr(preview_export_module, "ensure_generic_output_profile", lambda *_args, **_kwargs: profile)
+
+        def fake_profiled_float_to_display_u8(image_rgb, source_profile, monitor_profile):
+            calls["source_profile"] = source_profile
+            calls["monitor_profile"] = monitor_profile
+            return expected
+
+        monkeypatch.setattr(preview_export_module, "profiled_float_to_display_u8", fake_profiled_float_to_display_u8)
+
+        actual = window._expected_export_preview_srgb_u8(
+            image,
+            recipe=Recipe(output_space="prophoto_rgb", output_linear=False),
+            profile_path=None,
+        )
+
+        assert gui_module.np.array_equal(actual, expected)
+        assert calls["source_profile"] == profile
+        assert calls["monitor_profile"] is None
+    finally:
+        window.close()
+
+
+def test_display_conversion_failure_does_not_fallback_to_unmanaged_srgb(tmp_path: Path, monkeypatch, qapp):
+    window = ICCRawMainWindow()
+    try:
+        profile = tmp_path / "monitor.icc"
+        profile.write_bytes(b"bad profile")
+        window.path_display_profile.setText(str(profile))
+        window.check_display_color_management.setChecked(True)
+
+        def fail_srgb_to_display_u8(_image_srgb, monitor_profile):
+            if monitor_profile is not None:
+                raise RuntimeError("broken monitor profile")
+            return gui_module.np.zeros((2, 2, 3), dtype=gui_module.np.uint8)
+
+        monkeypatch.setattr(display_module, "srgb_to_display_u8", fail_srgb_to_display_u8)
+
+        with pytest.raises(RuntimeError, match="Fallo de gestion ICC de monitor"):
+            window._display_u8_for_screen(gui_module.np.zeros((2, 2, 3), dtype=gui_module.np.float32))
+    finally:
+        window.close()
+
+
+def test_export_preview_color_parity_rejects_mismatching_tiff(tmp_path: Path, qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((20, 24, 3), dtype=gui_module.np.float32)
+        image[..., 0] = 0.25
+        image[..., 1] = 0.50
+        image[..., 2] = 0.75
+        wrong = image.copy()
+        wrong[..., 0] = 0.95
+        out = tmp_path / "wrong.tiff"
+        Image.fromarray(gui_module.np.round(wrong * 255).astype(gui_module.np.uint8), "RGB").save(out)
+
+        with pytest.raises(RuntimeError, match="paridad colorimetrica preview/export"):
+            window._verify_export_preview_color_parity(
+                out,
+                image,
+                recipe=Recipe(output_space="srgb", output_linear=False),
+                profile_path=None,
+            )
+    finally:
+        window.close()
+
+
+def test_interactive_preview_uses_monitor_icc_by_default(qapp):
+    window = ICCRawMainWindow()
+    try:
+        assert window._interactive_bypass_display_icc is False
+    finally:
+        window.close()
+
+
+def test_tone_curve_drag_defers_synchronous_histogram_update(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        calls: list[bool] = []
+        refreshes: list[bool] = []
+        window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
+        window.check_tone_curve_enabled.setChecked(True)
+        window._set_tone_curve_controls_enabled(True)
+        monkeypatch.setattr(
+            window,
+            "_update_tone_curve_histogram_for_current_controls",
+            lambda *, force=False, **_kwargs: calls.append(bool(force)),
+        )
+        monkeypatch.setattr(window, "_schedule_tone_curve_drag_preview_refresh", lambda: refreshes.append(True))
+        monkeypatch.setattr(window, "_schedule_deferred_final_preview_refresh", lambda **_kwargs: None)
+
+        window.tone_curve_editor._drag_index = 1
+        window._on_tone_curve_points_changed([(0.0, 0.0), (0.5, 0.55), (1.0, 1.0)])
+        assert calls == []
+        assert refreshes == [True]
+
+        window.tone_curve_editor._drag_index = None
+        window._on_tone_curve_points_changed([(0.0, 0.0), (0.5, 0.60), (1.0, 1.0)])
+        assert calls == [True]
+    finally:
+        window.close()
+
+
+def test_tone_curve_drag_preview_is_coalesced_by_timer(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        refreshes: list[bool] = []
+        window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
+        window.check_tone_curve_enabled.setChecked(True)
+        window._set_tone_curve_controls_enabled(True)
+        monkeypatch.setattr(window, "_schedule_preview_refresh", lambda: refreshes.append(True))
+        monkeypatch.setattr(window, "_schedule_deferred_final_preview_refresh", lambda **_kwargs: None)
+
+        window.tone_curve_editor._drag_index = 1
+        for value in (0.52, 0.54, 0.56, 0.58):
+            window._on_tone_curve_points_changed([(0.0, 0.0), (0.5, value), (1.0, 1.0)])
+        qapp.processEvents()
+        assert refreshes == []
+
+        loop = QtCore.QEventLoop()
+        QtCore.QTimer.singleShot(80, loop.quit)
+        loop.exec()
+        assert refreshes == [True]
+    finally:
+        window.close()
+
+
+def test_tone_curve_can_be_edited_while_effect_disabled(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        refreshes: list[bool] = []
+        persists: list[bool] = []
+        window._original_linear = gui_module.np.zeros((80, 90, 3), dtype=gui_module.np.float32)
+        monkeypatch.setattr(window, "_schedule_preview_refresh", lambda: refreshes.append(True))
+        monkeypatch.setattr(window, "_schedule_deferred_final_preview_refresh", lambda **_kwargs: refreshes.append(True))
+        monkeypatch.setattr(window, "_schedule_render_adjustment_sidecar_persist", lambda *_, **__: persists.append(True))
+
+        assert not window.check_tone_curve_enabled.isChecked()
+        assert window.tone_curve_editor.isEnabled()
+
+        window.tone_curve_editor.set_points([(0.0, 0.0), (0.45, 0.70), (1.0, 1.0)])
+        state = window._render_adjustment_state()
+        kwargs = window._render_adjustment_kwargs_from_state(state)
+
+        assert refreshes == []
+        assert persists
+        assert state["tone_curve_enabled"] is False
+        assert state["tone_curve_points"][1] == [0.45, 0.70]
+        assert kwargs["tone_curve_points"] is None
+
+        window.check_tone_curve_enabled.setChecked(True)
+        enabled_kwargs = window._render_adjustment_kwargs()
+        assert enabled_kwargs["tone_curve_points"][1] == [0.45, 0.70]
+    finally:
+        window.close()
+
+
+def test_tone_curve_disable_cancels_pending_drag(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window.check_tone_curve_enabled.setChecked(True)
+        window.tone_curve_editor.set_points([(0.0, 0.0), (0.5, 0.5), (1.0, 1.0)], emit=False)
+        window.tone_curve_editor._drag_index = 1
+
+        window.check_tone_curve_enabled.setChecked(False)
+
+        assert window.tone_curve_editor.isEnabled()
+        assert not window.tone_curve_editor.is_dragging()
+    finally:
+        window.close()
+
+
+def test_interactive_worker_count_adapts_to_hardware(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        monkeypatch.delenv("PROBRAW_INTERACTIVE_RENDER_WORKERS", raising=False)
+        monkeypatch.setattr(preview_render_module.os, "cpu_count", lambda: 16)
+        monkeypatch.setattr(window, "_system_total_memory_bytes", lambda: 64 * 1024 * 1024 * 1024)
+        monkeypatch.setattr(window, "_system_available_memory_bytes", lambda: 32 * 1024 * 1024 * 1024)
+
+        assert window._interactive_preview_worker_count(100_000) == 1
+        assert window._interactive_preview_worker_count(500_000) == 4
+        window._record_interactive_worker_performance(500_000, 4, 30.0)
+        assert window._interactive_preview_worker_count(500_000) == 6
+        window._record_interactive_worker_performance(500_000, 6, 18.0)
+        assert window._interactive_preview_worker_count(500_000) == 6
+        assert window._interactive_preview_worker_count(1_500_000) == 4
+
+        monkeypatch.setenv("PROBRAW_INTERACTIVE_RENDER_WORKERS", "3")
+        assert window._interactive_preview_worker_count(1_500_000) == 3
     finally:
         window.close()
 
@@ -1368,6 +2178,8 @@ def test_stuck_interactive_preview_watchdog_releases_queue(qapp):
         window._interactive_preview_task_active = True
         window._interactive_preview_task_token = 10
         window._interactive_preview_inflight_key = "stuck"
+        window._interactive_preview_inflight_viewport_rect = None
+        window._interactive_preview_inflight_include_analysis = True
         window._interactive_preview_expected_key = "stuck"
         window._interactive_preview_pending_request = None
         window._log_preview = lambda message: messages.append(str(message))
@@ -1376,8 +2188,92 @@ def test_stuck_interactive_preview_watchdog_releases_queue(qapp):
 
         assert not window._interactive_preview_task_active
         assert window._interactive_preview_inflight_key is None
+        assert window._interactive_preview_inflight_viewport_rect is None
+        assert not window._interactive_preview_inflight_include_analysis
         assert window._interactive_preview_expected_key is None
         assert messages
+    finally:
+        window.close()
+
+
+def test_visible_viewport_request_preempts_full_interactive_render(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((100, 120, 3), dtype=gui_module.np.float32)
+        request = (
+            "new-visible",
+            "source",
+            image,
+            {},
+            {},
+            False,
+            False,
+            0,
+            False,
+            False,
+            "srgb",
+            None,
+            None,
+            (10, 12, 40, 36),
+            True,
+        )
+        started: list[tuple[object, ...]] = []
+        window._interactive_preview_task_active = True
+        window._interactive_preview_task_token = 7
+        window._interactive_preview_inflight_key = "old-full"
+        window._interactive_preview_inflight_viewport_rect = None
+        window._interactive_preview_inflight_include_analysis = True
+        window._interactive_preview_pending_request = None
+
+        monkeypatch.setattr(window, "_start_interactive_preview_task", lambda queued: started.append(queued))
+
+        window._queue_interactive_preview_request(request)
+
+        assert started == [request]
+        assert window._interactive_preview_expected_key == "new-visible"
+        assert window._interactive_preview_pending_request is None
+        assert window._interactive_preview_task_token == 8
+    finally:
+        window.close()
+
+
+def test_visible_viewport_request_waits_for_inflight_viewport_render(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((100, 120, 3), dtype=gui_module.np.float32)
+        request = (
+            "new-visible",
+            "source",
+            image,
+            {},
+            {},
+            False,
+            False,
+            0,
+            False,
+            False,
+            "srgb",
+            None,
+            None,
+            (10, 12, 40, 36),
+            True,
+        )
+        started: list[tuple[object, ...]] = []
+        window._interactive_preview_task_active = True
+        window._interactive_preview_task_token = 7
+        window._interactive_preview_inflight_key = "old-visible"
+        window._interactive_preview_inflight_viewport_rect = (0, 0, 40, 36)
+        window._interactive_preview_inflight_include_analysis = False
+        window._interactive_preview_pending_request = None
+
+        monkeypatch.setattr(window, "_start_interactive_preview_task", lambda queued: started.append(queued))
+
+        window._queue_interactive_preview_request(request)
+
+        assert started == []
+        assert window._interactive_preview_expected_key == "new-visible"
+        assert window._interactive_preview_pending_request == request
+        assert window._interactive_preview_task_token == 7
     finally:
         window.close()
 
@@ -1764,7 +2660,7 @@ def test_manual_chart_points_use_display_coordinate_space(tmp_path: Path, qapp):
 
         assert pending is not None
         assert pending["preview_shape"] == (500, 1000)
-        assert not window._preview_requires_max_quality()
+        assert window._preview_requires_max_quality()
     finally:
         window.close()
 

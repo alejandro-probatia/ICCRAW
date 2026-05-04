@@ -89,6 +89,7 @@ class TaskStatusMixin:
             "_selection_load_timer",
             "_preview_load_progress_timer",
             "_preview_refresh_timer",
+            "_preview_final_refresh_timer",
             "_interactive_preview_global_timer",
             "_thumbnail_timer",
             "_metadata_timer",
@@ -114,6 +115,9 @@ class TaskStatusMixin:
         self._mtf_base_roi_pending_request = None
         self._profile_preview_expected_key = None
         self._interactive_preview_expected_key = None
+        self._interactive_preview_inflight_viewport_rect = None
+        self._interactive_preview_inflight_include_analysis = False
+        self._interactive_histogram_last_started_at = 0.0
 
     def _start_background_task(self, label: str, task, on_success) -> None:
         self._set_status(self.tr("Ejecutando:") + f" {label}")

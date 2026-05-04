@@ -27,6 +27,7 @@ from .gui_config import (
     APP_NAME,
     ORG_NAME,
     PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC_ENV,
+    PREVIEW_SYSTEM_DISPLAY_COLOR_MANAGEMENT_ENV,
     _app_icon_path,
     _env_flag,
 )
@@ -124,7 +125,7 @@ if QtWidgets is not None:
             self._queued_metadata_include_c2pa = True
             self._preview_load_task_active = False
             self._preview_load_inflight_key: str | None = None
-            self._preview_load_pending_request: tuple[Path, Recipe, bool, int, str] | None = None
+            self._preview_load_pending_request: tuple[Path, Recipe, bool, int, str, Path | None] | None = None
             self._preview_load_progress_started_at: float | None = None
             self._preview_load_progress_estimated_seconds: float | None = None
             self._preview_load_progress_label = ""
@@ -133,6 +134,7 @@ if QtWidgets is not None:
             self._loaded_preview_fast_raw: bool | None = None
             self._loaded_preview_source_max_side: int = 0
             self._loaded_preview_max_side_request: int | None = None
+            self._loaded_preview_source_profile_path: Path | None = None
             self._preview_cache: dict[str, np.ndarray] = {}
             self._preview_cache_order: list[str] = []
             self._profile_preview_cache: dict[str, np.ndarray] = {}
@@ -144,6 +146,8 @@ if QtWidgets is not None:
             self._profile_preview_error_key: str | None = None
             self._interactive_preview_task_active = False
             self._interactive_preview_inflight_key: str | None = None
+            self._interactive_preview_inflight_viewport_rect: tuple[int, int, int, int] | None = None
+            self._interactive_preview_inflight_include_analysis = False
             self._interactive_preview_task_token = 0
             self._interactive_preview_pending_request: tuple[
                 str,
@@ -159,12 +163,17 @@ if QtWidgets is not None:
                 str,
                 Path | None,
                 Path | None,
+                tuple[int, int, int, int] | None,
+                bool,
             ] | None = None
             self._interactive_preview_expected_key: str | None = None
             self._interactive_preview_last_ms: float | None = None
             self._interactive_preview_busy_started_at: float | None = None
             self._interactive_preview_global_visible = False
             self._interactive_preview_request_seq = 0
+            self._preview_recent_interaction_until = 0.0
+            self._interactive_histogram_last_started_at = 0.0
+            self._interactive_worker_perf: dict[int, dict[int, float]] = {}
             self._display_color_error_key: str | None = None
             self._manual_chart_marking = False
             self._manual_chart_points: list[tuple[float, float]] = []
@@ -245,6 +254,8 @@ if QtWidgets is not None:
             self._original_linear: np.ndarray | None = None
             self._adjusted_linear: np.ndarray | None = None
             self._preview_srgb: np.ndarray | None = None
+            self._current_result_display_u8: np.ndarray | None = None
+            self._current_result_colorimetric_u8: np.ndarray | None = None
             self._last_loaded_preview_key: str | None = None
             self._tone_curve_histogram_key: str | None = None
             self._render_adjustment_sidecar_key: str | None = None
@@ -265,11 +276,16 @@ if QtWidgets is not None:
             self._interactive_source_cache_images: dict[tuple[object, ...], np.ndarray] = {}
             self._interactive_bypass_display_icc = _env_flag(
                 PREVIEW_INTERACTIVE_BYPASS_DISPLAY_ICC_ENV,
-                default=True,
+                default=False,
+            )
+            self._system_display_color_management = _env_flag(
+                PREVIEW_SYSTEM_DISPLAY_COLOR_MANAGEMENT_ENV,
+                default=False,
             )
             self._viewer_zoom = 1.0
             self._viewer_rotation = 0
             self._viewer_full_detail_requested = False
+            self._viewer_real_pixel_sync_pending = False
             self._syncing_viewer_transform = False
             self._selection_load_timer = QtCore.QTimer(self)
             self._selection_load_timer.setSingleShot(True)
@@ -280,6 +296,12 @@ if QtWidgets is not None:
             self._preview_refresh_timer = QtCore.QTimer(self)
             self._preview_refresh_timer.setSingleShot(True)
             self._preview_refresh_timer.timeout.connect(self._refresh_preview)
+            self._tone_curve_preview_timer = QtCore.QTimer(self)
+            self._tone_curve_preview_timer.setSingleShot(True)
+            self._tone_curve_preview_timer.timeout.connect(self._run_tone_curve_drag_preview_refresh)
+            self._preview_final_refresh_timer = QtCore.QTimer(self)
+            self._preview_final_refresh_timer.setSingleShot(True)
+            self._preview_final_refresh_timer.timeout.connect(self._run_deferred_final_preview_refresh)
             self._render_adjustment_sidecar_timer = QtCore.QTimer(self)
             self._render_adjustment_sidecar_timer.setSingleShot(True)
             self._render_adjustment_sidecar_timer.timeout.connect(self._persist_render_adjustments_for_selected)

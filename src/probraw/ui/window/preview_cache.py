@@ -4,6 +4,109 @@ from ._imports import *  # noqa: F401,F403
 
 
 class PreviewCacheMixin:
+    @staticmethod
+    def _system_total_memory_bytes() -> int | None:
+        if os.name == "nt":
+            try:
+                import ctypes
+
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+
+                status = MEMORYSTATUSEX()
+                status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+                if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                    return int(status.ullTotalPhys)
+            except Exception:
+                return None
+        try:
+            page_size = int(os.sysconf("SC_PAGE_SIZE"))
+            pages = int(os.sysconf("SC_PHYS_PAGES"))
+            if page_size > 0 and pages > 0:
+                return int(page_size * pages)
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
+    def _system_available_memory_bytes() -> int | None:
+        if os.name == "nt":
+            try:
+                import ctypes
+
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+
+                status = MEMORYSTATUSEX()
+                status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+                if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                    return int(status.ullAvailPhys)
+            except Exception:
+                return None
+        try:
+            page_size = int(os.sysconf("SC_PAGE_SIZE"))
+            pages = int(os.sysconf("SC_AVPHYS_PAGES"))
+            if page_size > 0 and pages > 0:
+                return int(page_size * pages)
+        except Exception:
+            return None
+        return None
+
+    def _preview_cache_override_bytes(self) -> int | None:
+        settings_value = None
+        if hasattr(self, "_settings"):
+            try:
+                settings_value = self._settings.value("performance/preview_cache_mb", None)
+            except Exception:
+                settings_value = None
+        for raw in (
+            os.environ.get("PROBRAW_PREVIEW_CACHE_MB"),
+            os.environ.get("NEXORAW_PREVIEW_CACHE_MB"),
+            settings_value,
+        ):
+            if raw is None or str(raw).strip() == "":
+                continue
+            try:
+                mb = float(raw)
+            except Exception:
+                continue
+            if np.isfinite(mb) and mb > 0.0:
+                return int(max(256.0, mb) * 1024.0 * 1024.0)
+        return None
+
+    def _preview_cache_max_bytes(self) -> int:
+        override = self._preview_cache_override_bytes()
+        if override is not None:
+            return int(override)
+        legacy_floor = int(PREVIEW_CACHE_MAX_BYTES)
+        workstation_floor = 1536 * 1024 * 1024
+        maximum = 12 * 1024 * 1024 * 1024
+        total = self._system_total_memory_bytes()
+        if total is None or int(total) <= 0:
+            return int(max(legacy_floor, workstation_floor))
+        adaptive = int(int(total) * 0.12)
+        return int(max(legacy_floor, min(max(workstation_floor, adaptive), maximum)))
+
     def _preview_recipe_signature(self, recipe: Recipe) -> str:
         wb = ",".join(f"{float(v):.6g}" for v in recipe.wb_multipliers)
         return "|".join(
@@ -71,15 +174,23 @@ class PreviewCacheMixin:
             or os.environ.get("PROBRAW_SYNC_PREVIEW_LOAD")
         )
 
-    def _cache_preview_memory(self, key: str, image: np.ndarray) -> None:
+    def _cache_preview_memory(self, key: str, image: np.ndarray, *, copy: bool = True) -> None:
         if key in self._preview_cache:
             self._preview_cache.pop(key, None)
             self._preview_cache_order = [k for k in self._preview_cache_order if k != key]
-        self._preview_cache[key] = image.copy()
+        array = np.asarray(image, dtype=np.float32)
+        if copy:
+            cached = array.copy()
+        elif array.ndim == 3 and array.shape[2] == 3 and array.flags.c_contiguous:
+            cached = array
+        else:
+            cached = np.ascontiguousarray(array[..., :3])
+        self._preview_cache[key] = cached
         self._preview_cache_order.append(key)
+        max_bytes = int(self._preview_cache_max_bytes())
         while (
             len(self._preview_cache_order) > PREVIEW_CACHE_MAX_ENTRIES
-            or self._preview_cache_bytes() > PREVIEW_CACHE_MAX_BYTES
+            or self._preview_cache_bytes() > max_bytes
         ):
             old = self._preview_cache_order.pop(0)
             self._preview_cache.pop(old, None)
@@ -96,7 +207,7 @@ class PreviewCacheMixin:
             return image
         image = self._read_preview_from_disk_cache(key, selected=selected)
         if image is not None:
-            self._cache_preview_memory(key, image)
+            self._cache_preview_memory(key, image, copy=False)
             return image
         self._preview_cache_order = [k for k in self._preview_cache_order if k != key]
         return None
@@ -160,6 +271,7 @@ class PreviewCacheMixin:
         self._loaded_preview_fast_raw = None
         self._loaded_preview_source_max_side = 0
         self._loaded_preview_max_side_request = None
+        self._loaded_preview_source_profile_path = None
         self._tone_curve_histogram_key = None
         self._preview_load_pending_request = None
         self._profile_preview_pending_request = None
@@ -167,6 +279,9 @@ class PreviewCacheMixin:
         self._profile_preview_error_key = None
         self._interactive_preview_pending_request = None
         self._interactive_preview_expected_key = None
+        self._interactive_preview_inflight_viewport_rect = None
+        self._interactive_preview_inflight_include_analysis = False
+        self._interactive_histogram_last_started_at = 0.0
         self._interactive_preview_request_seq = 0
         self._profile_preview_cache.clear()
         self._profile_preview_cache_order.clear()

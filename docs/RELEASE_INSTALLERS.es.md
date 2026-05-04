@@ -78,6 +78,32 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.10
+
+La release 0.3.10 corrige la invariante de perfilado de preview y mejora el
+rendimiento interactivo a 100% sin degradar color ni nitidez:
+
+- toda imagen gestionada tiene perfil de entrada obligatorio: ICC de
+  sesion/imagen o perfil generico real,
+- la visualizacion perfilada usa conversion directa `ICC fuente -> ICC monitor`,
+  sin rutas estandar sRGB para pantalla cuando hay perfil fuente,
+- cache densa de LUT ICC de 8 bits generada por LittleCMS, persistida en disco y
+  reutilizada para previews grandes,
+- actualizacion por region visible, zoom 1:1 estable y ampliacion por encima del
+  100% sin retorno automatico,
+- sliders de color/contraste casi instantaneos y curvas mas rapidas por cache de
+  LUT tonal y cuantizacion RGB compartida,
+- botones de cache separados para imagen seleccionada 1:1 y directorio visible,
+- benchmark GUI real documentado con RAW completo, ICC de monitor y overlay.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.10-Setup.exe`
+- `ProbRAW-0.3.10-Setup.exe.sha256`
+- `probraw-0.3.10.tar.gz`
+- `probraw-0.3.10-py3-none-any.whl`
+- `probraw_0.3.10_python_artifacts.sha256`
+
 ## Release 0.3.9
 
 La release 0.3.9 mejora la lectura del analisis de nitidez y anade inspeccion

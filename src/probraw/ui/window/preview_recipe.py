@@ -79,10 +79,13 @@ class PreviewRecipeMixin:
         if int(getattr(self, "_suspend_raw_export_autosave", 0) or 0) > 0:
             return
         if self._sender_is_libraw_color_control():
-            if hasattr(self, "_set_active_named_adjustment_profile_id"):
+            if (
+                hasattr(self, "_set_active_named_adjustment_profile_id")
+                and self._active_named_adjustment_profile_id("color_contrast")
+            ):
                 self._set_active_named_adjustment_profile_id("color_contrast", "")
-            if hasattr(self, "_refresh_named_adjustment_profile_combo"):
-                self._refresh_named_adjustment_profile_combo("color_contrast")
+                if hasattr(self, "_refresh_named_adjustment_profile_combo"):
+                    self._refresh_named_adjustment_profile_combo("color_contrast")
             if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
                 self._schedule_render_adjustment_sidecar_persist()
         elif hasattr(self, "_schedule_raw_export_sidecar_persist"):
@@ -257,16 +260,7 @@ class PreviewRecipeMixin:
         return self._supported_gui_demosaic("dcb", notify=False)
 
     def _preview_requires_max_quality(self) -> bool:
-        if bool(getattr(self, "_viewer_full_detail_requested", False)):
-            return True
-        compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
-        if compare_enabled or bool(self._manual_chart_marking_after_reload):
-            return True
-        try:
-            recipe = self._build_effective_recipe()
-        except Exception:
-            return False
-        return bool(self._active_session_icc_for_settings() is not None or is_generic_output_space(recipe.output_space))
+        return True
 
     def _split_black_mode(self, value: str) -> tuple[str, int]:
         txt = (value or "metadata").strip().lower()
@@ -414,13 +408,20 @@ class PreviewRecipeMixin:
         return out
 
     def _set_tone_curve_controls_enabled(self, enabled: bool) -> None:
-        self.combo_tone_curve_channel.setEnabled(bool(enabled))
-        self.combo_tone_curve_preset.setEnabled(bool(enabled))
-        self.label_tone_curve_black.setEnabled(bool(enabled))
-        self.slider_tone_curve_black.setEnabled(bool(enabled))
-        self.label_tone_curve_white.setEnabled(bool(enabled))
-        self.slider_tone_curve_white.setEnabled(bool(enabled))
-        self.tone_curve_editor.setEnabled(bool(enabled))
+        del enabled
+        editor = getattr(self, "tone_curve_editor", None)
+        if editor is not None and hasattr(editor, "cancel_interaction"):
+            editor.cancel_interaction()
+        # The checkbox controls whether the curve is applied to the render, not
+        # whether the curve can be edited. This lets users prepare/tune curves
+        # while A/B testing with the effect disabled.
+        self.combo_tone_curve_channel.setEnabled(True)
+        self.combo_tone_curve_preset.setEnabled(True)
+        self.label_tone_curve_black.setEnabled(True)
+        self.slider_tone_curve_black.setEnabled(True)
+        self.label_tone_curve_white.setEnabled(True)
+        self.slider_tone_curve_white.setEnabled(True)
+        self.tone_curve_editor.setEnabled(True)
 
     def _tone_curve_range_values(self) -> tuple[float, float]:
         black = self.slider_tone_curve_black.value() / 1000.0
@@ -584,16 +585,20 @@ class PreviewRecipeMixin:
         if previous != current:
             self._save_visible_tone_curve_channel_state(previous)
         self._load_tone_curve_channel_into_editor(current)
-        self._on_render_control_change()
+        self._on_render_control_change(preview=bool(self.check_tone_curve_enabled.isChecked()))
 
     def _on_tone_curve_preset_changed(self, _index: int) -> None:
         key = self._tone_curve_preset_key()
         if key != "custom":
             self.tone_curve_editor.set_points(self._tone_curve_preset_points(key), emit=False)
         self._save_visible_tone_curve_channel_state()
-        if self._original_linear is not None and hasattr(self, "_update_tone_curve_histogram_for_current_controls"):
+        if (
+            self.check_tone_curve_enabled.isChecked()
+            and self._original_linear is not None
+            and hasattr(self, "_update_tone_curve_histogram_for_current_controls")
+        ):
             self._update_tone_curve_histogram_for_current_controls(force=True)
-        self._on_render_control_change()
+        self._on_render_control_change(preview=bool(self.check_tone_curve_enabled.isChecked()))
 
     def _on_tone_curve_range_changed(self, *_args) -> None:
         black = self.slider_tone_curve_black.value() / 1000.0
@@ -606,9 +611,13 @@ class PreviewRecipeMixin:
             self._set_tone_curve_range_controls(black, white)
         else:
             self.tone_curve_editor.set_input_range(black, white)
-        if self._original_linear is not None and hasattr(self, "_update_tone_curve_histogram_for_current_controls"):
+        if (
+            self.check_tone_curve_enabled.isChecked()
+            and self._original_linear is not None
+            and hasattr(self, "_update_tone_curve_histogram_for_current_controls")
+        ):
             self._update_tone_curve_histogram_for_current_controls(force=True)
-        self._on_render_control_change()
+        self._on_render_control_change(preview=bool(self.check_tone_curve_enabled.isChecked()))
 
     def _on_tone_curve_points_changed(self, _points: object) -> None:
         if self._tone_curve_preset_key() != "custom":
@@ -616,21 +625,56 @@ class PreviewRecipeMixin:
             self._set_combo_data(self.combo_tone_curve_preset, "custom")
             self.combo_tone_curve_preset.blockSignals(False)
         self._save_visible_tone_curve_channel_state()
-        if self._original_linear is not None and hasattr(self, "_update_tone_curve_histogram_for_current_controls"):
+        editor = getattr(self, "tone_curve_editor", None)
+        dragging = bool(editor is not None and hasattr(editor, "is_dragging") and editor.is_dragging())
+        preview_enabled = bool(self.check_tone_curve_enabled.isChecked())
+        if (
+            preview_enabled
+            and
+            not dragging
+            and self._original_linear is not None
+            and hasattr(self, "_update_tone_curve_histogram_for_current_controls")
+        ):
             self._update_tone_curve_histogram_for_current_controls(force=True)
-        self._on_render_control_change()
+        if dragging:
+            if preview_enabled and self._original_linear is not None and hasattr(self, "_schedule_tone_curve_drag_preview_refresh"):
+                self._schedule_tone_curve_drag_preview_refresh()
+                if hasattr(self, "_schedule_deferred_final_preview_refresh"):
+                    self._schedule_deferred_final_preview_refresh()
+            return
+        self._on_render_control_change(preview=preview_enabled)
 
-    def _on_render_control_change(self) -> None:
+    def _on_render_control_change(self, *_args: object, preview: bool = True) -> None:
         if int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0) > 0:
             return
-        if self._original_linear is not None:
+        if not (
+            hasattr(self, "_is_direct_preview_interaction_active")
+            and self._is_direct_preview_interaction_active()
+        ):
+            timer = getattr(self, "_tone_curve_preview_timer", None)
+            if timer is not None:
+                timer.stop()
+        if bool(preview) and self._original_linear is not None:
+            if hasattr(self, "_mark_preview_control_interaction"):
+                self._mark_preview_control_interaction()
             self._schedule_preview_refresh()
-        if hasattr(self, "_set_active_named_adjustment_profile_id"):
+            if hasattr(self, "_schedule_deferred_final_preview_refresh"):
+                self._schedule_deferred_final_preview_refresh()
+        if (
+            hasattr(self, "_set_active_named_adjustment_profile_id")
+            and self._active_named_adjustment_profile_id("color_contrast")
+        ):
             self._set_active_named_adjustment_profile_id("color_contrast", "")
-        if hasattr(self, "_refresh_named_adjustment_profile_combo"):
-            self._refresh_named_adjustment_profile_combo("color_contrast")
+            if hasattr(self, "_refresh_named_adjustment_profile_combo"):
+                self._refresh_named_adjustment_profile_combo("color_contrast")
         if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
-            self._schedule_render_adjustment_sidecar_persist()
+            interaction_active = (
+                self._is_direct_preview_interaction_active()
+                if hasattr(self, "_is_direct_preview_interaction_active")
+                else False
+            )
+            if not interaction_active:
+                self._schedule_render_adjustment_sidecar_persist()
 
     def _reset_tone_curve(self) -> None:
         self.check_tone_curve_enabled.setChecked(False)
@@ -733,7 +777,10 @@ class PreviewRecipeMixin:
         self._viewer_zoom = float(np.clip(float(zoom), 0.05, 64.0))
         self._viewer_rotation = int(rotation) % 360
         self._sync_viewer_transform()
+        self._clear_pending_real_pixel_sync_if_manual_zoom_moved()
         self._ensure_full_detail_preview_if_needed()
+        if int(self._viewer_rotation) % 360 == 0 and hasattr(self, "_schedule_visible_viewport_preview_refresh"):
+            self._schedule_visible_viewport_preview_refresh(duration_ms=450)
 
     def _viewer_reference_panel(self) -> ImagePanel | None:
         names = (
@@ -757,11 +804,17 @@ class PreviewRecipeMixin:
     def _viewer_zoom_in(self) -> None:
         self._viewer_zoom = float(np.clip(self._viewer_zoom * 1.25, 0.05, 64.0))
         self._sync_viewer_transform()
+        self._clear_pending_real_pixel_sync_if_manual_zoom_moved()
         self._ensure_full_detail_preview_if_needed()
+        if hasattr(self, "_schedule_visible_viewport_preview_refresh"):
+            self._schedule_visible_viewport_preview_refresh(duration_ms=450)
 
     def _viewer_zoom_out(self) -> None:
         self._viewer_zoom = float(np.clip(self._viewer_zoom / 1.25, 0.05, 64.0))
         self._sync_viewer_transform()
+        self._clear_pending_real_pixel_sync_if_manual_zoom_moved()
+        if hasattr(self, "_schedule_visible_viewport_preview_refresh"):
+            self._schedule_visible_viewport_preview_refresh(duration_ms=450)
 
     def _viewer_zoom_100(self) -> None:
         panel = self._viewer_reference_panel()
@@ -770,11 +823,45 @@ class PreviewRecipeMixin:
         else:
             self._viewer_zoom = 1.0
         self._viewer_full_detail_requested = True
+        self._viewer_real_pixel_sync_pending = True
         self._sync_viewer_transform()
         self._ensure_full_detail_preview_if_needed(force=True)
+        if hasattr(self, "_schedule_visible_viewport_preview_refresh"):
+            self._schedule_visible_viewport_preview_refresh(duration_ms=450)
+
+    def _clear_pending_real_pixel_sync_if_manual_zoom_moved(self) -> None:
+        scale = self._viewer_display_scale()
+        if scale is None:
+            return
+        if abs(float(scale) - 1.0) > 0.02:
+            self._viewer_real_pixel_sync_pending = False
+
+    def _sync_viewer_real_pixel_scale_if_requested(self) -> None:
+        if not bool(getattr(self, "_viewer_real_pixel_sync_pending", False)):
+            return
+        loaded_request = getattr(self, "_loaded_preview_max_side_request", None)
+        loaded_fast = bool(getattr(self, "_loaded_preview_fast_raw", True))
+        if loaded_request != 0 or loaded_fast:
+            return
+        panel = self._viewer_reference_panel()
+        if panel is None or not hasattr(panel, "view_zoom_for_display_scale"):
+            return
+        scale = self._viewer_display_scale()
+        if scale is not None and float(scale) > 1.02:
+            self._viewer_real_pixel_sync_pending = False
+            return
+        target_zoom = panel.view_zoom_for_display_scale(1.0)
+        if abs(float(getattr(self, "_viewer_zoom", 1.0)) - float(target_zoom)) <= 1e-5:
+            self._viewer_real_pixel_sync_pending = False
+            self._sync_viewer_transform()
+            return
+        self._viewer_zoom = float(target_zoom)
+        self._viewer_real_pixel_sync_pending = False
+        self._sync_viewer_transform()
 
     def _viewer_fit(self) -> None:
         self._viewer_full_detail_requested = False
+        self._viewer_real_pixel_sync_pending = False
         self._viewer_zoom = 1.0
         self._viewer_rotation = 0
         self._sync_viewer_transform()
@@ -793,6 +880,7 @@ class PreviewRecipeMixin:
         loaded_fast = bool(getattr(self, "_loaded_preview_fast_raw", True))
         if loaded_request == 0 and not loaded_fast:
             return
+        self._viewer_real_pixel_sync_pending = bool(scale is None or float(scale) <= 1.02)
         self._set_status(self.tr("Cargando detalle 1:1..."))
         self._on_load_selected(show_message=False)
 
@@ -836,12 +924,19 @@ class PreviewRecipeMixin:
         if rgb.ndim != 3 or rgb.shape[2] < 3:
             return None
         rgb_u8 = np.ascontiguousarray(rgb[..., :3].astype(np.uint8))
-        shadow_mask = np.all(rgb_u8 <= int(VIEWER_HISTOGRAM_SHADOW_CLIP_U8), axis=2)
-        highlight_mask = np.any(rgb_u8 >= int(VIEWER_HISTOGRAM_HIGHLIGHT_CLIP_U8), axis=2)
+        r = rgb_u8[..., 0]
+        g = rgb_u8[..., 1]
+        b = rgb_u8[..., 2]
+        shadow_limit = int(VIEWER_HISTOGRAM_SHADOW_CLIP_U8)
+        highlight_limit = int(VIEWER_HISTOGRAM_HIGHLIGHT_CLIP_U8)
+        shadow_mask = (r <= shadow_limit) & (g <= shadow_limit) & (b <= shadow_limit)
+        highlight_mask = (r >= highlight_limit) | (g >= highlight_limit) | (b >= highlight_limit)
         classes = np.zeros(rgb_u8.shape[:2], dtype=np.uint8)
-        classes[shadow_mask] = 1
         classes[highlight_mask] = 2
-        classes[np.logical_and(shadow_mask, highlight_mask)] = 3
+        classes[shadow_mask] = 1
+        both = shadow_mask & highlight_mask
+        if np.any(both):
+            classes[both] = 3
         return classes
 
     def _apply_clip_overlay_to_panel(self, panel: ImagePanel, display_u8: np.ndarray | None) -> None:

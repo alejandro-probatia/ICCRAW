@@ -22,6 +22,45 @@ To maintain full traceability, each change must:
 
 - No pending changes.
 
+## [0.3.10] - 2026-05-04
+
+### Added
+
+- ICC-managed preview now maintains a dense 8-bit RGB LUT cache for each
+  `image profile -> monitor profile` pair, generated with LittleCMS and
+  persisted on disk, to speed up repeated visible renders without changing the
+  colorimetric result.
+- The GUI benchmark now measures real 100% interactions, clipping overlay,
+  monitor ICC management, window size and the effective color-managed recipe.
+
+### Changed
+
+- The preview path now requires every image to have an input profile: the
+  session/image ICC when available, or a real generic ProPhoto/sRGB/Adobe RGB
+  profile when no specific ICC exists.
+- Interactive adjustments update only the visible 100% crop when possible,
+  reuse QImage regions and avoid full-frame recomputation for sliders, curves
+  and clipping indicators.
+- Tone curves reuse normalized LUTs and share RGB quantization before the ICC
+  conversions needed for the display and instruments.
+- Automatic interactive worker selection considers CPU, RAM and local timings so
+  workstation hardware is used without freezing the GUI.
+- 1:1 zoom remains aligned to real pixels, but no longer forces the viewer back
+  to 100% when the user magnifies above that scale.
+
+### Fixed
+
+- Profiled preview no longer passes through standard sRGB routes when an input
+  profile exists; visible conversion is direct `source ICC -> monitor ICC`.
+- Cache buttons distinguish between caching the selected image at 1:1 and
+  caching the visible directory, avoiding always processing every image.
+- Histogram and clipping overlay now update from the correct colorimetric
+  signal, without mixing the monitor conversion or unnormalised `uint8` buffers.
+- Color/contrast adjustments no longer trigger unnecessary MTF recalculation;
+  sharpness analysis still uses real-resolution data when analysis is requested.
+- Image load/switching invalidates the source profile associated with cached
+  previews so stale ICC state is not reused.
+
 ## [0.3.9] - 2026-05-03
 
 ### Added

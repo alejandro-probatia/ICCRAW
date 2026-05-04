@@ -4,6 +4,78 @@ from ._imports import *  # noqa: F401,F403
 
 
 class PreviewExportMixin:
+    def _rendered_tiff_srgb_u8(self, path: Path) -> np.ndarray:
+        from PIL import ImageCms
+
+        with Image.open(path) as img:
+            icc = img.info.get("icc_profile")
+            if icc:
+                profile = ImageCms.ImageCmsProfile(io.BytesIO(icc))
+                converted = ImageCms.profileToProfile(
+                    img,
+                    profile,
+                    ImageCms.createProfile("sRGB"),
+                    outputMode="RGB",
+                )
+            else:
+                converted = img.convert("RGB")
+            return np.asarray(converted, dtype=np.uint8).copy()
+
+    def _expected_export_preview_srgb_u8(
+        self,
+        image: np.ndarray,
+        *,
+        recipe: Recipe,
+        profile_path: Path | None,
+    ) -> np.ndarray | None:
+        if profile_path is None and is_generic_output_space(recipe.output_space):
+            output_profile = ensure_generic_output_profile(
+                recipe.output_space,
+                directory=self._session_generic_profile_dir(),
+            )
+            return profiled_float_to_display_u8(image, output_profile, None)
+        if profile_path is not None and not is_generic_output_space(recipe.output_space):
+            return profiled_float_to_display_u8(image, profile_path, None)
+        return None
+
+    def _verify_export_preview_color_parity(
+        self,
+        output_tiff: Path,
+        image: np.ndarray,
+        *,
+        recipe: Recipe,
+        profile_path: Path | None,
+    ) -> dict[str, float] | None:
+        expected = self._expected_export_preview_srgb_u8(
+            image,
+            recipe=recipe,
+            profile_path=profile_path,
+        )
+        if expected is None:
+            return None
+        actual = self._rendered_tiff_srgb_u8(output_tiff)
+        if actual.shape != expected.shape:
+            raise RuntimeError(
+                "Fallo de paridad colorimetrica: el TIFF exportado no coincide en dimensiones "
+                f"con la preview ({actual.shape} != {expected.shape})."
+            )
+        diff = np.abs(actual.astype(np.int16) - expected.astype(np.int16))
+        mean_delta = float(np.mean(diff))
+        p99_delta = float(np.percentile(diff, 99))
+        max_delta = int(np.max(diff))
+        metrics = {
+            "mean_delta_u8": round(mean_delta, 4),
+            "p99_delta_u8": round(p99_delta, 4),
+            "max_delta_u8": float(max_delta),
+        }
+        if mean_delta > 1.5 or p99_delta > 4.0 or max_delta > 12:
+            raise RuntimeError(
+                "Fallo de paridad colorimetrica preview/export: "
+                f"media={mean_delta:.3f}, p99={p99_delta:.3f}, max={max_delta}. "
+                "No se acepta el TIFF porque no reproduce la imagen visualizada."
+            )
+        return metrics
+
     def _on_save_preview(self) -> None:
         if self._preview_srgb is None:
             QtWidgets.QMessageBox.information(self, self.tr("Info"), "No hay preview para guardar.")
@@ -123,6 +195,12 @@ class PreviewExportMixin:
                 render_context={"entrypoint": "gui_single_develop"},
                 generic_profile_dir=self._session_generic_profile_dir(),
             )
+            parity_metrics = self._verify_export_preview_color_parity(
+                out_path,
+                image,
+                recipe=recipe,
+                profile_path=profile_path,
+            )
             rendered_profile_path = self._render_profile_path_for_recipe(
                 recipe,
                 input_profile_path=profile_path,
@@ -156,6 +234,7 @@ class PreviewExportMixin:
                 "requested_tiff": str(requested_out_path),
                 "proof": proof_result.proof_path,
                 "raw_sidecar": str(sidecar) if sidecar is not None else "",
+                "color_parity": parity_metrics,
             }
 
         def on_success(payload) -> None:
@@ -163,6 +242,8 @@ class PreviewExportMixin:
                 self._log_preview(f"Salida existente preservada; nueva version: {payload['output_tiff']}")
             self._log_preview(f"TIFF revelado: {payload['output_tiff']}")
             self._log_preview(f"ProbRAW Proof: {payload['proof']}")
+            if payload.get("color_parity"):
+                self._log_preview(f"Paridad color preview/export: {payload['color_parity']}")
             if payload.get("raw_sidecar"):
                 self._log_preview(f"Mochila ProbRAW: {payload['raw_sidecar']}")
             self._refresh_color_reference_thumbnail_markers()

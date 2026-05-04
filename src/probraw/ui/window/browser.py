@@ -111,6 +111,7 @@ class BrowserMetadataMixin:
         self._clear_manual_chart_points_for_file_change()
         self._clear_mtf_roi_for_file_change()
         self._last_loaded_preview_key = None
+        self._loaded_preview_source_profile_path = None
         self.selected_file_label.setText(self.tr("Sin archivo seleccionado"))
         self._clear_metadata_view()
         self._clear_viewer_histogram()

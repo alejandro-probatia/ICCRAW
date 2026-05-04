@@ -1217,14 +1217,16 @@ class LayoutMixin:
             self._viewer_action(self.tr("Girar izquierda"), self._viewer_rotate_left, icon=self._rotate_arrow_icon(clockwise=False)),
             self._viewer_action(self.tr("Girar derecha"), self._viewer_rotate_right, icon=self._rotate_arrow_icon(clockwise=True)),
             self._viewer_action(
-            self.tr("Precache carpeta"),
-            lambda: self._on_precache_visible_previews(full_resolution=False),
-            icon=self._precache_icon(one_to_one=False),
+                self.tr("Cache 1:1 actual"),
+                self._on_precache_selected_preview,
+                icon=self._precache_icon(one_to_one=True),
+                tooltip=self.tr("Cargar en cache el 100% real del RAW seleccionado"),
             ),
             self._viewer_action(
-            self.tr("Precache 1:1"),
-            lambda: self._on_precache_visible_previews(full_resolution=True),
-            icon=self._precache_icon(one_to_one=True),
+                self.tr("Cache 1:1 carpeta"),
+                lambda: self._on_precache_visible_previews(full_resolution=True),
+                icon=self._precache_icon(one_to_one=True),
+                tooltip=self.tr("Cargar en cache el 100% real de todos los RAW visibles"),
             ),
         ]
         for index, action in enumerate(actions):

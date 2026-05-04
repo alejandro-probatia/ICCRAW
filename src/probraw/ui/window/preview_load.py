@@ -164,14 +164,9 @@ class PreviewLoadMixin:
         if self._normalized_path_key(selected) != self._normalized_path_key(original_selected):
             self._selected_file = selected
             self.selected_file_label.setText(str(selected))
-        recipe = self._build_effective_recipe()
-        max_quality_preview = self._preview_requires_max_quality()
+        recipe = self._color_managed_preview_recipe(self._build_effective_recipe())
         is_raw = selected.suffix.lower() in RAW_EXTENSIONS
-        fast_raw = bool(is_raw and not max_quality_preview)
-        if is_raw and fast_raw:
-            # Preview policy: always use the most responsive demosaic path.
-            # Final render keeps the recipe-selected algorithm (e.g. AMaZE).
-            recipe.demosaic_algorithm = self._balanced_preview_demosaic()
+        fast_raw = False
         max_preview_side = self._effective_preview_max_side()
         input_profile_path = self._active_session_icc_for_settings()
         base_signature = self._preview_base_signature(
@@ -219,12 +214,13 @@ class PreviewLoadMixin:
         cached = self._cached_preview_image(cache_key, selected=selected)
         if cached is not None:
             self._original_linear = cached.copy()
-            self._adjusted_linear = self._original_linear.copy()
+            self._adjusted_linear = self._original_linear
             self._last_loaded_preview_key = cache_key
             self._loaded_preview_base_signature = base_signature
             self._loaded_preview_fast_raw = bool(fast_raw)
             self._loaded_preview_max_side_request = int(max_preview_side)
             self._loaded_preview_source_max_side = int(max(self._original_linear.shape[0], self._original_linear.shape[1]))
+            self._loaded_preview_source_profile_path = self._source_profile_for_preview_recipe(recipe)
             self._clear_adjustment_caches()
             self._clear_mtf_roi_for_file_change()
             self._auto_update_mtf_pixel_pitch_from_file(selected)
@@ -305,7 +301,7 @@ class PreviewLoadMixin:
                     )
                     return
                 self._original_linear = np.asarray(image_linear, dtype=np.float32)
-                self._adjusted_linear = self._original_linear.copy()
+                self._adjusted_linear = self._original_linear
                 self._last_loaded_preview_key = loaded_key
                 self._loaded_preview_base_signature = self._preview_base_signature(
                     selected=selected,
@@ -317,6 +313,7 @@ class PreviewLoadMixin:
                 self._loaded_preview_source_max_side = int(
                     max(self._original_linear.shape[0], self._original_linear.shape[1])
                 )
+                self._loaded_preview_source_profile_path = self._source_profile_for_preview_recipe(recipe)
                 self._clear_adjustment_caches()
                 self._clear_mtf_roi_for_file_change()
                 self._auto_update_mtf_pixel_pitch_from_file(loaded_selected)
@@ -419,12 +416,32 @@ class PreviewLoadMixin:
             return
         self._start_precache_visible_previews(files, full_resolution=full_resolution)
 
-    def _start_precache_visible_previews(self, files: list[Path], *, full_resolution: bool) -> None:
-        recipe_base = self._build_effective_recipe()
+    def _on_precache_selected_preview(self) -> None:
+        if self._selected_file is None:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("Selecciona primero un RAW."))
+            return
+        selected = self._resolve_existing_browsable_path(self._selected_file)
+        if selected is None:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("No existe el archivo seleccionado."))
+            return
+        if selected.suffix.lower() not in RAW_EXTENSIONS:
+            QtWidgets.QMessageBox.information(self, self.tr("Info"), self.tr("El archivo seleccionado no es RAW."))
+            return
+        self._start_precache_visible_previews([selected], full_resolution=True, scope_label=self.tr("actual"))
+
+    def _start_precache_visible_previews(
+        self,
+        files: list[Path],
+        *,
+        full_resolution: bool,
+        scope_label: str | None = None,
+    ) -> None:
+        recipe_base = self._color_managed_preview_recipe(self._build_effective_recipe())
         recipe_base_payload = asdict(recipe_base)
-        max_quality_preview = bool(full_resolution or self._preview_requires_max_quality())
-        max_preview_side = 0 if full_resolution else int(PREVIEW_AUTO_BASE_MAX_SIDE)
-        mode_label = "1:1" if full_resolution else "normal"
+        max_preview_side = 0
+        mode_label = "1:1"
+        if scope_label:
+            mode_label = f"{mode_label} {scope_label}"
 
         def task():
             built = 0
@@ -434,9 +451,7 @@ class PreviewLoadMixin:
                 try:
                     recipe = Recipe(**recipe_base_payload)
                     is_raw = src.suffix.lower() in RAW_EXTENSIONS
-                    fast_raw = bool(is_raw and not max_quality_preview)
-                    if is_raw and fast_raw:
-                        recipe.demosaic_algorithm = self._balanced_preview_demosaic()
+                    fast_raw = False
                     cache_key = self._preview_cache_key(
                         selected=src,
                         recipe=recipe,

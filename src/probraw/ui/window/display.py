@@ -517,6 +517,8 @@ class DisplayControlsMixin:
         return srgb
 
     def _display_profile_stamp(self) -> str:
+        if self._system_display_color_management_enabled():
+            return "system-srgb"
         profile_path = self._active_display_profile_path()
         if profile_path is None:
             return "none"
@@ -647,6 +649,8 @@ class DisplayControlsMixin:
             self._queue_thumbnail_generation(self._file_list_paths(), delay_ms=0)
 
     def _active_display_profile_path(self) -> Path | None:
+        if self._system_display_color_management_enabled():
+            return None
         if not hasattr(self, "check_display_color_management"):
             return None
         if not self.check_display_color_management.isChecked():
@@ -655,6 +659,19 @@ class DisplayControlsMixin:
         if not text:
             return None
         return Path(text).expanduser()
+
+    def _system_display_color_management_enabled(self) -> bool:
+        if not bool(getattr(self, "_system_display_color_management", False)):
+            return False
+        try:
+            return bool(hasattr(QtGui.QImage, "setColorSpace") and hasattr(QtGui, "QColorSpace"))
+        except Exception:
+            return False
+
+    def _display_panel_color_space(self, *, bypass_profile: bool = False) -> str:
+        if bool(bypass_profile) or self._system_display_color_management_enabled():
+            return "srgb"
+        return "device"
 
     def _display_u8_for_screen(self, image_srgb: np.ndarray, *, bypass_profile: bool = False) -> np.ndarray:
         if bypass_profile:
@@ -666,9 +683,9 @@ class DisplayControlsMixin:
             key = f"{profile_path}|{exc}"
             if self._display_color_error_key != key:
                 self._display_color_error_key = key
-                self._log_preview(f"Aviso: gestion ICC de monitor desactivada para esta vista: {exc}")
+                self._log_preview(f"Error: gestion ICC de monitor no disponible; no se actualiza la vista: {exc}")
                 self._update_display_profile_status(error=str(exc))
-            return srgb_to_display_u8(image_srgb, None)
+            raise RuntimeError(f"Fallo de gestion ICC de monitor: {exc}") from exc
 
     def _profiled_display_u8_for_screen(
         self,
@@ -684,12 +701,9 @@ class DisplayControlsMixin:
             key = f"{source_profile}|{monitor_profile}|{exc}"
             if self._display_color_error_key != key:
                 self._display_color_error_key = key
-                self._log_preview(f"Aviso: conversion ICC directa a monitor no disponible: {exc}")
+                self._log_preview(f"Error: conversion ICC directa a monitor no disponible; no se actualiza la vista: {exc}")
                 self._update_display_profile_status(error=str(exc))
-            try:
-                return profiled_float_to_display_u8(image_rgb, source_profile, None)
-            except Exception:
-                return srgb_to_display_u8(image_rgb, None)
+            raise RuntimeError(f"Fallo de conversion ICC directa a monitor: {exc}") from exc
 
     def _thumbnail_u8_for_screen(self, rgb_u8: np.ndarray) -> np.ndarray:
         profile_path = self._active_display_profile_path()
@@ -705,7 +719,10 @@ class DisplayControlsMixin:
         *,
         bypass_profile: bool = False,
     ) -> None:
-        panel.set_rgb_u8_image(self._display_u8_for_screen(image_srgb, bypass_profile=bypass_profile))
+        panel.set_rgb_u8_image(
+            self._display_u8_for_screen(image_srgb, bypass_profile=bypass_profile),
+            color_space=self._display_panel_color_space(bypass_profile=bypass_profile),
+        )
 
     def _compare_view_active(self) -> bool:
         return bool(
@@ -715,19 +732,104 @@ class DisplayControlsMixin:
             and int(self.viewer_stack.currentIndex()) == 1
         )
 
-    def _set_result_display_u8(self, display_u8: np.ndarray, *, compare_enabled: bool) -> None:
+    def _set_result_display_u8(
+        self,
+        display_u8: np.ndarray,
+        *,
+        compare_enabled: bool,
+        bypass_profile: bool = False,
+    ) -> None:
         colorimetric_u8 = self._preview_colorimetric_u8(display_u8)
+        self._current_result_display_u8 = np.asarray(display_u8, dtype=np.uint8).copy()
+        self._current_result_colorimetric_u8 = np.asarray(colorimetric_u8, dtype=np.uint8).copy()
+        color_space = self._display_panel_color_space(bypass_profile=bypass_profile)
         if bool(compare_enabled and self._compare_view_active()):
-            self.image_result_compare.set_rgb_u8_image(display_u8)
+            self.image_result_compare.set_rgb_u8_image(display_u8, color_space=color_space)
             self._apply_clip_overlay_to_panel(self.image_result_compare, colorimetric_u8)
         else:
-            self.image_result_single.set_rgb_u8_image(display_u8)
+            self.image_result_single.set_rgb_u8_image(display_u8, color_space=color_space)
             self._apply_clip_overlay_to_panel(self.image_result_single, colorimetric_u8)
+        if hasattr(self, "_sync_viewer_real_pixel_scale_if_requested"):
+            self._sync_viewer_real_pixel_scale_if_requested()
         self._update_viewer_histogram(colorimetric_u8)
         if hasattr(self, "_sync_mtf_roi_overlay"):
             self._sync_mtf_roi_overlay()
         if hasattr(self, "_maybe_update_mtf_after_preview"):
             self._maybe_update_mtf_after_preview()
+
+    def _apply_result_display_u8_region(
+        self,
+        display_u8: np.ndarray,
+        preview_srgb: np.ndarray | None,
+        rect: tuple[int, int, int, int],
+        *,
+        compare_enabled: bool,
+        bypass_profile: bool,
+    ) -> bool:
+        if bool(compare_enabled and self._compare_view_active()):
+            return False
+        x, y, w, h = (int(v) for v in rect)
+        if w <= 0 or h <= 0:
+            return False
+        current_display = getattr(self, "_current_result_display_u8", None)
+        if current_display is None:
+            return False
+        current_display = np.asarray(current_display, dtype=np.uint8)
+        if current_display.ndim != 3 or current_display.shape[2] < 3:
+            return False
+        if y + h > current_display.shape[0] or x + w > current_display.shape[1]:
+            return False
+        patch = np.asarray(display_u8, dtype=np.uint8)
+        if patch.shape[0] != h or patch.shape[1] != w:
+            return False
+
+        current_display[y : y + h, x : x + w, :3] = patch[..., :3]
+        self._current_result_display_u8 = current_display
+        colorimetric_patch = None
+        if preview_srgb is not None and getattr(self, "_preview_srgb", None) is not None:
+            preview = np.asarray(self._preview_srgb, dtype=np.float32)
+            crop_raw = np.asarray(preview_srgb)
+            if crop_raw.dtype == np.uint8:
+                colorimetric_patch = np.ascontiguousarray(crop_raw[..., :3].astype(np.uint8, copy=False))
+                crop = colorimetric_patch.astype(np.float32) / np.float32(255.0)
+            else:
+                crop = np.asarray(crop_raw, dtype=np.float32)
+            if preview.ndim == 3 and crop.shape[:2] == (h, w) and y + h <= preview.shape[0] and x + w <= preview.shape[1]:
+                preview[y : y + h, x : x + w, :3] = crop[..., :3]
+                self._preview_srgb = preview
+                if colorimetric_patch is None:
+                    colorimetric_patch = srgb_to_display_u8(crop, None)
+
+        current_color = getattr(self, "_current_result_colorimetric_u8", None)
+        if colorimetric_patch is not None and current_color is not None:
+            current_color = np.asarray(current_color, dtype=np.uint8)
+            if current_color.ndim == 3 and y + h <= current_color.shape[0] and x + w <= current_color.shape[1]:
+                current_color[y : y + h, x : x + w, :3] = colorimetric_patch[..., :3]
+                self._current_result_colorimetric_u8 = current_color
+
+        self.image_result_single.update_rgb_u8_region(
+            x,
+            y,
+            patch,
+            color_space=self._display_panel_color_space(bypass_profile=bypass_profile),
+        )
+        if (
+            colorimetric_patch is not None
+            and bool(getattr(self, "check_image_clip_overlay", None) and self.check_image_clip_overlay.isChecked())
+            and hasattr(self.image_result_single, "update_clip_overlay_classes_region")
+        ):
+            self.image_result_single.set_clip_overlay_enabled(True)
+            self.image_result_single.update_clip_overlay_classes_region(
+                x,
+                y,
+                self._clip_overlay_classes(colorimetric_patch),
+            )
+        if hasattr(self, "_sync_viewer_real_pixel_scale_if_requested"):
+            self._sync_viewer_real_pixel_scale_if_requested()
+        if colorimetric_patch is not None:
+            histogram_source = current_color if current_color is not None else colorimetric_patch
+            self._update_viewer_histogram(histogram_source)
+        return True
 
     def _ensure_original_compare_panel(self, *, bypass_profile: bool) -> None:
         if self._original_linear is None:
@@ -742,7 +844,10 @@ class DisplayControlsMixin:
                 )
             return
         original_display_u8 = self._original_display_u8_preview(bypass_profile=bypass_profile)
-        self.image_original_compare.set_rgb_u8_image(original_display_u8)
+        self.image_original_compare.set_rgb_u8_image(
+            original_display_u8,
+            color_space=self._display_panel_color_space(bypass_profile=bypass_profile),
+        )
         self._apply_clip_overlay_to_panel(self.image_original_compare, original_display_u8)
         self._original_compare_panel_key = key
 
@@ -753,6 +858,9 @@ class DisplayControlsMixin:
             self.display_profile_status.setText(self.tr("Monitor: error de perfil; mostrando sRGB"))
             return
         profile_path = self._active_display_profile_path()
+        if self._system_display_color_management_enabled():
+            self.display_profile_status.setText(self.tr("Monitor: gestion de color del sistema (sRGB etiquetado)"))
+            return
         if profile_path is None:
             if hasattr(self, "check_display_color_management") and not self.check_display_color_management.isChecked():
                 self.display_profile_status.setText(self.tr("Monitor: gestion ICC desactivada"))

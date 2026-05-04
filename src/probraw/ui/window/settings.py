@@ -204,8 +204,8 @@ class SettingsMixin:
 
         note = QtWidgets.QLabel(
             self.tr(
-                "Opciones globales de navegación y visualización. La preview rápida no debe usarse como referencia "
-                "colorimétrica. La vista de máxima calidad se carga automáticamente al activar comparar original/resultado."
+                "Opciones globales de navegacion y visualizacion. La vista RAW se mantiene siempre a 100% de pixeles "
+                "reales para conservar la referencia colorimetrica y de nitidez."
             )
         )
         note.setWordWrap(True)
@@ -213,7 +213,7 @@ class SettingsMixin:
         grid.addWidget(note, 0, 0, 1, 3)
 
         preview_policy = QtWidgets.QLabel(
-            self.tr("Politica fija: preview RAW automatica (rapida en navegacion, maxima calidad en comparar).")
+            self.tr("Politica fija: preview RAW exacta 1:1, sin saltos automaticos de resolucion.")
         )
         preview_policy.setWordWrap(True)
         preview_policy.setStyleSheet("font-size: 12px; color: #9ca3af;")
@@ -221,16 +221,16 @@ class SettingsMixin:
 
         # Compat attribute kept for tests/legacy sessions. Policy is now fixed.
         self.check_fast_raw_preview = QtWidgets.QCheckBox(
-            self.tr("Modo preview RAW automatico (rapida fuera de comparar, maxima calidad en comparar)")
+            self.tr("Modo preview RAW rapido")
         )
-        self.check_fast_raw_preview.setChecked(True)
+        self.check_fast_raw_preview.setChecked(False)
         self.check_fast_raw_preview.setEnabled(False)
         self.check_fast_raw_preview.hide()
         grid.addWidget(self.check_fast_raw_preview, 1, 0, 1, 3)
 
         grid.addWidget(QtWidgets.QLabel(self.tr("Resolucion de preview")), 2, 0)
         self.preview_resolution_policy_label = QtWidgets.QLabel(
-            self.tr("Automatica: usa fuente completa cuando es necesario (1:1 / precision / comparar).")
+            self.tr("Fija: siempre usa la fuente completa a 100% de pixeles reales.")
         )
         self.preview_resolution_policy_label.setWordWrap(True)
         self.preview_resolution_policy_label.setStyleSheet("font-size: 12px; color: #9ca3af;")
@@ -238,9 +238,9 @@ class SettingsMixin:
 
         # Legacy backing value kept for session compatibility; no longer user-editable.
         self.spin_preview_max_side = QtWidgets.QSpinBox()
-        self.spin_preview_max_side.setRange(900, 6000)
+        self.spin_preview_max_side.setRange(0, 6000)
         self.spin_preview_max_side.setSingleStep(100)
-        self.spin_preview_max_side.setValue(int(PREVIEW_AUTO_BASE_MAX_SIDE))
+        self.spin_preview_max_side.setValue(0)
         self.spin_preview_max_side.hide()
 
         self.check_display_color_management = QtWidgets.QCheckBox(self.tr("Gestion ICC del monitor del sistema"))
@@ -309,8 +309,8 @@ class SettingsMixin:
     def _save_preview_monitor_settings(self) -> None:
         if not hasattr(self, "path_preview_png"):
             return
-        self._settings.setValue("preview/fast_raw_preview", True)
-        self._settings.setValue("preview/max_side", int(PREVIEW_AUTO_BASE_MAX_SIDE))
+        self._settings.setValue("preview/fast_raw_preview", False)
+        self._settings.setValue("preview/max_side", 0)
         if hasattr(self, "check_precision_detail_preview"):
             self._settings.setValue(
                 "preview/precision_detail_1to1",
@@ -400,21 +400,14 @@ class SettingsMixin:
         return bool(checkbox is not None and checkbox.isChecked())
 
     def _effective_preview_max_side(self) -> int:
-        if bool(getattr(self, "_viewer_full_detail_requested", False)) or bool(
-            getattr(self, "_preview_export_parity_requested", False)
-        ):
-            return 0
-        compare_enabled = bool(getattr(self, "chk_compare", None) and self.chk_compare.isChecked())
-        if compare_enabled or bool(getattr(self, "_manual_chart_marking_after_reload", False)):
-            return 0
-        return int(PREVIEW_AUTO_BASE_MAX_SIDE)
+        return 0
 
     def _on_precision_detail_preview_toggled(self, enabled: bool) -> None:
         self._save_preview_monitor_settings()
         if self._original_linear is not None:
             self._schedule_preview_refresh()
         if bool(enabled):
-            self._set_status(self.tr("Modo precision activado; usa Zoom 1:1 para cargar detalle real."))
+            self._set_status(self.tr("Vista exacta 1:1 activa para RAW; la imagen ya se carga con detalle real."))
 
     def _save_global_settings(self) -> None:
         self._save_signature_settings()
