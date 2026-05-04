@@ -1487,18 +1487,38 @@ class PreviewRenderMixin:
             return
         self._mark_preview_control_interaction(duration_ms=450)
         timer = getattr(self, "_tone_curve_preview_timer", None)
+        if timer is not None and timer.isActive():
+            return
+        if bool(getattr(self, "_tone_curve_preview_timer_arming", False)):
+            return
+        self._tone_curve_preview_timer_arming = True
+        QtCore.QTimer.singleShot(0, self._arm_tone_curve_drag_preview_timer)
+
+    def _arm_tone_curve_drag_preview_timer(self) -> None:
+        self._tone_curve_preview_timer_arming = False
+        if self._original_linear is None:
+            return
         delay = max(1, int(PREVIEW_TONE_CURVE_DRAG_THROTTLE_MS))
+        self._tone_curve_preview_due_at = time.monotonic() + (delay / 1000.0)
+        timer = getattr(self, "_tone_curve_preview_timer", None)
         if timer is None:
             QtCore.QTimer.singleShot(delay, self._run_tone_curve_drag_preview_refresh)
             return
-        if not timer.isActive():
-            timer.start(delay)
+        timer.start(delay)
 
     def _run_tone_curve_drag_preview_refresh(self) -> None:
         if self._original_linear is None:
             return
+        due_at = float(getattr(self, "_tone_curve_preview_due_at", 0.0) or 0.0)
+        remaining_ms = int((due_at - time.monotonic()) * 1000.0)
+        if remaining_ms > 0:
+            timer = getattr(self, "_tone_curve_preview_timer", None)
+            if timer is not None:
+                timer.start(max(1, remaining_ms))
+                return
         if not bool(getattr(self, "check_tone_curve_enabled", None) and self.check_tone_curve_enabled.isChecked()):
             return
+        self._tone_curve_preview_due_at = 0.0
         if self._is_direct_preview_interaction_active():
             self._mark_preview_control_interaction(duration_ms=450)
         self._schedule_preview_refresh()

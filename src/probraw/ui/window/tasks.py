@@ -56,9 +56,8 @@ class TaskStatusMixin:
                                 thread.terminate()
                             except Exception:
                                 pass
-                            remaining_ms = int(max(1.0, (deadline - time.monotonic()) * 1000.0))
                             try:
-                                thread.wait(min(100, remaining_ms))
+                                thread.wait(1000)
                             except Exception:
                                 pass
                 if thread in self._threads:
