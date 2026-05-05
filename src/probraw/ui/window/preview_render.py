@@ -784,7 +784,12 @@ class PreviewRenderMixin:
         return x, y, w, h
 
     def _tone_curve_histogram_render_kwargs(self, render_kwargs: dict[str, Any]) -> dict[str, Any]:
-        return dict(render_kwargs)
+        histogram_kwargs = dict(render_kwargs)
+        histogram_kwargs["tone_curve_points"] = None
+        histogram_kwargs["tone_curve_channel_points"] = None
+        histogram_kwargs["tone_curve_black_point"] = 0.0
+        histogram_kwargs["tone_curve_white_point"] = 1.0
+        return histogram_kwargs
 
     def _tone_curve_points_signature(self, points: Any) -> str:
         if not isinstance(points, (list, tuple)):
@@ -829,10 +834,7 @@ class PreviewRenderMixin:
                 f"grade_highlights={float(render_kwargs.get('grade_highlights_hue', 50.0)):.2f}:{float(render_kwargs.get('grade_highlights_saturation', 0.0)):.4f}",
                 f"grade_blending={float(render_kwargs.get('grade_blending', 0.5)):.4f}",
                 f"grade_balance={float(render_kwargs.get('grade_balance', 0.0)):.4f}",
-                f"curve_black={float(render_kwargs.get('tone_curve_black_point', 0.0)):.4f}",
-                f"curve_white={float(render_kwargs.get('tone_curve_white_point', 1.0)):.4f}",
-                f"curve={self._tone_curve_points_signature(render_kwargs.get('tone_curve_points'))}",
-                f"channel_curves={self._tone_curve_channel_points_signature(render_kwargs.get('tone_curve_channel_points'))}",
+                "curve_stage=input",
             ]
         )
 
@@ -1456,9 +1458,6 @@ class PreviewRenderMixin:
                     )
                     if histogram_candidate is not None:
                         self._update_viewer_histogram(np.asarray(histogram_candidate, dtype=np.uint8))
-                        histogram_float = self._preview_candidate_to_float(np.asarray(histogram_candidate))
-                        if histogram_float is not None:
-                            self._update_tone_curve_histogram_from_preview(histogram_float)
                 else:
                     if candidate is None:
                         return
@@ -1471,9 +1470,6 @@ class PreviewRenderMixin:
                     )
                     if histogram_candidate is not None:
                         self._update_viewer_histogram(np.asarray(histogram_candidate, dtype=np.uint8))
-                        histogram_float = self._preview_candidate_to_float(np.asarray(histogram_candidate))
-                        if histogram_float is not None:
-                            self._update_tone_curve_histogram_from_preview(histogram_float)
                     applied = True
                 if applied:
                     if warning:
@@ -1772,6 +1768,15 @@ class PreviewRenderMixin:
     def _schedule_exact_histogram_refresh(self, *, delay_ms: int) -> None:
         if self._original_linear is None:
             return
+        histogram = getattr(self, "viewer_histogram", None)
+        if histogram is not None and hasattr(histogram, "set_pending"):
+            histogram.set_pending(self.tr("Actualizando..."))
+        if hasattr(self, "histogram_shadow_label") and hasattr(self, "histogram_highlight_label"):
+            self.histogram_shadow_label.setText(self.tr("Sombras: recalculando..."))
+            self.histogram_highlight_label.setText(self.tr("Luces: recalculando..."))
+            pending_style = "font-size: 12px; color: #9ca3af;"
+            self.histogram_shadow_label.setStyleSheet(pending_style)
+            self.histogram_highlight_label.setStyleSheet(pending_style)
         timer = getattr(self, "_exact_histogram_refresh_timer", None)
         if timer is None:
             timer = QtCore.QTimer(self)
@@ -1932,9 +1937,6 @@ class PreviewRenderMixin:
                     return
                 histogram = np.asarray(histogram_u8, dtype=np.uint8)
                 self._update_viewer_histogram(histogram)
-                histogram_float = self._preview_candidate_to_float(histogram)
-                if histogram_float is not None:
-                    self._update_tone_curve_histogram_from_preview(histogram_float)
             finally:
                 cleanup()
 

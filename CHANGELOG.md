@@ -20,6 +20,22 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-05-05
+
+### Fixed
+
+- Fixed a levels/tone-curve histogram inconsistency in 0.3.12: the tone-curve
+  editor now plots the image data entering the curve, not the output already
+  clipped by the curve black/white range.
+- The full-image RGB clipping histogram is now marked as updating while exact
+  real-pixel metrics are recalculated, preventing stale `L 0.00%`/`S 0.00%`
+  readings from being mistaken for the current levels state.
+
+### Tests
+
+- Added regression coverage for curve input histograms, curve white-point
+  clipping, and pending exact-histogram state.
+
 ## [0.3.12] - 2026-05-05
 
 ### Added

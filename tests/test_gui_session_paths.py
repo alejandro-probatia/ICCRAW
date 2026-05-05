@@ -1925,6 +1925,37 @@ def test_viewer_histogram_source_uses_full_image_real_pixels(qapp):
         window.close()
 
 
+def test_viewer_histogram_exact_render_honors_tone_curve_white_point(qapp):
+    window = ICCRawMainWindow()
+    try:
+        values = gui_module.np.linspace(0.0, 1.0, 100 * 120, dtype=gui_module.np.float32).reshape((100, 120, 1))
+        image = gui_module.np.repeat(values, 3, axis=2)
+        render_kwargs = window._render_adjustment_kwargs_from_state(
+            {
+                "tone_curve_enabled": True,
+                "tone_curve_points": [[0.0, 0.0], [1.0, 1.0]],
+                "tone_curve_channel_points": {},
+                "tone_curve_black_point": 0.0,
+                "tone_curve_white_point": 0.877,
+            }
+        )
+
+        rendered = window._render_viewer_histogram_u8(
+            image,
+            {},
+            render_kwargs,
+            apply_detail=False,
+            output_space="srgb",
+            source_profile=None,
+        )
+        window.viewer_histogram.set_image_u8(rendered)
+        metrics = window.viewer_histogram.clip_metrics()
+
+        assert metrics["highlight_any"] > 0.10
+    finally:
+        window.close()
+
+
 def test_rgb_histogram_counts_all_pixels_without_sampling(qapp):
     widget = gui_module.RGBHistogramWidget()
     try:
@@ -1938,6 +1969,37 @@ def test_rgb_histogram_counts_all_pixels_without_sampling(qapp):
         assert widget._hist_r[255] > 0.0
     finally:
         widget.deleteLater()
+
+
+def test_rgb_histogram_pending_state_is_cleared_by_new_image(qapp):
+    widget = gui_module.RGBHistogramWidget()
+    try:
+        image = gui_module.np.zeros((8, 8, 3), dtype=gui_module.np.uint8)
+        widget.set_image_u8(image)
+        widget.set_pending("Actualizando...")
+
+        assert widget._pending_label == "Actualizando..."
+
+        widget.set_image_u8(image)
+
+        assert widget._pending_label is None
+    finally:
+        widget.deleteLater()
+
+
+def test_scheduling_exact_histogram_marks_current_histogram_as_pending(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._original_linear = gui_module.np.zeros((8, 8, 3), dtype=gui_module.np.float32)
+        window.viewer_histogram.set_image_u8(gui_module.np.zeros((8, 8, 3), dtype=gui_module.np.uint8))
+
+        window._schedule_exact_histogram_refresh(delay_ms=1000)
+
+        assert window.viewer_histogram._pending_label == "Actualizando..."
+        assert "recalculando" in window.histogram_highlight_label.text().lower()
+        window._exact_histogram_refresh_timer.stop()
+    finally:
+        window.close()
 
 
 def test_preview_candidate_to_float_normalizes_u8(qapp):
@@ -2845,7 +2907,7 @@ def test_tone_curve_histogram_follows_brightness_adjustment(qapp):
         window.close()
 
 
-def test_tone_curve_histogram_updates_after_curve_points_change(qapp):
+def test_tone_curve_histogram_stays_as_curve_input_after_curve_points_change(qapp):
     window = ICCRawMainWindow()
     try:
         values = gui_module.np.linspace(0.02, 0.82, 90 * 120, dtype=gui_module.np.float32).reshape((90, 120, 1))
@@ -2873,12 +2935,43 @@ def test_tone_curve_histogram_updates_after_curve_points_change(qapp):
         after = window.tone_curve_editor._histogram.copy()
 
         assert before.shape == after.shape
-        assert not gui_module.np.allclose(before, after)
+        assert gui_module.np.allclose(before, after)
         assert window.tone_curve_editor._histogram_luminance is not None
         assert window.tone_curve_editor._histogram_r is not None
         assert window.tone_curve_editor._histogram_g is not None
         assert window.tone_curve_editor._histogram_b is not None
-        assert "curve=0.0000:0.0000,0.3200:0.7800,1.0000:1.0000" in window._tone_curve_histogram_key
+        assert "curve_stage=input" in window._tone_curve_histogram_key
+        assert "curve=0.0000:0.0000,0.3200:0.7800,1.0000:1.0000" not in window._tone_curve_histogram_key
+    finally:
+        window.close()
+
+
+def test_tone_curve_histogram_stays_as_curve_input_after_range_change(qapp):
+    window = ICCRawMainWindow()
+    try:
+        values = gui_module.np.linspace(0.02, 0.92, 90 * 120, dtype=gui_module.np.float32).reshape((90, 120, 1))
+        image = gui_module.np.repeat(values, 3, axis=2)
+        window._original_linear = image
+        window._last_loaded_preview_key = "curve-range-histogram-test"
+        window.check_tone_curve_enabled.blockSignals(True)
+        window.check_tone_curve_enabled.setChecked(True)
+        window.check_tone_curve_enabled.blockSignals(False)
+        window._set_tone_curve_controls_enabled(True)
+
+        window._update_tone_curve_histogram_for_current_controls(force=True)
+        before = window.tone_curve_editor._histogram.copy()
+
+        window.slider_tone_curve_white.blockSignals(True)
+        window.slider_tone_curve_white.setValue(877)
+        window.slider_tone_curve_white.blockSignals(False)
+        window.tone_curve_editor.set_input_range(0.0, 0.877)
+        window._update_tone_curve_histogram_for_current_controls(force=True)
+        after = window.tone_curve_editor._histogram.copy()
+
+        assert before.shape == after.shape
+        assert gui_module.np.allclose(before, after)
+        assert "curve_stage=input" in window._tone_curve_histogram_key
+        assert "curve_white=0.8770" not in window._tone_curve_histogram_key
     finally:
         window.close()
 

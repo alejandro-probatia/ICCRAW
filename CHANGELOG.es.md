@@ -18,6 +18,22 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-05-05
+
+### Fixed
+
+- Corregida una incoherencia de niveles/histograma de curva en 0.3.12: el
+  editor de curva muestra ahora los datos que entran en la curva, no la salida
+  ya recortada por el rango negro/blanco de curva.
+- El histograma RGB de clipping de imagen completa queda marcado como
+  actualizando mientras se recalculan las metricas exactas de pixeles reales,
+  evitando interpretar lecturas antiguas `L 0.00%`/`S 0.00%` como estado actual.
+
+### Tests
+
+- Anadida cobertura de regresion para histogramas de entrada de curva, clipping
+  por blanco de curva y estado pendiente del histograma exacto.
+
 ## [0.3.12] - 2026-05-05
 
 ### Added

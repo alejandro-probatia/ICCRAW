@@ -1710,6 +1710,7 @@ if QtWidgets is not None:
             self._clip_shadow = np.zeros(3, dtype=np.float32)
             self._clip_highlight = np.zeros(3, dtype=np.float32)
             self._clip_markers_enabled = True
+            self._pending_label: str | None = None
             self.setMinimumHeight(130)
             self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
 
@@ -1722,7 +1723,12 @@ if QtWidgets is not None:
             self._hist_b = None
             self._clip_shadow = np.zeros(3, dtype=np.float32)
             self._clip_highlight = np.zeros(3, dtype=np.float32)
+            self._pending_label = None
             self.setToolTip(self.tr(""))
+            self.update()
+
+        def set_pending(self, label: str | None = None) -> None:
+            self._pending_label = str(label or self.tr("Actualizando..."))
             self.update()
 
         def set_clip_markers_enabled(self, enabled: bool) -> None:
@@ -1756,6 +1762,7 @@ if QtWidgets is not None:
                 rgb = np.clip(np.round(rgb.astype(np.float32)), 0, 255).astype(np.uint8)
             else:
                 rgb = np.ascontiguousarray(rgb)
+            self._pending_label = None
 
             pixels = rgb.reshape((-1, 3))
             if pixels.size == 0:
@@ -1828,17 +1835,24 @@ if QtWidgets is not None:
             self._draw_clip_marker(
                 painter,
                 left_side=True,
-                active=bool(metrics["shadow_any"] > VIEWER_HISTOGRAM_CLIP_ALERT_RATIO),
+                active=bool(self._pending_label is None and metrics["shadow_any"] > VIEWER_HISTOGRAM_CLIP_ALERT_RATIO),
                 color=QtGui.QColor("#60a5fa"),
             )
             self._draw_clip_marker(
                 painter,
                 left_side=False,
-                active=bool(metrics["highlight_any"] > VIEWER_HISTOGRAM_CLIP_ALERT_RATIO),
+                active=bool(self._pending_label is None and metrics["highlight_any"] > VIEWER_HISTOGRAM_CLIP_ALERT_RATIO),
                 color=QtGui.QColor("#f87171"),
             )
 
             painter.setPen(QtGui.QColor("#aeb5bf"))
+            if self._pending_label:
+                painter.drawText(
+                    self.rect().adjusted(8, 0, -8, -4),
+                    QtCore.Qt.AlignRight | QtCore.Qt.AlignBottom,
+                    self._pending_label,
+                )
+                return
             painter.drawText(
                 self.rect().adjusted(8, 0, -8, -4),
                 QtCore.Qt.AlignLeft | QtCore.Qt.AlignBottom,

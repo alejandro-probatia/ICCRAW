@@ -78,6 +78,26 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.13
+
+La release 0.3.13 corrige la incoherencia de niveles/histograma de curva
+detectada en 0.3.12:
+
+- el histograma del editor de curva representa ahora los datos que entran en la
+  curva, no la salida ya recortada por el rango de curva,
+- el histograma RGB de imagen completa queda marcado como actualizando mientras
+  se recalculan las metricas exactas de clipping tras cambios de niveles/curva,
+- las pruebas de regresion cubren clipping por blanco de curva y estado antiguo
+  del histograma exacto.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.13-Setup.exe`
+- `ProbRAW-0.3.13-Setup.exe.sha256`
+- `probraw-0.3.13.tar.gz`
+- `probraw-0.3.13-py3-none-any.whl`
+- `probraw_0.3.13_python_artifacts.sha256`
+
 ## Release 0.3.12
 
 La release 0.3.12 recupera el ritmo de preview mas suave de la 0.3.8 sin perder

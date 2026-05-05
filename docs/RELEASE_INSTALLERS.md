@@ -72,6 +72,26 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.13
+
+Release 0.3.13 is a bugfix release for the levels/tone-curve histogram
+inconsistency detected in 0.3.12:
+
+- the tone-curve editor histogram now represents the input data entering the
+  curve instead of the output already clipped by the curve range,
+- the full-image RGB histogram is marked as updating while exact clipping
+  metrics are recalculated after levels/curve changes,
+- regression tests cover curve white-point clipping and stale exact-histogram
+  state.
+
+Artifacts expected:
+
+- `ProbRAW-0.3.13-Setup.exe`
+- `ProbRAW-0.3.13-Setup.exe.sha256`
+- `probraw-0.3.13.tar.gz`
+- `probraw-0.3.13-py3-none-any.whl`
+- `probraw_0.3.13_python_artifacts.sha256`
+
 ## Release 0.3.12
 
 Release 0.3.12 restores the smoother 0.3.8-style preview cadence while keeping
