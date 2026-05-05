@@ -18,7 +18,25 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
-- Sin cambios pendientes.
+## [0.3.12] - 2026-05-05
+
+### Added
+
+- El comprobador de actualizaciones abre ahora un asistente guiado que muestra
+  version actual, ultima release, instalador detectado, tamano, pagina de
+  release y disponibilidad de verificacion SHA-256 antes de iniciar la descarga.
+
+### Changed
+
+- La actualizacion desde la GUI descarga el instalador en una carpeta
+  reconocible del usuario, verifica SHA-256 cuando la release lo publica y abre
+  el instalador en modo visible en lugar de lanzarlo como proceso silencioso.
+- La preview interactiva recupera el ritmo de la 0.3.8: los refrescos durante
+  arrastre vuelven a agruparse cada 65 ms y las previews de perfil usan fuentes
+  acotadas cuando la vista no esta a 1:1.
+- El histograma exacto de imagen completa, el histograma de curva y la preview
+  final siguen diferidos hasta que termina la interaccion, manteniendo precision
+  de pixeles reales sin saturar el bucle de eventos.
 
 ## [0.3.11] - 2026-05-05
 

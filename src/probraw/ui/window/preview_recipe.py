@@ -351,7 +351,7 @@ class PreviewRecipeMixin:
         if getattr(self, "_tone_curve_active_channel", "luminance") not in channels:
             self._tone_curve_active_channel = "luminance"
 
-    def _save_visible_tone_curve_channel_state(self, channel: str | None = None) -> None:
+    def _save_visible_tone_curve_channel_state(self, channel: str | None = None, *, sync_editor: bool = True) -> None:
         self._ensure_tone_curve_channel_state()
         target = channel or self._tone_curve_channel_key()
         if target not in self._tone_curve_channel_points:
@@ -359,7 +359,7 @@ class PreviewRecipeMixin:
         self._tone_curve_active_channel = target
         self._tone_curve_channel_points[target] = normalize_tone_curve_points(self.tone_curve_editor.points())
         self._tone_curve_channel_presets[target] = self._tone_curve_preset_key()
-        if channel is None:
+        if sync_editor and channel is None:
             self._sync_tone_curve_editor_channel_overlay()
 
     def _load_tone_curve_channel_into_editor(self, channel: str) -> None:
@@ -390,7 +390,7 @@ class PreviewRecipeMixin:
             editor.set_channel_curves(self._tone_curve_channel_points)
 
     def _tone_curve_channel_points_state(self) -> dict[str, list[list[float]]]:
-        self._save_visible_tone_curve_channel_state()
+        self._save_visible_tone_curve_channel_state(sync_editor=False)
         return {
             channel: [[float(x), float(y)] for x, y in normalize_tone_curve_points(points)]
             for channel, points in self._tone_curve_channel_points.items()
@@ -576,6 +576,8 @@ class PreviewRecipeMixin:
         self._set_status(self.tr("Balance neutro aplicado:") + f" {temperature} K, " + self.tr("matiz") + f" {tint:+.1f}")
 
     def _on_tone_curve_enabled_changed(self, enabled: bool) -> None:
+        if not enabled and hasattr(self.tone_curve_editor, "set_range_dragging"):
+            self.tone_curve_editor.set_range_dragging(False)
         self._set_tone_curve_controls_enabled(enabled)
         self._on_render_control_change()
 
@@ -600,33 +602,74 @@ class PreviewRecipeMixin:
             self._update_tone_curve_histogram_for_current_controls(force=True)
         self._on_render_control_change(preview=bool(self.check_tone_curve_enabled.isChecked()))
 
+    def _is_tone_curve_range_slider(self, slider: object | None = None) -> bool:
+        if slider is None:
+            slider = self.sender()
+        return slider in (
+            getattr(self, "slider_tone_curve_black", None),
+            getattr(self, "slider_tone_curve_white", None),
+        )
+
     def _on_tone_curve_range_changed(self, *_args) -> None:
+        sender = self.sender()
         black = self.slider_tone_curve_black.value() / 1000.0
         white = self.slider_tone_curve_white.value() / 1000.0
         if white <= black + 0.01:
-            if self.sender() is self.slider_tone_curve_black:
+            if sender is self.slider_tone_curve_black:
                 black = max(0.0, white - 0.01)
             else:
                 white = min(1.0, black + 0.01)
             self._set_tone_curve_range_controls(black, white)
         else:
             self.tone_curve_editor.set_input_range(black, white)
+        dragging = bool(
+            self._is_tone_curve_range_slider(sender)
+            and hasattr(sender, "isSliderDown")
+            and sender.isSliderDown()
+        )
+        if hasattr(self.tone_curve_editor, "set_range_dragging"):
+            self.tone_curve_editor.set_range_dragging(dragging)
+        preview_enabled = bool(self.check_tone_curve_enabled.isChecked())
+        if dragging:
+            if preview_enabled and self._original_linear is not None and hasattr(self, "_schedule_tone_curve_drag_preview_refresh"):
+                self._schedule_tone_curve_drag_preview_refresh()
+            return
         if (
-            self.check_tone_curve_enabled.isChecked()
+            preview_enabled
             and self._original_linear is not None
             and hasattr(self, "_update_tone_curve_histogram_for_current_controls")
         ):
             self._update_tone_curve_histogram_for_current_controls(force=True)
-        self._on_render_control_change(preview=bool(self.check_tone_curve_enabled.isChecked()))
+        self._on_render_control_change(preview=preview_enabled)
+
+    def _on_tone_curve_range_interaction_finished(self) -> None:
+        timer = getattr(self, "_tone_curve_preview_timer", None)
+        if timer is not None:
+            timer.stop()
+        if hasattr(self.tone_curve_editor, "set_range_dragging"):
+            self.tone_curve_editor.set_range_dragging(False)
+        self._sync_tone_curve_editor_channel_overlay()
+        preview_enabled = bool(self.check_tone_curve_enabled.isChecked())
+        if (
+            preview_enabled
+            and self._original_linear is not None
+            and hasattr(self, "_update_tone_curve_histogram_for_current_controls")
+        ):
+            self._update_tone_curve_histogram_for_current_controls(force=True)
+        self._on_render_control_change(preview=preview_enabled)
+        if preview_enabled and self._original_linear is not None and hasattr(self, "_schedule_post_interaction_exact_preview_refresh"):
+            self._schedule_post_interaction_exact_preview_refresh(delay_ms=260)
+        if self._original_linear is not None and hasattr(self, "_schedule_exact_histogram_refresh"):
+            self._schedule_exact_histogram_refresh(delay_ms=80)
 
     def _on_tone_curve_points_changed(self, _points: object) -> None:
         if self._tone_curve_preset_key() != "custom":
             self.combo_tone_curve_preset.blockSignals(True)
             self._set_combo_data(self.combo_tone_curve_preset, "custom")
             self.combo_tone_curve_preset.blockSignals(False)
-        self._save_visible_tone_curve_channel_state()
         editor = getattr(self, "tone_curve_editor", None)
         dragging = bool(editor is not None and hasattr(editor, "is_dragging") and editor.is_dragging())
+        self._save_visible_tone_curve_channel_state(sync_editor=not dragging)
         preview_enabled = bool(self.check_tone_curve_enabled.isChecked())
         if (
             preview_enabled
@@ -639,10 +682,21 @@ class PreviewRecipeMixin:
         if dragging:
             if preview_enabled and self._original_linear is not None and hasattr(self, "_schedule_tone_curve_drag_preview_refresh"):
                 self._schedule_tone_curve_drag_preview_refresh()
-                if hasattr(self, "_schedule_deferred_final_preview_refresh"):
-                    self._schedule_deferred_final_preview_refresh()
             return
         self._on_render_control_change(preview=preview_enabled)
+
+    def _on_tone_curve_interaction_finished(self) -> None:
+        timer = getattr(self, "_tone_curve_preview_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._save_visible_tone_curve_channel_state(sync_editor=True)
+        if (
+            self.check_tone_curve_enabled.isChecked()
+            and self._original_linear is not None
+            and hasattr(self, "_update_tone_curve_histogram_for_current_controls")
+        ):
+            self._update_tone_curve_histogram_for_current_controls(force=True)
+        self._on_render_control_change(preview=bool(self.check_tone_curve_enabled.isChecked()))
 
     def _on_render_control_change(self, *_args: object, preview: bool = True) -> None:
         if int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0) > 0:

@@ -137,6 +137,19 @@ Practical rule:
 | `Vista` | Compare original/result, go to Sharpness, full screen and reset panel layout. |
 | `Ayuda` | Tool diagnostics, update check and about ProbRAW. |
 
+### Guided Update
+
+`Ayuda > Buscar actualizaciones...` opens the update assistant. The assistant
+checks GitHub Releases, shows the current version, latest published release,
+detected installer for the system, its size and whether SHA-256 verification is
+available. When you continue, it downloads the installer to
+`Downloads/ProbRAW updates`, verifies the hash when the release publishes it and
+opens the installer visibly so you can confirm each step.
+
+Before installing, save open work. If the installer asks for it, close ProbRAW
+and reopen it after installation to confirm the version in
+`Ayuda > Acerca de ProbRAW`.
+
 ### Main Tabs
 
 | Tab | Purpose |

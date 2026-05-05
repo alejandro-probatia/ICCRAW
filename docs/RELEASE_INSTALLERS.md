@@ -72,6 +72,30 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.12
+
+Release 0.3.12 restores the smoother 0.3.8-style preview cadence while keeping
+the later accuracy fixes:
+
+- preview refreshes during slider and curve drags are throttled instead of
+  scheduled on every event,
+- ICC profile previews use bounded sources below 1:1 and full source at real
+  pixel inspection,
+- full-image viewer histograms remain exact and are refreshed after
+  interaction settles,
+- tone-curve point drags and black/white curve sliders avoid expensive
+  histogram work while moving and consolidate once on release,
+- the update assistant downloads the installer to a recognizable folder and
+  launches it visibly.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.12-Setup.exe`
+- `ProbRAW-0.3.12-Setup.exe.sha256`
+- `probraw-0.3.12.tar.gz`
+- `probraw-0.3.12-py3-none-any.whl`
+- `probraw_0.3.12_python_artifacts.sha256`
+
 ## Release 0.3.11
 
 Release 0.3.11 fixes interactive preview and sharpness responsiveness without

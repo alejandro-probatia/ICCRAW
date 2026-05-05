@@ -25,10 +25,7 @@ class PreviewMenuMixin:
         self._toggle_compare(checked)
 
     def _menu_check_updates(self) -> None:
-        self._start_update_check(
-            on_success=self._on_manual_update_check_success,
-            on_error=self._on_manual_update_check_error,
-        )
+        self._show_update_assistant(auto_check=True)
 
     def _on_manual_update_check_success(self, payload: dict[str, Any]) -> None:
         self._update_check_last = payload
@@ -102,7 +99,10 @@ class PreviewMenuMixin:
         layout.addLayout(grid)
 
         status_note = QtWidgets.QLabel(
-            self.tr("La comprobacion usa GitHub Releases; la actualizacion automatica descarga y ejecuta el instalador.")
+            self.tr(
+                "La comprobacion usa GitHub Releases. El asistente de actualizacion muestra el instalador, "
+                "la verificacion SHA-256 y los pasos antes de abrirlo."
+            )
         )
         status_note.setWordWrap(True)
         status_note.setStyleSheet("font-size: 12px; color: #6b7280;")
@@ -110,7 +110,7 @@ class PreviewMenuMixin:
 
         button_row = QtWidgets.QHBoxLayout()
         btn_check = QtWidgets.QPushButton(self.tr("Comprobar ultima version"))
-        btn_update = QtWidgets.QPushButton(self.tr("Actualizar automaticamente"))
+        btn_update = QtWidgets.QPushButton(self.tr("Asistente de actualizacion"))
         btn_release = QtWidgets.QPushButton(self.tr("Abrir releases"))
         btn_close = QtWidgets.QPushButton(self.tr("Cerrar"))
         btn_update.setEnabled(False)
@@ -154,10 +154,161 @@ class PreviewMenuMixin:
             self._start_update_check(on_success=ok, on_error=fail)
 
         def run_auto_update() -> None:
-            payload = state.get("payload")
-            if not isinstance(payload, dict):
-                QtWidgets.QMessageBox.information(dialog, self.tr("Actualizacion"), self.tr("Primero comprueba la ultima version."))
-                return
+            self._show_update_assistant(
+                parent=dialog,
+                initial_payload=state.get("payload") if isinstance(state.get("payload"), dict) else None,
+                auto_check=not isinstance(state.get("payload"), dict),
+            )
+
+        btn_check.clicked.connect(run_check)
+        btn_update.clicked.connect(run_auto_update)
+        btn_release.clicked.connect(open_release_page)
+        btn_close.clicked.connect(dialog.accept)
+
+        refresh_about_payload(state.get("payload"))
+        dialog.exec()
+
+    def _show_update_assistant(
+        self,
+        *,
+        parent: QtWidgets.QWidget | None = None,
+        initial_payload: dict[str, Any] | None = None,
+        auto_check: bool = False,
+    ) -> None:
+        dialog = QtWidgets.QDialog(parent or self)
+        dialog.setWindowTitle(self.tr("Asistente de actualizacion de ProbRAW"))
+        dialog.setModal(True)
+        dialog.resize(720, 430)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+
+        title = QtWidgets.QLabel(self.tr("Actualizar ProbRAW"))
+        title.setStyleSheet("font-size: 20px; font-weight: 700;")
+        layout.addWidget(title)
+
+        intro = QtWidgets.QLabel(
+            self.tr(
+                "Este asistente comprueba la ultima release publicada, descarga el instalador adecuado "
+                "para este sistema, verifica SHA-256 cuando la release lo publica y abre el instalador visible."
+            )
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet("font-size: 12px; color: #4b5563;")
+        layout.addWidget(intro)
+
+        status_box = QtWidgets.QGroupBox(self.tr("Estado"))
+        status_layout = QtWidgets.QVBoxLayout(status_box)
+        status_label = QtWidgets.QLabel(self.tr("Sin comprobar"))
+        status_label.setWordWrap(True)
+        status_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        status_layout.addWidget(status_label)
+        details_label = QtWidgets.QLabel("")
+        details_label.setWordWrap(True)
+        details_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        details_label.setStyleSheet("font-size: 12px; color: #4b5563;")
+        status_layout.addWidget(details_label)
+        layout.addWidget(status_box)
+
+        steps_box = QtWidgets.QGroupBox(self.tr("Pasos"))
+        steps_layout = QtWidgets.QVBoxLayout(steps_box)
+        steps_label = QtWidgets.QLabel(
+            self.tr(
+                "1. Guarda cualquier trabajo abierto.\n"
+                "2. Comprueba la release y revisa el instalador detectado.\n"
+                "3. Descarga y verifica el instalador.\n"
+                "4. Sigue el instalador; cierra ProbRAW si Windows lo solicita.\n"
+                "5. Abre ProbRAW de nuevo y confirma la version en Ayuda > Acerca de."
+            )
+        )
+        steps_label.setWordWrap(True)
+        steps_label.setStyleSheet("font-size: 12px; color: #374151;")
+        steps_layout.addWidget(steps_label)
+        layout.addWidget(steps_box)
+
+        buttons = QtWidgets.QHBoxLayout()
+        btn_check = QtWidgets.QPushButton(self.tr("Comprobar release"))
+        btn_install = QtWidgets.QPushButton(self.tr("Descargar e instalar"))
+        btn_release = QtWidgets.QPushButton(self.tr("Abrir pagina de release"))
+        btn_close = QtWidgets.QPushButton(self.tr("Cerrar"))
+        btn_install.setEnabled(False)
+        buttons.addWidget(btn_check)
+        buttons.addWidget(btn_install)
+        buttons.addStretch(1)
+        buttons.addWidget(btn_release)
+        buttons.addWidget(btn_close)
+        layout.addLayout(buttons)
+
+        state: dict[str, Any] = {"payload": initial_payload or self._update_check_last}
+
+        def fmt_size(value: Any) -> str:
+            try:
+                size = int(value)
+            except (TypeError, ValueError):
+                return self.tr("desconocido")
+            units = ["B", "KB", "MB", "GB"]
+            amount = float(size)
+            unit = units[0]
+            for unit in units:
+                if amount < 1024.0 or unit == units[-1]:
+                    break
+                amount /= 1024.0
+            return f"{amount:.1f} {unit}" if unit != "B" else f"{int(amount)} B"
+
+        def release_url_for(payload: dict[str, Any]) -> str:
+            return str(
+                payload.get("release_url")
+                or f"https://github.com/{os.environ.get('PROBRAW_RELEASE_REPOSITORY', 'alejandro-probatia/ProbRAW')}/releases"
+            )
+
+        def set_busy(text: str) -> None:
+            status_label.setText(text)
+            btn_check.setEnabled(False)
+            btn_install.setEnabled(False)
+            btn_release.setEnabled(False)
+
+        def refresh(payload: dict[str, Any] | None) -> None:
+            p = payload or {}
+            state["payload"] = p
+            self._update_check_last = p if p else self._update_check_last
+            status_label.setText(self._update_status_summary(p))
+            status_label.setStyleSheet("color: #dc2626;" if p.get("error") else "color: #111827;")
+            lines: list[str] = []
+            if p:
+                lines.append(self.tr("Version actual:") + f" {p.get('current_version') or __version__}")
+                lines.append(self.tr("Ultima release:") + f" {p.get('latest_version') or self.tr('desconocida')}")
+                if p.get("published_at"):
+                    lines.append(self.tr("Publicada:") + f" {p.get('published_at')}")
+                if p.get("asset_name"):
+                    lines.append(self.tr("Instalador detectado:") + f" {p.get('asset_name')} ({fmt_size(p.get('asset_size'))})")
+                if p.get("checksum_asset_name") or p.get("asset_digest"):
+                    lines.append(self.tr("Verificacion: SHA-256 disponible"))
+                elif p.get("asset_url"):
+                    lines.append(self.tr("Verificacion: sin checksum publicado para este asset"))
+                lines.append(self.tr("Pagina de release:") + f" {release_url_for(p)}")
+            details_label.setText("\n".join(lines))
+            btn_check.setEnabled(True)
+            btn_release.setEnabled(True)
+            btn_install.setEnabled(bool(p.get("update_available") and p.get("asset_url") and not p.get("error")))
+
+        def run_check() -> None:
+            set_busy(self.tr("Comprobando la ultima release publicada..."))
+
+            def ok(payload: dict[str, Any]) -> None:
+                refresh(payload)
+
+            def fail(message: str) -> None:
+                refresh({"error": message, "current_version": __version__})
+
+            self._start_update_check(on_success=ok, on_error=fail)
+
+        def open_release_page() -> None:
+            payload = state.get("payload") if isinstance(state.get("payload"), dict) else {}
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(release_url_for(payload)))
+
+        def run_install() -> None:
+            payload = state.get("payload") if isinstance(state.get("payload"), dict) else {}
             if payload.get("error"):
                 QtWidgets.QMessageBox.warning(dialog, self.tr("Actualizacion"), str(payload.get("error")))
                 return
@@ -171,19 +322,27 @@ class PreviewMenuMixin:
                     self.tr("No hay instalador automatico para esta plataforma en la release detectada."),
                 )
                 return
+
+            download_dir = default_update_download_dir()
+            prompt = (
+                self.tr("Se descargara el instalador en:")
+                + f"\n{download_dir}\n\n"
+                + self.tr("El instalador se abrira en modo visible para que puedas revisar y confirmar los pasos.")
+            )
+            if payload.get("checksum_asset_name") or payload.get("asset_digest"):
+                prompt += "\n" + self.tr("La descarga se verificara con SHA-256 antes de ejecutarse.")
+            prompt += "\n\n" + self.tr("Guarda el trabajo abierto antes de continuar. Deseas iniciar la actualizacion?")
             answer = QtWidgets.QMessageBox.question(
                 dialog,
-                self.tr("Actualizar automaticamente"),
-                self.tr("Se descargara el instalador mas reciente y se ejecutara en modo silencioso.\nDeseas continuar?"),
+                self.tr("Descargar e instalar actualizacion"),
+                prompt,
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                 QtWidgets.QMessageBox.No,
             )
             if answer != QtWidgets.QMessageBox.Yes:
                 return
 
-            btn_update.setEnabled(False)
-            btn_check.setEnabled(False)
-            latest_label.setText(self.tr("Descargando e iniciando actualizacion..."))
+            set_busy(self.tr("Descargando, verificando e iniciando el instalador..."))
 
             def task() -> dict[str, Any]:
                 fresh_check = check_latest_release()
@@ -192,35 +351,45 @@ class PreviewMenuMixin:
                     raise RuntimeError(str(fresh_check.error))
                 if not fresh_check.update_available:
                     raise RuntimeError("No hay una version mas reciente disponible.")
-                installer = auto_update(check=fresh_check, silent=True)
-                return {"installer_path": str(installer), "check": check_payload}
+                if not fresh_check.asset_url:
+                    raise RuntimeError("La release no expone un instalador automatico para esta plataforma.")
+                installer = auto_update(
+                    check=fresh_check,
+                    silent=False,
+                    target_dir=download_dir,
+                )
+                return {
+                    "installer_path": str(installer),
+                    "download_dir": str(download_dir),
+                    "check": check_payload,
+                }
 
             def ok(result: dict[str, Any]) -> None:
+                payload_result = result.get("check") if isinstance(result.get("check"), dict) else payload
+                refresh(payload_result)
                 installer_path = str(result.get("installer_path") or "")
-                latest_label.setText(self.tr("Instalador lanzado correctamente."))
+                status_label.setText(self.tr("Instalador descargado y abierto."))
                 QtWidgets.QMessageBox.information(
                     dialog,
                     self.tr("Actualizacion iniciada"),
-                    self.tr("Se ha iniciado el instalador de actualizacion:") + f"\n{installer_path}\n\n"
-                    + self.tr("Cierra ProbRAW cuando el instalador lo solicite."),
+                    self.tr("Instalador:") + f"\n{installer_path}\n\n"
+                    + self.tr("Sigue el instalador. Si solicita cerrar ProbRAW, cierra esta ventana y la aplicacion."),
                 )
-                btn_check.setEnabled(True)
-                btn_update.setEnabled(True)
 
             def fail(message: str) -> None:
-                latest_label.setText(self.tr("No se pudo iniciar la actualizacion automatica."))
+                refresh(payload)
                 QtWidgets.QMessageBox.warning(dialog, self.tr("Actualizacion"), message)
-                btn_check.setEnabled(True)
-                btn_update.setEnabled(True)
 
             self._run_lightweight_task(task, on_success=ok, on_error=fail)
 
         btn_check.clicked.connect(run_check)
-        btn_update.clicked.connect(run_auto_update)
+        btn_install.clicked.connect(run_install)
         btn_release.clicked.connect(open_release_page)
         btn_close.clicked.connect(dialog.accept)
 
-        refresh_about_payload(state.get("payload"))
+        refresh(state.get("payload") if isinstance(state.get("payload"), dict) else None)
+        if auto_check:
+            QtCore.QTimer.singleShot(0, run_check)
         dialog.exec()
 
     def _update_status_summary(self, payload: dict[str, Any]) -> str:

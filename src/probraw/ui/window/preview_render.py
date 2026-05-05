@@ -76,6 +76,11 @@ class PreviewRenderMixin:
                 self._preview_last_slider_group = "render"
                 self._mark_preview_control_interaction(duration_ms=900)
             self._schedule_preview_refresh()
+            self._schedule_exact_histogram_refresh(delay_ms=80)
+            if sender in detail_sliders:
+                self._schedule_post_interaction_exact_preview_refresh(delay_ms=480)
+            elif sender in render_sliders or sender is None:
+                self._schedule_post_interaction_exact_preview_refresh(delay_ms=260)
         if sender in detail_sliders:
             if hasattr(self, "_set_active_named_adjustment_profile_id"):
                 self._set_active_named_adjustment_profile_id("detail", "")
@@ -84,7 +89,10 @@ class PreviewRenderMixin:
             if hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
                 self._schedule_detail_adjustment_sidecar_persist()
         if hasattr(self, "_schedule_mtf_refresh"):
-            self._schedule_mtf_refresh(interactive=self._is_preview_interaction_active())
+            self._schedule_mtf_refresh(
+                interactive=self._is_preview_interaction_active(),
+                require_auto_update=sender not in detail_sliders,
+            )
 
     def _on_slider_release(self) -> None:
         if (
@@ -124,6 +132,12 @@ class PreviewRenderMixin:
             getattr(self, "slider_ca_red", None),
             getattr(self, "slider_ca_blue", None),
         )
+        if (
+            sender in (getattr(self, "slider_tone_curve_black", None), getattr(self, "slider_tone_curve_white", None))
+            and hasattr(self, "_on_tone_curve_range_interaction_finished")
+        ):
+            self._on_tone_curve_range_interaction_finished()
+            return
         if self._original_linear is not None:
             last_group = str(getattr(self, "_preview_last_slider_group", "") or "")
             render_release = sender in render_sliders or (sender is None and last_group == "render")
@@ -131,13 +145,14 @@ class PreviewRenderMixin:
             if render_release:
                 self._mark_preview_control_interaction(duration_ms=250)
                 self._schedule_preview_refresh()
-                self._schedule_deferred_final_preview_refresh()
+                self._schedule_post_interaction_exact_preview_refresh(delay_ms=260)
             elif detail_release:
                 self._mark_preview_control_interaction(duration_ms=450, detail=True)
                 self._schedule_preview_refresh()
-                self._schedule_deferred_final_preview_refresh()
+                self._schedule_post_interaction_exact_preview_refresh(delay_ms=480)
             else:
                 self._schedule_preview_refresh()
+            self._schedule_exact_histogram_refresh(delay_ms=80)
         if (
             sender in render_sliders
             or str(getattr(self, "_preview_last_slider_group", "") or "") == "render"
@@ -149,7 +164,10 @@ class PreviewRenderMixin:
         ) and hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
             self._schedule_detail_adjustment_sidecar_persist(immediate=True)
         if hasattr(self, "_schedule_mtf_refresh"):
-            self._schedule_mtf_refresh(interactive=False)
+            self._schedule_mtf_refresh(
+                interactive=False,
+                require_auto_update=sender not in detail_sliders,
+            )
 
     def _is_direct_preview_interaction_active(self) -> bool:
         slider_names = (
@@ -340,10 +358,20 @@ class PreviewRenderMixin:
         )
 
     def _profile_preview_max_side_limit(self) -> int:
-        return 0
+        scale = self._viewer_display_scale()
+        if (
+            bool(getattr(self, "_viewer_full_detail_requested", False))
+            or (scale is not None and float(scale) >= 0.98)
+        ):
+            return 0
+        return int(PREVIEW_PROFILE_APPLY_MAX_SIDE)
 
     def _final_adjustment_preview_max_side(self) -> int:
-        return 0
+        if bool(getattr(self, "_preview_export_parity_requested", False)):
+            return 0
+        if bool(getattr(self, "_viewer_full_detail_requested", False)):
+            return 0
+        return int(PREVIEW_FINAL_ADJUSTMENT_MAX_SIDE)
 
     def _interactive_preview_timeout_ms(self, *, source_linear: np.ndarray, max_side_limit: int) -> int:
         try:
@@ -568,7 +596,7 @@ class PreviewRenderMixin:
         output_space: str,
         source_profile: Path | None,
         monitor_profile: Path | None,
-        include_histogram: bool,
+        include_srgb_patch: bool,
         workers: int,
     ) -> tuple[np.ndarray | None, np.ndarray]:
         rgb = np.asarray(source, dtype=np.float32)
@@ -579,14 +607,14 @@ class PreviewRenderMixin:
                 rgb_u8 = render_adjustments_affine_u8(rgb, **render_kwargs)
                 if rgb_u8 is not None:
                     display_u8 = profiled_u8_to_display_u8(rgb_u8, source_profile, monitor_profile)
-                    if include_histogram:
+                    if include_srgb_patch:
                         srgb_u8 = profiled_u8_to_display_u8(rgb_u8, source_profile, None)
                         return np.asarray(srgb_u8, dtype=np.uint8), np.asarray(display_u8, dtype=np.uint8)
                     return None, np.asarray(display_u8, dtype=np.uint8)
                 adjusted = apply_render_adjustments(rgb, **render_kwargs)
                 adjusted_u8 = rgb_float_to_u8(adjusted)
                 display_u8 = profiled_u8_to_display_u8(adjusted_u8, source_profile, monitor_profile)
-                if include_histogram:
+                if include_srgb_patch:
                     srgb_u8 = profiled_u8_to_display_u8(adjusted_u8, source_profile, None)
                     return np.asarray(srgb_u8, dtype=np.uint8), np.asarray(display_u8, dtype=np.uint8)
                 return None, np.asarray(display_u8, dtype=np.uint8)
@@ -594,23 +622,23 @@ class PreviewRenderMixin:
             srgb_u8 = standard_profile_to_srgb_u8_display(adjusted, output_space)
             display_u8 = srgb_u8_to_display_u8(srgb_u8, monitor_profile)
             return (
-                np.asarray(srgb_u8, dtype=np.uint8) if include_histogram else None,
+                np.asarray(srgb_u8, dtype=np.uint8) if include_srgb_patch else None,
                 np.asarray(display_u8, dtype=np.uint8),
             )
 
         display_u8 = np.empty((h, w, 3), dtype=np.uint8)
         if source_profile is not None:
-            srgb_u8 = np.empty((h, w, 3), dtype=np.uint8) if include_histogram else None
+            srgb_u8 = np.empty((h, w, 3), dtype=np.uint8) if include_srgb_patch else None
             # Build/cache the LCMS transforms and, on workstation-class memory,
             # the exact 8-bit dense ICC LUT before parallel work. The LUT is
             # derived from LCMS for every possible RGB triplet, so it accelerates
             # repeated viewport renders without changing the color result.
             profiled_float_to_display_u8(rgb[:1, :1], source_profile, monitor_profile)
-            if include_histogram:
+            if include_srgb_patch:
                 profiled_float_to_display_u8(rgb[:1, :1], source_profile, None)
             if h * w >= int(PREVIEW_INTERACTIVE_PARALLEL_MIN_PIXELS):
                 prewarm_profiled_display_lut(source_profile, monitor_profile)
-                if include_histogram:
+                if include_srgb_patch:
                     prewarm_profiled_display_lut(source_profile, None)
 
             def profile_job(row_range: tuple[int, int]):
@@ -619,12 +647,12 @@ class PreviewRenderMixin:
                 rgb_u8 = render_adjustments_affine_u8(source_rows, **render_kwargs)
                 if rgb_u8 is not None:
                     display = profiled_u8_to_display_u8(rgb_u8, source_profile, monitor_profile)
-                    srgb = profiled_u8_to_display_u8(rgb_u8, source_profile, None) if include_histogram else None
+                    srgb = profiled_u8_to_display_u8(rgb_u8, source_profile, None) if include_srgb_patch else None
                     return y0, y1, display, srgb
                 adjusted = apply_render_adjustments(source_rows, **render_kwargs)
                 adjusted_u8 = rgb_float_to_u8(adjusted)
                 display = profiled_u8_to_display_u8(adjusted_u8, source_profile, monitor_profile)
-                srgb = profiled_u8_to_display_u8(adjusted_u8, source_profile, None) if include_histogram else None
+                srgb = profiled_u8_to_display_u8(adjusted_u8, source_profile, None) if include_srgb_patch else None
                 return y0, y1, display, srgb
 
             with ThreadPoolExecutor(max_workers=max(1, int(workers))) as executor:
@@ -636,7 +664,7 @@ class PreviewRenderMixin:
                 return None, display_u8
             return srgb_u8, display_u8
 
-        result_srgb = np.empty((h, w, 3), dtype=np.uint8) if include_histogram else None
+        result_srgb = np.empty((h, w, 3), dtype=np.uint8) if include_srgb_patch else None
         if monitor_profile is not None:
             srgb_to_display_u8(np.zeros((1, 1, 3), dtype=np.float32), monitor_profile)
 
@@ -662,6 +690,41 @@ class PreviewRenderMixin:
         if arr.dtype == np.uint8:
             return arr.astype(np.float32) / np.float32(255.0)
         return np.asarray(arr, dtype=np.float32)
+
+    def _viewer_histogram_full_source(self, image: np.ndarray) -> np.ndarray:
+        rgb = np.asarray(image, dtype=np.float32)
+        if rgb.ndim != 3 or rgb.shape[2] < 3:
+            return np.ascontiguousarray(rgb)
+        return np.ascontiguousarray(rgb[..., :3])
+
+    def _render_viewer_histogram_u8(
+        self,
+        source_linear: np.ndarray,
+        detail_kwargs: dict[str, float],
+        render_kwargs: dict[str, Any],
+        *,
+        apply_detail: bool,
+        output_space: str,
+        source_profile: Path | None,
+    ) -> np.ndarray | None:
+        source = self._viewer_histogram_full_source(source_linear)
+        if source.ndim != 3 or source.shape[2] < 3:
+            return None
+        if bool(apply_detail):
+            source = apply_adjustments(
+                source,
+                denoise_luminance=float(detail_kwargs.get("denoise_luminance", 0.0)),
+                denoise_color=float(detail_kwargs.get("denoise_color", 0.0)),
+                sharpen_amount=float(detail_kwargs.get("sharpen_amount", 0.0)),
+                sharpen_radius=float(detail_kwargs.get("sharpen_radius", 1.0)),
+                lateral_ca_red_scale=float(detail_kwargs.get("lateral_ca_red_scale", 1.0)),
+                lateral_ca_blue_scale=float(detail_kwargs.get("lateral_ca_blue_scale", 1.0)),
+            )
+        adjusted = apply_render_adjustments(source, **render_kwargs)
+        if source_profile is not None:
+            adjusted_u8 = rgb_float_to_u8(adjusted)
+            return np.asarray(profiled_u8_to_display_u8(adjusted_u8, source_profile, None), dtype=np.uint8)
+        return np.asarray(standard_profile_to_srgb_u8_display(adjusted, output_space), dtype=np.uint8)
 
     def _loaded_preview_has_real_pixels_for_viewport(self) -> bool:
         selected = getattr(self, "_selected_file", None)
@@ -694,15 +757,9 @@ class PreviewRenderMixin:
             return None
         if self._original_linear is None:
             return None
-        if not self._loaded_preview_has_real_pixels_for_viewport():
-            return None
         panel = getattr(self, "image_result_single", None)
         if panel is None or not hasattr(panel, "visible_image_rect"):
             return None
-        if hasattr(panel, "current_display_scale"):
-            scale = panel.current_display_scale()
-            if scale is None or float(scale) < 0.98:
-                return None
         rect = panel.visible_image_rect(margin=PREVIEW_INTERACTIVE_VIEWPORT_MARGIN_PX)
         if rect is None:
             return None
@@ -882,7 +939,17 @@ class PreviewRenderMixin:
         max_side_limit: int,
     ) -> tuple[np.ndarray, bool]:
         rgb = np.asarray(image, dtype=np.float32)
-        return rgb, False
+        if int(max_side_limit) <= 0:
+            return rgb, False
+        h, w = int(rgb.shape[0]), int(rgb.shape[1])
+        max_side = max(h, w)
+        if max_side <= int(max_side_limit):
+            return rgb, False
+        scale = float(max_side_limit) / float(max_side)
+        nw = max(1, int(round(w * scale)))
+        nh = max(1, int(round(h * scale)))
+        resized = cv2.resize(rgb, (nw, nh), interpolation=cv2.INTER_AREA)
+        return np.clip(resized, 0.0, 1.0).astype(np.float32), True
 
     def _queue_profile_preview_request(
         self,
@@ -1045,6 +1112,7 @@ class PreviewRenderMixin:
             Path | None,
             tuple[int, int, int, int] | None,
             bool,
+            bool,
         ],
     ) -> None:
         (
@@ -1063,6 +1131,7 @@ class PreviewRenderMixin:
             _monitor_profile,
             viewport_rect,
             _include_histogram,
+            _include_colorimetric_patch,
         ) = request
         self._interactive_preview_expected_key = request_key
         if self._interactive_preview_task_active:
@@ -1096,6 +1165,7 @@ class PreviewRenderMixin:
             Path | None,
             tuple[int, int, int, int] | None,
             bool,
+            bool,
         ],
     ) -> None:
         self._interactive_preview_task_token = int(getattr(self, "_interactive_preview_task_token", 0)) + 1
@@ -1124,6 +1194,7 @@ class PreviewRenderMixin:
             Path | None,
             tuple[int, int, int, int] | None,
             bool,
+            bool,
         ],
     ) -> None:
         (
@@ -1142,12 +1213,14 @@ class PreviewRenderMixin:
             monitor_profile,
             viewport_rect,
             include_histogram,
+            include_colorimetric_patch,
         ) = request
         self._interactive_preview_task_token = int(getattr(self, "_interactive_preview_task_token", 0)) + 1
         task_token = int(self._interactive_preview_task_token)
 
         def task():
             warnings: list[str] = []
+            histogram_u8: np.ndarray | None = None
 
             def srgb_display_u8(image_srgb: np.ndarray) -> np.ndarray:
                 try:
@@ -1161,6 +1234,7 @@ class PreviewRenderMixin:
                 np.asarray(source_linear, dtype=np.float32),
                 max_side_limit=int(max_side_limit),
             )
+            full_histogram_source = np.asarray(source_linear, dtype=np.float32)
             if viewport_rect is not None:
                 vx, vy, vw, vh = (int(v) for v in viewport_rect)
                 source = source[vy : vy + vh, vx : vx + vw]
@@ -1183,10 +1257,19 @@ class PreviewRenderMixin:
                     output_space=output_space,
                     source_profile=source_profile,
                     monitor_profile=monitor_profile,
-                    include_histogram=bool(include_histogram),
+                    include_srgb_patch=bool(include_colorimetric_patch),
                     workers=viewport_workers,
                 )
                 worker_perf = (source_pixels, int(viewport_workers), (time.perf_counter() - work_started) * 1000.0)
+                if bool(include_histogram):
+                    histogram_u8 = self._render_viewer_histogram_u8(
+                        full_histogram_source,
+                        detail_kwargs,
+                        render_kwargs,
+                        apply_detail=bool(apply_detail),
+                        output_space=output_space,
+                        source_profile=source_profile,
+                    )
                 analysis_text = None
                 return (
                     request_key,
@@ -1196,6 +1279,7 @@ class PreviewRenderMixin:
                     bool(compare_enabled),
                     bool(bypass_display_profile),
                     viewport_rect,
+                    None if histogram_u8 is None else np.asarray(histogram_u8, dtype=np.uint8),
                     analysis_text,
                     "; ".join(dict.fromkeys(warnings)) if warnings else None,
                     worker_perf,
@@ -1214,6 +1298,30 @@ class PreviewRenderMixin:
                 # During tonal curve/slider drag prioritize responsiveness and
                 # defer detail operators to the final non-interactive refresh.
                 detail_adjusted = source
+            if (
+                not bool(include_analysis)
+                and not bool(include_histogram)
+                and source_profile is None
+                and not bool(apply_detail)
+                and is_generic_output_space(output_space)
+                and generic_output_profile(output_space).key == "srgb"
+            ):
+                fast_srgb_u8 = render_adjustments_affine_u8(detail_adjusted, **render_kwargs)
+                if fast_srgb_u8 is not None:
+                    display_u8 = srgb_u8_to_display_u8(fast_srgb_u8, monitor_profile)
+                    return (
+                        request_key,
+                        source_key,
+                        np.asarray(fast_srgb_u8, dtype=np.uint8) if bool(include_colorimetric_patch) else None,
+                        np.asarray(display_u8, dtype=np.uint8),
+                        bool(compare_enabled),
+                        bool(bypass_display_profile),
+                        viewport_rect,
+                        None,
+                        None,
+                        "; ".join(dict.fromkeys(warnings)) if warnings else None,
+                        None,
+                    )
             if render_tiled:
                 adjusted = self._apply_render_adjustments_tiled(detail_adjusted, render_kwargs)
             else:
@@ -1229,7 +1337,7 @@ class PreviewRenderMixin:
                         display_u8 = profiled_u8_to_display_u8(adjusted_u8, source_profile, monitor_profile)
                 except Exception as exc:
                     raise RuntimeError(f"No se pudo convertir la preview del ICC de imagen al ICC de monitor: {exc}") from exc
-                if bool(include_histogram) or viewport_rect is None:
+                if bool(include_colorimetric_patch):
                     try:
                         result_srgb_u8 = (
                             self._profiled_float_to_display_u8_tiled(adjusted, source_profile, None)
@@ -1248,9 +1356,18 @@ class PreviewRenderMixin:
                     display_u8 = srgb_u8_to_display_u8(result_srgb_u8, monitor_profile)
                     result_srgb = (
                         np.asarray(result_srgb_u8, dtype=np.uint8)
-                        if bool(include_histogram) or viewport_rect is None
+                        if bool(include_colorimetric_patch)
                         else None
                     )
+            if bool(include_histogram):
+                histogram_u8 = self._render_viewer_histogram_u8(
+                    full_histogram_source,
+                    detail_kwargs,
+                    render_kwargs,
+                    apply_detail=bool(apply_detail),
+                    output_space=output_space,
+                    source_profile=source_profile,
+                )
             analysis_text = preview_analysis_text(source, adjusted) if include_analysis else None
             return (
                 request_key,
@@ -1260,6 +1377,7 @@ class PreviewRenderMixin:
                 bool(compare_enabled),
                 bool(bypass_display_profile),
                 viewport_rect,
+                None if histogram_u8 is None else np.asarray(histogram_u8, dtype=np.uint8),
                 analysis_text,
                 "; ".join(dict.fromkeys(warnings)) if warnings else None,
                 None,
@@ -1305,6 +1423,7 @@ class PreviewRenderMixin:
                     payload_compare_enabled,
                     payload_bypass_display_profile,
                     payload_viewport_rect,
+                    histogram_candidate,
                     analysis_text,
                     warning,
                     worker_perf,
@@ -1335,20 +1454,26 @@ class PreviewRenderMixin:
                         compare_enabled=bool(payload_compare_enabled and self.chk_compare.isChecked()),
                         bypass_profile=bool(payload_bypass_display_profile),
                     )
-                    if preview_patch is not None:
-                        preview_patch_float = self._preview_candidate_to_float(preview_patch)
-                        if preview_patch_float is not None:
-                            self._update_tone_curve_histogram_from_preview(preview_patch_float)
+                    if histogram_candidate is not None:
+                        self._update_viewer_histogram(np.asarray(histogram_candidate, dtype=np.uint8))
+                        histogram_float = self._preview_candidate_to_float(np.asarray(histogram_candidate))
+                        if histogram_float is not None:
+                            self._update_tone_curve_histogram_from_preview(histogram_float)
                 else:
                     if candidate is None:
                         return
                     self._preview_srgb = self._preview_candidate_to_float(candidate)
-                    self._update_tone_curve_histogram_from_preview(self._preview_srgb)
                     self._set_result_display_u8(
                         display_u8,
                         compare_enabled=bool(payload_compare_enabled and self.chk_compare.isChecked()),
                         bypass_profile=bool(payload_bypass_display_profile),
+                        update_histogram=histogram_candidate is None,
                     )
+                    if histogram_candidate is not None:
+                        self._update_viewer_histogram(np.asarray(histogram_candidate, dtype=np.uint8))
+                        histogram_float = self._preview_candidate_to_float(np.asarray(histogram_candidate))
+                        if histogram_float is not None:
+                            self._update_tone_curve_histogram_from_preview(histogram_float)
                     applied = True
                 if applied:
                     if warning:
@@ -1468,7 +1593,13 @@ class PreviewRenderMixin:
                     getattr(self, "check_image_clip_overlay", None)
                     and self.check_image_clip_overlay.isChecked()
                 )
-                include_histogram = (
+                defer_exact_histogram = self._is_preview_interaction_active()
+                include_colorimetric_patch = bool(
+                    viewport_rect is None
+                    or overlay_enabled
+                    or not defer_exact_histogram
+                )
+                include_histogram = False if defer_exact_histogram else bool(
                     True
                     if viewport_rect is None or overlay_enabled
                     else self._interactive_histogram_due()
@@ -1494,6 +1625,7 @@ class PreviewRenderMixin:
                         monitor_profile,
                         viewport_rect,
                         bool(include_histogram),
+                        bool(include_colorimetric_patch),
                     )
                 )
                 return
@@ -1521,6 +1653,7 @@ class PreviewRenderMixin:
                         source_profile,
                         self._active_display_profile_path(),
                         None,
+                        False,
                         True,
                     )
                 )
@@ -1614,6 +1747,207 @@ class PreviewRenderMixin:
         if self._is_direct_preview_interaction_active():
             self._mark_preview_control_interaction(duration_ms=450)
         self._schedule_preview_refresh()
+
+    def _schedule_post_interaction_exact_preview_refresh(self, *, delay_ms: int) -> None:
+        if self._original_linear is None:
+            return
+        timer = getattr(self, "_preview_exact_after_interaction_timer", None)
+        if timer is None:
+            timer = QtCore.QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._run_post_interaction_exact_preview_refresh)
+            self._preview_exact_after_interaction_timer = timer
+        timer.start(max(1, int(delay_ms)))
+
+    def _run_post_interaction_exact_preview_refresh(self) -> None:
+        if self._original_linear is None:
+            return
+        if self._is_direct_preview_interaction_active():
+            self._schedule_post_interaction_exact_preview_refresh(delay_ms=180)
+            return
+        self._preview_recent_interaction_until = 0.0
+        self._preview_recent_detail_interaction_until = 0.0
+        self._refresh_preview(force_final=True)
+
+    def _schedule_exact_histogram_refresh(self, *, delay_ms: int) -> None:
+        if self._original_linear is None:
+            return
+        timer = getattr(self, "_exact_histogram_refresh_timer", None)
+        if timer is None:
+            timer = QtCore.QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._run_exact_histogram_refresh)
+            self._exact_histogram_refresh_timer = timer
+        timer.start(max(1, int(delay_ms)))
+
+    def _run_exact_histogram_refresh(self) -> None:
+        if self._original_linear is None:
+            return
+        if self._is_direct_preview_interaction_active():
+            self._schedule_exact_histogram_refresh(delay_ms=160)
+            return
+        try:
+            recipe = self._color_managed_preview_recipe(self._build_effective_recipe())
+            nl = self.slider_noise_luma.value() / 100.0
+            nc = self.slider_noise_color.value() / 100.0
+            sharpen = self.slider_sharpen.value() / 100.0
+            radius = self.slider_radius.value() / 10.0
+            ca_red, ca_blue = self._ca_scale_factors()
+            detail_kwargs: dict[str, float] = {
+                "denoise_luminance": float(nl),
+                "denoise_color": float(nc),
+                "sharpen_amount": float(sharpen),
+                "sharpen_radius": float(radius),
+                "lateral_ca_red_scale": float(ca_red),
+                "lateral_ca_blue_scale": float(ca_blue),
+            }
+            source_key = self._last_loaded_preview_key or str(id(self._original_linear))
+            selected = getattr(self, "_selected_file", None)
+            load_full_source = False
+            self._exact_histogram_request_seq = int(getattr(self, "_exact_histogram_request_seq", 0)) + 1
+            request_key = f"{source_key}|hist|{self._exact_histogram_request_seq}"
+            request = (
+                request_key,
+                source_key,
+                self._original_linear,
+                Path(selected) if selected is not None else None,
+                Recipe(**asdict(recipe)),
+                self._active_session_icc_for_settings(),
+                self._preview_decode_cache_dir(Path(selected)) if selected is not None else None,
+                load_full_source,
+                detail_kwargs,
+                self._render_adjustment_kwargs(),
+                bool(self._detail_kwargs_have_effect(detail_kwargs)),
+                str(recipe.output_space),
+                self._source_profile_for_preview_recipe(recipe),
+            )
+            self._queue_exact_histogram_request(request)
+        except Exception as exc:
+            self._log_preview(f"Aviso: no se pudo preparar histograma exacto: {exc}")
+
+    def _queue_exact_histogram_request(
+        self,
+        request: tuple[
+            str,
+            str | None,
+            np.ndarray,
+            Path | None,
+            Recipe,
+            Path | None,
+            Path | None,
+            bool,
+            dict[str, float],
+            dict[str, Any],
+            bool,
+            str,
+            Path | None,
+        ],
+    ) -> None:
+        request_key = request[0]
+        self._exact_histogram_expected_key = request_key
+        if bool(getattr(self, "_exact_histogram_task_active", False)):
+            self._exact_histogram_pending_request = request
+            return
+        self._exact_histogram_pending_request = None
+        self._start_exact_histogram_task(request)
+
+    def _start_exact_histogram_task(
+        self,
+        request: tuple[
+            str,
+            str | None,
+            np.ndarray,
+            Path | None,
+            Recipe,
+            Path | None,
+            Path | None,
+            bool,
+            dict[str, float],
+            dict[str, Any],
+            bool,
+            str,
+            Path | None,
+        ],
+    ) -> None:
+        (
+            request_key,
+            source_key,
+            source_linear,
+            selected,
+            recipe,
+            input_profile_path,
+            cache_dir,
+            load_full_source,
+            detail_kwargs,
+            render_kwargs,
+            apply_detail,
+            output_space,
+            source_profile,
+        ) = request
+        self._exact_histogram_task_active = True
+
+        def task():
+            histogram_source = np.asarray(source_linear, dtype=np.float32)
+            if bool(load_full_source) and selected is not None:
+                histogram_source, _msg = load_image_for_preview(
+                    Path(selected),
+                    recipe=recipe,
+                    fast_raw=False,
+                    max_preview_side=0,
+                    input_profile_path=input_profile_path,
+                    cache_dir=cache_dir,
+                )
+            histogram_u8 = self._render_viewer_histogram_u8(
+                np.asarray(histogram_source, dtype=np.float32),
+                detail_kwargs,
+                render_kwargs,
+                apply_detail=bool(apply_detail),
+                output_space=output_space,
+                source_profile=source_profile,
+            )
+            return request_key, source_key, histogram_u8
+
+        thread = TaskThread(task)
+        self._threads.append(thread)
+
+        def cleanup() -> None:
+            if thread in self._threads:
+                self._threads.remove(thread)
+            thread.deleteLater()
+            pending = getattr(self, "_exact_histogram_pending_request", None)
+            self._exact_histogram_pending_request = None
+            if pending is not None:
+                self._start_exact_histogram_task(pending)
+                return
+            self._exact_histogram_task_active = False
+
+        def ok(payload) -> None:
+            try:
+                key, payload_source_key, histogram_u8 = payload
+                if key != getattr(self, "_exact_histogram_expected_key", None):
+                    return
+                if payload_source_key is not None and payload_source_key != self._last_loaded_preview_key:
+                    return
+                if histogram_u8 is None:
+                    return
+                histogram = np.asarray(histogram_u8, dtype=np.uint8)
+                self._update_viewer_histogram(histogram)
+                histogram_float = self._preview_candidate_to_float(histogram)
+                if histogram_float is not None:
+                    self._update_tone_curve_histogram_from_preview(histogram_float)
+            finally:
+                cleanup()
+
+        def fail(trace: str) -> None:
+            try:
+                line = trace.strip().splitlines()[-1] if trace.strip() else "error desconocido"
+                self._log_preview(f"Aviso: fallo actualizando histograma exacto: {line}")
+            finally:
+                cleanup()
+
+        thread.succeeded.connect(ok)
+        thread.failed.connect(fail)
+        thread.start()
 
     def _schedule_visible_viewport_preview_refresh(self, *, duration_ms: int = 450) -> None:
         if self._original_linear is None:

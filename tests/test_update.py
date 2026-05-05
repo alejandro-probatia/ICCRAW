@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import hashlib
 import io
 import json
 
@@ -25,6 +26,8 @@ def test_check_latest_release_network_error(monkeypatch) -> None:
 
 
 def test_check_latest_release_payload(monkeypatch) -> None:
+    installer = b"fake installer"
+    digest = hashlib.sha256(installer).hexdigest()
     payload = {
         "tag_name": "v0.2.9",
         "html_url": "https://example.com/release",
@@ -33,6 +36,12 @@ def test_check_latest_release_payload(monkeypatch) -> None:
             {
                 "name": "ProbRAW-0.2.9-Setup.exe",
                 "browser_download_url": "https://example.com/ProbRAW-0.2.9-Setup.exe",
+                "size": len(installer),
+                "digest": f"sha256:{digest}",
+            },
+            {
+                "name": "ProbRAW-0.2.9-Setup.exe.sha256",
+                "browser_download_url": "https://example.com/ProbRAW-0.2.9-Setup.exe.sha256",
             }
         ],
     }
@@ -54,5 +63,87 @@ def test_check_latest_release_payload(monkeypatch) -> None:
     assert serialized["release_url"] == "https://example.com/release"
     assert serialized["asset_name"] == "ProbRAW-0.2.9-Setup.exe"
     assert serialized["asset_url"] == "https://example.com/ProbRAW-0.2.9-Setup.exe"
+    assert serialized["asset_size"] == len(installer)
+    assert serialized["asset_digest"] == f"sha256:{digest}"
+    assert serialized["checksum_asset_name"] == "ProbRAW-0.2.9-Setup.exe.sha256"
+    assert serialized["checksum_asset_url"] == "https://example.com/ProbRAW-0.2.9-Setup.exe.sha256"
     assert serialized["error"] is None
+
+
+def test_download_update_asset_verifies_checksum_asset(monkeypatch, tmp_path) -> None:
+    installer = b"fake installer"
+    digest = hashlib.sha256(installer).hexdigest()
+    check = update_mod.UpdateCheckResult(
+        current_version="0.2.8",
+        latest_version="0.2.9",
+        update_available=True,
+        is_latest=False,
+        repository="example/repo",
+        release_url="https://example.com/release",
+        api_url="https://example.com/api",
+        asset_url="https://example.com/ProbRAW-0.2.9-Setup.exe",
+        asset_name="ProbRAW-0.2.9-Setup.exe",
+        asset_size=len(installer),
+        asset_digest=None,
+        checksum_asset_url="https://example.com/ProbRAW-0.2.9-Setup.exe.sha256",
+        checksum_asset_name="ProbRAW-0.2.9-Setup.exe.sha256",
+        published_at="2026-04-27T10:00:00Z",
+    )
+
+    class _FakeResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_open(req, **_kwargs):
+        url = req.full_url
+        if url.endswith(".sha256"):
+            return _FakeResponse(f"{digest}  ProbRAW-0.2.9-Setup.exe\n".encode("utf-8"))
+        return _FakeResponse(installer)
+
+    monkeypatch.setattr(update_mod.request, "urlopen", fake_open)
+
+    path = update_mod.download_update_asset(check, target_dir=tmp_path)
+
+    assert path.name == "ProbRAW-0.2.9-Setup.exe"
+    assert path.read_bytes() == installer
+    assert (tmp_path / "ProbRAW-0.2.9-Setup.exe.sha256").is_file()
+
+
+def test_download_update_asset_rejects_checksum_mismatch(monkeypatch, tmp_path) -> None:
+    installer = b"fake installer"
+    check = update_mod.UpdateCheckResult(
+        current_version="0.2.8",
+        latest_version="0.2.9",
+        update_available=True,
+        is_latest=False,
+        repository="example/repo",
+        release_url="https://example.com/release",
+        api_url="https://example.com/api",
+        asset_url="https://example.com/ProbRAW-0.2.9-Setup.exe",
+        asset_name="ProbRAW-0.2.9-Setup.exe",
+        asset_size=len(installer),
+        asset_digest="sha256:" + ("0" * 64),
+        checksum_asset_url=None,
+        checksum_asset_name=None,
+        published_at="2026-04-27T10:00:00Z",
+    )
+
+    class _FakeResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(update_mod.request, "urlopen", lambda *_args, **_kwargs: _FakeResponse(installer))
+
+    try:
+        update_mod.download_update_asset(check, target_dir=tmp_path)
+    except RuntimeError as exc:
+        assert "SHA-256" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("checksum mismatch should fail")
 

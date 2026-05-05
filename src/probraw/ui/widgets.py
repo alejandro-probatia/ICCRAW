@@ -11,7 +11,6 @@ from ..gui_config import (
     IMAGE_PANEL_TEXT,
     VIEWER_HISTOGRAM_CLIP_ALERT_RATIO,
     VIEWER_HISTOGRAM_HIGHLIGHT_CLIP_U8,
-    VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS,
     VIEWER_HISTOGRAM_SHADOW_CLIP_U8,
 )
 from ..raw.preview import normalize_tone_curve_points, tone_curve_lut
@@ -186,6 +185,7 @@ if QtWidgets is not None:
             }
             self._black_point = 0.0
             self._white_point = 1.0
+            self._range_dragging = False
             self.setMinimumHeight(320)
             self.setMouseTracking(True)
             self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
@@ -256,6 +256,13 @@ if QtWidgets is not None:
             self._white_point = white
             self.update()
 
+        def set_range_dragging(self, dragging: bool) -> None:
+            active = bool(dragging)
+            if self._range_dragging == active:
+                return
+            self._range_dragging = active
+            self.update()
+
         def set_histogram_from_image(self, image_linear_rgb: np.ndarray | None, *, channel: str = "luminance") -> None:
             if image_linear_rgb is None:
                 self._clear_histograms()
@@ -266,11 +273,7 @@ if QtWidgets is not None:
                 self._clear_histograms()
                 self.update()
                 return
-            count = int(rgb.shape[0]) * int(rgb.shape[1])
-            if count > VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS:
-                stride = int(np.ceil(np.sqrt(count / float(VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS))))
-                rgb = rgb[::max(1, stride), ::max(1, stride), :3]
-            rgb = np.clip(rgb.astype(np.float32, copy=False), 0.0, 1.0)
+            rgb = np.clip(rgb[..., :3].astype(np.float32, copy=False), 0.0, 1.0)
             key = str(channel or "luminance").strip().lower()
             if key not in {"luminance", "red", "green", "blue"}:
                 key = "luminance"
@@ -315,7 +318,8 @@ if QtWidgets is not None:
 
         def paintEvent(self, _event) -> None:  # noqa: N802
             painter = QtGui.QPainter(self)
-            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            dragging = self.is_dragging() or self.is_range_dragging()
+            painter.setRenderHint(QtGui.QPainter.Antialiasing, not dragging)
             rect = self._plot_rect()
             painter.fillRect(self.rect(), QtGui.QColor("#2b2b2b"))
             painter.fillRect(rect, QtGui.QColor("#242424"))
@@ -328,7 +332,8 @@ if QtWidgets is not None:
                 painter.drawLine(QtCore.QPointF(x, rect.top()), QtCore.QPointF(x, rect.bottom()))
                 painter.drawLine(QtCore.QPointF(rect.left(), y), QtCore.QPointF(rect.right(), y))
 
-            self._draw_histogram_columns(painter, rect)
+            if not dragging:
+                self._draw_histogram_columns(painter, rect)
 
             diagonal_pen = QtGui.QPen(QtGui.QColor("#8a8a8a"), 1, QtCore.Qt.DashLine)
             painter.setPen(diagonal_pen)
@@ -345,10 +350,11 @@ if QtWidgets is not None:
                 self._domain_point_to_widget(self._white_point, 1.0),
             )
 
-            self._draw_channel_curve_overlays(painter)
+            if not dragging:
+                self._draw_channel_curve_overlays(painter)
 
             active_color = self._curve_color(self._active_channel, alpha=235)
-            self._draw_curve(painter, self._points, active_color, width=2.6)
+            self._draw_curve(painter, self._points, active_color, width=2.6, lut_size=96 if dragging else 256)
 
             painter.setBrush(QtGui.QBrush(active_color))
             painter.setPen(QtGui.QPen(QtGui.QColor("#101010"), 1))
@@ -457,11 +463,12 @@ if QtWidgets is not None:
             color: QtGui.QColor,
             *,
             width: float,
+            lut_size: int = 256,
             style: QtCore.Qt.PenStyle = QtCore.Qt.SolidLine,
         ) -> None:
             curve_x, curve_y = tone_curve_lut(
                 points,
-                lut_size=256,
+                lut_size=max(16, int(lut_size)),
                 black_point=self._black_point,
                 white_point=self._white_point,
             )
@@ -546,7 +553,6 @@ if QtWidgets is not None:
                 self._points = normalize_tone_curve_points(self._points)
                 self._channel_curves[self._active_channel] = list(self._points)
                 nearest = self._nearest_point_index(pos)
-                self.pointsChanged.emit(self.points())
             self._drag_index = nearest
 
         def mouseMoveEvent(self, event) -> None:  # noqa: N802
@@ -566,7 +572,6 @@ if QtWidgets is not None:
             )
             self._channel_curves[self._active_channel] = list(self._points)
             self.update()
-            self.pointsChanged.emit(self.points())
 
         def mouseReleaseEvent(self, event) -> None:  # noqa: N802
             had_drag = self._drag_index is not None
@@ -580,6 +585,9 @@ if QtWidgets is not None:
 
         def is_dragging(self) -> bool:
             return self._drag_index is not None
+
+        def is_range_dragging(self) -> bool:
+            return bool(self._range_dragging)
 
         def changeEvent(self, event) -> None:  # noqa: N802
             if event.type() == QtCore.QEvent.EnabledChange and not self.isEnabled():
@@ -1743,12 +1751,7 @@ if QtWidgets is not None:
             if rgb.ndim != 3 or rgb.shape[2] < 3:
                 self.clear()
                 return
-            count = int(rgb.shape[0]) * int(rgb.shape[1])
-            if count > VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS:
-                stride = int(np.ceil(count / VIEWER_HISTOGRAM_MAX_SAMPLE_PIXELS))
-                rgb = rgb[::max(1, stride), ::max(1, stride), :3]
-            else:
-                rgb = rgb[..., :3]
+            rgb = rgb[..., :3]
             if rgb.dtype != np.uint8:
                 rgb = np.clip(np.round(rgb.astype(np.float32)), 0, 255).astype(np.uint8)
             else:

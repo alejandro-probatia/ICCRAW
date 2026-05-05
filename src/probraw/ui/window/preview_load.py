@@ -372,6 +372,8 @@ class PreviewLoadMixin:
     ) -> None:
         if int(max_preview_side) <= 0:
             return
+        if hasattr(self, "_automatic_full_final_preview_enabled") and not self._automatic_full_final_preview_enabled():
+            return
         if bool(fast_raw):
             return
         if selected.suffix.lower() not in RAW_EXTENSIONS:

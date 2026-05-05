@@ -78,6 +78,31 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.12
+
+La release 0.3.12 recupera el ritmo de preview mas suave de la 0.3.8 sin perder
+las correcciones posteriores de precision:
+
+- los refrescos de preview durante sliders y curvas aplican throttle en lugar
+  de programarse en cada evento,
+- las previews de perfiles ICC usan fuentes acotadas por debajo de 1:1 y fuente
+  completa en inspeccion de pixel real,
+- los histogramas de imagen completa siguen siendo exactos y se refrescan al
+  estabilizar la interaccion,
+- los arrastres de puntos de curva y los sliders de negro/blanco de curva
+  evitan trabajo caro de histograma durante el movimiento y consolidan al
+  soltar,
+- el asistente de actualizacion descarga el instalador en una carpeta
+  reconocible y lo lanza de forma visible.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.12-Setup.exe`
+- `ProbRAW-0.3.12-Setup.exe.sha256`
+- `probraw-0.3.12.tar.gz`
+- `probraw-0.3.12-py3-none-any.whl`
+- `probraw_0.3.12_python_artifacts.sha256`
+
 ## Release 0.3.11
 
 La release 0.3.11 corrige la fluidez interactiva de preview y nitidez sin

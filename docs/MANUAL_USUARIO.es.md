@@ -140,6 +140,19 @@ Regla práctica:
 | `Vista` | Comparar original/resultado, ir a Nitidez, pantalla completa y restablecer distribución de paneles. |
 | `Ayuda` | Diagnóstico de herramientas, búsqueda de actualizaciones y acerca de ProbRAW. |
 
+### Actualización asistida
+
+`Ayuda > Buscar actualizaciones...` abre el asistente de actualización. El
+asistente comprueba GitHub Releases, muestra la versión actual, la última
+release publicada, el instalador detectado para el sistema, su tamaño y si hay
+verificación SHA-256 disponible. Al continuar, descarga el instalador en
+`Downloads/ProbRAW updates`, verifica el hash cuando la release lo publica y
+abre el instalador en modo visible para que puedas confirmar los pasos.
+
+Antes de instalar, guarda el trabajo abierto. Si el instalador lo solicita,
+cierra ProbRAW y vuelve a abrirlo tras finalizar para confirmar la versión en
+`Ayuda > Acerca de ProbRAW`.
+
 ### Pestañas principales
 
 | Pestaña | Uso |

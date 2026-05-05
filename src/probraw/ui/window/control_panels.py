@@ -328,7 +328,7 @@ class ControlPanelsMixin:
 
         self.tone_curve_editor = ToneCurveEditor()
         self.tone_curve_editor.pointsChanged.connect(self._on_tone_curve_points_changed)
-        self.tone_curve_editor.interactionFinished.connect(self._on_render_control_change)
+        self.tone_curve_editor.interactionFinished.connect(self._on_tone_curve_interaction_finished)
         grid.addWidget(self.tone_curve_editor, 25, 0, 1, 3)
         grid.addWidget(self._button(self.tr("Restablecer curva"), self._reset_tone_curve), 26, 0, 1, 3)
         self._set_tone_curve_controls_enabled(False)

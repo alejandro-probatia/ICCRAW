@@ -738,6 +738,7 @@ class DisplayControlsMixin:
         *,
         compare_enabled: bool,
         bypass_profile: bool = False,
+        update_histogram: bool = True,
     ) -> None:
         colorimetric_u8 = self._preview_colorimetric_u8(display_u8)
         self._current_result_display_u8 = np.asarray(display_u8, dtype=np.uint8).copy()
@@ -751,7 +752,8 @@ class DisplayControlsMixin:
             self._apply_clip_overlay_to_panel(self.image_result_single, colorimetric_u8)
         if hasattr(self, "_sync_viewer_real_pixel_scale_if_requested"):
             self._sync_viewer_real_pixel_scale_if_requested()
-        self._update_viewer_histogram(colorimetric_u8)
+        if bool(update_histogram):
+            self._update_viewer_histogram(colorimetric_u8)
         if hasattr(self, "_sync_mtf_roi_overlay"):
             self._sync_mtf_roi_overlay()
         if hasattr(self, "_maybe_update_mtf_after_preview"):
@@ -826,9 +828,6 @@ class DisplayControlsMixin:
             )
         if hasattr(self, "_sync_viewer_real_pixel_scale_if_requested"):
             self._sync_viewer_real_pixel_scale_if_requested()
-        if colorimetric_patch is not None:
-            histogram_source = current_color if current_color is not None else colorimetric_patch
-            self._update_viewer_histogram(histogram_source)
         return True
 
     def _ensure_original_compare_panel(self, *, bypass_profile: bool) -> None:

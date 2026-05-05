@@ -103,7 +103,7 @@ from ...sidecar import (
     write_raw_mtf_analysis as _write_raw_mtf_analysis,
     write_raw_sidecar as _write_raw_sidecar,
 )
-from ...update import auto_update, check_latest_release
+from ...update import auto_update, check_latest_release, default_update_download_dir
 from ...version import __version__
 from ...workflow import (
     DEFAULT_QA_MAX_DELTA_E2000_MAX,

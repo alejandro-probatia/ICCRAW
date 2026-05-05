@@ -20,7 +20,24 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
-- No pending changes.
+## [0.3.12] - 2026-05-05
+
+### Added
+
+- The update checker now opens a guided assistant showing current version,
+  latest release, detected installer, size, release page and SHA-256
+  verification availability before starting the download.
+
+### Changed
+
+- GUI updates now download the installer to a recognizable user folder, verify
+  SHA-256 when the release publishes it, and open the installer visibly instead
+  of launching it as a silent process.
+- Interactive preview recovers the 0.3.8-style cadence by throttling drag-time
+  refreshes to 65 ms and using bounded profile-preview sources below 1:1 view.
+- The exact full-image histogram, tone-curve histogram and final preview remain
+  deferred until interaction settles, preserving real-pixel accuracy without
+  saturating the UI event loop.
 
 ## [0.3.11] - 2026-05-05
 

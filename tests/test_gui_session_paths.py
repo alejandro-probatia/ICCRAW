@@ -792,15 +792,18 @@ def test_preview_load_uses_color_managed_recipe_without_session_icc(tmp_path: Pa
         window.close()
 
 
-def test_profiled_preview_never_uses_standard_srgb_route(qapp, monkeypatch):
+def test_session_icc_preview_never_uses_standard_srgb_route(tmp_path: Path, qapp, monkeypatch):
     window = ICCRawMainWindow()
     try:
+        profile = tmp_path / "source.icc"
+        profile.write_bytes(ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes())
         image = gui_module.np.full((24, 32, 3), 0.25, dtype=gui_module.np.float32)
         expected = gui_module.np.full((24, 32, 3), 64, dtype=gui_module.np.uint8)
         calls: list[tuple[Path, Path | None]] = []
         window._original_linear = image
         window._last_loaded_preview_key = "profiled-preview"
         monkeypatch.setattr(window, "_build_effective_recipe", lambda: Recipe(output_space="prophoto_rgb"))
+        monkeypatch.setattr(window, "_active_session_icc_for_settings", lambda: profile)
         monkeypatch.setattr(
             preview_render_module,
             "standard_profile_to_srgb_display",
@@ -841,7 +844,7 @@ def test_profiled_interactive_render_never_uses_standard_srgb_route(tmp_path: Pa
             output_space="prophoto_rgb",
             source_profile=profile,
             monitor_profile=None,
-            include_histogram=False,
+            include_srgb_patch=False,
             workers=1,
         )
 
@@ -1231,7 +1234,7 @@ def test_preview_disk_cache_restores_with_single_working_copy(tmp_path: Path, qa
         window.close()
 
 
-def test_raw_preview_uses_exact_full_resolution_mode(tmp_path: Path, monkeypatch, qapp):
+def test_raw_preview_uses_bounded_high_quality_mode(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "sample.NEF"
     raw_path.write_bytes(b"raw")
     captured: dict[str, object] = {}
@@ -1259,7 +1262,7 @@ def test_raw_preview_uses_exact_full_resolution_mode(tmp_path: Path, monkeypatch
 
         assert captured["fast_raw"] is False
         assert captured["demosaic"] == "linear"
-        assert captured["max_preview_side"] == 0
+        assert captured["max_preview_side"] == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
         assert captured["output_space"] == "prophoto_rgb"
         assert captured["output_linear"] is False
         assert window._loaded_preview_source_profile_path is not None
@@ -1268,7 +1271,7 @@ def test_raw_preview_uses_exact_full_resolution_mode(tmp_path: Path, monkeypatch
         window.close()
 
 
-def test_generic_output_preview_loads_exact_with_recipe_demosaic(tmp_path: Path, monkeypatch, qapp):
+def test_generic_output_preview_loads_bounded_with_recipe_demosaic(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "sample.NEF"
     raw_path.write_bytes(b"raw")
     calls: list[dict[str, object]] = []
@@ -1299,7 +1302,7 @@ def test_generic_output_preview_loads_exact_with_recipe_demosaic(tmp_path: Path,
 
         assert len(calls) == 1
         assert calls[0]["fast_raw"] is False
-        assert calls[0]["max_preview_side"] == 0
+        assert calls[0]["max_preview_side"] == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
         assert calls[0]["demosaic"] == "amaze"
         assert calls[0]["output_space"] == "prophoto_rgb"
         assert calls[0]["input_profile_path"] is None
@@ -1309,7 +1312,7 @@ def test_generic_output_preview_loads_exact_with_recipe_demosaic(tmp_path: Path,
         window.close()
 
 
-def test_compare_toggle_keeps_raw_preview_at_exact_quality(tmp_path: Path, monkeypatch, qapp):
+def test_compare_toggle_keeps_raw_preview_at_loaded_quality(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "sample.NEF"
     raw_path.write_bytes(b"raw")
     calls: list[dict[str, object]] = []
@@ -1329,16 +1332,16 @@ def test_compare_toggle_keeps_raw_preview_at_exact_quality(tmp_path: Path, monke
         window._selected_file = raw_path
         window.chk_compare.setChecked(False)
         window._on_load_selected(show_message=False)
-        assert calls[-1] == {"fast_raw": False, "max_preview_side": 0}
+        assert calls[-1] == {"fast_raw": False, "max_preview_side": gui_module.PREVIEW_AUTO_BASE_MAX_SIDE}
 
         window.chk_compare.setChecked(True)
         qapp.processEvents()
-        assert calls[-1] == {"fast_raw": False, "max_preview_side": 0}
-        assert "|0|" in (window._last_loaded_preview_key or "")
+        assert calls[-1] == {"fast_raw": False, "max_preview_side": gui_module.PREVIEW_AUTO_BASE_MAX_SIDE}
+        assert f"ms={gui_module.PREVIEW_AUTO_BASE_MAX_SIDE}" in (window._last_loaded_preview_key or "")
 
         window.chk_compare.setChecked(False)
         qapp.processEvents()
-        assert "|0|" in (window._last_loaded_preview_key or "")
+        assert f"ms={gui_module.PREVIEW_AUTO_BASE_MAX_SIDE}" in (window._last_loaded_preview_key or "")
     finally:
         window.close()
 
@@ -1572,8 +1575,8 @@ def test_color_managed_preview_keeps_fast_initial_size_then_allows_export_parity
         monkeypatch.setattr(window, "_active_session_icc_for_settings", lambda: profile)
 
         assert window._preview_requires_max_quality()
-        assert window._effective_preview_max_side() == 0
-        assert window._final_adjustment_preview_max_side() == 0
+        assert window._effective_preview_max_side() == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
+        assert window._final_adjustment_preview_max_side() == gui_module.PREVIEW_FINAL_ADJUSTMENT_MAX_SIDE
         assert window._should_async_final_preview()
 
         window._preview_export_parity_requested = True
@@ -1581,7 +1584,8 @@ def test_color_managed_preview_keeps_fast_initial_size_then_allows_export_parity
         window._preview_export_parity_requested = False
 
         window.check_precision_detail_preview.setChecked(True)
-        assert window._effective_preview_max_side() == 0
+        assert window._effective_preview_max_side() == gui_module.PREVIEW_AUTO_BASE_MAX_SIDE
+        assert window._final_adjustment_preview_max_side() == gui_module.PREVIEW_FINAL_ADJUSTMENT_MAX_SIDE
         window._viewer_full_detail_requested = True
         assert window._effective_preview_max_side() == 0
         assert window._final_adjustment_preview_max_side() == 0
@@ -1626,6 +1630,8 @@ def test_interactive_refresh_uses_bounded_source_without_real_viewport(qapp, mon
         assert request[2] is image
         assert request[7] == PREVIEW_INTERACTIVE_TONAL_MAX_SIDE
         assert request[13] is None
+        assert request[14] is False
+        assert request[15] is True
     finally:
         window.slider_brightness.setSliderDown(False)
         window.close()
@@ -1664,6 +1670,8 @@ def test_interactive_refresh_uses_visible_viewport_rect_without_downscaling(qapp
         assert 0 < w <= image.shape[1] - x
         assert 0 < h <= image.shape[0] - y
         assert w * h < image.shape[0] * image.shape[1]
+        assert request[14] is False
+        assert request[15] is False
     finally:
         window.slider_brightness.setSliderDown(False)
         window.close()
@@ -1696,12 +1704,14 @@ def test_detail_interactive_refresh_uses_real_pixel_viewport(qapp, monkeypatch):
         assert request[7] == 0
         assert request[8] is True
         assert request[13] is not None
+        assert request[14] is False
+        assert request[15] is False
     finally:
         window.slider_sharpen.setSliderDown(False)
         window.close()
 
 
-def test_raw_cached_preview_is_not_treated_as_real_pixel_viewport(tmp_path: Path, qapp, monkeypatch):
+def test_raw_cached_preview_uses_viewport_without_real_pixel_request(tmp_path: Path, qapp, monkeypatch):
     raw = tmp_path / "capture.NEF"
     raw.write_bytes(b"raw")
     window = ICCRawMainWindow()
@@ -1730,8 +1740,10 @@ def test_raw_cached_preview_is_not_treated_as_real_pixel_viewport(tmp_path: Path
         window._refresh_preview()
 
         request = captured["request"]
-        assert request[7] == PREVIEW_INTERACTIVE_TONAL_MAX_SIDE
-        assert request[13] is None
+        assert request[7] == 0
+        assert request[13] is not None
+        assert request[14] is False
+        assert request[15] is False
     finally:
         window.slider_brightness.setSliderDown(False)
         window.close()
@@ -1760,6 +1772,8 @@ def test_real_pixel_request_restores_full_source_when_display_is_proxy(qapp, mon
         request = captured["request"]
         assert request[7] == 0
         assert request[13] is None
+        assert request[14] is False
+        assert request[15] is True
     finally:
         window.slider_brightness.setSliderDown(False)
         window.close()
@@ -1806,7 +1820,8 @@ def test_interactive_refresh_uses_visible_viewport_rect_with_clip_overlay(qapp, 
 
         request = captured["request"]
         assert request[13] is not None
-        assert request[14] is True
+        assert request[14] is False
+        assert request[15] is True
     finally:
         window.slider_brightness.setSliderDown(False)
         window.close()
@@ -1848,6 +1863,81 @@ def test_region_preview_updates_clip_overlay_region(qapp):
         assert overlay.pixelIndex(2, 2) == 0
     finally:
         window.close()
+
+
+def test_region_preview_does_not_refresh_histogram_from_partial_patch(monkeypatch, qapp):
+    window = ICCRawMainWindow()
+    try:
+        base_display = gui_module.np.zeros((4, 5, 3), dtype=gui_module.np.uint8)
+        window._preview_srgb = gui_module.np.zeros((4, 5, 3), dtype=gui_module.np.float32)
+        window._current_result_display_u8 = base_display.copy()
+        window._current_result_colorimetric_u8 = base_display.copy()
+        window.image_result_single.set_rgb_u8_image(base_display)
+        calls: list[gui_module.np.ndarray] = []
+        monkeypatch.setattr(
+            window,
+            "_update_viewer_histogram",
+            lambda image: calls.append(gui_module.np.asarray(image).copy()),
+        )
+
+        preview_patch = gui_module.np.ones((2, 2, 3), dtype=gui_module.np.float32)
+        display_patch = gui_module.np.full((2, 2, 3), 255, dtype=gui_module.np.uint8)
+
+        applied = window._apply_result_display_u8_region(
+            display_patch,
+            preview_patch,
+            (1, 1, 2, 2),
+            compare_enabled=False,
+            bypass_profile=False,
+        )
+
+        assert applied is True
+        assert calls == []
+    finally:
+        window.close()
+
+
+def test_viewer_histogram_source_uses_full_image_real_pixels(qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((4, 4, 3), dtype=gui_module.np.float32)
+        image[0, 0] = [1.0, 0.0, 0.0]
+        image[3, 3] = [0.0, 0.0, 1.0]
+
+        sample = window._viewer_histogram_full_source(image)
+        rendered = window._render_viewer_histogram_u8(
+            image,
+            {},
+            {},
+            apply_detail=False,
+            output_space="srgb",
+            source_profile=None,
+        )
+
+        assert sample.shape == image.shape
+        assert gui_module.np.array_equal(sample[0, 0], image[0, 0])
+        assert gui_module.np.array_equal(sample[3, 3], image[3, 3])
+        assert rendered is not None
+        assert rendered.shape == image.shape
+        assert int(rendered[0, 0, 0]) == 255
+        assert int(rendered[3, 3, 2]) == 255
+    finally:
+        window.close()
+
+
+def test_rgb_histogram_counts_all_pixels_without_sampling(qapp):
+    widget = gui_module.RGBHistogramWidget()
+    try:
+        image = gui_module.np.zeros((600, 600, 3), dtype=gui_module.np.uint8)
+        image[1, 1] = [255, 0, 0]
+
+        widget.set_image_u8(image)
+
+        metrics = widget.clip_metrics()
+        assert metrics["highlight_r"] == pytest.approx(1.0 / float(600 * 600))
+        assert widget._hist_r[255] > 0.0
+    finally:
+        widget.deleteLater()
 
 
 def test_preview_candidate_to_float_normalizes_u8(qapp):
@@ -1892,6 +1982,8 @@ def test_recent_render_control_change_uses_visible_viewport_even_without_slider_
         assert request[7] == 0
         assert request[9] is False
         assert request[13] is not None
+        assert request[14] is False
+        assert request[15] is False
     finally:
         window.close()
 
@@ -1923,6 +2015,8 @@ def test_slider_value_change_without_drag_uses_visible_viewport(qapp, monkeypatc
         assert request[7] == 0
         assert request[9] is False
         assert request[13] is not None
+        assert request[14] is False
+        assert request[15] is False
     finally:
         window.close()
 
@@ -1944,7 +2038,7 @@ def test_deferred_full_final_refresh_is_opt_in(qapp, monkeypatch):
         window.close()
 
 
-def test_deferred_final_refresh_forces_full_resolution_request(qapp, monkeypatch):
+def test_deferred_final_refresh_uses_bounded_display_without_histogram(qapp, monkeypatch):
     window = ICCRawMainWindow()
     try:
         image = gui_module.np.zeros((1500, 1500, 3), dtype=gui_module.np.float32)
@@ -1968,24 +2062,156 @@ def test_deferred_final_refresh_forces_full_resolution_request(qapp, monkeypatch
         window._refresh_preview(force_final=True)
 
         request = captured["request"]
-        assert request[7] == 0
+        assert request[7] == gui_module.PREVIEW_FINAL_ADJUSTMENT_MAX_SIDE
         assert request[9] is True
         assert request[13] is None
+        assert request[14] is False
+        assert request[15] is True
     finally:
         window.close()
 
 
-def test_profile_preview_source_never_downscales(qapp):
+def test_slider_change_schedules_post_interaction_exact_refresh(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        refreshes: list[bool] = []
+        histogram_delays: list[int] = []
+        delays: list[int] = []
+        window._original_linear = gui_module.np.zeros((100, 120, 3), dtype=gui_module.np.float32)
+        monkeypatch.setattr(window, "_schedule_preview_refresh", lambda: refreshes.append(True))
+        monkeypatch.setattr(
+            window,
+            "_schedule_exact_histogram_refresh",
+            lambda *, delay_ms: histogram_delays.append(int(delay_ms)),
+        )
+        monkeypatch.setattr(
+            window,
+            "_schedule_post_interaction_exact_preview_refresh",
+            lambda *, delay_ms: delays.append(int(delay_ms)),
+        )
+
+        window._on_slider_change()
+
+        assert refreshes == [True]
+        assert histogram_delays == [80]
+        assert delays == [260]
+    finally:
+        window.close()
+
+
+def test_exact_histogram_refresh_queues_full_adjusted_source(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((100, 120, 3), dtype=gui_module.np.float32)
+        queued: list[tuple[object, ...]] = []
+        window._original_linear = image
+        window._last_loaded_preview_key = "full-source"
+        window.slider_brightness.setValue(100)
+        monkeypatch.setattr(window, "_queue_exact_histogram_request", lambda request: queued.append(request))
+
+        window._run_exact_histogram_refresh()
+
+        assert len(queued) == 1
+        request = queued[0]
+        assert request[1] == "full-source"
+        assert request[2] is image
+        assert request[7] is False
+        assert request[9]["brightness_ev"] == pytest.approx(1.0)
+    finally:
+        window.close()
+
+
+def test_exact_histogram_uses_loaded_source_when_preview_is_reduced(tmp_path: Path, qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "source.tiff"
+    write_tiff16(image_path, gui_module.np.zeros((80, 120, 3), dtype=gui_module.np.float32))
+    try:
+        preview = gui_module.np.zeros((20, 30, 3), dtype=gui_module.np.float32)
+        queued: list[tuple[object, ...]] = []
+        window._selected_file = image_path
+        window._original_linear = preview
+        window._last_loaded_preview_key = "reduced-source"
+        window._loaded_preview_max_side_request = 30
+        window._loaded_preview_fast_raw = False
+        monkeypatch.setattr(window, "_queue_exact_histogram_request", lambda request: queued.append(request))
+
+        window._run_exact_histogram_refresh()
+
+        assert len(queued) == 1
+        request = queued[0]
+        assert request[2] is preview
+        assert request[3] == image_path
+        assert request[7] is False
+    finally:
+        window.close()
+
+
+def test_exact_histogram_reduced_preview_does_not_block_on_full_source(tmp_path: Path, qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "source.tiff"
+    write_tiff16(image_path, gui_module.np.zeros((80, 120, 3), dtype=gui_module.np.float32))
+    try:
+        delays: list[int] = []
+        queued: list[tuple[object, ...]] = []
+        window._selected_file = image_path
+        window._original_linear = gui_module.np.zeros((20, 30, 3), dtype=gui_module.np.float32)
+        window._last_loaded_preview_key = "reduced-source"
+        window._loaded_preview_max_side_request = 30
+        window._loaded_preview_fast_raw = False
+        window._mark_preview_control_interaction(duration_ms=900)
+        monkeypatch.setattr(
+            window,
+            "_schedule_exact_histogram_refresh",
+            lambda *, delay_ms: delays.append(int(delay_ms)),
+        )
+        monkeypatch.setattr(window, "_queue_exact_histogram_request", lambda request: queued.append(request))
+
+        window._run_exact_histogram_refresh()
+
+        assert delays == []
+        assert len(queued) == 1
+        assert queued[0][7] is False
+    finally:
+        window.close()
+
+
+def test_exact_histogram_refresh_waits_while_slider_is_dragging(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        delays: list[int] = []
+        queued: list[object] = []
+        window._original_linear = gui_module.np.zeros((100, 120, 3), dtype=gui_module.np.float32)
+        window.slider_brightness.setSliderDown(True)
+        monkeypatch.setattr(
+            window,
+            "_schedule_exact_histogram_refresh",
+            lambda *, delay_ms: delays.append(int(delay_ms)),
+        )
+        monkeypatch.setattr(window, "_queue_exact_histogram_request", lambda request: queued.append(request))
+
+        window._run_exact_histogram_refresh()
+
+        assert delays == [160]
+        assert queued == []
+    finally:
+        window.slider_brightness.setSliderDown(False)
+        window.close()
+
+
+def test_profile_preview_source_downscales_below_one_to_one_view(qapp):
     window = ICCRawMainWindow()
     try:
         image = gui_module.np.zeros((900, 1400, 3), dtype=gui_module.np.float32)
 
         source, downscaled = window._profile_preview_source_for_async(image, max_side_limit=128)
 
-        assert source is image
-        assert downscaled is False
-        assert window._profile_preview_max_side_limit() == 0
-        assert window._profile_preview_request_key(Path("monitor.icc")).endswith("|pm=0")
+        assert source is not image
+        assert source.shape == (82, 128, 3)
+        assert downscaled is True
+        assert window._profile_preview_max_side_limit() == gui_module.PREVIEW_PROFILE_APPLY_MAX_SIDE
+        assert window._profile_preview_request_key(Path("monitor.icc")).endswith(
+            f"|pm={gui_module.PREVIEW_PROFILE_APPLY_MAX_SIDE}"
+        )
     finally:
         window.close()
 
@@ -2050,7 +2276,7 @@ def test_parallel_interactive_viewport_matches_sequential_icc(tmp_path: Path, qa
             output_space="srgb",
             source_profile=profile,
             monitor_profile=profile,
-            include_histogram=True,
+            include_srgb_patch=True,
             workers=4,
         )
 
@@ -2167,7 +2393,7 @@ def test_interactive_preview_uses_monitor_icc_by_default(qapp):
         window.close()
 
 
-def test_tone_curve_drag_defers_synchronous_histogram_update(qapp, monkeypatch):
+def test_tone_curve_drag_handler_defers_synchronous_histogram_update(qapp, monkeypatch):
     window = ICCRawMainWindow()
     try:
         calls: list[bool] = []
@@ -2195,28 +2421,200 @@ def test_tone_curve_drag_defers_synchronous_histogram_update(qapp, monkeypatch):
         window.close()
 
 
-def test_tone_curve_drag_preview_is_coalesced_by_timer(qapp, monkeypatch):
+def test_tone_curve_editor_drag_does_not_emit_until_release(qapp):
+    editor = gui_module.ToneCurveEditor()
+    try:
+        editor.resize(320, 320)
+        editor.set_points([(0.0, 0.0), (0.5, 0.5), (1.0, 1.0)], emit=False)
+        emissions: list[object] = []
+        finishes: list[bool] = []
+        editor.pointsChanged.connect(lambda points: emissions.append(points))
+        editor.interactionFinished.connect(lambda: finishes.append(True))
+
+        editor._drag_index = 1
+
+        class _MoveEvent:
+            def position(self):
+                return QtCore.QPointF(190, 112)
+
+        editor.mouseMoveEvent(_MoveEvent())
+
+        assert emissions == []
+        assert finishes == []
+        assert editor.points()[1] != (0.5, 0.5)
+
+        release = QtGui.QMouseEvent(
+            QtCore.QEvent.MouseButtonRelease,
+            QtCore.QPointF(190, 112),
+            QtCore.Qt.LeftButton,
+            QtCore.Qt.LeftButton,
+            QtCore.Qt.NoModifier,
+        )
+        editor.mouseReleaseEvent(release)
+
+        assert emissions == []
+        assert finishes == [True]
+    finally:
+        editor.deleteLater()
+
+
+def test_tone_curve_editor_drag_paint_uses_lightweight_mode(qapp, monkeypatch):
+    editor = gui_module.ToneCurveEditor()
+    try:
+        editor.resize(320, 320)
+        editor.set_points([(0.0, 0.0), (0.5, 0.5), (1.0, 1.0)], emit=False)
+        editor._drag_index = 1
+        calls: list[str] = []
+        curve_sizes: list[int] = []
+        monkeypatch.setattr(editor, "_draw_histogram_columns", lambda *_args, **_kwargs: calls.append("histogram"))
+        monkeypatch.setattr(editor, "_draw_channel_curve_overlays", lambda *_args, **_kwargs: calls.append("overlays"))
+        original_draw_curve = editor._draw_curve
+
+        def draw_curve(*args, **kwargs):
+            curve_sizes.append(int(kwargs.get("lut_size", 256)))
+            return original_draw_curve(*args, **kwargs)
+
+        monkeypatch.setattr(editor, "_draw_curve", draw_curve)
+        image = QtGui.QImage(320, 320, QtGui.QImage.Format_ARGB32)
+        image.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(image)
+        painter.end()
+
+        editor.render(image)
+
+        assert calls == []
+        assert curve_sizes
+        assert min(curve_sizes) <= 96
+    finally:
+        editor.deleteLater()
+
+
+def test_tone_curve_release_runs_single_preview_update(qapp, monkeypatch):
     window = ICCRawMainWindow()
     try:
         refreshes: list[bool] = []
+        histograms: list[bool] = []
         window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
         window.check_tone_curve_enabled.setChecked(True)
         window._set_tone_curve_controls_enabled(True)
         monkeypatch.setattr(window, "_schedule_preview_refresh", lambda: refreshes.append(True))
+        monkeypatch.setattr(
+            window,
+            "_update_tone_curve_histogram_for_current_controls",
+            lambda *, force=False, **_kwargs: histograms.append(bool(force)),
+        )
         monkeypatch.setattr(window, "_schedule_deferred_final_preview_refresh", lambda **_kwargs: None)
 
-        window.tone_curve_editor._drag_index = 1
-        for value in (0.52, 0.54, 0.56, 0.58):
-            window._on_tone_curve_points_changed([(0.0, 0.0), (0.5, value), (1.0, 1.0)])
-        qapp.processEvents()
-        assert refreshes == []
+        window.tone_curve_editor.set_points([(0.0, 0.0), (0.5, 0.58), (1.0, 1.0)], emit=False)
+        window._on_tone_curve_interaction_finished()
 
-        loop = QtCore.QEventLoop()
-        QtCore.QTimer.singleShot(80, loop.quit)
-        loop.exec()
+        assert histograms == [True]
         assert refreshes == [True]
     finally:
         window.close()
+
+
+def test_tone_curve_range_slider_drag_defers_heavy_updates(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        drag_refreshes: list[bool] = []
+        preview_refreshes: list[bool] = []
+        histograms: list[bool] = []
+        window.check_tone_curve_enabled.setChecked(True)
+        window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
+        monkeypatch.setattr(window, "_schedule_tone_curve_drag_preview_refresh", lambda: drag_refreshes.append(True))
+        monkeypatch.setattr(window, "_schedule_preview_refresh", lambda: preview_refreshes.append(True))
+        monkeypatch.setattr(
+            window,
+            "_update_tone_curve_histogram_for_current_controls",
+            lambda *, force=False, **_kwargs: histograms.append(bool(force)),
+        )
+
+        window.slider_tone_curve_black.setSliderDown(True)
+        window.slider_tone_curve_black.setValue(80)
+
+        assert drag_refreshes == [True]
+        assert preview_refreshes == []
+        assert histograms == []
+        assert window.tone_curve_editor.is_range_dragging()
+        assert window.tone_curve_editor._black_point == pytest.approx(0.08)
+        assert window.tone_curve_editor._white_point == pytest.approx(1.0)
+    finally:
+        window.slider_tone_curve_black.setSliderDown(False)
+        window.close()
+
+
+def test_tone_curve_range_slider_release_consolidates_once(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        refreshes: list[bool] = []
+        histograms: list[bool] = []
+        syncs: list[bool] = []
+        exact_histogram_delays: list[int] = []
+        exact_preview_delays: list[int] = []
+        window.check_tone_curve_enabled.setChecked(True)
+        window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
+        monkeypatch.setattr(window, "_sync_tone_curve_editor_channel_overlay", lambda: syncs.append(True))
+        monkeypatch.setattr(window, "_schedule_preview_refresh", lambda: refreshes.append(True))
+        monkeypatch.setattr(window, "_schedule_deferred_final_preview_refresh", lambda **_kwargs: None)
+        monkeypatch.setattr(
+            window,
+            "_update_tone_curve_histogram_for_current_controls",
+            lambda *, force=False, **_kwargs: histograms.append(bool(force)),
+        )
+        monkeypatch.setattr(
+            window,
+            "_schedule_exact_histogram_refresh",
+            lambda *, delay_ms: exact_histogram_delays.append(int(delay_ms)),
+        )
+        monkeypatch.setattr(
+            window,
+            "_schedule_post_interaction_exact_preview_refresh",
+            lambda *, delay_ms: exact_preview_delays.append(int(delay_ms)),
+        )
+
+        window.slider_tone_curve_white.setSliderDown(True)
+        window.slider_tone_curve_white.setValue(920)
+        window.slider_tone_curve_white.setSliderDown(False)
+
+        assert syncs == [True]
+        assert histograms == [True]
+        assert refreshes == [True]
+        assert exact_histogram_delays == [80]
+        assert exact_preview_delays == [260]
+        assert not window.tone_curve_editor.is_range_dragging()
+    finally:
+        window.slider_tone_curve_white.setSliderDown(False)
+        window.close()
+
+
+def test_tone_curve_range_slider_paint_uses_lightweight_mode(qapp, monkeypatch):
+    editor = gui_module.ToneCurveEditor()
+    try:
+        editor.resize(320, 320)
+        editor.set_histogram_from_image(gui_module.np.ones((32, 32, 3), dtype=gui_module.np.float32))
+        editor.set_range_dragging(True)
+        calls: list[str] = []
+        curve_sizes: list[int] = []
+        monkeypatch.setattr(editor, "_draw_histogram_columns", lambda *_args, **_kwargs: calls.append("histogram"))
+        monkeypatch.setattr(editor, "_draw_channel_curve_overlays", lambda *_args, **_kwargs: calls.append("overlays"))
+        original_draw_curve = editor._draw_curve
+
+        def draw_curve(*args, **kwargs):
+            curve_sizes.append(int(kwargs.get("lut_size", 256)))
+            return original_draw_curve(*args, **kwargs)
+
+        monkeypatch.setattr(editor, "_draw_curve", draw_curve)
+        image = QtGui.QImage(320, 320, QtGui.QImage.Format_ARGB32)
+        image.fill(QtCore.Qt.transparent)
+
+        editor.render(image)
+
+        assert calls == []
+        assert curve_sizes
+        assert min(curve_sizes) <= 96
+    finally:
+        editor.deleteLater()
 
 
 def test_tone_curve_can_be_edited_while_effect_disabled(qapp, monkeypatch):
@@ -2260,6 +2658,31 @@ def test_tone_curve_disable_cancels_pending_drag(qapp):
 
         assert window.tone_curve_editor.isEnabled()
         assert not window.tone_curve_editor.is_dragging()
+    finally:
+        window.close()
+
+
+def test_tone_curve_drag_does_not_resync_editor_overlay_each_mouse_move(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        syncs: list[bool] = []
+        window._original_linear = gui_module.np.zeros((80, 90, 3), dtype=gui_module.np.float32)
+        window.check_tone_curve_enabled.setChecked(True)
+        window._set_tone_curve_controls_enabled(True)
+        monkeypatch.setattr(window, "_sync_tone_curve_editor_channel_overlay", lambda: syncs.append(True))
+        monkeypatch.setattr(window, "_schedule_tone_curve_drag_preview_refresh", lambda: None)
+
+        window.tone_curve_editor.set_points([(0.0, 0.0), (0.45, 0.62), (1.0, 1.0)], emit=False)
+        window.tone_curve_editor._drag_index = 1
+        window._on_tone_curve_points_changed([(0.0, 0.0), (0.45, 0.62), (1.0, 1.0)])
+
+        assert syncs == []
+        assert window._tone_curve_channel_points["luminance"][1] == (0.45, 0.62)
+
+        window.tone_curve_editor._drag_index = None
+        window._on_tone_curve_interaction_finished()
+
+        assert syncs == [True]
     finally:
         window.close()
 
@@ -2331,6 +2754,7 @@ def test_visible_viewport_request_preempts_full_interactive_render(qapp, monkeyp
             None,
             (10, 12, 40, 36),
             True,
+            True,
         )
         started: list[tuple[object, ...]] = []
         window._interactive_preview_task_active = True
@@ -2371,6 +2795,7 @@ def test_visible_viewport_request_waits_for_inflight_viewport_render(qapp, monke
             None,
             None,
             (10, 12, 40, 36),
+            True,
             True,
         )
         started: list[tuple[object, ...]] = []
@@ -4623,6 +5048,37 @@ def test_mtf_auto_update_is_scheduled_from_detail_slider_change(tmp_path: Path, 
         window.close()
 
 
+def test_mtf_detail_slider_change_schedules_when_general_auto_update_is_off(tmp_path: Path, qapp):
+    size = 180
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.15
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, image)
+    try:
+        window._go_to_nitidez_tab()
+        window._selected_file = image_path
+        window._original_linear = image
+        window._preview_srgb = image
+        window._on_mtf_roi_selected(55, 55, 70, 70)
+        assert window._mtf_has_hot_base_roi_cache(window._mtf_roi)
+        window._mtf_refresh_timer.stop()
+        window.check_mtf_auto_update.setChecked(False)
+
+        window.slider_sharpen.setSliderDown(True)
+        window.slider_sharpen.setValue(30)
+
+        assert window._mtf_refresh_timer.isActive()
+    finally:
+        window.slider_sharpen.setSliderDown(False)
+        window._mtf_refresh_timer.stop()
+        window.close()
+
+
 def test_mtf_interactive_auto_update_throttles_instead_of_debouncing(monkeypatch, qapp):
     class FakeTimer:
         def __init__(self) -> None:
@@ -4731,6 +5187,40 @@ def test_mtf_auto_update_waits_until_sharpness_tab_is_visible(tmp_path: Path, qa
 
         assert not window._mtf_refresh_timer.isActive()
         assert window._mtf_auto_refresh_deferred_until_visible is True
+
+        window._go_to_nitidez_tab()
+
+        assert window._mtf_refresh_timer.isActive()
+    finally:
+        window._mtf_refresh_timer.stop()
+        window.close()
+
+
+def test_entering_sharpness_tab_refreshes_mtf_when_general_auto_update_is_off(tmp_path: Path, qapp):
+    size = 180
+    yy, xx = gui_module.np.mgrid[0:size, 0:size].astype(gui_module.np.float32)
+    dist = (xx - size / 2.0) + (yy - size / 2.0) * 0.15
+    edge = (dist > 0.0).astype(gui_module.np.float32)
+    edge = cv2.GaussianBlur(edge, (0, 0), sigmaX=1.2, sigmaY=1.2)
+    image = gui_module.np.repeat(edge[..., None], 3, axis=2)
+
+    window = ICCRawMainWindow()
+    image_path = tmp_path / "edge.tiff"
+    write_tiff16(image_path, image)
+    try:
+        window._go_to_nitidez_tab()
+        window._selected_file = image_path
+        window._original_linear = image
+        window._preview_srgb = image
+        window._on_mtf_roi_selected(55, 55, 70, 70)
+        assert window._mtf_has_hot_base_roi_cache(window._mtf_roi)
+        window._mtf_refresh_timer.stop()
+        window.check_mtf_auto_update.setChecked(False)
+        window._mtf_last_result = None
+        window._update_mtf_result_widgets()
+
+        window.right_workflow_tabs.setCurrentIndex(1)
+        assert not window._mtf_refresh_timer.isActive()
 
         window._go_to_nitidez_tab()
 

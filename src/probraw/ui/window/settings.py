@@ -400,7 +400,11 @@ class SettingsMixin:
         return bool(checkbox is not None and checkbox.isChecked())
 
     def _effective_preview_max_side(self) -> int:
-        return 0
+        if bool(getattr(self, "_preview_export_parity_requested", False)):
+            return 0
+        if bool(getattr(self, "_viewer_full_detail_requested", False)):
+            return 0
+        return int(PREVIEW_AUTO_BASE_MAX_SIDE)
 
     def _on_precision_detail_preview_toggled(self, enabled: bool) -> None:
         self._save_preview_monitor_settings()

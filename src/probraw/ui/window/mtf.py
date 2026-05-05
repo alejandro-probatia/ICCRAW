@@ -621,7 +621,9 @@ class MTFAnalysisMixin:
                 self._mtf_auto_refresh_deferred_until_visible = True
         elif bool(getattr(self, "_mtf_auto_refresh_deferred_until_visible", False)):
             self._mtf_auto_refresh_deferred_until_visible = False
-            self._schedule_mtf_refresh(interactive=False)
+            self._schedule_mtf_refresh(interactive=False, require_auto_update=False)
+        elif mtf_visible:
+            self._ensure_mtf_analysis_ready_for_sharpness_panel()
         self._sync_mtf_roi_overlay()
 
     def _clear_mtf_roi(self) -> None:
@@ -2210,10 +2212,21 @@ class MTFAnalysisMixin:
             elapsed_seconds=total_elapsed,
         )
 
-    def _schedule_mtf_refresh(self, *, interactive: bool | None = None) -> None:
+    def _schedule_mtf_refresh(
+        self,
+        *,
+        interactive: bool | None = None,
+        require_auto_update: bool = True,
+    ) -> None:
         if getattr(self, "_mtf_roi", None) is None:
             return
-        if not hasattr(self, "check_mtf_auto_update") or not self.check_mtf_auto_update.isChecked():
+        if (
+            bool(require_auto_update)
+            and (
+                not hasattr(self, "check_mtf_auto_update")
+                or not self.check_mtf_auto_update.isChecked()
+            )
+        ):
             return
         if not hasattr(self, "_mtf_refresh_timer"):
             return
@@ -2249,6 +2262,20 @@ class MTFAnalysisMixin:
         if not hasattr(self, "_mtf_refresh_timer") or self._mtf_refresh_timer.isActive():
             return
         self._schedule_mtf_refresh(interactive=self._is_preview_interaction_active())
+
+    def _ensure_mtf_analysis_ready_for_sharpness_panel(self) -> None:
+        if getattr(self, "_mtf_roi", None) is None:
+            return
+        if not self._mtf_roi_overlay_should_be_visible():
+            return
+        if getattr(self, "_mtf_last_result", None) is not None:
+            return
+        if self._mtf_has_hot_base_roi_cache(self._mtf_roi):
+            self._schedule_mtf_refresh(interactive=False, require_auto_update=False)
+            return
+        if bool(getattr(self, "_mtf_base_roi_task_active", False)):
+            return
+        self._recalculate_mtf_analysis()
 
     def _update_mtf_result_widgets(self, *, error: str | None = None) -> None:
         result = getattr(self, "_mtf_last_result", None)
