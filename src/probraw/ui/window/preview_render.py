@@ -4,14 +4,27 @@ from ._imports import *  # noqa: F401,F403
 
 
 class PreviewRenderMixin:
-    def _mark_preview_control_interaction(self, *, duration_ms: int = 900) -> None:
+    def _mark_preview_control_interaction(self, *, duration_ms: int = 900, detail: bool = False) -> None:
+        until = time.perf_counter() + max(1, int(duration_ms)) / 1000.0
         self._preview_recent_interaction_until = max(
             float(getattr(self, "_preview_recent_interaction_until", 0.0) or 0.0),
-            time.perf_counter() + max(1, int(duration_ms)) / 1000.0,
+            until,
         )
+        if bool(detail):
+            self._preview_recent_detail_interaction_until = max(
+                float(getattr(self, "_preview_recent_detail_interaction_until", 0.0) or 0.0),
+                until,
+            )
 
     def _recent_preview_control_interaction_active(self) -> bool:
-        return time.perf_counter() < float(getattr(self, "_preview_recent_interaction_until", 0.0) or 0.0)
+        now = time.perf_counter()
+        return (
+            now < float(getattr(self, "_preview_recent_interaction_until", 0.0) or 0.0)
+            or now < float(getattr(self, "_preview_recent_detail_interaction_until", 0.0) or 0.0)
+        )
+
+    def _recent_detail_control_interaction_active(self) -> bool:
+        return time.perf_counter() < float(getattr(self, "_preview_recent_detail_interaction_until", 0.0) or 0.0)
 
     def _on_slider_change(self) -> None:
         if (
@@ -52,9 +65,15 @@ class PreviewRenderMixin:
             getattr(self, "slider_ca_blue", None),
         )
         if self._original_linear is not None:
-            if sender in detail_sliders and not bool(getattr(sender, "isSliderDown", lambda: False)()):
-                self._preview_recent_interaction_until = 0.0
+            if sender in detail_sliders:
+                self._preview_last_slider_group = "detail"
+                if bool(getattr(sender, "isSliderDown", lambda: False)()):
+                    self._mark_preview_control_interaction(duration_ms=900, detail=True)
+                else:
+                    self._preview_recent_interaction_until = 0.0
+                    self._preview_recent_detail_interaction_until = 0.0
             elif sender in render_sliders or sender is None:
+                self._preview_last_slider_group = "render"
                 self._mark_preview_control_interaction(duration_ms=900)
             self._schedule_preview_refresh()
         if sender in detail_sliders:
@@ -106,15 +125,28 @@ class PreviewRenderMixin:
             getattr(self, "slider_ca_blue", None),
         )
         if self._original_linear is not None:
-            if sender in render_sliders:
+            last_group = str(getattr(self, "_preview_last_slider_group", "") or "")
+            render_release = sender in render_sliders or (sender is None and last_group == "render")
+            detail_release = sender in detail_sliders or (sender is None and last_group == "detail")
+            if render_release:
                 self._mark_preview_control_interaction(duration_ms=250)
+                self._schedule_preview_refresh()
+                self._schedule_deferred_final_preview_refresh()
+            elif detail_release:
+                self._mark_preview_control_interaction(duration_ms=450, detail=True)
                 self._schedule_preview_refresh()
                 self._schedule_deferred_final_preview_refresh()
             else:
                 self._schedule_preview_refresh()
-        if sender in render_sliders and hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+        if (
+            sender in render_sliders
+            or str(getattr(self, "_preview_last_slider_group", "") or "") == "render"
+        ) and hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
             self._schedule_render_adjustment_sidecar_persist(immediate=True)
-        if sender in detail_sliders and hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
+        if (
+            sender in detail_sliders
+            or str(getattr(self, "_preview_last_slider_group", "") or "") == "detail"
+        ) and hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
             self._schedule_detail_adjustment_sidecar_persist(immediate=True)
         if hasattr(self, "_schedule_mtf_refresh"):
             self._schedule_mtf_refresh(interactive=False)
@@ -172,7 +204,7 @@ class PreviewRenderMixin:
             slider = getattr(self, name, None)
             if slider is not None and bool(slider.isSliderDown()):
                 return True
-        return False
+        return self._recent_detail_control_interaction_active()
 
     def _interactive_preview_source(
         self,
@@ -180,7 +212,46 @@ class PreviewRenderMixin:
         *,
         max_side_limit: int = 0,
     ) -> np.ndarray:
-        return np.asarray(image, dtype=np.float32)
+        rgb = np.asarray(image, dtype=np.float32)
+        if int(max_side_limit) <= 0:
+            return rgb
+        cache_key = (
+            id(image),
+            tuple(int(v) for v in rgb.shape),
+            str(rgb.dtype),
+            int(max_side_limit),
+        )
+        if (
+            getattr(self, "_interactive_source_cache_key", None) == cache_key
+            and getattr(self, "_interactive_source_cache_image", None) is not None
+        ):
+            return self._interactive_source_cache_image
+        cache_images = getattr(self, "_interactive_source_cache_images", None)
+        if isinstance(cache_images, dict):
+            cached = cache_images.get(cache_key)
+            if cached is not None:
+                self._interactive_source_cache_key = cache_key
+                self._interactive_source_cache_image = cached
+                return cached
+        h, w = int(rgb.shape[0]), int(rgb.shape[1])
+        max_side = max(h, w)
+        if max_side <= int(max_side_limit):
+            return rgb
+        scale = float(max_side_limit) / float(max_side)
+        nw = max(1, int(round(w * scale)))
+        nh = max(1, int(round(h * scale)))
+        resized = np.clip(
+            cv2.resize(rgb, (nw, nh), interpolation=cv2.INTER_AREA),
+            0.0,
+            1.0,
+        ).astype(np.float32)
+        self._interactive_source_cache_key = cache_key
+        self._interactive_source_cache_image = resized
+        if isinstance(cache_images, dict):
+            cache_images[cache_key] = resized
+            while len(cache_images) > 4:
+                cache_images.pop(next(iter(cache_images)))
+        return resized
 
     def _profile_preview_profile_stamp(self, profile_path: Path) -> str:
         try:
@@ -592,14 +663,46 @@ class PreviewRenderMixin:
             return arr.astype(np.float32) / np.float32(255.0)
         return np.asarray(arr, dtype=np.float32)
 
+    def _loaded_preview_has_real_pixels_for_viewport(self) -> bool:
+        selected = getattr(self, "_selected_file", None)
+        if selected is None:
+            return True
+        try:
+            is_raw = Path(selected).suffix.lower() in RAW_EXTENSIONS
+        except Exception:
+            is_raw = False
+        loaded_request = getattr(self, "_loaded_preview_max_side_request", None)
+        loaded_fast = bool(getattr(self, "_loaded_preview_fast_raw", False))
+        if is_raw:
+            return loaded_request == 0 and not loaded_fast
+        if loaded_request is None:
+            return True
+        return int(loaded_request) <= 0
+
+    def _real_pixel_view_requested(self) -> bool:
+        if bool(getattr(self, "_viewer_full_detail_requested", False)):
+            return True
+        panel = getattr(self, "image_result_single", None)
+        if panel is None or not hasattr(panel, "current_display_scale"):
+            return False
+        scale = panel.current_display_scale()
+        return bool(scale is not None and float(scale) >= 0.98)
+
     def _interactive_viewport_rect(self, *, compare_enabled: bool, apply_detail: bool) -> tuple[int, int, int, int] | None:
-        if compare_enabled or apply_detail:
+        del apply_detail
+        if compare_enabled:
             return None
         if self._original_linear is None:
+            return None
+        if not self._loaded_preview_has_real_pixels_for_viewport():
             return None
         panel = getattr(self, "image_result_single", None)
         if panel is None or not hasattr(panel, "visible_image_rect"):
             return None
+        if hasattr(panel, "current_display_scale"):
+            scale = panel.current_display_scale()
+            if scale is None or float(scale) < 0.98:
+                return None
         rect = panel.visible_image_rect(margin=PREVIEW_INTERACTIVE_VIEWPORT_MARGIN_PX)
         if rect is None:
             return None
@@ -1346,12 +1449,21 @@ class PreviewRenderMixin:
             source_profile = self._source_profile_for_preview_recipe(recipe)
             monitor_profile = None if bypass_display_profile else self._active_display_profile_path()
             if interactive:
-                apply_detail = bool(detail_interactive)
-                max_side_limit = 0
+                apply_detail = bool(detail_interactive or self._detail_kwargs_have_effect(detail_kwargs))
                 viewport_rect = self._interactive_viewport_rect(
                     compare_enabled=compare_enabled,
                     apply_detail=bool(apply_detail),
                 )
+                if viewport_rect is not None:
+                    max_side_limit = 0
+                elif self._real_pixel_view_requested() and self._loaded_preview_has_real_pixels_for_viewport():
+                    max_side_limit = 0
+                else:
+                    max_side_limit = (
+                        PREVIEW_INTERACTIVE_DRAG_MAX_SIDE
+                        if apply_detail
+                        else PREVIEW_INTERACTIVE_TONAL_MAX_SIDE
+                    )
                 overlay_enabled = bool(
                     getattr(self, "check_image_clip_overlay", None)
                     and self.check_image_clip_overlay.isChecked()
@@ -1508,11 +1620,6 @@ class PreviewRenderMixin:
             return
         if getattr(self, "_current_result_display_u8", None) is None:
             return
-        panel = getattr(self, "image_result_single", None)
-        if panel is not None and hasattr(panel, "current_display_scale"):
-            scale = panel.current_display_scale()
-            if scale is None or float(scale) < 0.98:
-                return
         self._mark_preview_control_interaction(duration_ms=max(1, int(duration_ms)))
         self._schedule_preview_refresh()
 

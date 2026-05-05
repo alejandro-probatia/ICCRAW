@@ -174,6 +174,32 @@ ProPhoto RGB, monitor ICC and clipping overlay enabled:
 This preserves strict color management while reducing long UI stalls without
 sacrificing colorimetry or sharpness.
 
+### Interactive Preview 0.3.11
+
+The interactive path again uses bounded proxy sources during color, contrast,
+curve and sharpness drags when the viewer is not in real 1:1 inspection. This
+restores the responsiveness observed in the 0.3.8 series without treating a
+cached preview as real pixels.
+
+Operational rules:
+
+- if the viewer is at real scale and the loaded source contains real pixels,
+  sharpness preview works on the 1:1 viewport without downscaling;
+- if the user requests real detail but the current display is a proxy, the full
+  source is forced before analysis;
+- if the loaded RAW comes from a reduced cache, the viewport is not marked as
+  real-pixel even when visual scale is 100%;
+- zoom or viewport changes reschedule the visible preview so active adjustments
+  apply to the whole region the user is viewing.
+
+Local synthetic benchmark after the change:
+
+| Case | Before | After |
+| --- | ---: | ---: |
+| Sharpness 2160x3240 | ~530 ms | ~91 ms |
+| Sharpness 4000x6000 | ~1.75 s | ~86 ms |
+| Color/curves | ~20-62 ms | ~20-62 ms |
+
 ## RAW MTF Strategy And Global Operation Viewer
 
 Detected problem: cold MTF analysis on RAW files needs a real-resolution image.
@@ -204,6 +230,10 @@ Implemented decision:
   that block.
 - Automatic MTF recalculation is deferred when the full-resolution ROI is cold;
   the user explicitly starts the expensive work with `Actualizar`.
+- With a hot full-resolution ROI, sharpness controls refresh ESF/LSF/MTF through
+  an interactive throttle. The pending timer is not restarted on every slider
+  event, so plots can update while dragging and not only after releasing the
+  control.
 - ProbRAW's top bar is now a global long-operation viewer. MTF, RAW preview
   loading and background tasks can publish status, elapsed time, estimate,
   remaining time and phase. The operational rule is to use it for work expected

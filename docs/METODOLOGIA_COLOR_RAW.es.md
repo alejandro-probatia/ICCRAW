@@ -3,8 +3,8 @@
 _English version: [METODOLOGIA_COLOR_RAW.md](METODOLOGIA_COLOR_RAW.md)_
 
 Este documento fija el criterio metodológico de ProbRAW para separar revelado
-paramétrico, perfil de ajuste, perfil ICC de entrada, perfiles ICC de salida y
-perfil ICC del monitor.
+paramétrico, perfil de ajuste, perfiles ICC de entrada de imagen y perfil ICC
+del monitor.
 
 La decisión vigente es mantener un flujo científico centrado en ICC. La
 integración DCP fue evaluada como posibilidad futura, pero no forma parte del
@@ -24,8 +24,8 @@ decisiones colorimétricas con decisiones de apariencia.
 
 Un RAW no es una imagen RGB final. Es una captura de datos del sensor que debe
 interpretarse mediante una receta de revelado: demosaico, balance de blancos,
-nivel negro, compensación de exposición, curva tonal, espacio de salida y otros
-parámetros.
+nivel negro, compensación de exposición, curva tonal, ICC de imagen asignado y
+otros parámetros.
 
 En ProbRAW, el perfil ICC de entrada no se calcula sobre el RAW desnudo. Se
 calcula después de revelar una captura de carta con una receta controlada,
@@ -33,13 +33,18 @@ porque las mediciones se hacen sobre valores RGB producidos por el revelador.
 Una vez generado, ese ICC describe cómo interpretar los RGB de cámara/sesión
 producidos por esa misma receta, cámara e iluminante.
 
+Los valores RGB son relativos al dispositivo o al espacio de revelado que los
+produce. El ICC de entrada etiqueta esos valores y define su correspondencia
+objetiva con colorimetria PCS/Lab/XYZ. Sin esa etiqueta, el triplete RGB no es un
+color objetivo reproducible.
+
 Por tanto:
 
 - la receta corrige y documenta el revelado base;
 - el perfil de ajuste guarda decisiones paramétricas por archivo;
 - el ICC de entrada describe la respuesta colorimétrica medida de la sesión;
-- el ICC de salida describe el espacio final cuando no hay carta o cuando se
-  genera un derivado convertido;
+- cuando no hay ICC de sesion medido, un ICC generico real como ProPhoto RGB se
+  asigna como perfil de entrada fallback, no se inventa como otro perfil;
 - el ICC de monitor solo corrige la visualización.
 
 ## Flujo Técnico Recomendado
@@ -53,21 +58,21 @@ El contrato metodológico para RAW es:
 4. Aplicar sustracción de negro y normalización por blanco.
 5. Aplicar balance de blancos en espacio de cámara.
 6. Ejecutar demosaico.
-7. Producir RGB lineal de cámara/sesión o revelar directamente a un espacio
-   estándar cuando no hay carta.
+7. Producir RGB de camara/sesion con un ICC de entrada asignado. Cuando no hay
+   carta, asignar un ICC generico real de fallback como ProPhoto RGB.
 8. Aplicar ajustes paramétricos documentados.
-9. Para pantalla, convertir la preview al perfil ICC del monitor si está activo.
-10. Para exportación, incrustar el ICC correspondiente y registrar la
-    transformación aplicada.
+9. Para pantalla, convertir directamente desde el ICC de entrada de la imagen al
+   ICC de monitor configurado por el sistema operativo.
+10. Para exportacion, incrustar el ICC de entrada asociado y registrar
+    procedencia.
 
 Implementación actual:
 
 - con carta, ProbRAW conserva RGB lineal de cámara/sesión e incrusta el ICC de
   entrada generado;
-- sin carta, ProbRAW revela en `sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB` y
-  copia/incrusta un ICC estándar real;
-- los derivados convertidos desde un ICC de sesión se procesan mediante
-  CMM/ArgyllCMS cuando corresponde;
+- sin carta, ProbRAW asigna un ICC generico real de entrada como fallback en vez
+  de inventar un perfil de sesion o de salida;
+- la preview gestionada convierte solo `ICC entrada -> ICC monitor`;
 - el perfil del monitor nunca modifica TIFF, hashes, manifiestos ni Proof.
 
 ## Perfil de Ajuste por Archivo
@@ -82,14 +87,14 @@ captura.NEF.probraw.json
 
 Una sesión puede contener varios perfiles de ajuste. Esto evita asumir que toda
 la sesión es homogénea: una carpeta puede incluir cambios de luz, óptica,
-exposición o criterio de salida.
+exposición o criterio de entrega.
 
 Tipos:
 
 - **Perfil avanzado**: nace de una carta de color y puede incluir ICC de entrada
   de sesión.
-- **Perfil básico**: nace de ajustes manuales y se asocia a un ICC estándar si no
-  hay carta.
+- **Perfil básico**: nace de ajustes manuales y se asocia a un ICC generico real
+  de entrada si no hay carta.
 
 ## Flujo Con Carta de Color
 
@@ -117,11 +122,12 @@ Cuando no existe carta:
 
 1. No se inventa un ICC de sesión.
 2. El usuario guarda un perfil de ajuste manual.
-3. El usuario elige un espacio estándar real de salida: `sRGB`,
-   `Adobe RGB (1998)` o `ProPhoto RGB`.
-4. ProbRAW revela el RAW en ese espacio y embebe el ICC estándar.
-5. La trazabilidad declara que no hay perfil de entrada medido y que el ICC
-   incrustado es `generic_output_icc`.
+3. ProbRAW asigna un ICC generico real de entrada, normalmente ProPhoto RGB,
+   salvo que la sesion elija explicitamente otro ICC generico de entrada.
+4. ProbRAW mantiene ese ICC como perfil de entrada de imagen para analisis y
+   gestion de pantalla.
+5. La trazabilidad declara que no hay perfil de entrada de sesion medido y nombra
+   el ICC generico de entrada usado.
 
 Este flujo es reproducible y funcional, pero no sustituye la precisión de una
 referencia colorimétrica medida.
@@ -132,10 +138,11 @@ ProbRAW distingue:
 
 - **TIFF maestro con carta**: RGB de cámara/sesión, perfil de ajuste calibrado,
   ICC de entrada de sesión, ProbRAW Proof y C2PA opcional.
-- **TIFF derivado convertido**: salida transformada por CMM a un perfil de
-  salida genérico o de dispositivo.
-- **TIFF manual sin carta**: RAW revelado en espacio estándar real, ICC estándar
-  incrustado y mochila de ajuste por archivo.
+- **TIFF manual sin carta**: RAW revelado con mochila de ajuste por archivo y un
+  ICC generico real de entrada.
+- **TIFF derivado explicito**: exportacion no analitica solicitada por el
+  usuario. Nunca debe alimentar preview, histograma, muestreo, MTF ni QA de
+  perfil.
 
 Las salidas existentes no se sobrescriben. ProbRAW crea versiones `_v002`,
 `_v003`, etc.

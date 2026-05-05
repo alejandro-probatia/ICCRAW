@@ -10,7 +10,7 @@ Reproducible and auditable RAW/TIFF development for scientific, forensic and
 heritage photography, with session ICC profiling, per-file parametric settings
 and open AGPL traceability.
 
-![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.10-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.11-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![ProbRAW main interface](docs/assets/screenshots/probraw-portada.png)
 
@@ -24,25 +24,26 @@ The current workflow is intentionally ICC-centered:
 
 - with a valid color chart, ProbRAW builds a calibrated development profile and a
   session-specific input ICC profile;
-- without a chart, ProbRAW uses a manual development profile and a real standard
-  output ICC (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`);
+- without a chart, ProbRAW uses a manual development profile and a real generic
+  input ICC (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`);
 - monitor ICC management affects only on-screen preview;
 - DCP support is not an active implementation target for the 0.3 line.
 
 ## Current Status
 
-ProbRAW 0.3.10 is suitable for controlled testing, method review and release
+ProbRAW 0.3.11 is suitable for controlled testing, method review and release
 candidate validation. It is not yet a certified scientific or forensic
 production system.
 
-The current version improves sharpness analysis: MTF/ESF views are easier to
-read, lateral chromatic aberration can be inspected from the same slanted-edge
-ROI, and the analysis code is annotated for team development.
+The current version improves preview and sharpness responsiveness: adjustments
+use bounded caches where appropriate, restore real pixels at 100%, and MTF
+plots update during sharpness-control drags when the full-resolution ROI is
+already prepared.
 
 The latest packaging validation passed with:
 
 ```text
-330 passed, 1 warning
+378 passed, 1 warning
 ```
 
 ## Documentation

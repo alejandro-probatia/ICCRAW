@@ -3,8 +3,8 @@ _Versión en español: [METODOLOGIA_COLOR_RAW.es.md](METODOLOGIA_COLOR_RAW.es.md
 # RAW Development Methodology and ICC Management
 
 This document defines ProbRAW's methodological criteria for separating
-parametric RAW development, development profiles, input ICC profiles, output ICC
-profiles and monitor ICC profiles.
+parametric RAW development, development profiles, image input ICC profiles and
+monitor ICC profiles.
 
 The current decision is to keep a scientific ICC-centered workflow. DCP
 integration was evaluated as a possible future direction, but it is not active
@@ -24,7 +24,7 @@ decisions with appearance decisions.
 
 A RAW file is not a final RGB image. It is a capture of sensor data that must be
 interpreted through a development recipe: demosaic, white balance, black level,
-exposure compensation, tone curve, output space and other parameters.
+exposure compensation, tone curve, assigned image ICC and other parameters.
 
 In ProbRAW, the input ICC profile is not computed from the bare RAW file. It is
 computed after developing a chart capture with a controlled recipe, because
@@ -32,13 +32,18 @@ measurements are made on RGB values produced by the developer. Once generated,
 that ICC describes how to interpret the camera/session RGB produced by the same
 recipe, camera and illuminant.
 
+RGB values are relative to the device or development space that produced them.
+The input ICC tags those values and defines their objective correspondence to
+PCS/Lab/XYZ colorimetry. Without that tag, an RGB triplet is not an objectively
+reproducible color.
+
 Therefore:
 
 - the recipe corrects and documents base development;
 - the development profile stores per-file parametric decisions;
 - the input ICC describes the measured colorimetric response of the session;
-- the output ICC describes the final space when there is no chart or when a
-  converted derivative is produced;
+- when there is no measured session ICC, a real generic ICC such as ProPhoto RGB
+  is assigned as an input profile fallback, not invented as another profile;
 - the monitor ICC corrects display only.
 
 ## Recommended Technical Flow
@@ -52,20 +57,20 @@ The methodological RAW contract is:
 4. Apply black subtraction and white normalization.
 5. Apply white balance in camera space.
 6. Run demosaic.
-7. Produce linear camera/session RGB or develop directly to a standard space when
-   there is no chart.
+7. Produce camera/session RGB with an assigned input ICC. When there is no chart,
+   assign a real generic input ICC fallback such as ProPhoto RGB.
 8. Apply documented parametric adjustments.
-9. For display, convert the preview to the monitor ICC profile if enabled.
-10. For export, embed the corresponding ICC and record the applied transform.
+9. For display, convert directly from the image input ICC to the monitor ICC
+   profile configured by the operating system.
+10. For export, embed the associated image input ICC and record provenance.
 
 Current implementation:
 
 - with a chart, ProbRAW preserves linear camera/session RGB and embeds the
   generated input ICC;
-- without a chart, ProbRAW develops into `sRGB`, `Adobe RGB (1998)` or
-  `ProPhoto RGB` and copies/embeds a real standard ICC;
-- converted derivatives from a session ICC are processed through CMM/ArgyllCMS
-  where applicable;
+- without a chart, ProbRAW assigns a real generic ICC input profile fallback
+  instead of inventing a session profile or any other profile;
+- managed preview converts only `input ICC -> monitor ICC`;
 - the monitor profile never changes TIFFs, hashes, manifests or Proof data.
 
 ## Per-file Development Profile
@@ -80,14 +85,14 @@ capture.NEF.probraw.json
 
 A session can contain several development profiles. This avoids assuming that a
 whole folder is homogeneous: one session may include changes in lighting, lens,
-exposure or output criteria.
+exposure or delivery criteria.
 
 Types:
 
 - **Advanced profile**: created from a color chart and optionally tied to a
   session input ICC.
-- **Basic profile**: created from manual adjustments and associated with a
-  standard ICC when no chart exists.
+- **Basic profile**: created from manual adjustments and associated with a real
+  generic input ICC when no chart exists.
 
 ## Workflow With a Color Chart
 
@@ -115,11 +120,12 @@ When no chart exists:
 
 1. ProbRAW does not invent a session ICC.
 2. The user saves a manual development profile.
-3. The user chooses a real standard output space: `sRGB`, `Adobe RGB (1998)` or
-   `ProPhoto RGB`.
-4. ProbRAW develops the RAW in that space and embeds the standard ICC.
-5. Traceability states that there is no measured input profile and that the
-   embedded ICC is `generic_output_icc`.
+3. ProbRAW assigns a real generic input ICC fallback, normally ProPhoto RGB,
+   unless the session explicitly chooses another generic input profile.
+4. ProbRAW keeps that ICC as the image input profile for analysis and display
+   management.
+5. Traceability states that there is no measured session input profile and names
+   the generic input ICC used.
 
 This workflow is reproducible and functional, but it does not replace the
 precision of a measured colorimetric reference.
@@ -130,10 +136,10 @@ ProbRAW distinguishes:
 
 - **Chart-based master TIFF**: camera/session RGB, calibrated development
   profile, session input ICC, ProbRAW Proof and optional C2PA.
-- **Converted derivative TIFF**: output transformed by CMM to a generic or device
-  output profile.
-- **Manual no-chart TIFF**: RAW developed into a real standard space, embedded
-  standard ICC and per-file development backpack.
+- **Manual no-chart TIFF**: RAW developed with a per-file development backpack
+  and a real generic input ICC fallback.
+- **Explicit derivative TIFF**: a non-analysis export requested by the user. It
+  must never feed back into preview, histogram, sampling, MTF or profile QA.
 
 Existing outputs are not overwritten. ProbRAW creates `_v002`, `_v003`, etc.
 

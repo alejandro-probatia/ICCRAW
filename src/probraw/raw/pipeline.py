@@ -643,9 +643,20 @@ def _prune_demosaic_cache(cache_root: Path) -> None:
 
 
 def _apply_srgb_oetf(x: np.ndarray) -> np.ndarray:
-    a = 0.055
-    out = np.where(x <= 0.0031308, 12.92 * x, (1 + a) * np.power(np.clip(x, 0.0, 1.0), 1 / 2.4) - a)
-    return np.clip(out, 0.0, 1.0)
+    # Encoding transfer curve for an explicit `tone_curve: srgb` recipe.
+    # This is not the GUI display path: managed previews must remain
+    # `source ICC -> monitor ICC`, never `source ICC -> sRGB -> screen`.
+    x = np.asarray(x, dtype=np.float32)
+    out = np.empty_like(x, dtype=np.float32)
+    np.clip(x, 0.0, 1.0, out=out)
+    np.power(out, np.float32(1.0 / 2.4), out=out)
+    out *= np.float32(1.055)
+    out -= np.float32(0.055)
+    low = x <= np.float32(0.0031308)
+    if np.any(low):
+        out[low] = np.float32(12.92) * x[low]
+    np.clip(out, 0.0, 1.0, out=out)
+    return out
 
 
 def _fake_metadata(path: Path):

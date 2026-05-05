@@ -10,7 +10,7 @@ Revelado RAW/TIFF reproducible y auditable para fotografía científica, forense
 patrimonial, con perfilado ICC por sesión, ajustes paramétricos por archivo y
 trazabilidad abierta AGPL.
 
-![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.10-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.11-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![Interfaz principal de ProbRAW](docs/assets/screenshots/probraw-portada.png)
 
@@ -24,26 +24,26 @@ El flujo actual está centrado de forma deliberada en ICC:
 
 - con una carta de color válida, ProbRAW crea un perfil de ajuste calibrado y un
   perfil ICC de entrada propio de la sesión;
-- sin carta, ProbRAW usa un perfil de ajuste manual y un ICC estándar real de
-  salida (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`);
+- sin carta, ProbRAW usa un perfil de ajuste manual y un ICC de entrada generico
+  real (`sRGB`, `Adobe RGB (1998)` o `ProPhoto RGB`);
 - la gestión ICC del monitor afecta solo a la previsualización en pantalla;
 - el soporte DCP no es un objetivo activo de implementación en la línea 0.3.
 
 ## Estado Actual
 
-ProbRAW 0.3.10 es adecuado para pruebas controladas, revisión metodológica y
+ProbRAW 0.3.11 es adecuado para pruebas controladas, revisión metodológica y
 validación de candidata a release. Todavía no es un sistema certificado para
 producción científica o forense.
 
-La versión actual mejora el análisis de nitidez: las vistas MTF/ESF son más
-legibles, la aberración cromática lateral puede inspeccionarse desde la misma
-ROI de borde inclinado y el código de análisis queda anotado para trabajo en
-equipo.
+La versión actual mejora la fluidez de preview y nitidez: los ajustes trabajan
+sobre caches acotadas cuando procede, recuperan pixeles reales a 100% y las
+graficas MTF se actualizan durante el arrastre de controles de nitidez cuando la
+ROI full-res ya esta preparada.
 
 La última validación de empaquetado pasó con:
 
 ```text
-330 passed, 1 warning
+378 passed, 1 warning
 ```
 
 ## Documentación

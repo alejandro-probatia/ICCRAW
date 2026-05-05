@@ -25,6 +25,8 @@ class MTFAnalysisMixin:
     """
 
     MTF_EXTENDED_ANALYSIS_MAX_FREQUENCY = 1.0
+    MTF_INTERACTIVE_REFRESH_DELAY_MS = 80
+    MTF_SETTLED_REFRESH_DELAY_MS = 45
 
     def _build_mtf_analysis_panel(self) -> QtWidgets.QWidget:
         panel = QtWidgets.QWidget()
@@ -2238,7 +2240,9 @@ class MTFAnalysisMixin:
                 )
             return
         active = bool(self._is_preview_interaction_active() if interactive is None else interactive)
-        delay = 140 if active else 45
+        delay = self.MTF_INTERACTIVE_REFRESH_DELAY_MS if active else self.MTF_SETTLED_REFRESH_DELAY_MS
+        if active and self._mtf_refresh_timer.isActive():
+            return
         self._mtf_refresh_timer.start(delay)
 
     def _maybe_update_mtf_after_preview(self) -> None:

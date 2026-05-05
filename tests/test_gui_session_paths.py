@@ -25,6 +25,7 @@ from probraw.core.models import Recipe  # noqa: E402
 from probraw.core.utils import write_tiff16  # noqa: E402
 from probraw.gui import ICCRawMainWindow  # noqa: E402
 from probraw.display_color import profiled_float_to_display_u8, srgb_to_display_u8  # noqa: E402
+from probraw.gui_config import PREVIEW_INTERACTIVE_TONAL_MAX_SIDE  # noqa: E402
 from probraw.provenance.c2pa import C2PASignConfig  # noqa: E402
 from probraw.provenance.probraw_proof import ProbRawProofConfig, ProbRawProofResult  # noqa: E402
 from probraw.raw import pipeline  # noqa: E402
@@ -1588,7 +1589,7 @@ def test_color_managed_preview_keeps_fast_initial_size_then_allows_export_parity
         window.close()
 
 
-def test_interactive_preview_source_never_downscales(qapp):
+def test_interactive_preview_source_uses_bounded_cache(qapp):
     window = ICCRawMainWindow()
     try:
         image = gui_module.np.linspace(0.0, 1.0, 900 * 1200 * 3, dtype=gui_module.np.float32).reshape((900, 1200, 3))
@@ -1597,14 +1598,15 @@ def test_interactive_preview_source_never_downscales(qapp):
         second = window._interactive_preview_source(image, max_side_limit=300)
         third = window._interactive_preview_source(image, max_side_limit=240)
 
-        assert first is image
-        assert second is image
-        assert third is image
+        assert first.shape == (225, 300, 3)
+        assert second is first
+        assert third.shape == (180, 240, 3)
+        assert third is not first
     finally:
         window.close()
 
 
-def test_interactive_refresh_requests_full_resolution_source(qapp, monkeypatch):
+def test_interactive_refresh_uses_bounded_source_without_real_viewport(qapp, monkeypatch):
     window = ICCRawMainWindow()
     try:
         image = gui_module.np.zeros((900, 1400, 3), dtype=gui_module.np.float32)
@@ -1622,7 +1624,8 @@ def test_interactive_refresh_requests_full_resolution_source(qapp, monkeypatch):
 
         request = captured["request"]
         assert request[2] is image
-        assert request[7] == 0
+        assert request[7] == PREVIEW_INTERACTIVE_TONAL_MAX_SIDE
+        assert request[13] is None
     finally:
         window.slider_brightness.setSliderDown(False)
         window.close()
@@ -1663,6 +1666,118 @@ def test_interactive_refresh_uses_visible_viewport_rect_without_downscaling(qapp
         assert w * h < image.shape[0] * image.shape[1]
     finally:
         window.slider_brightness.setSliderDown(False)
+        window.close()
+
+
+def test_detail_interactive_refresh_uses_real_pixel_viewport(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.float32)
+        display = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.uint8)
+        captured: dict[str, object] = {}
+        window._original_linear = image
+        window._preview_srgb = image.copy()
+        window._current_result_display_u8 = display.copy()
+        window._last_loaded_preview_key = "full-res-source"
+        window.check_image_clip_overlay.setChecked(False)
+        window.image_result_single.resize(240, 160)
+        window.image_result_single.set_rgb_u8_image(display)
+        window.image_result_single.set_view_transform(
+            zoom=window.image_result_single.view_zoom_for_display_scale(1.0),
+            rotation=0,
+        )
+        window.slider_sharpen.setSliderDown(True)
+
+        monkeypatch.setattr(window, "_queue_interactive_preview_request", lambda request: captured.setdefault("request", request))
+
+        window._refresh_preview()
+
+        request = captured["request"]
+        assert request[7] == 0
+        assert request[8] is True
+        assert request[13] is not None
+    finally:
+        window.slider_sharpen.setSliderDown(False)
+        window.close()
+
+
+def test_raw_cached_preview_is_not_treated_as_real_pixel_viewport(tmp_path: Path, qapp, monkeypatch):
+    raw = tmp_path / "capture.NEF"
+    raw.write_bytes(b"raw")
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.float32)
+        display = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.uint8)
+        captured: dict[str, object] = {}
+        window._selected_file = raw
+        window._loaded_preview_fast_raw = False
+        window._loaded_preview_max_side_request = 2600
+        window._original_linear = image
+        window._preview_srgb = image.copy()
+        window._current_result_display_u8 = display.copy()
+        window._last_loaded_preview_key = "cached-raw-source"
+        window.check_image_clip_overlay.setChecked(False)
+        window.image_result_single.resize(240, 160)
+        window.image_result_single.set_rgb_u8_image(display)
+        window.image_result_single.set_view_transform(
+            zoom=window.image_result_single.view_zoom_for_display_scale(1.0),
+            rotation=0,
+        )
+        window.slider_brightness.setSliderDown(True)
+
+        monkeypatch.setattr(window, "_queue_interactive_preview_request", lambda request: captured.setdefault("request", request))
+
+        window._refresh_preview()
+
+        request = captured["request"]
+        assert request[7] == PREVIEW_INTERACTIVE_TONAL_MAX_SIDE
+        assert request[13] is None
+    finally:
+        window.slider_brightness.setSliderDown(False)
+        window.close()
+
+
+def test_real_pixel_request_restores_full_source_when_display_is_proxy(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.float32)
+        proxy_display = gui_module.np.zeros((160, 240, 3), dtype=gui_module.np.uint8)
+        captured: dict[str, object] = {}
+        window._original_linear = image
+        window._preview_srgb = image.copy()
+        window._current_result_display_u8 = proxy_display.copy()
+        window._last_loaded_preview_key = "full-source-with-proxy-display"
+        window._viewer_full_detail_requested = True
+        window.check_image_clip_overlay.setChecked(False)
+        window.image_result_single.resize(240, 160)
+        window.image_result_single.set_rgb_u8_image(proxy_display)
+        window.slider_brightness.setSliderDown(True)
+
+        monkeypatch.setattr(window, "_queue_interactive_preview_request", lambda request: captured.setdefault("request", request))
+
+        window._refresh_preview()
+
+        request = captured["request"]
+        assert request[7] == 0
+        assert request[13] is None
+    finally:
+        window.slider_brightness.setSliderDown(False)
+        window.close()
+
+
+def test_view_change_at_fit_schedules_proxy_refresh(qapp, monkeypatch):
+    window = ICCRawMainWindow()
+    try:
+        calls: list[bool] = []
+        window._original_linear = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.float32)
+        window._current_result_display_u8 = gui_module.np.zeros((800, 1200, 3), dtype=gui_module.np.uint8)
+        monkeypatch.setattr(window, "_schedule_preview_refresh", lambda: calls.append(True))
+
+        window._schedule_visible_viewport_preview_refresh(duration_ms=50)
+
+        assert calls == [True]
+        assert window._recent_preview_control_interaction_active()
+    finally:
         window.close()
 
 
@@ -4505,6 +4620,51 @@ def test_mtf_auto_update_is_scheduled_from_detail_slider_change(tmp_path: Path, 
     finally:
         window.slider_sharpen.setSliderDown(False)
         window._mtf_refresh_timer.stop()
+        window.close()
+
+
+def test_mtf_interactive_auto_update_throttles_instead_of_debouncing(monkeypatch, qapp):
+    class FakeTimer:
+        def __init__(self) -> None:
+            self.active = False
+            self.starts: list[int] = []
+
+        def isActive(self) -> bool:
+            return self.active
+
+        def start(self, delay: int) -> None:
+            self.starts.append(int(delay))
+            self.active = True
+
+        def stop(self) -> None:
+            self.active = False
+
+    window = ICCRawMainWindow()
+    fake_timer = FakeTimer()
+    try:
+        window._mtf_roi = (10, 10, 40, 40)
+        window.check_mtf_auto_update.setChecked(True)
+        monkeypatch.setattr(window, "_mtf_roi_overlay_should_be_visible", lambda: True)
+        monkeypatch.setattr(window, "_mtf_has_hot_base_roi_cache", lambda _roi: True)
+        window._mtf_refresh_timer.stop()
+        window._mtf_refresh_timer = fake_timer
+
+        window._schedule_mtf_refresh(interactive=True)
+        window._schedule_mtf_refresh(interactive=True)
+
+        assert fake_timer.starts == [window.MTF_INTERACTIVE_REFRESH_DELAY_MS]
+
+        fake_timer.active = False
+        window._schedule_mtf_refresh(interactive=True)
+        window._schedule_mtf_refresh(interactive=False)
+
+        assert fake_timer.starts == [
+            window.MTF_INTERACTIVE_REFRESH_DELAY_MS,
+            window.MTF_INTERACTIVE_REFRESH_DELAY_MS,
+            window.MTF_SETTLED_REFRESH_DELAY_MS,
+        ]
+    finally:
+        fake_timer.stop()
         window.close()
 
 

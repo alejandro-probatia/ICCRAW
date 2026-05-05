@@ -20,6 +20,30 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 - Sin cambios pendientes.
 
+## [0.3.11] - 2026-05-05
+
+### Changed
+
+- La preview interactiva recupera una ruta agil basada en caches acotadas para
+  ajustes de color, contraste, curvas y nitidez, manteniendo la ruta exacta de
+  pixeles reales cuando el usuario trabaja a 100% o solicita detalle.
+- El refresco automatico de MTF durante arrastres de nitidez pasa de debounce a
+  throttle: si la ROI full-res ya esta caliente, las graficas ESF/LSF/MTF se
+  actualizan durante el movimiento sin esperar a soltar el control.
+- La conversion OETF sRGB queda documentada y acotada a la curva tonal explicita
+  `tone_curve: srgb`; no forma parte de la visualizacion gestionada por ICC.
+
+### Fixed
+
+- Las previews RAW cacheadas o reducidas ya no se tratan como pixeles reales en
+  inspeccion 1:1, evitando analizar nitidez sobre una version proxy.
+- Los cambios de zoom o encuadre vuelven a refrescar el viewport con los ajustes
+  activos, de forma que toda la imagen visible mantiene color/contraste/nitidez
+  coherentes mientras se navega.
+- La documentacion de color consolida que ProbRAW usa perfiles ICC de entrada y
+  visualiza mediante conversion directa al perfil de monitor del sistema, sin
+  conversion intermedia obligatoria a sRGB.
+
 ## [0.3.10] - 2026-05-04
 
 ### Added

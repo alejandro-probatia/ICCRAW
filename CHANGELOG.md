@@ -22,6 +22,30 @@ To maintain full traceability, each change must:
 
 - No pending changes.
 
+## [0.3.11] - 2026-05-05
+
+### Changed
+
+- Interactive preview restores a responsive bounded-cache path for color,
+  contrast, curves and sharpness adjustments while keeping the exact real-pixel
+  path when the user works at 100% or requests detail.
+- Automatic MTF refresh during sharpness drags now uses throttling instead of
+  debouncing: when the full-resolution ROI is already hot, ESF/LSF/MTF plots
+  update during movement without waiting for slider release.
+- The sRGB OETF conversion is documented and constrained to explicit
+  `tone_curve: srgb`; it is not part of ICC-managed display.
+
+### Fixed
+
+- Cached or reduced RAW previews are no longer treated as real pixels during
+  1:1 inspection, avoiding sharpness analysis on a proxy version.
+- Zoom and viewport changes refresh the visible region with active adjustments,
+  so the whole visible image keeps coherent color/contrast/sharpness while
+  navigating.
+- Color documentation consolidates that ProbRAW uses input ICC profiles and
+  displays through direct conversion to the system monitor profile, with no
+  mandatory intermediate conversion to sRGB.
+
 ## [0.3.10] - 2026-05-04
 
 ### Added

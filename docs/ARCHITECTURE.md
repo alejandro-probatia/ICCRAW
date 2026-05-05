@@ -109,16 +109,17 @@ such as `raw/captura.NEF` versus `01_ORG/captura.NEF` when the file exists.
 - `.profile.json` sidecar with matrix, recipe and metrics is always saved for reproducibility.
 - If there is a letter, the ICC is treated as a session entry profile and is embedded
   in the master TIFF without converting to generic space.
-- If there is no card, ProbRAW reveals the RAW in a real standard RGB space
-  (`sRGB`, `Adobe RGB (1998)` or `ProPhoto RGB`), copy/embed the standard ICC
-  from the system or ArgyllCMS and declares it as `generic_output_icc`.
+- If there is no chart, ProbRAW assigns a real generic ICC as the image input
+  profile fallback, normally ProPhoto RGB. It does not invent other profiles or
+  convert to unrelated spaces for objective analysis.
+- Managed display is direct `input ICC -> monitor ICC`.
 
 ## Fit profiles
 
 - The advanced profile is based on a color chart, is marked in blue and can be
   carry associated session input ICC.
 - The basic profile comes from manual settings, is marked in green and can use
-  Generic CCI.
+  a generic input ICC.
 - Both are assigned to specific RAWs via backpacks and can be copied/pasted
   between miniatures.
 

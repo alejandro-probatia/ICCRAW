@@ -184,6 +184,32 @@ ProPhoto RGB, ICC de monitor y overlay activo:
 Esto preserva la seriedad de la gestion de color y reduce los bloqueos largos
 sin sacrificar colorimetria ni nitidez.
 
+### Preview interactiva 0.3.11
+
+La ruta interactiva vuelve a usar fuentes proxy acotadas durante arrastres de
+color, contraste, curvas y nitidez cuando el visor no esta en una inspeccion
+real 1:1. Esto recupera la agilidad observada en la serie 0.3.8 sin volver a
+confundir una preview cacheada con pixeles reales.
+
+Reglas operativas:
+
+- si el visor esta a escala real y la fuente cargada contiene pixeles reales, la
+  preview de nitidez trabaja sobre el viewport 1:1 sin downscale;
+- si el usuario pide detalle real pero la pantalla actual viene de un proxy, se
+  fuerza la fuente completa antes de analizar;
+- si el RAW cargado procede de cache reducida, el viewport no se marca como
+  real-pixel aunque la escala visual sea 100%;
+- los cambios de zoom o encuadre reprograman la preview visible para que los
+  ajustes activos se apliquen a toda la region que el usuario esta viendo.
+
+Benchmark sintetico local tras el cambio:
+
+| Caso | Antes | Despues |
+| --- | ---: | ---: |
+| Nitidez 2160x3240 | ~530 ms | ~91 ms |
+| Nitidez 4000x6000 | ~1,75 s | ~86 ms |
+| Color/curvas | ~20-62 ms | ~20-62 ms |
+
 ## Estrategia MTF RAW y visor global de operaciones
 
 Problema detectado: el analisis MTF frio sobre RAW obliga a obtener una imagen
@@ -216,6 +242,10 @@ Decision implementada:
   de ESF/LSF/MTF trabajan sobre ese bloque.
 - El recálculo automatico se pospone si la ROI full-res esta fria; el usuario
   debe pulsar `Actualizar` para iniciar el coste pesado de forma explicita.
+- Con la ROI full-res caliente, los controles de nitidez refrescan ESF/LSF/MTF
+  mediante throttle interactivo. El temporizador pendiente no se reinicia en
+  cada evento de slider, de modo que las graficas pueden actualizarse durante el
+  arrastre y no solo al soltar el control.
 - La barra superior de ProbRAW pasa a ser un visor global de operaciones largas:
   MTF, carga de preview RAW y tareas de fondo publican estado, tiempo
   transcurrido, estimacion, tiempo restante y fase. La regla operativa es usarla

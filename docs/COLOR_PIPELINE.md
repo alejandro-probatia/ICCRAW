@@ -18,11 +18,17 @@ The pipeline separates:
 
 1. reproducible RAW development;
 2. parametric development profile;
-3. input ICC profile when a chart exists;
-4. standard ICC profile when no chart exists;
-5. CMM conversion for derivatives;
-6. monitor ICC for display only;
-7. audit through backpacks, manifests, Proof and optional C2PA.
+3. image input ICC profile;
+4. monitor ICC profile for display only;
+5. audit through backpacks, manifests, Proof and optional C2PA.
+
+ProbRAW assigns input profiles to images. Those input profiles are either
+session/camera ICC profiles built from colorimetric references, or generic ICC
+profiles used as explicit fallback when no session reference exists. Output
+RGB values generated from RAW are relative to the device or development space;
+without an input ICC tag they do not objectively identify the color represented
+by each RGB triplet. Inventing additional profiles and implicit conversion to
+unrelated spaces are not part of the objective analysis path.
 
 DCP is not part of the active 0.3 pipeline.
 
@@ -36,7 +42,7 @@ Rules:
 2. no aggressive denoise during chart measurement;
 3. no artistic tone curves;
 4. fixed or explicit white balance;
-5. linear output for profiling;
+5. linear signal for profiling;
 6. chart geometry reusable between passes.
 
 ## Phases
@@ -47,7 +53,7 @@ Rules:
 4. `sample-chart`: robust per-patch measurement.
 5. `build-develop-profile`: neutrality, density and EV from the neutral row.
 6. Calibrated recipe: fixed WB, EV limited by highlight preservation, linear
-   output and no creative processing.
+   signal and no creative processing.
 7. Second chart measurement with the same geometry and calibrated recipe.
 8. `build-profile`: ArgyllCMS (`colprof`) generates the input ICC.
 9. `validate-profile`: DeltaE 76/2000 validation of the real ICC.
@@ -62,9 +68,9 @@ activatable session profiles.
 
 1. The executed recipe must match the declared recipe.
 2. The linear audit TIFF must be written before tone curves or output
-   conversions.
-3. ICC management separates input profile assignment from output profile
-   conversion.
+   encoding/export operations.
+3. ICC management separates input profile assignment and monitor visualization;
+   analysis must not invent additional profiles.
 4. Validation checks the real generated ICC, not only auxiliary matrices.
 5. Chart detection fallback must not generate profiles automatically without an
    explicit mode or review.
@@ -73,10 +79,11 @@ activatable session profiles.
    calibrated recipe to be built first.
 8. With a chart, the master TIFF preserves linear camera/session RGB and embeds
    the input ICC.
-9. Without a chart, the RAW is developed into real sRGB/Adobe RGB/ProPhoto RGB,
-   a standard ICC is embedded and the output is declared `generic_output_icc`.
-10. On-screen display uses a display-only conversion to the configured monitor
-    ICC profile.
+9. Without a chart, the image still receives a real generic input ICC profile
+   that gives colorimetric meaning to RGB values; it is not an invented
+   alternate profile.
+10. On-screen display uses only the display conversion from the active input ICC
+    profile to the configured monitor ICC profile.
 11. The GUI histogram and clipping overlay are computed from the colorimetric
     preview signal before applying the monitor ICC.
 12. The 3D gamut diagnostic is a visual profile comparison; it does not modify
@@ -84,6 +91,26 @@ activatable session profiles.
 13. No GUI-managed preview or image may be left without an input profile: there
     must be a session/image ICC or a real standard generic profile that gives
     colorimetric meaning to RGB values.
+
+## Display Color Contract
+
+This is a non-negotiable rule for ProbRAW:
+
+- The image/device profile, whether session-specific or generic standard, is
+  never converted to sRGB for on-screen display.
+- Managed display converts directly from the active source ICC to the monitor
+  ICC configured by the operating system or explicitly selected by the user.
+- Image RGB values have objective colorimetric meaning only when tagged by their
+  input ICC.
+- ProbRAW does not invent additional profiles for objective image analysis. Any
+  exported derivative must stay outside preview, histogram, MTF, sampling and
+  profile QA.
+- sRGB can appear as a generic input ICC if explicitly chosen, as an explicit
+  recipe encoding curve (`tone_curve: srgb`), or as an internal
+  diagnostic/reference signal for histogram/parity checks. It must not replace
+  the image input ICC or the monitor ICC in managed display.
+- A missing or broken monitor ICC is a display configuration problem. It must
+  not silently downgrade a managed preview to an sRGB display route.
 
 ## Monitor Color Management
 
@@ -97,17 +124,18 @@ Detection:
 - Linux/BSD: `colord`, `colormgr` or `_ICC_PROFILE`.
 
 If the monitor profile disappears or cannot be opened, ProbRAW logs the problem
-and may only use sRGB as the monitor assumption. That fallback does not remove
-or replace the image input profile.
+and treats the managed display path as unavailable until a valid monitor ICC is
+detected or selected. Diagnostic bypasses must remain explicit and must not
+replace the image input profile.
 
 ## Preview and Histogram
 
 The GUI separates the analysis signal from the display signal:
 
 1. The RAW is developed or previewed as normalized RGB in the image-selected
-   space: linear camera RGB when a session ICC is active, or a real standard
-   RGB space when using sRGB/Adobe RGB/ProPhoto RGB.
-2. Parametric adjustments are applied before output conversion.
+   signal with an assigned input ICC: a session/camera ICC built from
+   colorimetric references, or a real generic ICC fallback such as ProPhoto RGB.
+2. Parametric adjustments are applied before visualization.
 3. If a source ICC is active, pixels sent to the widget are converted directly
    from that source ICC to the configured monitor ICC.
 4. The internal sRGB signal is limited to RGB histogram, clipping overlay and

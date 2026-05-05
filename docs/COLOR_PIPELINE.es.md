@@ -18,11 +18,18 @@ El pipeline separa:
 
 1. revelado RAW reproducible;
 2. perfil de ajuste paramétrico;
-3. perfil ICC de entrada cuando hay carta;
-4. perfil ICC estándar cuando no hay carta;
-5. conversión CMM para derivados;
-6. ICC de monitor solo para visualización;
-7. auditoría mediante mochilas, manifiestos, Proof y C2PA opcional.
+3. perfil ICC de entrada de la imagen;
+4. perfil ICC de monitor solo para visualización;
+5. auditoría mediante mochilas, manifiestos, Proof y C2PA opcional.
+
+ProbRAW asigna perfiles de entrada a las imagenes. Esos perfiles de entrada son
+perfiles ICC de sesion/camara creados con referencias colorimetricas, o perfiles
+ICC genericos usados como fallback explicito cuando no existe referencia de
+sesion. Los valores RGB generados desde un RAW son relativos al dispositivo o al
+espacio de revelado; sin una etiqueta ICC de entrada no identifican de forma
+objetiva a que color corresponde cada triplete RGB. La invencion de perfiles
+adicionales y las conversiones implicitas a espacios ajenos no forman parte del
+analisis objetivo.
 
 DCP no forma parte del pipeline activo de la serie 0.3.
 
@@ -36,7 +43,7 @@ Reglas:
 2. sin denoise agresivo durante medición de carta;
 3. sin curvas tonales artísticas;
 4. balance de blancos fijo o explícito;
-5. salida lineal para perfilado;
+5. señal lineal para perfilado;
 6. geometría de carta reutilizable entre pasadas.
 
 ## Fases
@@ -47,7 +54,7 @@ Reglas:
 4. `sample-chart`: medición robusta por parche.
 5. `build-develop-profile`: neutralidad, densidad y EV desde la fila neutra.
 6. Receta calibrada: WB fijo, EV limitado por preservación de altas luces,
-   salida lineal y sin procesos creativos.
+   señal lineal y sin procesos creativos.
 7. Segunda medición de carta con la misma geometría y receta calibrada.
 8. `build-profile`: ArgyllCMS (`colprof`) genera el ICC de entrada.
 9. `validate-profile`: validación DeltaE 76/2000 del ICC real.
@@ -62,9 +69,9 @@ registrados como perfiles de sesión activables.
 
 1. La receta ejecutada debe coincidir con la receta declarada.
 2. El TIFF de auditoría lineal debe escribirse antes de curvas tonales o
-   conversiones de salida.
-3. La gestión ICC separa asignación de perfil de entrada y conversión a perfil
-   de salida.
+   operaciones de codificacion/exportacion.
+3. La gestión ICC separa asignación de perfil de entrada y visualización en
+   monitor; el análisis no debe inventar perfiles adicionales.
 4. La validación comprueba el ICC real generado, no solo matrices auxiliares.
 5. El fallback de detección de carta no genera perfiles automáticamente sin modo
    explícito o revisión.
@@ -74,10 +81,11 @@ registrados como perfiles de sesión activables.
    construir antes una receta calibrada.
 8. Con carta, el TIFF maestro conserva RGB lineal de cámara/sesión e incrusta el
    ICC de entrada.
-9. Sin carta, el RAW se revela en sRGB/Adobe RGB/ProPhoto RGB real, se incrusta
-   un ICC estándar y se declara `generic_output_icc`.
-10. La visualización en pantalla usa una conversión exclusiva hacia el perfil ICC
-    del monitor configurado.
+9. Sin carta, la imagen recibe igualmente un perfil ICC generico real de entrada
+   que da significado colorimetrico a los valores RGB; no es un perfil
+   alternativo inventado.
+10. La visualización en pantalla usa solo la conversion desde el ICC de entrada
+    activo hacia el perfil ICC del monitor configurado.
 11. El histograma y el overlay de clipping de la GUI se calculan sobre la señal
     colorimétrica de preview antes de aplicar el ICC del monitor.
 12. El diagnóstico Gamut 3D es una comparación visual de perfiles; no modifica
@@ -85,6 +93,29 @@ registrados como perfiles de sesión activables.
 13. Ninguna preview ni imagen gestionada por la GUI puede quedar sin perfil de
     entrada: debe existir un ICC de sesion/imagen o un perfil generico estandar
     real que de significado colorimetrico a los valores RGB.
+
+## Contrato de Color para Pantalla
+
+Esta regla no es negociable en ProbRAW:
+
+- El perfil de imagen/dispositivo, sea especifico de sesion o generico
+  estandar, nunca se convierte a sRGB para visualizar en pantalla.
+- La visualizacion gestionada convierte directamente desde el ICC fuente activo
+  al ICC del monitor configurado por el sistema operativo o elegido
+  explicitamente por el usuario.
+- Los RGB de la imagen solo tienen significado colorimetrico objetivo cuando
+  estan etiquetados por su ICC de entrada.
+- ProbRAW no inventa perfiles adicionales para el analisis objetivo de imagen.
+  Cualquier derivado exportado debe quedar fuera de preview, histograma, MTF,
+  muestreo y QA de perfil.
+- sRGB puede aparecer como ICC generico de entrada si se elige explicitamente,
+  como curva de codificacion explicita de receta (`tone_curve: srgb`) o como
+  senal interna de diagnostico para histogramas/comprobaciones de paridad. No
+  debe sustituir al ICC de entrada de la imagen ni al ICC de monitor en la
+  visualizacion gestionada.
+- Si falta el ICC del monitor o esta roto, es un problema de configuracion de
+  pantalla. No debe degradar silenciosamente una preview gestionada a una ruta
+  de pantalla sRGB.
 
 ## Gestión de Color del Monitor
 
@@ -98,17 +129,19 @@ Detección:
 - Linux/BSD: `colord`, `colormgr` o `_ICC_PROFILE`.
 
 Si el perfil de monitor desaparece o no puede abrirse, ProbRAW registra el
-problema y solo puede usar sRGB como supuesto de monitor. Ese fallback no elimina
-ni sustituye el perfil de entrada de la imagen.
+problema y considera la ruta de visualizacion gestionada no disponible hasta que
+se detecte o seleccione un ICC de monitor valido. Los bypass de diagnostico
+deben ser explicitos y no eliminan ni sustituyen el perfil de entrada de la
+imagen.
 
 ## Previsualización e Histograma
 
 La GUI distingue entre señal de análisis y señal de pantalla:
 
-1. El RAW se revela o previsualiza como RGB normalizado en el espacio elegido
-   para la imagen: RGB de camara lineal cuando hay ICC de sesion, o un espacio
-   RGB estandar real cuando se usa sRGB/Adobe RGB/ProPhoto RGB.
-2. Los ajustes paramétricos se aplican antes de la conversión de salida.
+1. El RAW se revela o previsualiza como señal RGB normalizada con un ICC de
+   entrada asignado: ICC de sesion/camara creado con referencias colorimetricas,
+   o un ICC generico real de fallback como ProPhoto RGB.
+2. Los ajustes paramétricos se aplican antes de la visualizacion.
 3. Si hay un ICC fuente activo, los pixeles que llegan al widget se convierten
    directamente desde ese ICC fuente al ICC del monitor configurado.
 4. La senal sRGB interna queda limitada a histograma RGB, overlay de clipping y

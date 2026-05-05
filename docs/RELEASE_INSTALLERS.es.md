@@ -78,6 +78,30 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.11
+
+La release 0.3.11 corrige la fluidez interactiva de preview y nitidez sin
+rebajar la gestion ICC ni confundir proxies con pixeles reales:
+
+- los ajustes de color, contraste, curvas y nitidez vuelven a usar fuentes
+  proxy acotadas durante el arrastre cuando no se esta inspeccionando a 1:1,
+- el visor recupera fuente completa cuando el usuario solicita pixeles reales,
+  y las previews RAW cacheadas/reducidas no se etiquetan como 100% real,
+- los cambios de zoom y encuadre reprograman la preview del viewport visible
+  para mostrar toda la region con los ajustes activos,
+- las graficas ESF/LSF/MTF se refrescan en tiempo real durante el arrastre de
+  nitidez si la ROI full-res ya esta caliente,
+- la documentacion fija que la visualizacion es `ICC entrada -> ICC monitor` y
+  que la OETF sRGB solo pertenece a la curva tonal explicita.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.11-Setup.exe`
+- `ProbRAW-0.3.11-Setup.exe.sha256`
+- `probraw-0.3.11.tar.gz`
+- `probraw-0.3.11-py3-none-any.whl`
+- `probraw_0.3.11_python_artifacts.sha256`
+
 ## Release 0.3.10
 
 La release 0.3.10 corrige la invariante de perfilado de preview y mejora el

@@ -72,6 +72,30 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.11
+
+Release 0.3.11 fixes interactive preview and sharpness responsiveness without
+weakening ICC management or confusing proxies with real pixels:
+
+- color, contrast, curve and sharpness adjustments again use bounded proxy
+  sources during drags when the viewer is not inspecting at 1:1,
+- the viewer restores the full source when the user requests real pixels, and
+  cached/reduced RAW previews are not labelled as real 100% pixels,
+- zoom and viewport changes reschedule the visible viewport preview so the whole
+  viewed region shows the active adjustments,
+- ESF/LSF/MTF plots refresh in real time while dragging sharpness controls when
+  the full-resolution ROI is already hot,
+- documentation fixes the display contract as `input ICC -> monitor ICC`, and
+  the sRGB OETF remains only an explicit tone-curve option.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.11-Setup.exe`
+- `ProbRAW-0.3.11-Setup.exe.sha256`
+- `probraw-0.3.11.tar.gz`
+- `probraw-0.3.11-py3-none-any.whl`
+- `probraw_0.3.11_python_artifacts.sha256`
+
 ## Release 0.3.10
 
 Release 0.3.10 fixes the preview-profile invariant and improves 100%
