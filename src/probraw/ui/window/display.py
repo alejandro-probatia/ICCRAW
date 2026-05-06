@@ -750,12 +750,12 @@ class DisplayControlsMixin:
         else:
             self.image_result_single.set_rgb_u8_image(display_u8, color_space=color_space)
             self._apply_clip_overlay_to_panel(self.image_result_single, colorimetric_u8)
-        if hasattr(self, "_sync_viewer_real_pixel_scale_if_requested"):
-            self._sync_viewer_real_pixel_scale_if_requested()
         if bool(update_histogram):
             self._update_viewer_histogram(colorimetric_u8)
         if hasattr(self, "_sync_mtf_roi_overlay"):
             self._sync_mtf_roi_overlay()
+        if hasattr(self, "_sync_viewer_real_pixel_scale_if_requested"):
+            self._sync_viewer_real_pixel_scale_if_requested()
         if hasattr(self, "_maybe_update_mtf_after_preview"):
             self._maybe_update_mtf_after_preview()
 

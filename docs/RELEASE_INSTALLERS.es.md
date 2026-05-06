@@ -78,6 +78,30 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.14
+
+La release 0.3.14 estabiliza el equilibrio entre rendimiento interactivo y
+precision de lectura en GUI:
+
+- los histogramas y niveles se actualizan durante arrastres con throttle, sin
+  bloquear la interfaz ni perder el refresco exacto al soltar,
+- la curva tonal mantiene visible su histograma mientras se editan puntos o el
+  rango negro/blanco,
+- el visor incorpora recorte visual, nivelado horizontal/vertical, rotacion
+  fraccional y reproyeccion de recorte en vista a pixeles reales,
+- el menu `Editar` anade deshacer, rehacer, eliminar ajustes y atajos
+  `Ctrl+Z`/`Ctrl+Y`,
+- el descargador de actualizaciones omite metadatos y exige SHA-256 verificable
+  para instaladores.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.14-Setup.exe`
+- `ProbRAW-0.3.14-Setup.exe.sha256`
+- `probraw-0.3.14.tar.gz`
+- `probraw-0.3.14-py3-none-any.whl`
+- `probraw_0.3.14_python_artifacts.sha256`
+
 ## Release 0.3.13
 
 La release 0.3.13 corrige la incoherencia de niveles/histograma de curva

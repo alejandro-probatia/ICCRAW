@@ -1422,6 +1422,10 @@ class ProfileWorkflowMixin:
             return
         if hasattr(self, "_set_mtf_roi_selection_active"):
             self._set_mtf_roi_selection_active(False)
+        if hasattr(self, "_set_image_crop_selection_active"):
+            self._set_image_crop_selection_active(False)
+        if hasattr(self, "_deactivate_image_level_tool"):
+            self._deactivate_image_level_tool()
         self._set_neutral_picker_active(False)
         self._manual_chart_marking = True
         self._manual_chart_points = []
@@ -1458,6 +1462,8 @@ class ProfileWorkflowMixin:
     def _on_result_image_click(self, x: float, y: float) -> None:
         if self._neutral_picker_active:
             self._apply_neutral_picker_at(x, y)
+            return
+        if hasattr(self, "_handle_image_tool_click") and self._handle_image_tool_click(x, y):
             return
         self._on_manual_chart_click(x, y)
 

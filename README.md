@@ -10,7 +10,7 @@ Reproducible and auditable RAW/TIFF development for scientific, forensic and
 heritage photography, with session ICC profiling, per-file parametric settings
 and open AGPL traceability.
 
-![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.13-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![AGPL-3.0-or-later License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pending-lightgrey) ![Version](https://img.shields.io/badge/version-v0.3.14-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![ProbRAW main interface](docs/assets/screenshots/probraw-portada.png)
 
@@ -31,18 +31,19 @@ The current workflow is intentionally ICC-centered:
 
 ## Current Status
 
-ProbRAW 0.3.13 is suitable for controlled testing, method review and release
+ProbRAW 0.3.14 is suitable for controlled testing, method review and release
 candidate validation. It is not yet a certified scientific or forensic
 production system.
 
-The current version fixes a 0.3.12 tone-levels inconsistency: the tone-curve
-histogram now represents the input to the curve, and the full-image clipping
-histogram is marked as updating while exact real-pixel metrics are recalculated.
+The current version stabilizes the performance/accuracy balance of preview:
+histograms and levels update during interaction without blocking the UI, exact
+refreshes are preserved once adjustments settle, and the viewer now includes
+visual crop, leveling and undo/redo for adjustments.
 
 The latest packaging validation passed with:
 
 ```text
-382 passed, 2 warnings
+414 passed, 2 warnings
 ```
 
 ## Documentation

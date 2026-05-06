@@ -147,3 +147,107 @@ def test_download_update_asset_rejects_checksum_mismatch(monkeypatch, tmp_path) 
     else:  # pragma: no cover
         raise AssertionError("checksum mismatch should fail")
 
+
+def test_download_update_asset_requires_valid_checksum_when_enabled(monkeypatch, tmp_path) -> None:
+    installer = b"fake installer"
+    check = update_mod.UpdateCheckResult(
+        current_version="0.2.8",
+        latest_version="0.2.9",
+        update_available=True,
+        is_latest=False,
+        repository="example/repo",
+        release_url="https://example.com/release",
+        api_url="https://example.com/api",
+        asset_url="https://example.com/ProbRAW-0.2.9-Setup.exe",
+        asset_name="ProbRAW-0.2.9-Setup.exe",
+        asset_size=len(installer),
+        asset_digest=None,
+        checksum_asset_url=None,
+        checksum_asset_name=None,
+        published_at="2026-04-27T10:00:00Z",
+    )
+
+    class _FakeResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(update_mod.request, "urlopen", lambda *_args, **_kwargs: _FakeResponse(installer))
+
+    try:
+        update_mod.download_update_asset(check, target_dir=tmp_path)
+    except RuntimeError as exc:
+        assert "SHA-256" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("missing checksum should fail closed")
+
+
+def test_download_update_asset_rejects_invalid_checksum_body(monkeypatch, tmp_path) -> None:
+    installer = b"fake installer"
+    check = update_mod.UpdateCheckResult(
+        current_version="0.2.8",
+        latest_version="0.2.9",
+        update_available=True,
+        is_latest=False,
+        repository="example/repo",
+        release_url="https://example.com/release",
+        api_url="https://example.com/api",
+        asset_url="https://example.com/ProbRAW-0.2.9-Setup.exe",
+        asset_name="ProbRAW-0.2.9-Setup.exe",
+        asset_size=len(installer),
+        asset_digest=None,
+        checksum_asset_url="https://example.com/ProbRAW-0.2.9-Setup.exe.sha256",
+        checksum_asset_name="ProbRAW-0.2.9-Setup.exe.sha256",
+        published_at="2026-04-27T10:00:00Z",
+    )
+
+    class _FakeResponse(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def fake_open(req, **_kwargs):
+        if req.full_url.endswith(".sha256"):
+            return _FakeResponse(b"<html>not a checksum</html>")
+        return _FakeResponse(installer)
+
+    monkeypatch.setattr(update_mod.request, "urlopen", fake_open)
+
+    try:
+        update_mod.download_update_asset(check, target_dir=tmp_path)
+    except RuntimeError as exc:
+        assert "SHA-256" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("invalid checksum body should fail closed")
+
+
+def test_pick_asset_fallback_skips_metadata_assets(monkeypatch) -> None:
+    monkeypatch.setattr(update_mod.sys, "platform", "win32")
+    assets = [
+        {
+            "name": "release.json",
+            "browser_download_url": "https://example.com/release.json",
+            "size": 12,
+        },
+        {
+            "name": "notes.txt",
+            "browser_download_url": "https://example.com/notes.txt",
+            "size": 12,
+        },
+        {
+            "name": "ProbRAW-portable.zip",
+            "browser_download_url": "https://example.com/ProbRAW-portable.zip",
+            "size": 123,
+        },
+    ]
+
+    name, url, size, _digest, _checksum_name, _checksum_url = update_mod._pick_asset(assets)
+
+    assert name == "ProbRAW-portable.zip"
+    assert url == "https://example.com/ProbRAW-portable.zip"
+    assert size == 123
+

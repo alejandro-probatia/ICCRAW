@@ -565,6 +565,8 @@ class MTFAnalysisMixin:
             self._set_status(self.tr("Selección MTF desactivada"))
 
     def _set_mtf_roi_selection_active(self, active: bool) -> None:
+        if active and hasattr(self, "_set_image_crop_selection_active"):
+            self._set_image_crop_selection_active(False)
         self._mtf_roi_selection_active = bool(active)
         if hasattr(self, "btn_mtf_select_roi"):
             self.btn_mtf_select_roi.blockSignals(True)
@@ -573,7 +575,9 @@ class MTFAnalysisMixin:
         for panel_name in ("image_result_single", "image_result_compare"):
             panel = getattr(self, panel_name, None)
             if panel is not None and hasattr(panel, "set_roi_selection_enabled"):
-                panel.set_roi_selection_enabled(self._mtf_roi_selection_active)
+                panel.set_roi_selection_enabled(
+                    self._mtf_roi_selection_active or bool(getattr(self, "_image_crop_selection_active", False))
+                )
         self._sync_mtf_roi_overlay()
 
     def _on_mtf_roi_selected(self, x: float, y: float, width: float, height: float) -> None:
@@ -588,11 +592,14 @@ class MTFAnalysisMixin:
         self._recalculate_mtf_analysis()
 
     def _sync_mtf_roi_overlay(self) -> None:
+        if hasattr(self, "_sync_image_tool_overlays"):
+            self._sync_image_tool_overlays()
+            return
         rect = self._mtf_roi if self._mtf_roi_overlay_should_be_visible() else None
         for panel_name in ("image_result_single", "image_result_compare"):
             panel = getattr(self, panel_name, None)
             if panel is not None and hasattr(panel, "set_roi_rect"):
-                panel.set_roi_rect(rect)
+                panel.set_roi_rect(rect, label="MTF")
 
     def _mtf_roi_overlay_should_be_visible(self) -> bool:
         if getattr(self, "_mtf_roi", None) is None:

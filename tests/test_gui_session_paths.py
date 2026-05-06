@@ -12,7 +12,7 @@ from PIL import Image, ImageCms
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtTest, QtWidgets  # noqa: E402
 
 import probraw.gui as gui_module  # noqa: E402
 import probraw.ui.window.display as display_module  # noqa: E402
@@ -573,6 +573,225 @@ def test_image_panel_zoom_preserves_current_view_center(qapp):
         assert after[1] == pytest.approx(before[1])
     finally:
         panel.close()
+
+
+def test_image_crop_tool_uses_viewer_roi_dispatch(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
+        window.image_result_single.set_rgb_u8_image(gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.uint8))
+        window._toggle_image_crop_selection(True)
+
+        assert window._image_crop_selection_active is True
+        assert window.image_result_single._roi_selection_enabled is True
+        window._on_viewer_roi_selected(10.2, 20.6, 50.4, 40.2)
+
+        assert window._image_crop_rect == (10, 21, 50, 40)
+        assert window._image_crop_selection_active is False
+        assert window.action_image_crop_select.isChecked() is False
+        assert window.image_result_single._roi_rect is None
+        assert window.image_result_single.view_crop_rect() == (10, 21, 50, 40)
+        assert window._image_crop_base_size == (160, 120)
+        assert window._image_crop_normalized_rect == pytest.approx((10 / 160, 21 / 120, 50 / 160, 40 / 120))
+    finally:
+        window.close()
+
+
+def test_image_crop_action_is_shared_between_menu_and_toolbar(qapp):
+    window = ICCRawMainWindow()
+    try:
+        actions = [
+            action
+            for action in window.findChildren(QtGui.QAction)
+            if action.text() == "Seleccionar recorte"
+        ]
+
+        assert actions == [window.action_image_crop_select]
+
+        window._set_image_crop_selection_active(True)
+        assert actions[0].isChecked() is True
+    finally:
+        window.close()
+
+
+def test_viewer_roi_dispatch_still_routes_to_mtf_when_crop_inactive(qapp):
+    window = ICCRawMainWindow()
+    try:
+        calls: list[tuple[float, float, float, float]] = []
+        window._on_mtf_roi_selected = lambda *args: calls.append(args)
+
+        window._on_viewer_roi_selected(1.0, 2.0, 30.0, 40.0)
+
+        assert calls == [(1.0, 2.0, 30.0, 40.0)]
+    finally:
+        window.close()
+
+
+def test_image_level_horizontal_sets_fractional_viewer_rotation(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
+        window._start_image_level_tool("horizontal")
+
+        assert window._handle_image_tool_click(0.0, 0.0) is True
+        assert window._handle_image_tool_click(100.0, 10.0) is True
+
+        signed_rotation = ((float(window._viewer_rotation) + 180.0) % 360.0) - 180.0
+        assert signed_rotation == pytest.approx(-5.7106, abs=1e-3)
+        assert window._image_level_selection_active is False
+        assert window.image_result_single._overlay_points == []
+    finally:
+        window.close()
+
+
+def test_image_tools_accept_real_mouse_events_on_viewer(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._original_linear = gui_module.np.zeros((100, 100, 3), dtype=gui_module.np.float32)
+        window.image_result_single.setFixedSize(200, 200)
+        window.image_result_single.set_rgb_u8_image(gui_module.np.zeros((100, 100, 3), dtype=gui_module.np.uint8))
+        window.show()
+        qapp.processEvents()
+
+        window._toggle_image_crop_selection(True)
+        QtTest.QTest.mousePress(window.image_result_single, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(20, 20))
+        QtTest.QTest.mouseMove(window.image_result_single, QtCore.QPoint(120, 100))
+        QtTest.QTest.mouseRelease(window.image_result_single, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(120, 100))
+        qapp.processEvents()
+
+        assert window._image_crop_rect == (10, 10, 50, 40)
+
+        window._start_image_level_tool("horizontal")
+        QtTest.QTest.mouseClick(window.image_result_single, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(20, 20))
+        QtTest.QTest.mouseClick(window.image_result_single, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(120, 100))
+        qapp.processEvents()
+
+        signed_rotation = ((float(window._viewer_rotation) + 180.0) % 360.0) - 180.0
+        assert signed_rotation == pytest.approx(-38.6598, abs=1e-3)
+    finally:
+        window.close()
+
+
+def test_image_crop_reprojects_when_display_resolution_changes(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window.image_result_single.set_rgb_u8_image(gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.uint8))
+        window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
+        window._on_image_crop_selected(10, 20, 50, 40)
+        assert window.image_result_single.view_crop_rect() == (10, 20, 50, 40)
+
+        window.image_result_single.set_rgb_u8_image(gui_module.np.zeros((240, 320, 3), dtype=gui_module.np.uint8))
+        window._sync_image_tool_overlays()
+
+        assert window.image_result_single.view_crop_rect() == (20, 40, 100, 80)
+    finally:
+        window.close()
+
+
+def test_zoom_100_keeps_crop_after_full_detail_replaces_preview(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window.image_result_single.setFixedSize(200, 200)
+        window.image_result_single.set_rgb_u8_image(gui_module.np.zeros((100, 100, 3), dtype=gui_module.np.uint8))
+        window._original_linear = gui_module.np.zeros((100, 100, 3), dtype=gui_module.np.float32)
+        window._on_image_crop_selected(10, 10, 50, 40)
+
+        window._viewer_zoom = window.image_result_single.view_zoom_for_display_scale(1.0)
+        window._viewer_real_pixel_sync_pending = True
+        window._loaded_preview_max_side_request = 0
+        window._loaded_preview_fast_raw = False
+        window._sync_viewer_transform()
+
+        window._set_result_display_u8(
+            gui_module.np.zeros((200, 200, 3), dtype=gui_module.np.uint8),
+            compare_enabled=False,
+            update_histogram=False,
+        )
+
+        assert window.image_result_single.view_crop_rect() == (20, 20, 100, 80)
+        assert window.image_result_single.current_display_scale() == pytest.approx(1.0)
+        assert window._viewer_real_pixel_sync_pending is False
+    finally:
+        window.close()
+
+
+def test_mtf_roi_overlay_remains_visible_after_visual_crop(monkeypatch, qapp):
+    window = ICCRawMainWindow()
+    try:
+        window.image_result_single.set_rgb_u8_image(gui_module.np.zeros((100, 100, 3), dtype=gui_module.np.uint8))
+        window._image_crop_rect = (10, 10, 80, 80)
+        window._image_crop_base_size = (100, 100)
+        window._image_crop_normalized_rect = (0.1, 0.1, 0.8, 0.8)
+        window._mtf_roi = (20, 20, 30, 30)
+        monkeypatch.setattr(window, "_mtf_roi_overlay_should_be_visible", lambda: True)
+
+        window._sync_image_tool_overlays()
+
+        assert window.image_result_single.view_crop_rect() == (10, 10, 80, 80)
+        assert window.image_result_single._roi_rect == pytest.approx((20, 20, 30, 30))
+        assert window.image_result_single._roi_label == "MTF"
+    finally:
+        window.close()
+
+
+def test_edit_menu_undo_redo_tracks_adjustment_changes(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._initialize_edit_history()
+        initial = window.slider_brightness.value()
+
+        window.slider_brightness.setValue(35)
+        window._on_slider_release()
+
+        assert window.slider_brightness.value() == 35
+        assert window.action_edit_undo.isEnabled() is True
+
+        window._edit_undo()
+        assert window.slider_brightness.value() == initial
+        assert window.action_edit_redo.isEnabled() is True
+
+        window._edit_redo()
+        assert window.slider_brightness.value() == 35
+    finally:
+        window.close()
+
+
+def test_edit_clear_adjustments_resets_recipe_render_detail_and_viewer(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._initialize_edit_history()
+        window.slider_brightness.setValue(25)
+        window.slider_sharpen.setValue(40)
+        window._image_crop_rect = (10, 20, 30, 40)
+        window._viewer_rotation = 7.5
+        window._sync_viewer_transform()
+        window._sync_image_tool_overlays()
+        window._push_edit_history_snapshot("test_changes")
+
+        window._edit_clear_adjustments()
+
+        assert window.slider_brightness.value() == 0
+        assert window.slider_sharpen.value() == 0
+        assert window._image_crop_rect is None
+        assert float(window._viewer_rotation) == pytest.approx(0.0)
+        assert window.action_edit_undo.isEnabled() is True
+
+        window._edit_undo()
+        assert window.slider_brightness.value() == 25
+        assert window.slider_sharpen.value() == 40
+        assert window._image_crop_rect == (10, 20, 30, 40)
+        assert float(window._viewer_rotation) == pytest.approx(7.5)
+    finally:
+        window.close()
+
+
+def test_edit_menu_shortcuts_are_registered(qapp):
+    window = ICCRawMainWindow()
+    try:
+        assert window.action_edit_undo.shortcut().toString() == "Ctrl+Z"
+        assert window.action_edit_redo.shortcut().toString() == "Ctrl+Y"
+    finally:
+        window.close()
 
 
 def test_viewer_zoom_100_requests_full_detail_for_raw(tmp_path: Path, monkeypatch, qapp):
@@ -1630,7 +1849,7 @@ def test_interactive_refresh_uses_bounded_source_without_real_viewport(qapp, mon
         assert request[2] is image
         assert request[7] == PREVIEW_INTERACTIVE_TONAL_MAX_SIDE
         assert request[13] is None
-        assert request[14] is False
+        assert request[14] is True
         assert request[15] is True
     finally:
         window.slider_brightness.setSliderDown(False)
@@ -1670,7 +1889,7 @@ def test_interactive_refresh_uses_visible_viewport_rect_without_downscaling(qapp
         assert 0 < w <= image.shape[1] - x
         assert 0 < h <= image.shape[0] - y
         assert w * h < image.shape[0] * image.shape[1]
-        assert request[14] is False
+        assert request[14] is True
         assert request[15] is False
     finally:
         window.slider_brightness.setSliderDown(False)
@@ -1704,7 +1923,7 @@ def test_detail_interactive_refresh_uses_real_pixel_viewport(qapp, monkeypatch):
         assert request[7] == 0
         assert request[8] is True
         assert request[13] is not None
-        assert request[14] is False
+        assert request[14] is True
         assert request[15] is False
     finally:
         window.slider_sharpen.setSliderDown(False)
@@ -1742,7 +1961,7 @@ def test_raw_cached_preview_uses_viewport_without_real_pixel_request(tmp_path: P
         request = captured["request"]
         assert request[7] == 0
         assert request[13] is not None
-        assert request[14] is False
+        assert request[14] is True
         assert request[15] is False
     finally:
         window.slider_brightness.setSliderDown(False)
@@ -1772,7 +1991,7 @@ def test_real_pixel_request_restores_full_source_when_display_is_proxy(qapp, mon
         request = captured["request"]
         assert request[7] == 0
         assert request[13] is None
-        assert request[14] is False
+        assert request[14] is True
         assert request[15] is True
     finally:
         window.slider_brightness.setSliderDown(False)
@@ -1820,7 +2039,7 @@ def test_interactive_refresh_uses_visible_viewport_rect_with_clip_overlay(qapp, 
 
         request = captured["request"]
         assert request[13] is not None
-        assert request[14] is False
+        assert request[14] is True
         assert request[15] is True
     finally:
         window.slider_brightness.setSliderDown(False)
@@ -2044,7 +2263,7 @@ def test_recent_render_control_change_uses_visible_viewport_even_without_slider_
         assert request[7] == 0
         assert request[9] is False
         assert request[13] is not None
-        assert request[14] is False
+        assert request[14] is True
         assert request[15] is False
     finally:
         window.close()
@@ -2077,7 +2296,7 @@ def test_slider_value_change_without_drag_uses_visible_viewport(qapp, monkeypatc
         assert request[7] == 0
         assert request[9] is False
         assert request[13] is not None
-        assert request[14] is False
+        assert request[14] is True
         assert request[15] is False
     finally:
         window.close()
@@ -2144,7 +2363,7 @@ def test_slider_change_schedules_post_interaction_exact_refresh(qapp, monkeypatc
         monkeypatch.setattr(
             window,
             "_schedule_exact_histogram_refresh",
-            lambda *, delay_ms: histogram_delays.append(int(delay_ms)),
+            lambda *, delay_ms, **_kwargs: histogram_delays.append(int(delay_ms)),
         )
         monkeypatch.setattr(
             window,
@@ -2224,7 +2443,7 @@ def test_exact_histogram_reduced_preview_does_not_block_on_full_source(tmp_path:
         monkeypatch.setattr(
             window,
             "_schedule_exact_histogram_refresh",
-            lambda *, delay_ms: delays.append(int(delay_ms)),
+            lambda *, delay_ms, **_kwargs: delays.append(int(delay_ms)),
         )
         monkeypatch.setattr(window, "_queue_exact_histogram_request", lambda request: queued.append(request))
 
@@ -2247,7 +2466,7 @@ def test_exact_histogram_refresh_waits_while_slider_is_dragging(qapp, monkeypatc
         monkeypatch.setattr(
             window,
             "_schedule_exact_histogram_refresh",
-            lambda *, delay_ms: delays.append(int(delay_ms)),
+            lambda *, delay_ms, **_kwargs: delays.append(int(delay_ms)),
         )
         monkeypatch.setattr(window, "_queue_exact_histogram_request", lambda request: queued.append(request))
 
@@ -2544,7 +2763,7 @@ def test_tone_curve_editor_drag_paint_uses_lightweight_mode(qapp, monkeypatch):
 
         editor.render(image)
 
-        assert calls == []
+        assert calls == ["histogram"]
         assert curve_sizes
         assert min(curve_sizes) <= 96
     finally:
@@ -2582,10 +2801,16 @@ def test_tone_curve_range_slider_drag_defers_heavy_updates(qapp, monkeypatch):
         drag_refreshes: list[bool] = []
         preview_refreshes: list[bool] = []
         histograms: list[bool] = []
+        exact_histogram_calls: list[tuple[int, bool]] = []
         window.check_tone_curve_enabled.setChecked(True)
         window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
         monkeypatch.setattr(window, "_schedule_tone_curve_drag_preview_refresh", lambda: drag_refreshes.append(True))
         monkeypatch.setattr(window, "_schedule_preview_refresh", lambda: preview_refreshes.append(True))
+        monkeypatch.setattr(
+            window,
+            "_schedule_exact_histogram_refresh",
+            lambda *, delay_ms, mark_pending=True, **_kwargs: exact_histogram_calls.append((int(delay_ms), bool(mark_pending))),
+        )
         monkeypatch.setattr(
             window,
             "_update_tone_curve_histogram_for_current_controls",
@@ -2598,6 +2823,7 @@ def test_tone_curve_range_slider_drag_defers_heavy_updates(qapp, monkeypatch):
         assert drag_refreshes == [True]
         assert preview_refreshes == []
         assert histograms == []
+        assert exact_histogram_calls == [(80, False)]
         assert window.tone_curve_editor.is_range_dragging()
         assert window.tone_curve_editor._black_point == pytest.approx(0.08)
         assert window.tone_curve_editor._white_point == pytest.approx(1.0)
@@ -2612,7 +2838,7 @@ def test_tone_curve_range_slider_release_consolidates_once(qapp, monkeypatch):
         refreshes: list[bool] = []
         histograms: list[bool] = []
         syncs: list[bool] = []
-        exact_histogram_delays: list[int] = []
+        exact_histogram_calls: list[tuple[int, bool]] = []
         exact_preview_delays: list[int] = []
         window.check_tone_curve_enabled.setChecked(True)
         window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
@@ -2627,7 +2853,7 @@ def test_tone_curve_range_slider_release_consolidates_once(qapp, monkeypatch):
         monkeypatch.setattr(
             window,
             "_schedule_exact_histogram_refresh",
-            lambda *, delay_ms: exact_histogram_delays.append(int(delay_ms)),
+            lambda *, delay_ms, mark_pending=True, **_kwargs: exact_histogram_calls.append((int(delay_ms), bool(mark_pending))),
         )
         monkeypatch.setattr(
             window,
@@ -2642,7 +2868,7 @@ def test_tone_curve_range_slider_release_consolidates_once(qapp, monkeypatch):
         assert syncs == [True]
         assert histograms == [True]
         assert refreshes == [True]
-        assert exact_histogram_delays == [80]
+        assert exact_histogram_calls == [(80, False), (80, True)]
         assert exact_preview_delays == [260]
         assert not window.tone_curve_editor.is_range_dragging()
     finally:
@@ -2672,7 +2898,7 @@ def test_tone_curve_range_slider_paint_uses_lightweight_mode(qapp, monkeypatch):
 
         editor.render(image)
 
-        assert calls == []
+        assert calls == ["histogram"]
         assert curve_sizes
         assert min(curve_sizes) <= 96
     finally:

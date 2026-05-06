@@ -4,6 +4,8 @@ from .batch import BatchWorkflowMixin
 from .browser import BrowserMetadataMixin
 from .control_panels import ControlPanelsMixin
 from .display import DisplayControlsMixin
+from .edit_history import EditHistoryMixin
+from .image_tools import ImageToolsMixin
 from .layout import LayoutMixin
 from .mtf import MTFAnalysisMixin
 from .preview import PreviewWorkflowMixin
@@ -17,6 +19,8 @@ __all__ = [
     "BrowserMetadataMixin",
     "ControlPanelsMixin",
     "DisplayControlsMixin",
+    "EditHistoryMixin",
+    "ImageToolsMixin",
     "LayoutMixin",
     "MTFAnalysisMixin",
     "PreviewWorkflowMixin",

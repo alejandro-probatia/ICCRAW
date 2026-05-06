@@ -2455,6 +2455,8 @@ class SessionDevelopmentMixin:
         self._refresh_development_profile_combo()
         self._clear_active_input_profile_for_unconfigured_file()
         self._invalidate_preview_cache()
+        if hasattr(self, "_reset_edit_history_to_current"):
+            self._reset_edit_history_to_current()
 
     def _apply_raw_sidecar_to_controls(self, path: Path) -> bool:
         try:
@@ -2530,6 +2532,8 @@ class SessionDevelopmentMixin:
         self._suspend_detail_adjustment_autosave = detail_suspend
         self._invalidate_preview_cache()
         self._log_preview(f"Mochila ProbRAW aplicada: {raw_sidecar_path(path).name}")
+        if hasattr(self, "_reset_edit_history_to_current"):
+            self._reset_edit_history_to_current()
         return True
 
     def _sync_selected_sidecar_to_preview(self, path: Path, *, status_message: str | None = None) -> bool:

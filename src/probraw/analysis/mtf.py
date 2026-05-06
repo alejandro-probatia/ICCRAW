@@ -361,6 +361,8 @@ def _esf_level_crossing(distance: np.ndarray, signal: np.ndarray, level: float) 
         return None
     order = np.argsort(x)
     x = x[order]
+    # ESF crossings assume a single rising edge. Enforce monotonicity after
+    # smoothing so small noisy dips do not create multiple 10/50/90% crossings.
     y = np.maximum.accumulate(y[order])
     y_min = float(np.min(y))
     y_max = float(np.max(y))

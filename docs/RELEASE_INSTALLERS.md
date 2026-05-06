@@ -72,6 +72,29 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.14
+
+Release 0.3.14 stabilizes the balance between interactive performance and
+accurate GUI readings:
+
+- histograms and levels update during drags with throttling, without blocking
+  the UI or losing the exact refresh on release,
+- the tone curve keeps its histogram visible while editing points or the
+  black/white range,
+- the viewer adds visual crop, horizontal/vertical leveling, fractional
+  rotation and crop reprojection in real-pixel view,
+- the `Edit` menu adds undo, redo, clear adjustments and `Ctrl+Z`/`Ctrl+Y`,
+- the update downloader skips metadata and requires a verifiable SHA-256 for
+  installers.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.14-Setup.exe`
+- `ProbRAW-0.3.14-Setup.exe.sha256`
+- `probraw-0.3.14.tar.gz`
+- `probraw-0.3.14-py3-none-any.whl`
+- `probraw_0.3.14_python_artifacts.sha256`
+
 ## Release 0.3.13
 
 Release 0.3.13 is a bugfix release for the levels/tone-curve histogram

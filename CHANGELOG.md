@@ -20,6 +20,40 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-05-06
+
+### Added
+
+- New `Edit` menu with undo, redo, clear adjustments and `Ctrl+Z`/`Ctrl+Y`
+  shortcuts for development, render, detail, crop and visual leveling state.
+- New `Image adjustments` tools for visual crop selection, horizontal or
+  vertical leveling from a reference line, and clearing crop/leveling.
+
+### Changed
+
+- Interactive preview keeps the current performance/accuracy balance: it uses
+  bounded sources during drags, preserves exact refreshes once interaction
+  settles, and updates sampled histogram/levels data in real time when the
+  throttle allows it.
+- The tone-curve editor keeps its histogram visible during drag, and `Curve
+  black`/`Curve white` refresh levels without blocking the UI.
+- The viewer supports visual crop, fractional leveling rotation and crop
+  reprojection when preview resolution changes or real-pixel view is requested.
+
+### Fixed
+
+- The MTF analysis ROI remains visible after applying a visual crop.
+- 100% zoom after crop keeps real-pixel correspondence and avoids unnecessary
+  full-frame rebuilds.
+- The update downloader skips metadata assets and fails closed if it cannot
+  verify the installer SHA-256.
+
+### Tests
+
+- Full suite: `414 passed, 2 warnings`.
+- Added regression coverage for crop, leveling, undo/redo, interactive
+  histograms, tone-curve drag behavior and SHA-256 verified updates.
+
 ## [0.3.13] - 2026-05-05
 
 ### Fixed

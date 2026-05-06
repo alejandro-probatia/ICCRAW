@@ -332,8 +332,7 @@ if QtWidgets is not None:
                 painter.drawLine(QtCore.QPointF(x, rect.top()), QtCore.QPointF(x, rect.bottom()))
                 painter.drawLine(QtCore.QPointF(rect.left(), y), QtCore.QPointF(rect.right(), y))
 
-            if not dragging:
-                self._draw_histogram_columns(painter, rect)
+            self._draw_histogram_columns(painter, rect)
 
             diagonal_pen = QtGui.QPen(QtGui.QColor("#8a8a8a"), 1, QtCore.Qt.DashLine)
             painter.setPen(diagonal_pen)
@@ -2292,7 +2291,7 @@ if QtWidgets is not None:
     class ImagePanel(QtWidgets.QLabel):
         imageClicked = QtCore.Signal(float, float)
         roiSelected = QtCore.Signal(float, float, float, float)
-        viewTransformChanged = QtCore.Signal(float, int)
+        viewTransformChanged = QtCore.Signal(float, float)
         PIXEL_EXACT_MIN_SCALE = 1.0
         PIXEL_GRID_MIN_SCALE = 8.0
 
@@ -2310,11 +2309,17 @@ if QtWidgets is not None:
             self._overlay_points: list[tuple[float, float]] = []
             self._view_zoom = 1.0
             self._view_rotation = 0
+            self._view_crop_rect: tuple[int, int, int, int] | None = None
+            self._display_pixmap_cache_key: tuple[object, ...] | None = None
+            self._display_pixmap_cache: QtGui.QImage | QtGui.QPixmap | None = None
+            self._display_clip_cache_key: tuple[object, ...] | None = None
+            self._display_clip_cache: QtGui.QImage | QtGui.QPixmap | None = None
             self._framed = bool(framed)
             self._background = str(background or IMAGE_PANEL_BACKGROUND)
             self._clip_overlay_pixmap: QtGui.QImage | QtGui.QPixmap | None = None
             self._clip_overlay_enabled = False
             self._roi_rect: tuple[float, float, float, float] | None = None
+            self._roi_label = "MTF"
             self._roi_selection_enabled = False
             self._roi_drag_start_image: tuple[float, float] | None = None
             self._roi_drag_current_image: tuple[float, float] | None = None
@@ -2357,6 +2362,7 @@ if QtWidgets is not None:
             self._tag_qimage_color_space(qimg, self._base_color_space)
             self._base_pixmap = qimg
             self._clip_overlay_pixmap = None
+            self._clear_display_cache()
             self._refresh_scaled_pixmap()
 
         def update_rgb_u8_region(
@@ -2395,6 +2401,7 @@ if QtWidgets is not None:
             painter = QtGui.QPainter(self._base_pixmap)
             painter.drawImage(QtCore.QPoint(int(x0), int(y0)), qimg)
             painter.end()
+            self._clear_display_cache()
             self.update()
 
         @staticmethod
@@ -2417,6 +2424,21 @@ if QtWidgets is not None:
         def image_size(self) -> tuple[int, int] | None:
             return self._image_size
 
+        def set_view_crop_rect(self, rect: tuple[float, float, float, float] | None) -> None:
+            normalized = self._normalize_view_crop_rect(rect)
+            if normalized == self._view_crop_rect:
+                return
+            self._view_crop_rect = normalized
+            self._pan = QtCore.QPointF(0.0, 0.0)
+            self._clear_display_cache()
+            self._refresh_scaled_pixmap()
+
+        def clear_view_crop_rect(self) -> None:
+            self.set_view_crop_rect(None)
+
+        def view_crop_rect(self) -> tuple[int, int, int, int] | None:
+            return self._view_crop_rect
+
         def set_interaction_cursor(self, cursor: QtCore.Qt.CursorShape | None) -> None:
             self._interaction_cursor = cursor
             self._apply_idle_cursor()
@@ -2436,8 +2458,15 @@ if QtWidgets is not None:
             self._apply_idle_cursor()
             self.update()
 
-        def set_roi_rect(self, rect: tuple[float, float, float, float] | None) -> None:
+        def set_roi_rect(
+            self,
+            rect: tuple[float, float, float, float] | None,
+            *,
+            label: str | None = None,
+        ) -> None:
             self._roi_rect = _normalize_rect(rect) if rect is not None else None
+            if label is not None:
+                self._roi_label = str(label)
             self._refresh_scaled_pixmap()
 
         def clear_roi_rect(self) -> None:
@@ -2449,6 +2478,7 @@ if QtWidgets is not None:
 
         def clear_clip_overlay(self) -> None:
             self._clip_overlay_pixmap = None
+            self._clear_display_cache()
             self._refresh_scaled_pixmap()
 
         def set_clip_overlay_classes(self, classes_u8: np.ndarray | None) -> None:
@@ -2469,6 +2499,7 @@ if QtWidgets is not None:
             qimg = QtGui.QImage(classes.data, w, h, w, QtGui.QImage.Format_Indexed8).copy()
             self._set_clip_overlay_color_table(qimg)
             self._clip_overlay_pixmap = qimg
+            self._clear_display_cache()
             self._refresh_scaled_pixmap()
 
         def update_clip_overlay_classes_region(self, x: int, y: int, classes_u8: np.ndarray | None) -> None:
@@ -2504,6 +2535,8 @@ if QtWidgets is not None:
             bits = overlay.bits()
             overlay_view = np.ndarray((image_h, bpl), dtype=np.uint8, buffer=bits)
             overlay_view[y0 : y0 + h, x0 : x0 + w] = classes[:h, :w]
+            self._display_clip_cache_key = None
+            self._display_clip_cache = None
             self.update()
 
         @staticmethod
@@ -2514,23 +2547,26 @@ if QtWidgets is not None:
             qimg.setColor(2, QtGui.qRgba(255, 68, 68, 120))
             qimg.setColor(3, QtGui.qRgba(196, 65, 255, 140))
 
-        def set_view_transform(self, *, zoom: float, rotation: int) -> None:
+        def set_view_transform(self, *, zoom: float, rotation: float) -> None:
             anchor_widget = QtCore.QPointF(float(self.width()) / 2.0, float(self.height()) / 2.0)
             anchor_image = self._map_widget_to_image(anchor_widget)
             old_zoom = float(self._view_zoom)
-            old_rotation = int(self._view_rotation) % 360
+            old_rotation = float(self._view_rotation) % 360.0
             self._view_zoom = float(np.clip(zoom, 0.05, 64.0))
-            self._view_rotation = int(rotation) % 360
+            self._view_rotation = float(rotation) % 360.0
             if (
                 anchor_image is not None
-                and (abs(float(self._view_zoom) - old_zoom) > 1e-9 or int(self._view_rotation) != old_rotation)
+                and (
+                    abs(float(self._view_zoom) - old_zoom) > 1e-9
+                    or abs((float(self._view_rotation) - old_rotation + 180.0) % 360.0 - 180.0) > 1e-9
+                )
             ):
                 self._pan = self._pan_for_image_anchor(anchor_image, anchor_widget)
             if not self._image_can_pan():
                 self._pan = QtCore.QPointF(0.0, 0.0)
             self._refresh_scaled_pixmap()
             self._apply_idle_cursor()
-            self.viewTransformChanged.emit(float(self._view_zoom), int(self._view_rotation))
+            self.viewTransformChanged.emit(float(self._view_zoom), float(self._view_rotation))
 
         def current_display_scale(self) -> float | None:
             geometry = self._display_geometry()
@@ -2546,7 +2582,7 @@ if QtWidgets is not None:
         def visible_image_rect(self, *, margin: int = 0) -> tuple[int, int, int, int] | None:
             if self._base_pixmap is None or self._image_size is None:
                 return None
-            if int(self._view_rotation) % 360 != 0:
+            if abs(float(self._view_rotation) % 360.0) > 1e-6:
                 return None
             geometry = self._display_geometry()
             if geometry is None:
@@ -2555,7 +2591,8 @@ if QtWidgets is not None:
             visible = rect.intersected(QtCore.QRectF(self.rect()))
             if visible.isEmpty():
                 return None
-            image_w, image_h = self._image_size
+            source_rect = self._active_source_rect()
+            image_w, image_h = int(source_rect.width()), int(source_rect.height())
             scale = max(float(scale), 1e-6)
             pad = max(0, int(margin))
             x0 = max(0, int(np.floor((visible.left() - rect.left()) / scale)) - pad)
@@ -2564,7 +2601,7 @@ if QtWidgets is not None:
             y1 = min(int(image_h), int(np.ceil((visible.bottom() - rect.top()) / scale)) + pad)
             if x1 <= x0 or y1 <= y0:
                 return None
-            return x0, y0, x1 - x0, y1 - y0
+            return int(source_rect.x()) + x0, int(source_rect.y()) + y0, x1 - x0, y1 - y0
 
         def mousePressEvent(self, event) -> None:  # noqa: N802
             if event.button() == QtCore.Qt.LeftButton and self._base_pixmap is not None and self._space_pan_active:
@@ -2634,7 +2671,7 @@ if QtWidgets is not None:
                 if mapped is not None and not self._drag_moved:
                     self.imageClicked.emit(float(mapped[0]), float(mapped[1]))
                 elif self._drag_moved:
-                    self.viewTransformChanged.emit(float(self._view_zoom), int(self._view_rotation))
+                    self.viewTransformChanged.emit(float(self._view_zoom), float(self._view_rotation))
                 self._drag_start = None
                 self._drag_last = None
                 self._drag_moved = False
@@ -2670,11 +2707,12 @@ if QtWidgets is not None:
                 painter.drawImage(rect, pixmap, QtCore.QRectF(pixmap.rect()))
             else:
                 painter.drawPixmap(rect, pixmap, QtCore.QRectF(pixmap.rect()))
-            if self._clip_overlay_enabled and self._clip_overlay_pixmap is not None:
-                if isinstance(self._clip_overlay_pixmap, QtGui.QImage):
-                    painter.drawImage(rect, self._clip_overlay_pixmap, QtCore.QRectF(self._clip_overlay_pixmap.rect()))
+            clip_pixmap = self._display_clip_pixmap()
+            if self._clip_overlay_enabled and clip_pixmap is not None:
+                if isinstance(clip_pixmap, QtGui.QImage):
+                    painter.drawImage(rect, clip_pixmap, QtCore.QRectF(clip_pixmap.rect()))
                 else:
-                    painter.drawPixmap(rect, self._clip_overlay_pixmap, QtCore.QRectF(self._clip_overlay_pixmap.rect()))
+                    painter.drawPixmap(rect, clip_pixmap, QtCore.QRectF(clip_pixmap.rect()))
             if self._pixel_grid_visible(scale):
                 self._draw_pixel_grid(painter, rect, scale)
 
@@ -2708,7 +2746,7 @@ if QtWidgets is not None:
                 painter.setBrush(QtGui.QColor(56, 189, 248, 34))
                 painter.drawPolygon(QtGui.QPolygonF(corners))
                 painter.setBrush(QtCore.Qt.NoBrush)
-                painter.drawText(corners[0] + QtCore.QPointF(6, -6), "MTF")
+                painter.drawText(corners[0] + QtCore.QPointF(6, -6), self._roi_label)
 
             if self._framed:
                 painter.setBrush(QtCore.Qt.NoBrush)
@@ -2725,7 +2763,7 @@ if QtWidgets is not None:
         def _pixel_grid_visible(self, scale: float) -> bool:
             return (
                 self._image_size is not None
-                and int(self._view_rotation) % 360 == 0
+                and abs(float(self._view_rotation) % 360.0) <= 1e-6
                 and float(scale) >= float(self.PIXEL_GRID_MIN_SCALE)
             )
 
@@ -2733,6 +2771,7 @@ if QtWidgets is not None:
             if self._image_size is None:
                 return
             image_w, image_h = self._image_size
+            source_rect = self._active_source_rect()
             if image_w <= 0 or image_h <= 0:
                 return
             scale = max(float(scale), 1e-6)
@@ -2740,9 +2779,9 @@ if QtWidgets is not None:
             if visible.isEmpty():
                 return
             x0 = max(0, int(np.floor((visible.left() - rect.left()) / scale)))
-            x1 = min(int(image_w), int(np.ceil((visible.right() - rect.left()) / scale)))
+            x1 = min(int(source_rect.width()), int(np.ceil((visible.right() - rect.left()) / scale)))
             y0 = max(0, int(np.floor((visible.top() - rect.top()) / scale)))
-            y1 = min(int(image_h), int(np.ceil((visible.bottom() - rect.top()) / scale)))
+            y1 = min(int(source_rect.height()), int(np.ceil((visible.bottom() - rect.top()) / scale)))
             if x1 < x0 or y1 < y0:
                 return
 
@@ -2788,9 +2827,15 @@ if QtWidgets is not None:
             inv, ok = transform.inverted()
             if not ok:
                 return None
-            mapped = inv.map(QtCore.QPointF(tx + bounds.left(), ty + bounds.top()))
-            image_w, image_h = self._image_size
-            if mapped.x() < 0 or mapped.y() < 0 or mapped.x() > image_w or mapped.y() > image_h:
+            mapped_local = inv.map(QtCore.QPointF(tx + bounds.left(), ty + bounds.top()))
+            source_rect = self._active_source_rect()
+            mapped = QtCore.QPointF(mapped_local.x() + source_rect.x(), mapped_local.y() + source_rect.y())
+            if (
+                mapped.x() < source_rect.x()
+                or mapped.y() < source_rect.y()
+                or mapped.x() > source_rect.x() + source_rect.width()
+                or mapped.y() > source_rect.y() + source_rect.height()
+            ):
                 return None
             return float(mapped.x()), float(mapped.y())
 
@@ -2801,28 +2846,27 @@ if QtWidgets is not None:
         ) -> QtCore.QPointF:
             if self._base_pixmap is None:
                 return QtCore.QPointF(0.0, 0.0)
+            source_rect = self._active_source_rect()
             transform = QtGui.QTransform()
-            transform.rotate(int(self._view_rotation) % 360)
+            transform.rotate(float(self._view_rotation) % 360.0)
             bounds = transform.mapRect(
                 QtCore.QRectF(
                     0.0,
                     0.0,
-                    float(self._base_pixmap.width()),
-                    float(self._base_pixmap.height()),
+                    float(source_rect.width()),
+                    float(source_rect.height()),
                 )
             )
-            pixmap = (
-                self._base_pixmap
-                if int(self._view_rotation) % 360 == 0
-                else self._base_pixmap.transformed(transform, QtCore.Qt.FastTransformation)
-            )
+            pixmap = self._display_pixmap()
             pw = max(1.0, float(pixmap.width()))
             ph = max(1.0, float(pixmap.height()))
             fit = self._display_fit_scale(pixmap=pixmap)
             scale = fit * float(self._view_zoom)
             draw_w = pw * scale
             draw_h = ph * scale
-            mapped = transform.map(QtCore.QPointF(float(image_pos[0]), float(image_pos[1])))
+            mapped = transform.map(
+                QtCore.QPointF(float(image_pos[0]) - source_rect.x(), float(image_pos[1]) - source_rect.y())
+            )
             anchor_x = (mapped.x() - bounds.left()) * scale
             anchor_y = (mapped.y() - bounds.top()) * scale
             pan_x = float(widget_pos.x()) - (float(self.width()) - draw_w) / 2.0 - anchor_x
@@ -2837,21 +2881,18 @@ if QtWidgets is not None:
         def _display_geometry(self):
             if self._base_pixmap is None:
                 return None
+            source_rect = self._active_source_rect()
             transform = QtGui.QTransform()
             transform.rotate(self._view_rotation)
             bounds = transform.mapRect(
                 QtCore.QRectF(
                     0.0,
                     0.0,
-                    float(self._base_pixmap.width()),
-                    float(self._base_pixmap.height()),
+                    float(source_rect.width()),
+                    float(source_rect.height()),
                 )
             )
-            pixmap = (
-                self._base_pixmap
-                if self._view_rotation == 0
-                else self._base_pixmap.transformed(transform, QtCore.Qt.FastTransformation)
-            )
+            pixmap = self._display_pixmap()
             pw = max(1.0, float(pixmap.width()))
             ph = max(1.0, float(pixmap.height()))
             fit = self._display_fit_scale(pixmap=pixmap)
@@ -2875,14 +2916,7 @@ if QtWidgets is not None:
             if pixmap is None:
                 if self._base_pixmap is None:
                     return 1.0
-                pixmap = (
-                    self._base_pixmap
-                    if self._view_rotation == 0
-                    else self._base_pixmap.transformed(
-                        QtGui.QTransform().rotate(self._view_rotation),
-                        QtCore.Qt.FastTransformation,
-                    )
-                )
+                pixmap = self._display_pixmap()
             pw = max(1.0, float(pixmap.width()))
             ph = max(1.0, float(pixmap.height()))
             return float(min(max(1.0, self.width()) / pw, max(1.0, self.height()) / ph))
@@ -2903,10 +2937,93 @@ if QtWidgets is not None:
             transform: QtGui.QTransform,
             bounds: QtCore.QRectF,
         ) -> QtCore.QPointF:
-            mapped = transform.map(QtCore.QPointF(float(x), float(y)))
+            source_rect = self._active_source_rect()
+            mapped = transform.map(QtCore.QPointF(float(x) - source_rect.x(), float(y) - source_rect.y()))
             tx = mapped.x() - bounds.left()
             ty = mapped.y() - bounds.top()
             return QtCore.QPointF(rect.left() + tx * scale, rect.top() + ty * scale)
+
+        def _normalize_view_crop_rect(self, rect: tuple[float, float, float, float] | None) -> tuple[int, int, int, int] | None:
+            if rect is None or self._image_size is None:
+                return None
+            image_w, image_h = self._image_size
+            x, y, w, h = _normalize_rect(rect)
+            x0 = int(np.clip(np.floor(x), 0, max(0, image_w - 1)))
+            y0 = int(np.clip(np.floor(y), 0, max(0, image_h - 1)))
+            x1 = int(np.clip(np.ceil(x + w), x0 + 1, image_w))
+            y1 = int(np.clip(np.ceil(y + h), y0 + 1, image_h))
+            if x1 - x0 < 1 or y1 - y0 < 1:
+                return None
+            if x0 == 0 and y0 == 0 and x1 == image_w and y1 == image_h:
+                return None
+            return x0, y0, x1 - x0, y1 - y0
+
+        def _active_source_rect(self) -> QtCore.QRect:
+            if self._base_pixmap is None or self._image_size is None:
+                return QtCore.QRect(0, 0, 1, 1)
+            image_w, image_h = self._image_size
+            crop = self._normalize_view_crop_rect(self._view_crop_rect)
+            if crop is None:
+                return QtCore.QRect(0, 0, int(image_w), int(image_h))
+            x, y, w, h = crop
+            return QtCore.QRect(int(x), int(y), int(w), int(h))
+
+        def _display_pixmap(self) -> QtGui.QImage | QtGui.QPixmap:
+            if self._base_pixmap is None:
+                return QtGui.QImage()
+            source_rect = self._active_source_rect()
+            rotation = float(self._view_rotation) % 360.0
+            key = (id(self._base_pixmap), source_rect.x(), source_rect.y(), source_rect.width(), source_rect.height(), round(rotation, 6))
+            if self._display_pixmap_cache_key == key and self._display_pixmap_cache is not None:
+                return self._display_pixmap_cache
+            cropped = (
+                self._base_pixmap
+                if source_rect.x() == 0
+                and source_rect.y() == 0
+                and source_rect.width() == self._base_pixmap.width()
+                and source_rect.height() == self._base_pixmap.height()
+                else self._base_pixmap.copy(source_rect)
+            )
+            if abs(rotation) > 1e-6:
+                cropped = cropped.transformed(QtGui.QTransform().rotate(rotation), QtCore.Qt.FastTransformation)
+            self._display_pixmap_cache_key = key
+            self._display_pixmap_cache = cropped
+            return cropped
+
+        def _display_clip_pixmap(self) -> QtGui.QImage | QtGui.QPixmap | None:
+            if self._clip_overlay_pixmap is None:
+                return None
+            source_rect = self._active_source_rect()
+            rotation = float(self._view_rotation) % 360.0
+            key = (
+                id(self._clip_overlay_pixmap),
+                source_rect.x(),
+                source_rect.y(),
+                source_rect.width(),
+                source_rect.height(),
+                round(rotation, 6),
+            )
+            if self._display_clip_cache_key == key and self._display_clip_cache is not None:
+                return self._display_clip_cache
+            cropped = (
+                self._clip_overlay_pixmap
+                if source_rect.x() == 0
+                and source_rect.y() == 0
+                and source_rect.width() == self._clip_overlay_pixmap.width()
+                and source_rect.height() == self._clip_overlay_pixmap.height()
+                else self._clip_overlay_pixmap.copy(source_rect)
+            )
+            if abs(rotation) > 1e-6:
+                cropped = cropped.transformed(QtGui.QTransform().rotate(rotation), QtCore.Qt.FastTransformation)
+            self._display_clip_cache_key = key
+            self._display_clip_cache = cropped
+            return cropped
+
+        def _clear_display_cache(self) -> None:
+            self._display_pixmap_cache_key = None
+            self._display_pixmap_cache = None
+            self._display_clip_cache_key = None
+            self._display_clip_cache = None
 else:  # pragma: no cover - importable en entornos sin Qt
     PersistentSideTabWidget = None
     CollapsibleToolPanel = None

@@ -559,6 +559,8 @@ class PreviewMenuMixin:
         recipe = load_recipe(recipe_path)
         self.path_recipe.setText(str(recipe_path))
         self._apply_recipe_to_controls(recipe)
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("load_recipe")
         self._set_status(self.tr("Receta cargada:") + f" {recipe_path}")
         self._save_active_session(silent=True)
 
@@ -587,5 +589,7 @@ class PreviewMenuMixin:
 
     def _menu_reset_recipe(self) -> None:
         self._apply_recipe_to_controls(Recipe())
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("reset_recipe")
         self._set_status(self.tr("Receta restablecida a valores por defecto"))
         self._save_active_session(silent=True)

@@ -18,6 +18,45 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-05-06
+
+### Added
+
+- Nuevo menu `Editar` con deshacer, rehacer, eliminar ajustes y atajos
+  `Ctrl+Z`/`Ctrl+Y` para los ajustes de revelado, render, detalle, recorte y
+  nivelado visual.
+- Nuevas herramientas en `Ajustes de imagen` para seleccionar recorte visual,
+  nivelar con una referencia horizontal o vertical y limpiar recorte/nivelado.
+
+### Changed
+
+- La preview interactiva mantiene el equilibrio de rendimiento y precision:
+  usa fuentes acotadas durante arrastres, conserva la ruta exacta al estabilizar
+  la interaccion y actualiza muestras de histograma/niveles en tiempo real
+  cuando toca por throttle.
+- El editor de curva tonal mantiene visible su histograma durante el arrastre y
+  los controles `Negro curva`/`Blanco curva` refrescan niveles sin bloquear la
+  interfaz.
+- El visor soporta recorte visual, rotacion fraccional de nivelado y
+  reproyeccion del recorte cuando cambia la resolucion de preview o se solicita
+  vista a pixeles reales.
+
+### Fixed
+
+- La ROI de analisis MTF vuelve a permanecer visible despues de aplicar un
+  recorte visual.
+- El zoom al 100% tras aplicar recorte conserva la correspondencia con pixeles
+  reales y evita reconstrucciones completas innecesarias.
+- El descargador de actualizaciones omite assets de metadatos y falla cerrado
+  si no puede verificar SHA-256 del instalador.
+
+### Tests
+
+- Suite completa: `414 passed, 2 warnings`.
+- Anadida cobertura de regresion para recorte, nivelado, undo/redo,
+  histogramas interactivos, curva tonal durante arrastre y actualizaciones
+  verificadas por SHA-256.
+
 ## [0.3.13] - 2026-05-05
 
 ### Fixed

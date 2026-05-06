@@ -101,6 +101,11 @@ def _find_checksum_asset(assets: list[dict[str, Any]], asset_name: str) -> tuple
     return None, None
 
 
+def _is_checksum_or_metadata_asset(name: str) -> bool:
+    lowered = str(name or "").strip().lower()
+    return lowered.endswith((".sha256", ".sha256sum", ".asc", ".sig", ".txt", ".json"))
+
+
 def _pick_asset(
     assets: list[dict[str, Any]],
 ) -> tuple[str | None, str | None, int | None, str | None, str | None, str | None]:
@@ -120,6 +125,8 @@ def _pick_asset(
 
     for asset in candidates:
         name = _asset_name(asset)
+        if _is_checksum_or_metadata_asset(name):
+            continue
         url = _asset_url(asset)
         checksum_name, checksum_url = _find_checksum_asset(assets, name)
         return name, url, _asset_size(asset), str(asset.get("digest") or "") or None, checksum_name, checksum_url
@@ -220,7 +227,7 @@ def _download_url(url: str, out_path: Path, *, user_agent: str, timeout: float) 
 def _read_checksum_url(url: str, *, user_agent: str, timeout: float) -> str:
     req = request.Request(url, headers={"User-Agent": user_agent})
     with request.urlopen(req, timeout=float(timeout)) as response:
-        return response.read().decode("utf-8", errors="replace")
+        return response.read(4096).decode("utf-8", errors="replace")
 
 
 def download_update_asset(
@@ -246,13 +253,17 @@ def download_update_asset(
             expected = _normalize_sha256_digest(checksum_text)
             if result.checksum_asset_name:
                 (dest_dir / result.checksum_asset_name).write_text(checksum_text, encoding="utf-8")
-        if expected:
-            actual = _sha256_file(out_path)
-            if actual.lower() != expected.lower():
-                raise RuntimeError(
-                    "La verificacion SHA-256 del instalador fallo: "
-                    f"esperado {expected}, obtenido {actual}."
-                )
+        if not expected:
+            raise RuntimeError(
+                "No se pudo verificar SHA-256 del instalador: "
+                "la release no proporciona un digest valido."
+            )
+        actual = _sha256_file(out_path)
+        if actual.lower() != expected.lower():
+            raise RuntimeError(
+                "La verificacion SHA-256 del instalador fallo: "
+                f"esperado {expected}, obtenido {actual}."
+            )
     return out_path
 
 

@@ -47,6 +47,8 @@ from .ui.window import (
     BrowserMetadataMixin,
     ControlPanelsMixin,
     DisplayControlsMixin,
+    EditHistoryMixin,
+    ImageToolsMixin,
     LayoutMixin,
     MTFAnalysisMixin,
     PreviewWorkflowMixin,
@@ -92,6 +94,8 @@ if QtWidgets is not None:
         SettingsMixin,
         DisplayControlsMixin,
         MTFAnalysisMixin,
+        ImageToolsMixin,
+        EditHistoryMixin,
         SessionWorkflowMixin,
         BrowserMetadataMixin,
         PreviewWorkflowMixin,
@@ -182,6 +186,18 @@ if QtWidgets is not None:
             self._neutral_picker_active = False
             self._mtf_roi_selection_active = False
             self._mtf_roi: tuple[int, int, int, int] | None = None
+            self._image_crop_selection_active = False
+            self._image_crop_rect: tuple[int, int, int, int] | None = None
+            self._image_crop_base_size: tuple[int, int] | None = None
+            self._image_crop_normalized_rect: tuple[float, float, float, float] | None = None
+            self._image_level_selection_active = False
+            self._image_level_mode = "horizontal"
+            self._image_level_points: list[tuple[float, float]] = []
+            self._image_level_rotation_degrees = 0.0
+            self._edit_undo_stack: list[dict[str, Any]] = []
+            self._edit_redo_stack: list[dict[str, Any]] = []
+            self._suspend_edit_history = 0
+            self._applying_edit_history = False
             self._mtf_last_result: Any | None = None
             self._mtf_pixel_pitch_auto_source: str | None = None
             self._mtf_last_analysis_image_dimensions: tuple[int, int] | None = None
@@ -283,7 +299,7 @@ if QtWidgets is not None:
                 default=False,
             )
             self._viewer_zoom = 1.0
-            self._viewer_rotation = 0
+            self._viewer_rotation = 0.0
             self._viewer_full_detail_requested = False
             self._viewer_real_pixel_sync_pending = False
             self._syncing_viewer_transform = False
@@ -346,6 +362,7 @@ if QtWidgets is not None:
             if not self._restore_startup_context():
                 self._set_current_directory(self._current_dir)
             self._refresh_queue_table()
+            self._initialize_edit_history()
             self.statusBar().showMessage(self.tr("Listo"))
 
     ICCRawMainWindow = ProbRawMainWindow

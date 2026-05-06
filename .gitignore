@@ -21,3 +21,6 @@ __pycache__/
 *.swp
 *.swo
 .claude/
+mtf_roi_debug.png
+tmp_embedded.icc
+/testdata/raw/batch/*.probraw.json

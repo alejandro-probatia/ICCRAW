@@ -64,6 +64,12 @@ class PreviewRenderMixin:
             getattr(self, "slider_ca_red", None),
             getattr(self, "slider_ca_blue", None),
         )
+        if (
+            sender in detail_sliders
+            and not bool(getattr(sender, "isSliderDown", lambda: False)())
+            and hasattr(self, "_push_edit_history_snapshot")
+        ):
+            self._push_edit_history_snapshot("detail")
         if self._original_linear is not None:
             if sender in detail_sliders:
                 self._preview_last_slider_group = "detail"
@@ -76,7 +82,7 @@ class PreviewRenderMixin:
                 self._preview_last_slider_group = "render"
                 self._mark_preview_control_interaction(duration_ms=900)
             self._schedule_preview_refresh()
-            self._schedule_exact_histogram_refresh(delay_ms=80)
+            self._schedule_exact_histogram_refresh(delay_ms=80, mark_pending=False)
             if sender in detail_sliders:
                 self._schedule_post_interaction_exact_preview_refresh(delay_ms=480)
             elif sender in render_sliders or sender is None:
@@ -132,6 +138,11 @@ class PreviewRenderMixin:
             getattr(self, "slider_ca_red", None),
             getattr(self, "slider_ca_blue", None),
         )
+        if hasattr(self, "_push_edit_history_snapshot"):
+            if sender in detail_sliders or str(getattr(self, "_preview_last_slider_group", "") or "") == "detail":
+                self._push_edit_history_snapshot("detail")
+            elif sender in render_sliders or str(getattr(self, "_preview_last_slider_group", "") or "") == "render":
+                self._push_edit_history_snapshot("render")
         if (
             sender in (getattr(self, "slider_tone_curve_black", None), getattr(self, "slider_tone_curve_white", None))
             and hasattr(self, "_on_tone_curve_range_interaction_finished")
@@ -1236,7 +1247,7 @@ class PreviewRenderMixin:
                 np.asarray(source_linear, dtype=np.float32),
                 max_side_limit=int(max_side_limit),
             )
-            full_histogram_source = np.asarray(source_linear, dtype=np.float32)
+            full_histogram_source = source if int(max_side_limit) > 0 else np.asarray(source_linear, dtype=np.float32)
             if viewport_rect is not None:
                 vx, vy, vw, vh = (int(v) for v in viewport_rect)
                 source = source[vy : vy + vh, vx : vx + vw]
@@ -1302,7 +1313,6 @@ class PreviewRenderMixin:
                 detail_adjusted = source
             if (
                 not bool(include_analysis)
-                and not bool(include_histogram)
                 and source_profile is None
                 and not bool(apply_detail)
                 and is_generic_output_space(output_space)
@@ -1319,7 +1329,7 @@ class PreviewRenderMixin:
                         bool(compare_enabled),
                         bool(bypass_display_profile),
                         viewport_rect,
-                        None,
+                        np.asarray(fast_srgb_u8, dtype=np.uint8) if bool(include_histogram) else None,
                         None,
                         "; ".join(dict.fromkeys(warnings)) if warnings else None,
                         None,
@@ -1527,12 +1537,17 @@ class PreviewRenderMixin:
             self._set_interactive_preview_busy(False)
 
     def _reset_adjustments(self) -> None:
+        history_suspend = int(getattr(self, "_suspend_edit_history", 0) or 0)
+        self._suspend_edit_history = history_suspend + 1
         self.slider_sharpen.setValue(0)
         self.slider_radius.setValue(10)
         self.slider_noise_luma.setValue(0)
         self.slider_noise_color.setValue(0)
         self.slider_ca_red.setValue(0)
         self.slider_ca_blue.setValue(0)
+        self._suspend_edit_history = history_suspend
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("reset_detail")
         if self._original_linear is not None:
             self._refresh_preview()
         if hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):
@@ -1595,11 +1610,14 @@ class PreviewRenderMixin:
                     or overlay_enabled
                     or not defer_exact_histogram
                 )
-                include_histogram = False if defer_exact_histogram else bool(
-                    True
-                    if viewport_rect is None or overlay_enabled
-                    else self._interactive_histogram_due()
-                )
+                if defer_exact_histogram:
+                    include_histogram = bool(self._interactive_histogram_due(interval_ms=80))
+                else:
+                    include_histogram = bool(
+                        True
+                        if viewport_rect is None or overlay_enabled
+                        else self._interactive_histogram_due()
+                    )
                 self._interactive_preview_request_seq += 1
                 request_key = f"{source_key}|interactive|{self._interactive_preview_request_seq}"
                 self._profile_preview_expected_key = None
@@ -1765,13 +1783,13 @@ class PreviewRenderMixin:
         self._preview_recent_detail_interaction_until = 0.0
         self._refresh_preview(force_final=True)
 
-    def _schedule_exact_histogram_refresh(self, *, delay_ms: int) -> None:
+    def _schedule_exact_histogram_refresh(self, *, delay_ms: int, mark_pending: bool = True) -> None:
         if self._original_linear is None:
             return
         histogram = getattr(self, "viewer_histogram", None)
-        if histogram is not None and hasattr(histogram, "set_pending"):
+        if bool(mark_pending) and histogram is not None and hasattr(histogram, "set_pending"):
             histogram.set_pending(self.tr("Actualizando..."))
-        if hasattr(self, "histogram_shadow_label") and hasattr(self, "histogram_highlight_label"):
+        if bool(mark_pending) and hasattr(self, "histogram_shadow_label") and hasattr(self, "histogram_highlight_label"):
             self.histogram_shadow_label.setText(self.tr("Sombras: recalculando..."))
             self.histogram_highlight_label.setText(self.tr("Luces: recalculando..."))
             pending_style = "font-size: 12px; color: #9ca3af;"
@@ -1789,7 +1807,7 @@ class PreviewRenderMixin:
         if self._original_linear is None:
             return
         if self._is_direct_preview_interaction_active():
-            self._schedule_exact_histogram_refresh(delay_ms=160)
+            self._schedule_exact_histogram_refresh(delay_ms=160, mark_pending=False)
             return
         try:
             recipe = self._color_managed_preview_recipe(self._build_effective_recipe())

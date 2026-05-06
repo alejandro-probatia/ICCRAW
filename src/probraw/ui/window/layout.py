@@ -92,6 +92,8 @@ class LayoutMixin:
         menu_file.addSeparator()
         menu_file.addAction(self._action(self.tr("Salir"), self.close, "Ctrl+Q"))
 
+        self._add_edit_menu(mb)
+
         menu_cfg = mb.addMenu(self.tr("Configuracion"))
         menu_cfg.addAction(self._action(self.tr("Cargar receta..."), self._menu_load_recipe))
         menu_cfg.addAction(self._action(self.tr("Guardar receta..."), self._menu_save_recipe))
@@ -107,6 +109,8 @@ class LayoutMixin:
         menu_profile.addAction(self._action(self.tr("Cargar perfil activo..."), self._menu_load_profile))
         menu_profile.addAction(self._action(self.tr("Usar perfil generado"), self._use_generated_profile_as_active))
         menu_profile.addAction(self._action(self.tr("Comparar reportes QA..."), self._menu_compare_qa_reports))
+
+        self._add_image_adjustment_menu(mb)
 
         menu_view = mb.addMenu(self.tr("Vista"))
         a_compare = self._action(self.tr("Comparar original/resultado"), self._menu_toggle_compare)
@@ -1216,6 +1220,7 @@ class LayoutMixin:
             self._viewer_action(self.tr("Encajar"), self._viewer_fit, icon="SP_TitleBarMaxButton"),
             self._viewer_action(self.tr("Girar izquierda"), self._viewer_rotate_left, icon=self._rotate_arrow_icon(clockwise=False)),
             self._viewer_action(self.tr("Girar derecha"), self._viewer_rotate_right, icon=self._rotate_arrow_icon(clockwise=True)),
+            *self._image_adjustment_toolbar_actions(),
             self._viewer_action(
                 self.tr("Cache 1:1 actual"),
                 self._on_precache_selected_preview,
@@ -1230,7 +1235,7 @@ class LayoutMixin:
             ),
         ]
         for index, action in enumerate(actions):
-            if index in {2, 6, 8}:
+            if index in {2, 6, 8, 11}:
                 separator = QtWidgets.QFrame()
                 separator.setFrameShape(QtWidgets.QFrame.VLine)
                 separator.setStyleSheet("color: #2f353d;")
@@ -1545,7 +1550,7 @@ class LayoutMixin:
 
         self.image_result_single = ImagePanel(self.tr("Resultado"))
         self.image_result_single.imageClicked.connect(self._on_result_image_click)
-        self.image_result_single.roiSelected.connect(self._on_mtf_roi_selected)
+        self.image_result_single.roiSelected.connect(self._on_viewer_roi_selected)
         self.image_result_single.viewTransformChanged.connect(self._on_viewer_panel_transform_changed)
         single_page = QtWidgets.QWidget()
         single_layout = QtWidgets.QVBoxLayout(single_page)
@@ -1556,7 +1561,7 @@ class LayoutMixin:
         self.image_original_compare = ImagePanel(self.tr(""), framed=False, background="#15181d")
         self.image_result_compare = ImagePanel(self.tr(""), framed=False, background="#15181d")
         self.image_result_compare.imageClicked.connect(self._on_result_image_click)
-        self.image_result_compare.roiSelected.connect(self._on_mtf_roi_selected)
+        self.image_result_compare.roiSelected.connect(self._on_viewer_roi_selected)
         self.image_original_compare.viewTransformChanged.connect(self._on_viewer_panel_transform_changed)
         self.image_result_compare.viewTransformChanged.connect(self._on_viewer_panel_transform_changed)
         self.compare_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)

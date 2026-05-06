@@ -78,6 +78,8 @@ class PreviewRecipeMixin:
     def _on_raw_decode_control_changed(self) -> None:
         if int(getattr(self, "_suspend_raw_export_autosave", 0) or 0) > 0:
             return
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("raw")
         if self._sender_is_libraw_color_control():
             if (
                 hasattr(self, "_set_active_named_adjustment_profile_id")
@@ -477,6 +479,10 @@ class PreviewRecipeMixin:
     def _set_neutral_picker_active(self, active: bool) -> None:
         if active and hasattr(self, "_set_mtf_roi_selection_active"):
             self._set_mtf_roi_selection_active(False)
+        if active and hasattr(self, "_set_image_crop_selection_active"):
+            self._set_image_crop_selection_active(False)
+        if active and hasattr(self, "_deactivate_image_level_tool"):
+            self._deactivate_image_level_tool()
         self._neutral_picker_active = bool(active)
         if hasattr(self, "btn_neutral_picker"):
             self.btn_neutral_picker.blockSignals(True)
@@ -485,7 +491,8 @@ class PreviewRecipeMixin:
         self._update_viewer_interaction_cursor()
 
     def _update_viewer_interaction_cursor(self) -> None:
-        active = bool(self._neutral_picker_active or self._manual_chart_marking)
+        tool_active = bool(self._viewer_tool_cursor_active()) if hasattr(self, "_viewer_tool_cursor_active") else False
+        active = bool(self._neutral_picker_active or self._manual_chart_marking or tool_active)
         cursor = QtCore.Qt.CrossCursor if active else None
         for panel_name in ("image_result_single", "image_result_compare"):
             if not hasattr(self, panel_name):
@@ -633,6 +640,8 @@ class PreviewRecipeMixin:
         if dragging:
             if preview_enabled and self._original_linear is not None and hasattr(self, "_schedule_tone_curve_drag_preview_refresh"):
                 self._schedule_tone_curve_drag_preview_refresh()
+            if preview_enabled and self._original_linear is not None and hasattr(self, "_schedule_exact_histogram_refresh"):
+                self._schedule_exact_histogram_refresh(delay_ms=80, mark_pending=False)
             return
         if (
             preview_enabled
@@ -641,6 +650,8 @@ class PreviewRecipeMixin:
         ):
             self._update_tone_curve_histogram_for_current_controls(force=True)
         self._on_render_control_change(preview=preview_enabled)
+        if preview_enabled and self._original_linear is not None and hasattr(self, "_schedule_exact_histogram_refresh"):
+            self._schedule_exact_histogram_refresh(delay_ms=80, mark_pending=False)
 
     def _on_tone_curve_range_interaction_finished(self) -> None:
         timer = getattr(self, "_tone_curve_preview_timer", None)
@@ -701,6 +712,8 @@ class PreviewRecipeMixin:
     def _on_render_control_change(self, *_args: object, preview: bool = True) -> None:
         if int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0) > 0:
             return
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("render")
         if not (
             hasattr(self, "_is_direct_preview_interaction_active")
             and self._is_direct_preview_interaction_active()
@@ -731,6 +744,8 @@ class PreviewRecipeMixin:
                 self._schedule_render_adjustment_sidecar_persist()
 
     def _reset_tone_curve(self) -> None:
+        history_suspend = int(getattr(self, "_suspend_edit_history", 0) or 0)
+        self._suspend_edit_history = history_suspend + 1
         self.check_tone_curve_enabled.setChecked(False)
         self._tone_curve_channel_points = {
             "luminance": self._identity_tone_curve_points(),
@@ -752,9 +767,12 @@ class PreviewRecipeMixin:
         self.tone_curve_editor.set_points(self._tone_curve_preset_points("linear"), emit=False)
         self._sync_tone_curve_editor_channel_overlay()
         self._set_tone_curve_controls_enabled(False)
+        self._suspend_edit_history = history_suspend
         self._on_render_control_change()
 
     def _reset_color_adjustments(self, *_args: object, refresh: bool = True) -> None:
+        history_suspend = int(getattr(self, "_suspend_edit_history", 0) or 0)
+        self._suspend_edit_history = history_suspend + 1
         self._set_neutral_picker_active(False)
         if hasattr(self, "label_neutral_picker"):
             self.label_neutral_picker.setText(self.tr("Punto neutro: sin muestra"))
@@ -765,10 +783,15 @@ class PreviewRecipeMixin:
             self.slider_vibrance.setValue(0)
         if hasattr(self, "slider_saturation"):
             self.slider_saturation.setValue(0)
+        self._suspend_edit_history = history_suspend
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("reset_color")
         if refresh and self._original_linear is not None:
             self._refresh_preview()
 
     def _reset_tone_adjustments(self, *_args: object, refresh: bool = True) -> None:
+        history_suspend = int(getattr(self, "_suspend_edit_history", 0) or 0)
+        self._suspend_edit_history = history_suspend + 1
         self.slider_brightness.setValue(0)
         self.slider_black_point.setValue(0)
         self.slider_white_point.setValue(1000)
@@ -783,10 +806,15 @@ class PreviewRecipeMixin:
             self.slider_blacks.setValue(0)
         self.slider_midtone.setValue(100)
         self._reset_tone_curve()
+        self._suspend_edit_history = history_suspend
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("reset_tone")
         if refresh and self._original_linear is not None:
             self._refresh_preview()
 
     def _reset_color_grading(self, *_args: object, refresh: bool = True) -> None:
+        history_suspend = int(getattr(self, "_suspend_edit_history", 0) or 0)
+        self._suspend_edit_history = history_suspend + 1
         self.slider_grade_midtones_hue.setValue(45)
         self.slider_grade_midtones_sat.setValue(0)
         self.slider_grade_shadows_hue.setValue(240)
@@ -795,13 +823,21 @@ class PreviewRecipeMixin:
         self.slider_grade_highlights_sat.setValue(0)
         self.slider_grade_blending.setValue(50)
         self.slider_grade_balance.setValue(0)
+        self._suspend_edit_history = history_suspend
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("reset_grading")
         if refresh and self._original_linear is not None:
             self._refresh_preview()
 
     def _reset_basic_adjustments(self) -> None:
+        history_suspend = int(getattr(self, "_suspend_edit_history", 0) or 0)
+        self._suspend_edit_history = history_suspend + 1
         self._reset_color_adjustments(refresh=False)
         self._reset_tone_adjustments(refresh=False)
         self._reset_color_grading(refresh=False)
+        self._suspend_edit_history = history_suspend
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("reset_basic")
         if self._original_linear is not None:
             self._refresh_preview()
 
@@ -825,15 +861,15 @@ class PreviewRecipeMixin:
             shown = scale if scale is not None else float(self._viewer_zoom)
             self.viewer_zoom_label.setText(f"{int(round(float(shown) * 100))}%")
 
-    def _on_viewer_panel_transform_changed(self, zoom: float, rotation: int) -> None:
+    def _on_viewer_panel_transform_changed(self, zoom: float, rotation: float) -> None:
         if bool(getattr(self, "_syncing_viewer_transform", False)):
             return
         self._viewer_zoom = float(np.clip(float(zoom), 0.05, 64.0))
-        self._viewer_rotation = int(rotation) % 360
+        self._viewer_rotation = float(rotation) % 360.0
         self._sync_viewer_transform()
         self._clear_pending_real_pixel_sync_if_manual_zoom_moved()
         self._ensure_full_detail_preview_if_needed()
-        if int(self._viewer_rotation) % 360 == 0 and hasattr(self, "_schedule_visible_viewport_preview_refresh"):
+        if abs(float(self._viewer_rotation) % 360.0) <= 1e-6 and hasattr(self, "_schedule_visible_viewport_preview_refresh"):
             self._schedule_visible_viewport_preview_refresh(duration_ms=450)
 
     def _viewer_reference_panel(self) -> ImagePanel | None:
@@ -917,7 +953,7 @@ class PreviewRecipeMixin:
         self._viewer_full_detail_requested = False
         self._viewer_real_pixel_sync_pending = False
         self._viewer_zoom = 1.0
-        self._viewer_rotation = 0
+        self._viewer_rotation = 0.0
         self._sync_viewer_transform()
 
     def _ensure_full_detail_preview_if_needed(self, *, force: bool = False) -> None:
@@ -939,11 +975,11 @@ class PreviewRecipeMixin:
         self._on_load_selected(show_message=False)
 
     def _viewer_rotate_left(self) -> None:
-        self._viewer_rotation = (self._viewer_rotation - 90) % 360
+        self._viewer_rotation = (float(self._viewer_rotation) - 90.0) % 360.0
         self._sync_viewer_transform()
 
     def _viewer_rotate_right(self) -> None:
-        self._viewer_rotation = (self._viewer_rotation + 90) % 360
+        self._viewer_rotation = (float(self._viewer_rotation) + 90.0) % 360.0
         self._sync_viewer_transform()
 
     def _on_histogram_clip_witness_toggled(self, checked: bool) -> None:
