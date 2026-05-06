@@ -243,11 +243,19 @@ def _sample_patch(
     reject_saturated: bool = True,
 ) -> tuple[np.ndarray, float, float]:
     h, w = image.shape[:2]
-    mask = np.zeros((h, w), dtype=np.uint8)
     poly_int = np.round(polygon).astype(np.int32)
-    cv2.fillPoly(mask, [poly_int], 255)
+    x0 = int(np.clip(np.min(poly_int[:, 0]), 0, max(0, w - 1)))
+    y0 = int(np.clip(np.min(poly_int[:, 1]), 0, max(0, h - 1)))
+    x1 = int(np.clip(np.max(poly_int[:, 0]) + 1, x0 + 1, w))
+    y1 = int(np.clip(np.max(poly_int[:, 1]) + 1, y0 + 1, h))
+    local = image[y0:y1, x0:x1]
+    if local.size == 0:
+        return np.array([0.0, 0.0, 0.0], dtype=np.float32), 1.0, 0.0
 
-    pixels = image[mask == 255]
+    mask = np.zeros((y1 - y0, x1 - x0), dtype=np.uint8)
+    cv2.fillPoly(mask, [poly_int - np.array([x0, y0], dtype=np.int32)], 255)
+
+    pixels = local[mask == 255]
     if pixels.size == 0:
         return np.array([0.0, 0.0, 0.0], dtype=np.float32), 1.0, 0.0
 

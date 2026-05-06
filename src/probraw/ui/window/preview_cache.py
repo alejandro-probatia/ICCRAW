@@ -206,6 +206,8 @@ class PreviewCacheMixin:
             self._preview_cache_order.append(key)
             return image
         image = self._read_preview_from_disk_cache(key, selected=selected)
+        if image is None:
+            image = self._read_preview_from_pyramid_cache(key, selected=selected)
         if image is not None:
             self._cache_preview_memory(key, image, copy=False)
             return image
@@ -257,8 +259,125 @@ class PreviewCacheMixin:
                 max_entries=PREVIEW_DISK_CACHE_MAX_ENTRIES,
                 max_bytes=PREVIEW_DISK_CACHE_MAX_BYTES,
             )
+            self._write_preview_pyramid_to_disk_cache(key, array, selected=selected)
         except Exception:
             return
+
+    def _preview_pyramid_base_key(self, key: str) -> str | None:
+        marker = "|ms="
+        if marker not in key:
+            return None
+        return key.rsplit(marker, 1)[0]
+
+    def _preview_requested_max_side(self, key: str) -> int:
+        marker = "|ms="
+        if marker not in key:
+            return 0
+        try:
+            return int(key.rsplit(marker, 1)[1])
+        except Exception:
+            return 0
+
+    def _preview_pyramid_disk_cache_path(
+        self,
+        base_key: str,
+        side: int,
+        *,
+        base_dir: Path | None = None,
+        selected: Path | None = None,
+    ) -> Path:
+        return self._disk_cache_path(
+            base_dir or self._preview_disk_cache_dir(selected),
+            f"{base_key}|pyramid|side={int(side)}",
+            ".npy",
+        )
+
+    def _write_preview_pyramid_to_disk_cache(self, key: str, image: np.ndarray, *, selected: Path | None = None) -> None:
+        base_key = self._preview_pyramid_base_key(key)
+        if base_key is None:
+            return
+        rgb = np.asarray(image, dtype=np.float32)
+        if rgb.ndim != 3 or rgb.shape[-1] < 3:
+            return
+        h, w = int(rgb.shape[0]), int(rgb.shape[1])
+        source_side = max(h, w)
+        if source_side <= 0:
+            return
+        cache_dir = self._preview_disk_cache_dir(selected)
+        requested = self._preview_requested_max_side(key)
+        levels = self._preview_pyramid_levels_to_write(source_side=source_side, requested_side=requested)
+        for side in levels:
+            if side >= source_side:
+                continue
+            try:
+                level = self._downscale_preview_cache_level(rgb, max_side=side)
+                path = self._preview_pyramid_disk_cache_path(base_key, side, base_dir=cache_dir)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                tmp_path = path.with_name(f"{path.name}.tmp")
+                with tmp_path.open("wb") as handle:
+                    np.save(handle, level, allow_pickle=False)
+                os.replace(tmp_path, path)
+            except Exception:
+                continue
+
+    @staticmethod
+    def _preview_pyramid_levels_to_write(*, source_side: int, requested_side: int) -> list[int]:
+        levels = [4096, 3200, 2600, 2048, 1600, 1200, 800]
+        source = int(source_side)
+        requested = int(requested_side)
+        if source <= 0:
+            return []
+        if requested <= 0:
+            requested = source
+        candidates = [side for side in levels if side < source and side >= requested]
+        if candidates:
+            return candidates[:2]
+        smaller = [side for side in levels if side < source]
+        return smaller[:1]
+
+    def _read_preview_from_pyramid_cache(self, key: str, *, selected: Path | None = None) -> np.ndarray | None:
+        requested = self._preview_requested_max_side(key)
+        if requested <= 0:
+            return None
+        base_key = self._preview_pyramid_base_key(key)
+        if base_key is None:
+            return None
+        candidates: list[tuple[int, Path]] = []
+        for cache_dir in self._disk_cache_dirs(selected, "previews"):
+            for side in [4096, 3200, 2600, 2048, 1600, 1200, 800]:
+                if side < requested:
+                    continue
+                path = self._preview_pyramid_disk_cache_path(base_key, side, base_dir=cache_dir)
+                if path.is_file():
+                    candidates.append((side, path))
+        for _side, path in sorted(candidates, key=lambda item: item[0]):
+            try:
+                with path.open("rb") as handle:
+                    image = np.load(handle, allow_pickle=False)
+                image = np.asarray(image, dtype=np.float32)
+                if image.ndim != 3 or image.shape[-1] < 3:
+                    continue
+                try:
+                    os.utime(path, None)
+                except Exception:
+                    pass
+                return self._downscale_preview_cache_level(image[..., :3], max_side=requested)
+            except Exception:
+                continue
+        return None
+
+    def _downscale_preview_cache_level(self, image: np.ndarray, *, max_side: int) -> np.ndarray:
+        rgb = np.asarray(image, dtype=np.float32)
+        h, w = int(rgb.shape[0]), int(rgb.shape[1])
+        if max(h, w) <= int(max_side):
+            return np.ascontiguousarray(rgb[..., :3])
+        scale = float(max_side) / float(max(h, w))
+        resized = cv2.resize(
+            rgb[..., :3],
+            (max(1, int(round(w * scale))), max(1, int(round(h * scale)))),
+            interpolation=cv2.INTER_AREA,
+        )
+        return np.ascontiguousarray(np.clip(resized, 0.0, 1.0).astype(np.float32, copy=False))
 
     def _preview_cache_bytes(self) -> int:
         return int(sum(int(image.nbytes) for image in self._preview_cache.values()))

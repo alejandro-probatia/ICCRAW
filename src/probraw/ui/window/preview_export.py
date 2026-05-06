@@ -144,7 +144,6 @@ class PreviewExportMixin:
         radius = self.slider_radius.value() / 10.0
         ca_red, ca_blue = self._ca_scale_factors()
         render_adjustments = self._render_adjustment_kwargs()
-        c2pa_render_adjustments = {"applied": True, **render_adjustments}
         sidecar_detail_state = self._detail_adjustment_state()
         sidecar_render_state = self._render_adjustment_state()
         detail_adjustments = {
@@ -172,6 +171,7 @@ class PreviewExportMixin:
                 if profile_path is None and is_generic_output_space(recipe.output_space)
                 else develop_image_array(in_path, decode_recipe, cache_dir=decode_cache_dir)
             )
+            geometry_adjustments = self._output_geometry_adjustment_state(image)
             image = self._apply_output_adjustments(
                 image,
                 denoise_luma=nl,
@@ -182,6 +182,15 @@ class PreviewExportMixin:
                 lateral_ca_blue_scale=ca_blue,
                 render_adjustments=render_adjustments,
             )
+            c2pa_render_adjustments = {
+                "applied": True,
+                **render_adjustments,
+                "geometry": geometry_adjustments,
+            }
+            sidecar_render_payload = {
+                **sidecar_render_state,
+                "geometry": geometry_adjustments,
+            }
             mode, proof_result = write_signed_profiled_tiff(
                 out_path,
                 image,
@@ -192,7 +201,7 @@ class PreviewExportMixin:
                 proof_config=proof_config,
                 detail_adjustments=detail_adjustments,
                 render_adjustments=c2pa_render_adjustments,
-                render_context={"entrypoint": "gui_single_develop"},
+                render_context={"entrypoint": "gui_single_develop", "geometry": geometry_adjustments},
                 generic_profile_dir=self._session_generic_profile_dir(),
             )
             parity_metrics = self._verify_export_preview_color_parity(
@@ -222,7 +231,7 @@ class PreviewExportMixin:
                 recipe=recipe,
                 development_profile=development_profile,
                 detail_adjustments=sidecar_detail_state,
-                render_adjustments=sidecar_render_state,
+                render_adjustments=sidecar_render_payload,
                 profile_path=rendered_profile_path,
                 color_management_mode=mode,
                 output_tiff=out_path,

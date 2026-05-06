@@ -18,6 +18,49 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-05-06
+
+### Added
+
+- Anadido `scripts/check_performance_regression.py` para comparar JSON de
+  benchmarks guardados y fallar ante regresiones configuradas.
+- Anadidos controles de workers y artefactos de perfilado para flujos CLI.
+
+### Changed
+
+- El muestreo de cartas usa ahora mascaras locales por parche en lugar de
+  mascaras de fotograma completo.
+- El analisis MTF reduce temporales de memoria en las distancias ESF.
+- La cache de preview puede reutilizar niveles reducidos de piramide y limita
+  cuantos escribe de forma sincrona.
+- La seleccion automatica de workers de batch considera tamano de captura,
+  algoritmo de demosaico y un suelo conservador para RAWs comprimidos.
+- Los multiplicadores de temperatura/tinte de preview se derivan ahora de
+  cromaticidad CCT y ratios de blanco en sRGB lineal, no de la heuristica
+  anterior.
+- El perfilado lanzado desde GUI usa por defecto un unico worker para evitar
+  procesos pesados implicitos desde Qt en Windows.
+
+### Fixed
+
+- Los TIFF exportados aplican ahora la geometria visual de recorte y nivelado en
+  la ruta de render.
+- Los lotes GUI con varios archivos ya no aplican el recorte/nivelado de la
+  imagen seleccionada a todos los archivos.
+- El redondeo de recorte exportado coincide con la regla `floor/ceil` del visor.
+- Eliminada la ruta experimental LittleCMS/Pillow de 8 bits para TIFF16; la
+  conversion ICC de salida sigue en ArgyllCMS `cctiff` para preservar precision
+  tonal.
+- La cache SHA-256 de RAW puede desactivarse con `PROBRAW_RAW_SHA_CACHE=0` para
+  rehash estricto en flujos de auditoria.
+
+### Tests
+
+- Suite completa: `426 passed, 2 warnings`.
+- Anadida cobertura de regresion para geometria de exportacion, politica de
+  geometria en batch, seleccion de piramide de preview, modo SHA estricto y
+  politica de precision ICC TIFF16.
+
 ## [0.3.14] - 2026-05-06
 
 ### Added

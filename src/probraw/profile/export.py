@@ -91,7 +91,7 @@ def batch_develop(
     proof_sign_config = proof_config or proof_config_from_environment()
 
     recipe_sha = hashlib.sha256(json.dumps(asdict(recipe), sort_keys=True).encode("utf-8")).hexdigest()
-    worker_count = _resolve_batch_workers(len(files), workers=workers)
+    worker_count = _resolve_batch_workers(len(files), workers=workers, files=files, recipe=recipe)
     demosaic_cache_dir = _resolve_demosaic_cache_dir(
         raws_dir=raws_dir,
         out_dir=out_dir,
@@ -156,16 +156,22 @@ def batch_develop(
     )
 
 
-def _resolve_batch_workers(total_items: int, workers: int | None = None) -> int:
+def _resolve_batch_workers(
+    total_items: int,
+    workers: int | None = None,
+    *,
+    files: list[Path] | None = None,
+    recipe: Recipe | None = None,
+) -> int:
     total = max(1, int(total_items))
     if workers is not None:
         configured = int(workers)
         if configured > 0:
             return max(1, min(total, configured))
         available_cpus = _available_cpu_count()
-        return _resolve_auto_batch_workers(total, available_cpus)
+        return _resolve_auto_batch_workers(total, available_cpus, files=files, recipe=recipe)
     available_cpus = _available_cpu_count()
-    auto_workers = _resolve_auto_batch_workers(total, available_cpus)
+    auto_workers = _resolve_auto_batch_workers(total, available_cpus, files=files, recipe=recipe)
     raw_value = os.environ.get(BATCH_WORKERS_ENV, "").strip()
     if not raw_value:
         return auto_workers
@@ -180,9 +186,15 @@ def _resolve_batch_workers(total_items: int, workers: int | None = None) -> int:
     return max(1, min(total, configured))
 
 
-def _resolve_auto_batch_workers(total_items: int, available_cpus: int) -> int:
+def _resolve_auto_batch_workers(
+    total_items: int,
+    available_cpus: int,
+    *,
+    files: list[Path] | None = None,
+    recipe: Recipe | None = None,
+) -> int:
     cpu_bound = max(1, min(total_items, max(1, int(available_cpus))))
-    memory_bound = _memory_limited_batch_workers(total_items)
+    memory_bound = _memory_limited_batch_workers(total_items, files=files, recipe=recipe)
     return max(1, min(cpu_bound, memory_bound))
 
 
@@ -196,7 +208,12 @@ def _available_cpu_count() -> int:
     return max(1, available_cpus)
 
 
-def _memory_limited_batch_workers(total_items: int) -> int:
+def _memory_limited_batch_workers(
+    total_items: int,
+    *,
+    files: list[Path] | None = None,
+    recipe: Recipe | None = None,
+) -> int:
     available_bytes = _available_physical_memory_bytes()
     if available_bytes is None or available_bytes <= 0:
         return max(1, int(total_items))
@@ -205,10 +222,7 @@ def _memory_limited_batch_workers(total_items: int) -> int:
         BATCH_MEMORY_RESERVE_MB_ENV,
         default=DEFAULT_BATCH_MEMORY_RESERVE_MB,
     )
-    per_worker_mb = _read_positive_env_value(
-        BATCH_WORKER_RAM_MB_ENV,
-        default=DEFAULT_BATCH_WORKER_RAM_MB,
-    )
+    per_worker_mb = _estimated_worker_ram_mb(files=files, recipe=recipe)
     reserve_bytes = int(reserve_mb) * 1024 * 1024
     per_worker_bytes = max(1, int(per_worker_mb) * 1024 * 1024)
     budget_bytes = max(0, int(available_bytes) - reserve_bytes)
@@ -216,6 +230,45 @@ def _memory_limited_batch_workers(total_items: int) -> int:
         return 1
     workers = max(1, budget_bytes // per_worker_bytes)
     return max(1, min(int(total_items), int(workers)))
+
+
+def _estimated_worker_ram_mb(*, files: list[Path] | None = None, recipe: Recipe | None = None) -> int:
+    raw = os.environ.get(BATCH_WORKER_RAM_MB_ENV, "").strip()
+    if raw:
+        return _read_positive_env_value(BATCH_WORKER_RAM_MB_ENV, default=DEFAULT_BATCH_WORKER_RAM_MB)
+
+    max_size_mb = 0.0
+    has_raw_input = False
+    for path in files or []:
+        candidate = Path(path)
+        if candidate.suffix.lower() in RAW_EXTENSIONS:
+            has_raw_input = True
+        try:
+            max_size_mb = max(max_size_mb, float(candidate.stat().st_size) / (1024.0 * 1024.0))
+        except OSError:
+            continue
+
+    if max_size_mb <= 0.0:
+        base = float(DEFAULT_BATCH_WORKER_RAM_MB)
+    elif max_size_mb <= 18.0:
+        base = 1200.0
+    elif max_size_mb <= 45.0:
+        base = 2000.0
+    elif max_size_mb <= 75.0:
+        base = 2800.0
+    else:
+        base = 3600.0
+
+    algorithm = str(getattr(recipe, "demosaic_algorithm", "") if recipe is not None else "").strip().lower()
+    if algorithm in {"linear", "vng", "ppg"}:
+        base *= 0.75
+    elif algorithm in {"amaze", "dcb", "lmmse", "afd"}:
+        base *= 1.10
+    if bool(getattr(recipe, "use_cache", False) if recipe is not None else False):
+        base *= 1.05
+    if has_raw_input:
+        base = max(base, 1800.0)
+    return max(512, int(round(base)))
 
 
 def _process_batch_develop_job(

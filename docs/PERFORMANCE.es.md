@@ -36,6 +36,12 @@ $env:QT_QPA_PLATFORM="offscreen"
 python scripts/benchmark_gui_interaction.py --raw .\ruta\a\captura.NEF --algorithm dcb --full-resolution --out .\tmp\gui_benchmark\d850_full_ui.json
 ```
 
+Comparacion automatica de regresiones a partir de JSON ya generados:
+
+```powershell
+python scripts/check_performance_regression.py --baseline-raw .\baseline\raw.json --current-raw .\tmp\raw_benchmark\results.json --baseline-gui .\baseline\gui.json --current-gui .\tmp\gui_benchmark\d850_full_ui.json --tolerance 0.20
+```
+
 Este test simula arrastres reales de slider y curva tonal. Mide:
 
 - coste inmediato de `setValue`/emision de puntos de curva,
@@ -66,6 +72,21 @@ Variables de control:
   Por defecto son 2800 MiB, ajustado a partir de una D850 de 45,7 MP: el
   demosaico DCB consume ~1,52 GiB por proceso y el batch real necesita margen
   adicional para escribir TIFF lineal/final.
+
+Desde la serie posterior, el modo automatico ajusta ese presupuesto usando el
+tamano de las capturas y el algoritmo de demosaico. `PROBRAW_BATCH_WORKER_RAM_MB`
+sigue teniendo prioridad para fijar un valor manual.
+
+El perfilado de cartas tambien puede paralelizar la fase de revelar/detectar/
+muestrear:
+
+```powershell
+python -m probraw auto-profile-batch --charts .\cartas --targets .\raws --recipe .\recipe.yml --reference colorchecker24_colorchecker2005_d50.json --profile-out .\camera.icc --profile-report .\profile_report.json --out .\out --workdir .\work --profile-workers 4
+```
+
+`--profile-artifacts minimal` conserva detecciones y muestras JSON, pero omite
+TIFFs desarrollados y overlays PNG intermedios para medir o ejecutar sesiones
+rapidas. El modo por defecto `full` mantiene todos los artefactos de auditoria.
 
 ## Cache numerica de demosaico
 
@@ -298,6 +319,26 @@ Referencias:
 
 ## Cambios aplicados
 
+- El muestreo de parches de carta usa mascaras locales por bounding box, no una
+  mascara del tamano completo de la imagen por parche.
+- La fase de perfilado puede procesar capturas de carta en paralelo por procesos
+  y permite omitir artefactos de imagen intermedios con `--profile-artifacts
+  minimal`.
+- La clave de cache de demosaico reutiliza en memoria el SHA-256 del RAW cuando
+  `(ruta, tamano, mtime_ns)` no cambia, evitando relecturas completas en hits
+  sucesivos. Para rehash estricto en entornos de auditoria, desactivar con
+  `PROBRAW_RAW_SHA_CACHE=0`.
+- El calculo automatico de workers batch estima memoria por tamano de captura y
+  algoritmo, mantiene un suelo conservador para RAWs comprimidos y respeta los
+  overrides por variable de entorno.
+- El analisis MTF evita construir mallas `x/y` completas separadas para las
+  distancias de ESF/CA.
+- La cache de previews escribe solo los niveles reducidos mas cercanos a la
+  resolucion solicitada para limitar CPU/IO en la primera carga.
+- La exportacion ICC mantiene ArgyllCMS `cctiff` como unica ruta canonica para
+  no degradar precision tonal en salidas TIFF16.
+- `scripts/check_performance_regression.py` compara JSON de benchmarks contra
+  una linea base y falla si alguna metrica supera la tolerancia configurada.
 - Los histogramas y el panel de analisis de preview muestrean antes de convertir
   y recortar arrays grandes. Esto reduce copias temporales al trabajar con
   previews 1:1 sin tocar el render canonico.

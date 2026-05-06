@@ -1453,6 +1453,40 @@ def test_preview_disk_cache_restores_with_single_working_copy(tmp_path: Path, qa
         window.close()
 
 
+def test_preview_disk_cache_reuses_pyramid_level(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_path = root / "01_ORG" / "capture.NEF"
+    raw_path.parent.mkdir(parents=True)
+    raw_path.write_bytes(b"raw")
+
+    window = ICCRawMainWindow()
+    try:
+        window._active_session_root = root.resolve()
+        recipe = Recipe()
+        full_key = window._preview_cache_key(
+            selected=raw_path,
+            recipe=recipe,
+            fast_raw=False,
+            max_preview_side=0,
+        )
+        requested_key = window._preview_cache_key(
+            selected=raw_path,
+            recipe=recipe,
+            fast_raw=False,
+            max_preview_side=2600,
+        )
+        image = gui_module.np.linspace(0.0, 1.0, 5000 * 20 * 3, dtype=gui_module.np.float32).reshape(5000, 20, 3)
+
+        window._write_preview_to_disk_cache(full_key, image, selected=raw_path)
+        restored = window._cached_preview_image(requested_key, selected=raw_path)
+
+        assert restored is not None
+        assert max(restored.shape[:2]) == 2600
+        assert requested_key in window._preview_cache
+    finally:
+        window.close()
+
+
 def test_raw_preview_uses_bounded_high_quality_mode(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "sample.NEF"
     raw_path.write_bytes(b"raw")
@@ -6681,6 +6715,117 @@ def test_process_batch_files_applies_sharpening_to_rendered_pixels(tmp_path: Pat
         assert captured["detail_adjustments"]["sharpen_amount"] == pytest.approx(1.0)
         assert not gui_module.np.allclose(captured["image"], base)
         assert gui_module.np.allclose(captured["image"], expected)
+    finally:
+        window.close()
+
+
+def test_output_adjustments_apply_view_crop_and_level_rotation(qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((20, 30, 3), dtype=gui_module.np.float32)
+        image[5:15, 10:20, 0] = 1.0
+        window._image_crop_normalized_rect = (10 / 30, 5 / 20, 10 / 30, 10 / 20)
+        window._viewer_rotation = 90.0
+
+        out = window._apply_output_adjustments(
+            image,
+            denoise_luma=0.0,
+            denoise_color=0.0,
+            sharpen_amount=0.0,
+            sharpen_radius=1.0,
+            lateral_ca_red_scale=1.0,
+            lateral_ca_blue_scale=1.0,
+            render_adjustments={},
+        )
+
+        assert out.shape[:2] == (10, 10)
+        assert float(gui_module.np.max(out[..., 0])) == pytest.approx(1.0)
+        state = window._output_geometry_adjustment_state(image)
+        assert state["crop_rect"] == [10, 5, 10, 10]
+        assert state["rotation_degrees"] == pytest.approx(90.0)
+    finally:
+        window.close()
+
+
+def test_output_crop_uses_viewer_floor_ceil_rounding(qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.zeros((20, 30, 3), dtype=gui_module.np.float32)
+        window._image_crop_normalized_rect = (10.2 / 30.0, 5.2 / 20.0, 9.2 / 30.0, 9.2 / 20.0)
+
+        assert window._export_crop_rect_for_image(image) == (10, 5, 10, 10)
+    finally:
+        window.close()
+
+
+def test_process_batch_files_skips_global_geometry_for_multi_file_batches(tmp_path: Path, monkeypatch, qapp):
+    files = [tmp_path / "a.png", tmp_path / "b.png"]
+    out_dir = tmp_path / "out"
+    for path in files:
+        Image.new("RGB", (32, 32), (128, 128, 128)).save(path)
+    base = gui_module.np.zeros((20, 30, 3), dtype=gui_module.np.float32)
+    base[5:15, 10:20, 0] = 1.0
+    captured: list[dict[str, object]] = []
+
+    def fake_write_signed_profiled_tiff(out_tiff, image_linear_rgb, **kwargs):
+        captured.append(
+            {
+                "image": gui_module.np.asarray(image_linear_rgb).copy(),
+                "render_adjustments": kwargs["render_adjustments"],
+            }
+        )
+        Path(out_tiff).parent.mkdir(parents=True, exist_ok=True)
+        Path(out_tiff).write_bytes(b"signed tiff")
+        return "standard_srgb_output_icc", ProbRawProofResult(
+            proof_path=str(Path(out_tiff).with_suffix(".proof.json")),
+            proof_sha256="proof-sha",
+            output_tiff_sha256="tiff-sha",
+            raw_sha256="raw-sha",
+            signer_public_key_sha256="pub-sha",
+        )
+
+    monkeypatch.setattr(gui_module, "read_image", lambda _path: base.copy())
+    monkeypatch.setattr(gui_module, "write_signed_profiled_tiff", fake_write_signed_profiled_tiff)
+
+    window = ICCRawMainWindow()
+    try:
+        window._image_crop_normalized_rect = (10 / 30, 5 / 20, 10 / 30, 10 / 20)
+        window._viewer_rotation = 90.0
+        payload = window._process_batch_files(
+            files=files,
+            out_dir=out_dir,
+            recipe=Recipe(output_space="srgb", output_linear=False),
+            apply_adjust=True,
+            use_profile=False,
+            profile_path=None,
+            denoise_luma=0.0,
+            denoise_color=0.0,
+            sharpen_amount=0.0,
+            sharpen_radius=1.0,
+            lateral_ca_red_scale=1.0,
+            lateral_ca_blue_scale=1.0,
+            render_adjustments={},
+            c2pa_config=None,
+            proof_config=ProbRawProofConfig(private_key_path=None),
+        )
+
+        assert payload["errors"] == []
+        assert payload["geometry_policy"] == "single_file_only"
+        assert len(captured) == 2
+        for item in captured:
+            assert item["image"].shape == base.shape
+            assert item["render_adjustments"]["geometry"]["crop_rect"] is None
+            assert item["render_adjustments"]["geometry"]["rotation_degrees"] == pytest.approx(0.0)
+    finally:
+        window.close()
+
+
+def test_preview_pyramid_limits_synchronous_levels(qapp):
+    window = ICCRawMainWindow()
+    try:
+        assert window._preview_pyramid_levels_to_write(source_side=6000, requested_side=1600) == [4096, 3200]
+        assert window._preview_pyramid_levels_to_write(source_side=1900, requested_side=1600) == [1600]
+        assert window._preview_pyramid_levels_to_write(source_side=1000, requested_side=1600) == [800]
     finally:
         window.close()
 

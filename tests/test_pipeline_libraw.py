@@ -1,4 +1,6 @@
 from pathlib import Path
+import hashlib
+import os
 
 import numpy as np
 import pytest
@@ -209,6 +211,24 @@ def test_develop_image_rejects_unknown_raw_developer():
         _develop_image(Path("/tmp/capture.nef"), recipe)
 
 
+def test_raw_sha_cache_can_be_disabled_for_strict_rehash(tmp_path: Path, monkeypatch):
+    source = tmp_path / "capture.nef"
+    source.write_bytes(b"abc")
+    stat = source.stat()
+    pipeline._RAW_SHA_CACHE.clear()
+
+    first = pipeline._raw_sha256_cached(source, stat.st_size, stat.st_mtime_ns)
+    source.write_bytes(b"xyz")
+    os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+    cached = pipeline._raw_sha256_cached(source, stat.st_size, stat.st_mtime_ns)
+    monkeypatch.setenv("PROBRAW_RAW_SHA_CACHE", "0")
+    strict = pipeline._raw_sha256_cached(source, stat.st_size, stat.st_mtime_ns)
+
+    assert cached == first
+    assert strict == hashlib.sha256(b"xyz").hexdigest()
+
+
 def test_develop_controlled_writes_audit_before_output_adjustments(tmp_path: Path):
     source = tmp_path / "input.tiff"
     out = tmp_path / "out.tiff"
@@ -302,6 +322,29 @@ def test_scene_linear_demosaic_cache_key_includes_demosaic_algorithm(tmp_path: P
 
     assert calls["count"] == 2
     assert not np.allclose(first, second)
+
+
+def test_demosaic_cache_key_reuses_raw_sha_for_unchanged_file(tmp_path: Path, monkeypatch):
+    raw = tmp_path / "capture.nef"
+    raw.write_bytes(b"fake-raw-cache-input" * 8)
+    recipe = Recipe(use_cache=True, demosaic_algorithm="dcb")
+    opens = {"count": 0}
+    original_open = Path.open
+
+    pipeline._RAW_SHA_CACHE.clear()
+
+    def counting_open(self, *args, **kwargs):
+        if self == raw:
+            opens["count"] += 1
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", counting_open)
+
+    first = pipeline._demosaic_cache_key(raw, recipe)
+    second = pipeline._demosaic_cache_key(raw, recipe)
+
+    assert first == second
+    assert opens["count"] == 1
 
 
 def test_develop_standard_output_array_requests_standard_libraw_space(tmp_path: Path, monkeypatch):

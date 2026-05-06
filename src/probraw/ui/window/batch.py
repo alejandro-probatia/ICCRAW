@@ -104,7 +104,6 @@ class BatchWorkflowMixin:
             "lateral_ca_red_scale": lateral_ca_red_scale if apply_adjust else 1.0,
             "lateral_ca_blue_scale": lateral_ca_blue_scale if apply_adjust else 1.0,
         }
-        c2pa_render_adjustments = {"applied": True, **render_adjustments} if apply_adjust else {"applied": False}
         sidecar_detail_state = sidecar_detail_adjustments or {
             "sharpen": int(round((sharpen_amount if apply_adjust else 0.0) * 100)),
             "radius": int(round((sharpen_radius if apply_adjust else 1.0) * 10)),
@@ -140,6 +139,12 @@ class BatchWorkflowMixin:
 
         output_slots: list[dict[str, str] | None] = [None] * len(planned)
         error_slots: list[dict[str, str] | None] = [None] * len(planned)
+        apply_global_geometry = bool(apply_adjust and len(planned) == 1)
+        identity_geometry = {
+            "crop_rect": None,
+            "crop_normalized": None,
+            "rotation_degrees": 0.0,
+        }
 
         def process_one(
             index: int,
@@ -160,6 +165,11 @@ class BatchWorkflowMixin:
                 else:
                     image = read_image(src)
 
+                geometry_adjustments = (
+                    self._output_geometry_adjustment_state(image)
+                    if apply_global_geometry
+                    else dict(identity_geometry)
+                )
                 if apply_adjust:
                     image = self._apply_output_adjustments(
                         image,
@@ -170,7 +180,28 @@ class BatchWorkflowMixin:
                         lateral_ca_red_scale=lateral_ca_red_scale,
                         lateral_ca_blue_scale=lateral_ca_blue_scale,
                         render_adjustments=render_adjustments,
+                    ) if apply_global_geometry else apply_render_adjustments(
+                        apply_adjustments(
+                            image,
+                            denoise_luminance=denoise_luma,
+                            denoise_color=denoise_color,
+                            sharpen_amount=sharpen_amount,
+                            sharpen_radius=sharpen_radius,
+                            lateral_ca_red_scale=lateral_ca_red_scale,
+                            lateral_ca_blue_scale=lateral_ca_blue_scale,
+                        ),
+                        **render_adjustments,
                     )
+                render_adjustment_payload = (
+                    {"applied": True, **render_adjustments, "geometry": geometry_adjustments}
+                    if apply_adjust
+                    else {"applied": False}
+                )
+                sidecar_render_payload = (
+                    {**sidecar_render_state, "geometry": geometry_adjustments}
+                    if apply_adjust
+                    else sidecar_render_state
+                )
 
                 mode, proof_result = write_signed_profiled_tiff(
                     out_path,
@@ -181,8 +212,12 @@ class BatchWorkflowMixin:
                     c2pa_config=c2pa_config,
                     proof_config=proof_config,
                     detail_adjustments=detail_adjustments,
-                    render_adjustments=c2pa_render_adjustments,
-                    render_context={"entrypoint": "gui_batch_develop", "apply_adjustments": bool(apply_adjust)},
+                    render_adjustments=render_adjustment_payload,
+                    render_context={
+                        "entrypoint": "gui_batch_develop",
+                        "apply_adjustments": bool(apply_adjust),
+                        "geometry": geometry_adjustments,
+                    },
                     generic_profile_dir=generic_profile_dir,
                 )
                 rendered_profile_path = profile_path_for_render_settings(
@@ -205,7 +240,7 @@ class BatchWorkflowMixin:
                         recipe=recipe,
                         development_profile=development_profile,
                         detail_adjustments=sidecar_detail_state,
-                        render_adjustments=sidecar_render_state,
+                        render_adjustments=sidecar_render_payload,
                         icc_profile_path=rendered_profile_path,
                         color_management_mode=mode,
                         session_root=self._active_session_root,
@@ -246,6 +281,7 @@ class BatchWorkflowMixin:
             "errors": errors,
             "development_profile": development_profile or {},
             "workers": worker_count,
+            "geometry_policy": "single_file_only" if apply_adjust else "not_applied",
         }
 
     def _start_batch_develop(self, files: list[Path], task_label: str) -> None:

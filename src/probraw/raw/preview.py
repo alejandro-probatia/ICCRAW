@@ -1103,18 +1103,37 @@ def temperature_tint_multipliers(
 ) -> np.ndarray:
     temp = float(np.clip(temperature_kelvin, 2000.0, 12000.0))
     neutral = float(np.clip(neutral_kelvin, 2000.0, 12000.0))
-    warm = float(np.clip(np.log(temp / neutral), -1.2, 1.2))
     tint_n = float(np.clip(tint / 100.0, -1.0, 1.0))
 
-    multipliers = np.array(
-        [
-            1.0 + 0.22 * warm + 0.08 * tint_n,
-            1.0 - 0.16 * tint_n,
-            1.0 - 0.22 * warm + 0.08 * tint_n,
-        ],
+    target_white = _cct_linear_srgb_white(temp)
+    neutral_white = _cct_linear_srgb_white(neutral)
+    multipliers = neutral_white / np.clip(target_white, 1e-4, None)
+    multipliers = multipliers / max(float(multipliers[1]), 1e-4)
+
+    tint_multipliers = np.array(
+        [1.0 + 0.06 * tint_n, 1.0 - 0.12 * tint_n, 1.0 + 0.06 * tint_n],
         dtype=np.float32,
     )
-    return np.clip(multipliers, 0.55, 1.65)
+    return np.clip(multipliers.astype(np.float32) * tint_multipliers, 0.35, 2.85)
+
+
+@lru_cache(maxsize=256)
+def _cct_linear_srgb_white(temperature_kelvin: float) -> np.ndarray:
+    cct = float(np.clip(temperature_kelvin, 2000.0, 12000.0))
+    xy = np.asarray(colour.temperature.CCT_to_xy_Kang2002(cct), dtype=np.float64)
+    xyz = np.asarray(colour.xy_to_XYZ(xy), dtype=np.float64)
+    rgb = np.asarray(
+        colour.XYZ_to_RGB(
+            xyz,
+            "sRGB",
+            illuminant=None,
+            chromatic_adaptation_transform=None,
+            apply_cctf_encoding=False,
+        ),
+        dtype=np.float64,
+    )
+    rgb = np.clip(rgb, 1e-4, None)
+    return (rgb / max(float(rgb[1]), 1e-4)).astype(np.float32)
 
 
 def estimate_temperature_tint_from_neutral_sample(
@@ -1159,18 +1178,21 @@ def _best_temperature_tint_for_sample(
     temps = np.asarray(temp_values, dtype=np.float64)
     tints = np.asarray(tint_values, dtype=np.float64)
     neutral = float(np.clip(neutral_kelvin, 2000.0, 12000.0))
-    warm = np.clip(np.log(temps[:, None] / neutral), -1.2, 1.2)
     tint_n = np.clip(tints[None, :] / 100.0, -1.0, 1.0)
 
-    multipliers = np.stack(
-        [
-            1.0 + 0.22 * warm + 0.08 * tint_n,
-            np.broadcast_to(1.0 - 0.16 * tint_n, (temps.size, tints.size)),
-            1.0 - 0.22 * warm + 0.08 * tint_n,
-        ],
+    neutral_white = _cct_linear_srgb_white(neutral).astype(np.float64)
+    target_whites = np.asarray([_cct_linear_srgb_white(float(temp)) for temp in temps], dtype=np.float64)
+    multipliers = neutral_white.reshape((1, 3)) / np.clip(target_whites, 1e-4, None)
+    multipliers = multipliers / np.clip(multipliers[:, 1:2], 1e-4, None)
+    tint_multipliers = np.stack(
+        (
+            1.0 + 0.06 * tint_n,
+            1.0 - 0.12 * tint_n,
+            1.0 + 0.06 * tint_n,
+        ),
         axis=-1,
     )
-    multipliers = np.clip(multipliers, 0.55, 1.65)
+    multipliers = np.clip(multipliers[:, None, :] * tint_multipliers, 0.35, 2.85)
     corrected = multipliers * sample_rgb.reshape((1, 1, 3))
     mean = np.mean(corrected, axis=-1, keepdims=True)
     log_chroma = np.log(np.clip(corrected / np.clip(mean, 1e-6, None), 1e-6, None))

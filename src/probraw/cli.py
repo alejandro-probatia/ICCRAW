@@ -224,6 +224,18 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         default=None,
         help="Numero de trabajadores para la fase batch; 1 fuerza serial, 0/omitido usa auto",
     )
+    s.add_argument(
+        "--profile-workers",
+        type=int,
+        default=None,
+        help="Trabajadores para revelar/detectar cartas; 1 fuerza serial, 0/omitido usa auto",
+    )
+    s.add_argument(
+        "--profile-artifacts",
+        choices=["full", "minimal"],
+        default="full",
+        help="Artefactos de perfilado: full escribe TIFF/overlays; minimal conserva JSON y omite imagenes intermedias",
+    )
     s.add_argument("--cache-dir", default=None, help="Directorio de cache numerica de demosaico si la receta usa use_cache")
 
     s = sub.add_parser("compare-qa-reports")
@@ -471,6 +483,8 @@ def main(argv: list[str] | None = None) -> int:
                 lens_model=args.lens,
                 workers=args.workers,
                 cache_dir=Path(args.cache_dir) if args.cache_dir else None,
+                profile_workers=args.profile_workers,
+                profile_artifacts=args.profile_artifacts,
             )
             print(json.dumps(result, indent=2))
             return 0

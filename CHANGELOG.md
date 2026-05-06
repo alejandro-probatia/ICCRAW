@@ -20,6 +20,44 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-05-06
+
+### Added
+
+- Added `scripts/check_performance_regression.py` to compare stored benchmark
+  JSON files and fail on configured regressions.
+- Added profile-generation worker/artifact controls for CLI workflows.
+
+### Changed
+
+- Chart sampling now builds local patch masks instead of full-frame masks.
+- MTF edge-spread distance grids allocate less temporary memory.
+- Preview disk cache can reuse reduced pyramid levels while limiting the number
+  written synchronously.
+- Batch worker auto-selection now considers capture size, demosaic algorithm and
+  a conservative floor for compressed RAW files.
+- Temperature/tint preview multipliers are now derived from CCT chromaticity and
+  linear sRGB white ratios instead of the previous heuristic.
+- GUI profile generation defaults to a single worker to avoid implicit heavy
+  process spawning from Qt on Windows.
+
+### Fixed
+
+- Exported TIFFs now apply visual crop and leveling geometry in the render path.
+- Multi-file GUI batch exports no longer apply the currently selected image's
+  crop/leveling geometry to every file.
+- Export crop rounding now matches the viewer's floor/ceil behavior.
+- Removed the experimental 8-bit LittleCMS/Pillow TIFF16 export path; ICC output
+  conversion remains on ArgyllCMS `cctiff` to preserve tonal precision.
+- RAW SHA-256 caching can be disabled with `PROBRAW_RAW_SHA_CACHE=0` for strict
+  rehashing in audit workflows.
+
+### Tests
+
+- Full suite: `426 passed, 2 warnings`.
+- Added regression coverage for export geometry, batch geometry policy, preview
+  pyramid selection, RAW SHA strict mode and 16-bit ICC export precision policy.
+
 ## [0.3.14] - 2026-05-06
 
 ### Added

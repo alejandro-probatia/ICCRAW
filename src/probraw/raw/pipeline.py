@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 from functools import lru_cache
+import threading
 
 import cv2
 import numpy as np
@@ -50,6 +51,10 @@ DEMOSAIC_CACHE_SCHEMA = "probraw-demosaic-cache-v4"
 DEMOSAIC_CACHE_MAX_GB_ENV = "PROBRAW_DEMOSAIC_CACHE_MAX_GB"
 DEFAULT_DEMOSAIC_CACHE_MAX_GB = 5.0
 MAX_FALSE_COLOR_SUPPRESSION_STEPS = 10
+RAW_SHA_CACHE_ENV = "PROBRAW_RAW_SHA_CACHE"
+_RAW_SHA_CACHE_LOCK = threading.RLock()
+_RAW_SHA_CACHE: dict[tuple[str, int, int], str] = {}
+_RAW_SHA_CACHE_MAX_ENTRIES = 256
 
 STANDARD_OUTPUT_ALIASES = {
     "srgb": "srgb",
@@ -504,15 +509,11 @@ def _demosaic_cache_key(raw_path: Path, recipe: Recipe, *, output_color_space: s
     path = Path(raw_path)
     st = path.stat()
     h = hashlib.sha256()
-    raw_sha = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            raw_sha.update(chunk)
     payload = {
         "schema": DEMOSAIC_CACHE_SCHEMA,
         "name": path.name,
         "size": int(st.st_size),
-        "sha256": raw_sha.hexdigest(),
+        "sha256": _raw_sha256_cached(path, st.st_size, st.st_mtime_ns),
         "raw_developer": str(recipe.raw_developer),
         "demosaic_algorithm": str(recipe.demosaic_algorithm),
         "demosaic_edge_quality": int(getattr(recipe, "demosaic_edge_quality", 0) or 0),
@@ -540,6 +541,42 @@ def _demosaic_cache_key(raw_path: Path, recipe: Recipe, *, output_color_space: s
     }
     h.update(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     return h.hexdigest()
+
+
+def _raw_sha256_cached(path: Path, size: int, mtime_ns: int) -> str:
+    cache_enabled = _read_env_bool(RAW_SHA_CACHE_ENV, default=True)
+    try:
+        resolved = str(path.expanduser().resolve())
+    except Exception:
+        resolved = str(path)
+    key = (resolved, int(size), int(mtime_ns))
+    if cache_enabled:
+        with _RAW_SHA_CACHE_LOCK:
+            cached = _RAW_SHA_CACHE.get(key)
+            if cached is not None:
+                return cached
+    raw_sha = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            raw_sha.update(chunk)
+    digest = raw_sha.hexdigest()
+    if cache_enabled:
+        with _RAW_SHA_CACHE_LOCK:
+            _RAW_SHA_CACHE[key] = digest
+            while len(_RAW_SHA_CACHE) > _RAW_SHA_CACHE_MAX_ENTRIES:
+                _RAW_SHA_CACHE.pop(next(iter(_RAW_SHA_CACHE)))
+    return digest
+
+
+def _read_env_bool(name: str, *, default: bool) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return bool(default)
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)
 
 
 def _demosaic_cache_path(

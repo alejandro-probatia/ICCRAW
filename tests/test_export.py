@@ -91,6 +91,10 @@ def test_color_management_mode_accepts_generic_output_spaces():
     assert color_management_mode(Recipe(output_space="prophoto_rgb", output_linear=False)) == "converted_prophoto_rgb"
 
 
+def test_export_has_no_8bit_lcms_tiff16_conversion_path():
+    assert not hasattr(export_module, "_write_converted_output_tiff_with_lcms8")
+
+
 def test_write_profiled_tiff_embeds_standard_output_profile_without_chart(tmp_path: Path, monkeypatch):
     _fake_standard_profiles(tmp_path, monkeypatch)
     out = tmp_path / "manual_prophoto.tiff"
@@ -307,6 +311,34 @@ def test_resolve_batch_workers_auto_honours_memory_env_tuning(monkeypatch):
 
     # 3 GiB available - 512 MiB reserve = 2.5 GiB budget => 5 workers @ 512 MiB.
     assert _resolve_batch_workers(12) == 5
+
+
+def test_resolve_batch_workers_auto_uses_capture_size_estimate(tmp_path: Path, monkeypatch):
+    small = tmp_path / "small.nef"
+    small.write_bytes(b"0" * (8 * 1024 * 1024))
+    monkeypatch.delenv("PROBRAW_BATCH_WORKERS", raising=False)
+    monkeypatch.delenv("PROBRAW_BATCH_WORKER_RAM_MB", raising=False)
+    monkeypatch.setattr(export_module, "_available_cpu_count", lambda: 8)
+    monkeypatch.setattr(export_module, "_available_physical_memory_bytes", lambda: 8 * 1024 * 1024 * 1024)
+
+    workers = _resolve_batch_workers(
+        8,
+        files=[small],
+        recipe=Recipe(demosaic_algorithm="linear"),
+    )
+
+    assert workers > 1
+
+
+def test_estimated_worker_ram_keeps_raw_floor_for_compressed_inputs(tmp_path: Path, monkeypatch):
+    small_raw = tmp_path / "compressed.nef"
+    small_raw.write_bytes(b"0" * (4 * 1024 * 1024))
+    monkeypatch.delenv("PROBRAW_BATCH_WORKER_RAM_MB", raising=False)
+
+    assert export_module._estimated_worker_ram_mb(
+        files=[small_raw],
+        recipe=Recipe(demosaic_algorithm="linear"),
+    ) >= 1800
 
 
 def test_batch_develop_writes_true_linear_audit_before_output_adjustments(tmp_path: Path):

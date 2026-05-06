@@ -5,7 +5,7 @@ import pytest
 import tifffile
 
 from probraw.chart.detection import detect_chart, detect_chart_from_corners
-from probraw.chart.sampling import ReferenceCatalog, bundled_reference_catalogs, reference_catalog_template, sample_chart
+from probraw.chart.sampling import ReferenceCatalog, _sample_patch, bundled_reference_catalogs, reference_catalog_template, sample_chart
 from probraw.core.models import ChartDetectionResult, PatchDetection, Point2
 
 
@@ -156,6 +156,36 @@ def test_sample_chart_honors_trim_percent_and_saturation_rejection(tmp_path: Pat
     assert trimmed.samples[0].sample_center == [4.5, 4.5]
     assert "trim_percent=0.25" in trimmed.strategy
     assert "reject_saturated=true" in trimmed.strategy
+
+
+def test_sample_patch_uses_same_pixels_as_full_frame_mask():
+    image = np.arange(40 * 50 * 3, dtype=np.float32).reshape(40, 50, 3) / 10000.0
+    polygon = np.array([[13.2, 7.7], [34.6, 9.1], [31.4, 24.8], [11.9, 22.2]], dtype=np.float32)
+
+    measured, excluded, saturated = _sample_patch(
+        image,
+        polygon,
+        "trimmed_mean",
+        trim_percent=0.1,
+        reject_saturated=True,
+    )
+
+    mask = np.zeros(image.shape[:2], dtype=np.uint8)
+    import cv2
+
+    cv2.fillPoly(mask, [np.round(polygon).astype(np.int32)], 255)
+    pixels = image[mask == 255]
+    expected = np.array(
+        [
+            np.mean(np.sort(pixels[:, channel])[int(pixels.shape[0] * 0.1) : pixels.shape[0] - int(pixels.shape[0] * 0.1)])
+            for channel in range(3)
+        ],
+        dtype=np.float32,
+    )
+
+    assert np.allclose(measured, expected)
+    assert excluded == pytest.approx(0.2)
+    assert saturated == 0.0
 
 
 def test_reference_catalog_from_path_validates_required_metadata(tmp_path: Path):

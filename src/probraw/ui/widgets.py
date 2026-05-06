@@ -2985,7 +2985,7 @@ if QtWidgets is not None:
                 else self._base_pixmap.copy(source_rect)
             )
             if abs(rotation) > 1e-6:
-                cropped = cropped.transformed(QtGui.QTransform().rotate(rotation), QtCore.Qt.FastTransformation)
+                cropped = cropped.transformed(QtGui.QTransform().rotate(rotation), QtCore.Qt.SmoothTransformation)
             self._display_pixmap_cache_key = key
             self._display_pixmap_cache = cropped
             return cropped

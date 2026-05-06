@@ -444,7 +444,88 @@ class DisplayControlsMixin:
             lateral_ca_red_scale=lateral_ca_red_scale,
             lateral_ca_blue_scale=lateral_ca_blue_scale,
         )
-        return apply_render_adjustments(adjusted, **render_adjustments)
+        adjusted = apply_render_adjustments(adjusted, **render_adjustments)
+        return self._apply_output_geometry_adjustments(adjusted)
+
+    def _output_geometry_adjustment_state(self, image: np.ndarray | None = None) -> dict[str, Any]:
+        crop_rect = self._export_crop_rect_for_image(image) if image is not None else None
+        rotation = float(getattr(self, "_viewer_rotation", 0.0) or 0.0) % 360.0
+        signed_rotation = ((rotation + 180.0) % 360.0) - 180.0
+        return {
+            "crop_rect": list(crop_rect) if crop_rect is not None else None,
+            "crop_normalized": list(getattr(self, "_image_crop_normalized_rect", None) or []) or None,
+            "rotation_degrees": float(signed_rotation),
+        }
+
+    def _apply_output_geometry_adjustments(self, image: np.ndarray) -> np.ndarray:
+        array = np.asarray(image, dtype=np.float32)
+        crop_rect = self._export_crop_rect_for_image(array)
+        if crop_rect is not None:
+            x, y, w, h = crop_rect
+            array = np.ascontiguousarray(array[y : y + h, x : x + w, :3])
+        rotation = float(getattr(self, "_viewer_rotation", 0.0) or 0.0) % 360.0
+        signed_rotation = ((rotation + 180.0) % 360.0) - 180.0
+        if abs(signed_rotation) <= 1e-6:
+            return np.clip(array, 0.0, 1.0).astype(np.float32, copy=False)
+        return self._rotate_output_image(array, signed_rotation)
+
+    def _export_crop_rect_for_image(self, image: np.ndarray | None) -> tuple[int, int, int, int] | None:
+        if image is None:
+            return None
+        array = np.asarray(image)
+        if array.ndim < 2:
+            return None
+        image_h, image_w = int(array.shape[0]), int(array.shape[1])
+        if image_w <= 0 or image_h <= 0:
+            return None
+        normalized = getattr(self, "_image_crop_normalized_rect", None)
+        if isinstance(normalized, (list, tuple)) and len(normalized) >= 4:
+            nx, ny, nw, nh = (float(v) for v in normalized[:4])
+            x0 = int(np.floor(nx * image_w))
+            y0 = int(np.floor(ny * image_h))
+            x1 = int(np.ceil((nx + nw) * image_w))
+            y1 = int(np.ceil((ny + nh) * image_h))
+        else:
+            rect = getattr(self, "_image_crop_rect", None)
+            if not (isinstance(rect, (list, tuple)) and len(rect) >= 4):
+                return None
+            x, y, w, h = (float(v) for v in rect[:4])
+            x0 = int(np.floor(x))
+            y0 = int(np.floor(y))
+            x1 = int(np.ceil(x + w))
+            y1 = int(np.ceil(y + h))
+        x0 = max(0, min(image_w - 1, x0))
+        y0 = max(0, min(image_h - 1, y0))
+        x1 = max(x0 + 1, min(image_w, x1))
+        y1 = max(y0 + 1, min(image_h, y1))
+        if x0 == 0 and y0 == 0 and x1 == image_w and y1 == image_h:
+            return None
+        return x0, y0, x1 - x0, y1 - y0
+
+    def _rotate_output_image(self, image: np.ndarray, rotation_degrees: float) -> np.ndarray:
+        rgb = np.asarray(image, dtype=np.float32)
+        if rgb.ndim != 3 or rgb.shape[2] < 3:
+            return np.clip(rgb, 0.0, 1.0).astype(np.float32, copy=False)
+        h, w = int(rgb.shape[0]), int(rgb.shape[1])
+        if h <= 0 or w <= 0:
+            return np.clip(rgb, 0.0, 1.0).astype(np.float32, copy=False)
+        center = (w / 2.0, h / 2.0)
+        matrix = cv2.getRotationMatrix2D(center, float(rotation_degrees), 1.0)
+        cos_v = abs(float(matrix[0, 0]))
+        sin_v = abs(float(matrix[0, 1]))
+        new_w = max(1, int(round(h * sin_v + w * cos_v)))
+        new_h = max(1, int(round(h * cos_v + w * sin_v)))
+        matrix[0, 2] += new_w / 2.0 - center[0]
+        matrix[1, 2] += new_h / 2.0 - center[1]
+        rotated = cv2.warpAffine(
+            np.ascontiguousarray(rgb[..., :3]),
+            matrix,
+            (new_w, new_h),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=(0.0, 0.0, 0.0),
+        )
+        return np.ascontiguousarray(np.clip(rotated, 0.0, 1.0).astype(np.float32, copy=False))
 
     def _detail_cache_key(
         self,

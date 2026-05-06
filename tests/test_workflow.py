@@ -8,7 +8,7 @@ import tifffile
 
 from probraw.chart.detection import detect_chart_from_corners
 from probraw.chart.sampling import ReferenceCatalog
-from probraw.core.models import BatchManifest, ErrorSummary, PatchError, Recipe, ValidationResult, read_json
+from probraw.core.models import BatchManifest, ChartDetectionResult, ErrorSummary, PatchDetection, PatchError, Point2, Recipe, ValidationResult, read_json
 from probraw.core.recipe import load_recipe
 from probraw.provenance.c2pa import C2PASignConfig
 from probraw.provenance.probraw_proof import ProbRawProofConfig, generate_ed25519_identity
@@ -104,6 +104,63 @@ def test_auto_profile_batch_end_to_end(tmp_path: Path, monkeypatch):
     assert (out_dir / "batch_manifest.json").exists()
     assert result["chart_captures_used"] >= 1
     assert len(result["batch_manifest"]["entries"]) == 2
+
+
+def test_collect_chart_samples_minimal_artifacts_omits_images(tmp_path: Path, monkeypatch):
+    chart = tmp_path / "chart_01.tiff"
+    chart.write_bytes(b"placeholder")
+    image = np.full((20, 30, 3), 0.25, dtype=np.float32)
+
+    def fake_develop_image_array(_path, _recipe, cache_dir=None):
+        return image
+
+    detection = ChartDetectionResult(
+        chart_type="unit",
+        confidence_score=1.0,
+        valid_patch_ratio=1.0,
+        homography=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        chart_polygon=[Point2(0, 0), Point2(29, 0), Point2(29, 19), Point2(0, 19)],
+        patches=[
+            PatchDetection(
+                patch_id="P01",
+                polygon=[Point2(2, 2), Point2(10, 2), Point2(10, 10), Point2(2, 10)],
+                sample_region=[Point2(2, 2), Point2(10, 2), Point2(10, 10), Point2(2, 10)],
+            )
+        ],
+        warnings=[],
+    )
+
+    monkeypatch.setattr(workflow, "develop_image_array", fake_develop_image_array)
+    monkeypatch.setattr(workflow, "detect_chart_from_array", lambda *_args, **_kwargs: detection)
+
+    result = workflow._collect_chart_samples(
+        chart_files=[chart],
+        recipe=Recipe(),
+        reference=ReferenceCatalog(
+            {
+                "chart_name": "unit",
+                "chart_version": "1",
+                "illuminant": "D50",
+                "patches": [{"patch_id": "P01", "reference_lab": [50, 0, 0]}],
+            }
+        ),
+        chart_type="colorchecker24",
+        min_confidence=0.35,
+        allow_fallback_detection=False,
+        chart_dev_dir=tmp_path / "developed",
+        detect_dir=tmp_path / "detections",
+        sample_dir=tmp_path / "samples",
+        overlay_dir=tmp_path / "overlays",
+        pass_name="unit",
+        workers=1,
+        artifacts="minimal",
+    )
+
+    assert len(result["accepted_samples"]) == 1
+    assert list((tmp_path / "detections").glob("*.json"))
+    assert list((tmp_path / "samples").glob("*.json"))
+    assert not list((tmp_path / "developed").glob("*.tiff"))
+    assert not list((tmp_path / "overlays").glob("*.png"))
 
 
 def test_auto_generate_profile_from_charts_only(tmp_path: Path, monkeypatch):

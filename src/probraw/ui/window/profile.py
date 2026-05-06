@@ -797,6 +797,7 @@ class ProfileWorkflowMixin:
                 lens_model=lens,
                 manual_detections=task_manual_detections or None,
                 validation_holdout_count=validation_holdout_count,
+                profile_workers=1,
             )
 
         def on_success(payload) -> None:

@@ -10,7 +10,7 @@ Revelado RAW/TIFF reproducible y auditable para fotografía científica, forense
 patrimonial, con perfilado ICC por sesión, ajustes paramétricos por archivo y
 trazabilidad abierta AGPL.
 
-![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.14-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.15-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![Interfaz principal de ProbRAW](docs/assets/screenshots/probraw-portada.png)
 
@@ -31,19 +31,19 @@ El flujo actual está centrado de forma deliberada en ICC:
 
 ## Estado Actual
 
-ProbRAW 0.3.14 es adecuado para pruebas controladas, revisión metodológica y
+ProbRAW 0.3.15 es adecuado para pruebas controladas, revisión metodológica y
 validación de candidata a release. Todavía no es un sistema certificado para
 producción científica o forense.
 
-La version actual estabiliza el equilibrio entre rendimiento y precision de la
-preview: los histogramas y niveles se actualizan durante la interaccion sin
-bloquear la interfaz, la ruta exacta se conserva al estabilizar los ajustes, y
-el visor incorpora recorte visual, nivelado y undo/redo de ajustes.
+La version actual mejora fidelidad de exportacion y rendimiento: los TIFF
+renderizados incluyen recorte/nivelado visual, los lotes con varios archivos
+evitan aplicar la geometria de una sola imagen a todas, y preview/perfilado/cache
+usan defaults mas contenidos de memoria y procesos.
 
 La última validación de empaquetado pasó con:
 
 ```text
-414 passed, 2 warnings
+426 passed, 2 warnings
 ```
 
 ## Documentación

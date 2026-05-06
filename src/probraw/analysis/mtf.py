@@ -618,8 +618,9 @@ def _edge_spread_function(
     bin_width: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     h, w = gray.shape[:2]
-    ys, xs = np.mgrid[0:h, 0:w].astype(np.float64)
-    distances = (xs - float(centroid[0])) * float(normal[0]) + (ys - float(centroid[1])) * float(normal[1])
+    x_dist = (np.arange(w, dtype=np.float64) - float(centroid[0])) * float(normal[0])
+    y_dist = (np.arange(h, dtype=np.float64) - float(centroid[1])) * float(normal[1])
+    distances = x_dist[None, :] + y_dist[:, None]
     values = gray.astype(np.float64).reshape(-1)
     d = distances.reshape(-1)
     low = math.floor(float(np.min(d)) / bin_width) * bin_width
@@ -697,8 +698,9 @@ def _edge_spread_function_rgb(
     if image.ndim != 3 or image.shape[2] < 3:
         raise ValueError(f"Imagen inesperada para CA: shape={image.shape}")
     h, w = image.shape[:2]
-    ys, xs = np.mgrid[0:h, 0:w].astype(np.float64)
-    distances = (xs - float(centroid[0])) * float(normal[0]) + (ys - float(centroid[1])) * float(normal[1])
+    x_dist = (np.arange(w, dtype=np.float64) - float(centroid[0])) * float(normal[0])
+    y_dist = (np.arange(h, dtype=np.float64) - float(centroid[1])) * float(normal[1])
+    distances = x_dist[None, :] + y_dist[:, None]
     d = distances.reshape(-1)
     low = math.floor(float(np.min(d)) / bin_width) * bin_width
     high = math.ceil(float(np.max(d)) / bin_width) * bin_width

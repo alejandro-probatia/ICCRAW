@@ -78,6 +78,27 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.15
+
+La release 0.3.15 corrige fidelidad de exportacion y reduce trabajo pesado en
+flujos de preview, perfilado y batch:
+
+- los TIFF renderizados aplican recorte y nivelado visual en la ruta de salida,
+- los lotes con varios archivos ya no propagan la geometria de la imagen activa
+  a todos los elementos,
+- la conversion ICC TIFF16 vuelve a depender solo de ArgyllCMS `cctiff`,
+- el redondeo de recorte exportado coincide con el visor,
+- el muestreo de cartas, MTF y cache de previews reducen memoria/IO,
+- el perfilado GUI evita workers de proceso implicitos en Windows.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.15-Setup.exe`
+- `ProbRAW-0.3.15-Setup.exe.sha256`
+- `probraw-0.3.15.tar.gz`
+- `probraw-0.3.15-py3-none-any.whl`
+- `probraw_0.3.15_python_artifacts.sha256`
+
 ## Release 0.3.14
 
 La release 0.3.14 estabiliza el equilibrio entre rendimiento interactivo y

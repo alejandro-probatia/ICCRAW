@@ -72,6 +72,27 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.15
+
+Release 0.3.15 fixes export fidelity and reduces heavy work in preview,
+profiling and batch workflows:
+
+- rendered TIFFs apply visual crop and leveling geometry in the output path,
+- multi-file batches no longer propagate the active image geometry to every
+  item,
+- TIFF16 ICC conversion remains only on ArgyllCMS `cctiff`,
+- export crop rounding matches the viewer,
+- chart sampling, MTF and preview cache reduce memory/IO work,
+- GUI profiling avoids implicit process workers on Windows.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.15-Setup.exe`
+- `ProbRAW-0.3.15-Setup.exe.sha256`
+- `probraw-0.3.15.tar.gz`
+- `probraw-0.3.15-py3-none-any.whl`
+- `probraw_0.3.15_python_artifacts.sha256`
+
 ## Release 0.3.14
 
 Release 0.3.14 stabilizes the balance between interactive performance and

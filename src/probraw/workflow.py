@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
+import os
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +71,8 @@ def auto_generate_profile_from_charts(
     qa_max_delta_e2000_max: float = DEFAULT_QA_MAX_DELTA_E2000_MAX,
     profile_validity_days: int | None = None,
     cache_dir: Path | None = None,
+    profile_workers: int | None = None,
+    profile_artifacts: str = "full",
 ) -> dict[str, Any]:
     requested_recipe = recipe
     profile_recipe, recipe_normalizations = sanitize_recipe_for_profiling(requested_recipe)
@@ -109,6 +114,8 @@ def auto_generate_profile_from_charts(
         existing_detections=manual_detection_map,
         existing_detection_note="geometria de carta desde deteccion manual guardada",
         cache_dir=cache_dir,
+        workers=profile_workers,
+        artifacts=profile_artifacts,
     )
     accepted_samples = initial_pass["accepted_samples"]
     skipped: list[dict[str, Any]] = list(initial_pass["skipped"])
@@ -159,6 +166,8 @@ def auto_generate_profile_from_charts(
             overlay_dir=work_dir / "overlays_calibrated",
             pass_name="icc_profile_source",
             cache_dir=cache_dir,
+            workers=profile_workers,
+            artifacts=profile_artifacts,
         )
         accepted_samples = calibrated_pass["accepted_samples"]
         skipped.extend(calibrated_pass["skipped"])
@@ -209,6 +218,8 @@ def auto_generate_profile_from_charts(
             existing_detections=validation_detection_map,
             existing_detection_note="geometria de carta reutilizada desde pasada base de validacion",
             cache_dir=cache_dir,
+            workers=profile_workers,
+            artifacts=profile_artifacts,
         )
         validation_samples = validation_pass["accepted_samples"]
         skipped.extend(validation_pass["skipped"])
@@ -324,6 +335,8 @@ def auto_profile_batch(
     cache_dir: Path | None = None,
     c2pa_config: C2PASignConfig | None = None,
     proof_config: ProbRawProofConfig | None = None,
+    profile_workers: int | None = None,
+    profile_artifacts: str = "full",
 ) -> dict[str, Any]:
     profile_payload = auto_generate_profile_from_charts(
         chart_captures_dir=chart_captures_dir,
@@ -348,6 +361,8 @@ def auto_profile_batch(
         qa_max_delta_e2000_max=qa_max_delta_e2000_max,
         profile_validity_days=profile_validity_days,
         cache_dir=cache_dir,
+        profile_workers=profile_workers,
+        profile_artifacts=profile_artifacts,
     )
 
     batch_recipe = recipe
@@ -1005,6 +1020,8 @@ def _collect_chart_samples(
     existing_detections: dict[Path, Any] | None = None,
     existing_detection_note: str = "geometria de carta reutilizada desde pasada de perfil de revelado",
     cache_dir: Path | None = None,
+    workers: int | None = None,
+    artifacts: str = "full",
 ) -> dict[str, Any]:
     for d in (chart_dev_dir, detect_dir, sample_dir, overlay_dir):
         d.mkdir(parents=True, exist_ok=True)
@@ -1012,6 +1029,9 @@ def _collect_chart_samples(
     accepted_samples: list[SampleSet] = []
     skipped: list[dict[str, Any]] = []
     detections: dict[Path, Any] = {}
+    artifact_mode = _normalize_profile_artifact_mode(artifacts)
+    worker_count = _resolve_profile_workers(len(chart_files), workers=workers)
+    jobs: list[tuple[Any, ...]] = []
 
     for idx, chart_file in enumerate(chart_files, start=1):
         prefix = f"{idx:03d}_{chart_file.stem}"
@@ -1019,25 +1039,99 @@ def _collect_chart_samples(
         detection_path = detect_dir / f"{prefix}.json"
         overlay_path = overlay_dir / f"{prefix}.png"
         sample_path = sample_dir / f"{prefix}.json"
+        detection_key = chart_file.expanduser().resolve()
+        existing_detection = existing_detections.get(detection_key) if existing_detections else None
+        jobs.append(
+            (
+                idx,
+                chart_file,
+                recipe,
+                reference,
+                chart_type,
+                min_confidence,
+                allow_fallback_detection,
+                pass_name,
+                existing_detection,
+                existing_detection_note,
+                cache_dir,
+                developed_tiff,
+                detection_path,
+                overlay_path,
+                sample_path,
+                artifact_mode,
+            )
+        )
 
-        try:
-            image = develop_image_array(chart_file, recipe, cache_dir=cache_dir)
-            write_tiff16(developed_tiff, image)
-            detection_key = chart_file.expanduser().resolve()
-            detection = existing_detections.get(detection_key) if existing_detections else None
-            if detection is None:
-                detection = detect_chart_from_array(image, chart_type=chart_type)
-            else:
-                detection = _coerce_chart_detection(detection)
-                detection.warnings = list(detection.warnings) + [
-                    existing_detection_note
-                ]
-            write_json(detection_path, detection)
-            draw_detection_overlay_array(image, detection, overlay_path)
-            detections[detection_key] = detection
+    result_slots: list[dict[str, Any] | None] = [None] * len(jobs)
+    if worker_count <= 1:
+        for job in jobs:
+            result = _process_chart_sample_job(job)
+            result_slots[int(result["index"]) - 1] = result
+    else:
+        multiprocessing.freeze_support()
+        with ProcessPoolExecutor(max_workers=worker_count) as executor:
+            futures = [executor.submit(_process_chart_sample_job, job) for job in jobs]
+            for future in as_completed(futures):
+                result = future.result()
+                result_slots[int(result["index"]) - 1] = result
 
-            if detection.detection_mode == "fallback" and not allow_fallback_detection:
-                skipped.append(
+    for result in result_slots:
+        if result is None:
+            continue
+        if result.get("accepted_sample") is not None:
+            accepted_samples.append(result["accepted_sample"])
+        skipped.extend(result.get("skipped", []))
+        detection = result.get("detection")
+        detection_key = result.get("detection_key")
+        if detection is not None and detection_key:
+            detections[Path(str(detection_key))] = detection
+
+    return {"accepted_samples": accepted_samples, "skipped": skipped, "detections": detections}
+
+
+def _process_chart_sample_job(job: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        idx,
+        chart_file,
+        recipe,
+        reference,
+        chart_type,
+        min_confidence,
+        allow_fallback_detection,
+        pass_name,
+        existing_detection,
+        existing_detection_note,
+        cache_dir,
+        developed_tiff,
+        detection_path,
+        overlay_path,
+        sample_path,
+        artifact_mode,
+    ) = job
+    detection_key = Path(chart_file).expanduser().resolve()
+    try:
+        image = develop_image_array(Path(chart_file), recipe, cache_dir=cache_dir)
+        if artifact_mode == "full":
+            write_tiff16(Path(developed_tiff), image)
+        detection = existing_detection
+        if detection is None:
+            detection = detect_chart_from_array(image, chart_type=chart_type)
+        else:
+            detection = _coerce_chart_detection(detection)
+            detection.warnings = list(detection.warnings) + [
+                existing_detection_note
+            ]
+        write_json(Path(detection_path), detection)
+        if artifact_mode == "full":
+            draw_detection_overlay_array(image, detection, Path(overlay_path))
+
+        if detection.detection_mode == "fallback" and not allow_fallback_detection:
+            return {
+                "index": int(idx),
+                "detection_key": str(detection_key),
+                "detection": detection,
+                "accepted_sample": None,
+                "skipped": [
                     {
                         "pass": pass_name,
                         "capture": str(chart_file),
@@ -1045,11 +1139,16 @@ def _collect_chart_samples(
                         "confidence": float(detection.confidence_score),
                         "detection_json": str(detection_path),
                     }
-                )
-                continue
+                ],
+            }
 
-            if detection.confidence_score < float(min_confidence):
-                skipped.append(
+        if detection.confidence_score < float(min_confidence):
+            return {
+                "index": int(idx),
+                "detection_key": str(detection_key),
+                "detection": detection,
+                "accepted_sample": None,
+                "skipped": [
                     {
                         "pass": pass_name,
                         "capture": str(chart_file),
@@ -1058,31 +1157,74 @@ def _collect_chart_samples(
                         "min_confidence": float(min_confidence),
                         "detection_json": str(detection_path),
                     }
-                )
-                continue
+                ],
+            }
 
-            samples = sample_chart_from_array(
-                image,
-                detection,
-                reference,
-                strategy=recipe.sampling_strategy,
-                trim_percent=recipe.sampling_trim_percent,
-                reject_saturated=recipe.sampling_reject_saturated,
-            )
-            write_json(sample_path, samples)
-            accepted_samples.append(samples)
-
-        except Exception as exc:
-            skipped.append(
+        samples = sample_chart_from_array(
+            image,
+            detection,
+            reference,
+            strategy=recipe.sampling_strategy,
+            trim_percent=recipe.sampling_trim_percent,
+            reject_saturated=recipe.sampling_reject_saturated,
+        )
+        write_json(Path(sample_path), samples)
+        return {
+            "index": int(idx),
+            "detection_key": str(detection_key),
+            "detection": detection,
+            "accepted_sample": samples,
+            "skipped": [],
+        }
+    except Exception as exc:
+        return {
+            "index": int(idx),
+            "detection_key": str(detection_key),
+            "detection": None,
+            "accepted_sample": None,
+            "skipped": [
                 {
                     "pass": pass_name,
                     "capture": str(chart_file),
                     "reason": "processing_error",
                     "error": str(exc),
                 }
-            )
+            ],
+        }
 
-    return {"accepted_samples": accepted_samples, "skipped": skipped, "detections": detections}
+
+def _normalize_profile_artifact_mode(value: str) -> str:
+    mode = str(value or "full").strip().lower()
+    if mode in {"minimal", "min", "fast"}:
+        return "minimal"
+    return "full"
+
+
+def _resolve_profile_workers(total_items: int, *, workers: int | None = None) -> int:
+    total = max(1, int(total_items))
+    if workers is not None:
+        configured = int(workers)
+        if configured > 0:
+            return max(1, min(total, configured))
+        return _auto_profile_worker_count(total)
+    raw = os.environ.get("PROBRAW_PROFILE_WORKERS", "").strip()
+    if raw:
+        if raw.lower() in {"auto", "max", "all"}:
+            return _auto_profile_worker_count(total)
+        try:
+            configured = int(raw)
+        except ValueError:
+            return _auto_profile_worker_count(total)
+        if configured > 0:
+            return max(1, min(total, configured))
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return 1
+    return _auto_profile_worker_count(total)
+
+
+def _auto_profile_worker_count(total_items: int) -> int:
+    cpus = max(1, int(os.cpu_count() or 1))
+    return max(1, min(int(total_items), max(1, cpus // 2)))
 
 
 def _validation_detection_map(
