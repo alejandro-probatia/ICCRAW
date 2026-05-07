@@ -56,14 +56,16 @@ if QtCore is not None:
     class TaskThread(QtCore.QThread):
         succeeded = QtCore.Signal(object)
         failed = QtCore.Signal(str)
+        progress = QtCore.Signal(object)
 
-        def __init__(self, task):
+        def __init__(self, task, *, progress_enabled: bool = False):
             super().__init__()
             self._task = task
+            self._progress_enabled = bool(progress_enabled)
 
         def run(self) -> None:
             try:
-                payload = self._task()
+                payload = self._task(self.progress.emit) if self._progress_enabled else self._task()
                 self.succeeded.emit(payload)
             except Exception:
                 self.failed.emit(traceback.format_exc())

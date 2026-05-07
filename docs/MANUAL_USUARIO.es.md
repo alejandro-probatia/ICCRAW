@@ -201,6 +201,7 @@ del visor central para ahorrar espacio.
 | `Unidad / raíz` | Selecciona la unidad o punto de montaje visible para el navegador. |
 | `Actualizar` | Relee unidades montadas y refresca el árbol. |
 | Árbol de carpetas | Cambia el directorio actual. ProbRAW lista archivos compatibles en la tira de miniaturas. |
+| Clic derecho sobre carpeta | Abre esa carpeta en el explorador de archivos del sistema. |
 
 Archivos navegables: RAW soportados por el motor, DNG, TIFF, PNG, JPEG y JPG.
 Para referencias colorimétricas se aceptan RAW/DNG/TIFF originales, no derivados
@@ -433,7 +434,8 @@ a cada archivo.
 | `Revelar cola` | Ejecuta el revelado TIFF de los elementos válidos. |
 | Tabla `Archivo` | Fuente RAW/TIFF/imagen. |
 | Tabla `Perfil` | Perfil o ajustes asignados al archivo. |
-| Tabla `Estado` | `pending`, `done` o `error`. |
+| Tabla `Estado` | `pending`, `queued`, `processing`, `done` o `error`. |
+| Tabla `Progreso` | Barra interactiva por archivo: lectura, ajustes, escritura TIFF, completado o error. |
 | Tabla `TIFF salida` | Ruta del TIFF generado. |
 | Tabla `Mensaje` | Mensaje de proceso o error. |
 | `Monitoreo de ejecución` | Estado global, progreso, tabla de tareas y log. |
@@ -453,6 +455,8 @@ archivo ni de los sliders actuales.
 | `Salida TIFF derivados` | Carpeta donde se guardan los TIFF finales. En una sesión normal apunta a `02_DRV/`. |
 | `Incrustar/aplicar ICC en TIFF` | Siempre activo. Incrusta el ICC elegido para la imagen: ICC de cámara/sesión o perfil ICC RGB estándar. |
 | `Aplicar ajustes básicos y de nitidez` | Aplica al TIFF los ajustes de tono, color, nitidez, ruido y CA del perfil. |
+| `Compresión` | Modo TIFF final: sin compresión, ZIP/Deflate, LZW, JPEG o ZSTD. ZIP, LZW y ZSTD son sin pérdida; JPEG puede alterar píxeles. |
+| `Hilos compresión` | `Auto` reparte CPU durante lotes; un valor fijo fuerza hilos por TIFF. |
 | `Usar carpeta actual` | Usa el directorio del navegador como entrada de lote. |
 | `Aplicar a selección` | Revela la selección actual. |
 | `Aplicar a carpeta` | Revela todos los archivos compatibles de la carpeta de entrada. |

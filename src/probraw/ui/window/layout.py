@@ -690,12 +690,22 @@ class LayoutMixin:
         self.queue_status_label.setStyleSheet("font-size: 12px; color: #374151;")
         queue_layout.addWidget(self.queue_status_label)
 
-        self.queue_table = QtWidgets.QTableWidget(0, 5)
-        self.queue_table.setHorizontalHeaderLabels([self.tr("Archivo"), self.tr("Perfil"), self.tr("Estado"), self.tr("TIFF salida"), self.tr("Mensaje")])
+        self.queue_table = QtWidgets.QTableWidget(0, 6)
+        self.queue_table.setHorizontalHeaderLabels(
+            [
+                self.tr("Archivo"),
+                self.tr("Perfil"),
+                self.tr("Estado"),
+                self.tr("Progreso"),
+                self.tr("TIFF salida"),
+                self.tr("Mensaje"),
+            ]
+        )
         self.queue_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
         self.queue_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
-        self.queue_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+        self.queue_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
         self.queue_table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Stretch)
+        self.queue_table.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.Stretch)
         self.queue_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.queue_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         queue_layout.addWidget(self.queue_table, 1)
@@ -813,7 +823,9 @@ class LayoutMixin:
         self.dir_tree = QtWidgets.QTreeView()
         self.dir_tree.setHeaderHidden(True)
         self.dir_tree.setMinimumHeight(260)
+        self.dir_tree.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.dir_tree.clicked.connect(self._on_tree_clicked)
+        self.dir_tree.customContextMenuRequested.connect(self._show_directory_tree_context_menu)
         box_layout.addWidget(self.dir_tree, 1)
         return box
 
@@ -1551,6 +1563,7 @@ class LayoutMixin:
         self.image_result_single = ImagePanel(self.tr("Resultado"))
         self.image_result_single.imageClicked.connect(self._on_result_image_click)
         self.image_result_single.roiSelected.connect(self._on_viewer_roi_selected)
+        self.image_result_single.lineSelected.connect(self._on_viewer_line_selected)
         self.image_result_single.viewTransformChanged.connect(self._on_viewer_panel_transform_changed)
         single_page = QtWidgets.QWidget()
         single_layout = QtWidgets.QVBoxLayout(single_page)
@@ -1562,6 +1575,8 @@ class LayoutMixin:
         self.image_result_compare = ImagePanel(self.tr(""), framed=False, background="#15181d")
         self.image_result_compare.imageClicked.connect(self._on_result_image_click)
         self.image_result_compare.roiSelected.connect(self._on_viewer_roi_selected)
+        self.image_original_compare.lineSelected.connect(self._on_viewer_line_selected)
+        self.image_result_compare.lineSelected.connect(self._on_viewer_line_selected)
         self.image_original_compare.viewTransformChanged.connect(self._on_viewer_panel_transform_changed)
         self.image_result_compare.viewTransformChanged.connect(self._on_viewer_panel_transform_changed)
         self.compare_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)

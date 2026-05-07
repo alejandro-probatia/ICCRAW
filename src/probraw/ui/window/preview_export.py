@@ -146,6 +146,8 @@ class PreviewExportMixin:
         render_adjustments = self._render_adjustment_kwargs()
         sidecar_detail_state = self._detail_adjustment_state()
         sidecar_render_state = self._render_adjustment_state()
+        tiff_compression = self._selected_tiff_compression()
+        tiff_maxworkers = self._selected_tiff_maxworkers()
         detail_adjustments = {
             "applied": True,
             "denoise_luminance": nl,
@@ -201,8 +203,15 @@ class PreviewExportMixin:
                 proof_config=proof_config,
                 detail_adjustments=detail_adjustments,
                 render_adjustments=c2pa_render_adjustments,
-                render_context={"entrypoint": "gui_single_develop", "geometry": geometry_adjustments},
+                render_context={
+                    "entrypoint": "gui_single_develop",
+                    "geometry": geometry_adjustments,
+                    "tiff_compression": tiff_compression,
+                    "tiff_maxworkers": tiff_maxworkers,
+                },
                 generic_profile_dir=self._session_generic_profile_dir(),
+                tiff_compression=tiff_compression,
+                tiff_maxworkers=tiff_maxworkers,
             )
             parity_metrics = self._verify_export_preview_color_parity(
                 out_path,

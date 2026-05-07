@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import hashlib
 import itertools
-from typing import Iterable
+import os
+from typing import Any, Iterable
 
 import numpy as np
 import tifffile
@@ -11,6 +12,21 @@ from PIL import Image
 
 
 RAW_EXTENSIONS = {".raw", ".cr2", ".cr3", ".nef", ".arw", ".dng", ".raf", ".rw2", ".orf", ".pef"}
+TIFF_COMPRESSION_OPTIONS = {
+    "none": None,
+    "uncompressed": None,
+    "sin_compresion": None,
+    "zip": "adobe_deflate",
+    "deflate": "adobe_deflate",
+    "adobe_deflate": "adobe_deflate",
+    "zlib": "adobe_deflate",
+    "lzw": "lzw",
+    "jpeg": "jpeg",
+    "jpg": "jpeg",
+    "zstd": "zstd",
+    "zfs": "zstd",
+}
+TIFF_MAXWORKERS_ENV = "PROBRAW_TIFF_MAXWORKERS"
 
 
 def sha256_file(path: Path) -> str:
@@ -78,7 +94,83 @@ def _to_float_rgb(arr: np.ndarray) -> np.ndarray:
     return np.clip(arr.astype(np.float32), 0.0, 1.0)
 
 
-def write_tiff16(path: Path, image_linear_rgb: np.ndarray, icc_profile: bytes | None = None) -> None:
+def normalize_tiff_compression(compression: str | None) -> str | None:
+    key = str(compression or "none").strip().lower().replace(" ", "_").replace("-", "_")
+    if key not in TIFF_COMPRESSION_OPTIONS:
+        supported = ", ".join(["none", "zip", "lzw", "jpeg", "zstd"])
+        raise ValueError(f"Compresion TIFF no soportada: {compression!r}. Valores: {supported}")
+    return TIFF_COMPRESSION_OPTIONS[key]
+
+
+def tiff_compression_for_metadata(compression: str | None) -> str:
+    return normalize_tiff_compression(compression) or "none"
+
+
+def resolve_tiff_maxworkers(maxworkers: int | None = None, *, compression: str | None = None) -> int | None:
+    if normalize_tiff_compression(compression) is None:
+        return None
+    if maxworkers is not None:
+        value = int(maxworkers)
+        return value if value > 0 else None
+    raw = os.environ.get(TIFF_MAXWORKERS_ENV, "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _tiff_write_kwargs(compression: str | None, maxworkers: int | None = None) -> dict[str, Any]:
+    normalized = normalize_tiff_compression(compression)
+    if normalized is None:
+        return {}
+    kwargs: dict[str, Any] = {"compression": normalized}
+    resolved_maxworkers = resolve_tiff_maxworkers(maxworkers, compression=normalized)
+    if resolved_maxworkers is not None:
+        kwargs["maxworkers"] = resolved_maxworkers
+    return kwargs
+
+
+def _write_tiff_array(
+    path: Path,
+    data: np.ndarray,
+    *,
+    icc_profile: bytes | None = None,
+    compression: str | None = None,
+    maxworkers: int | None = None,
+) -> None:
+    extratags = None
+    if icc_profile:
+        extratags = [(34675, "B", len(icc_profile), icc_profile, False)]
+    try:
+        tifffile.imwrite(
+            str(path),
+            data,
+            photometric="rgb",
+            metadata=None,
+            extratags=extratags,
+            **_tiff_write_kwargs(compression, maxworkers=maxworkers),
+        )
+    except Exception as exc:
+        normalized = tiff_compression_for_metadata(compression)
+        if normalized == "none":
+            raise
+        raise RuntimeError(
+            f"No se pudo escribir TIFF con compresion {normalized!r}. "
+            "Instala los codecs necesarios para tifffile/imagecodecs o elige 'Sin compresion'/'ZIP'."
+        ) from exc
+
+
+def write_tiff16(
+    path: Path,
+    image_linear_rgb: np.ndarray,
+    icc_profile: bytes | None = None,
+    *,
+    compression: str | None = None,
+    maxworkers: int | None = None,
+) -> None:
     ensure_parent(path)
     source = np.asarray(image_linear_rgb, dtype=np.float32)
     work = np.empty(source.shape, dtype=np.float32)
@@ -86,18 +178,20 @@ def write_tiff16(path: Path, image_linear_rgb: np.ndarray, icc_profile: bytes | 
     np.multiply(work, 65535.0, out=work)
     np.rint(work, out=work)
     data = work.astype(np.uint16, copy=False)
+    _write_tiff_array(path, data, icc_profile=icc_profile, compression=compression, maxworkers=maxworkers)
 
-    extratags = None
-    if icc_profile:
-        extratags = [(34675, "B", len(icc_profile), icc_profile, False)]
 
-    tifffile.imwrite(
-        str(path),
-        data,
-        photometric="rgb",
-        metadata=None,
-        extratags=extratags,
-    )
+def rewrite_tiff_compression(path: Path, compression: str | None, *, maxworkers: int | None = None) -> None:
+    if normalize_tiff_compression(compression) is None:
+        return
+    with tifffile.TiffFile(str(path)) as tiff:
+        page = tiff.pages[0]
+        data = page.asarray()
+        tag = page.tags.get(34675)
+        icc_profile = bytes(tag.value) if tag is not None else None
+    temp_path = path.with_name(f".{path.stem}.compressed{path.suffix}")
+    _write_tiff_array(temp_path, data, icc_profile=icc_profile, compression=compression, maxworkers=maxworkers)
+    temp_path.replace(path)
 
 
 def robust_trimmed_mean(values: np.ndarray, trim_percent: float) -> float:

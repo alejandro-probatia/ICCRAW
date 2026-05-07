@@ -116,6 +116,26 @@ def test_write_profiled_tiff_embeds_standard_output_profile_without_chart(tmp_pa
         assert len(bytes(tags[34675].value)) > 128
 
 
+def test_write_profiled_tiff_applies_zip_compression(tmp_path: Path):
+    out = tmp_path / "camera_rgb.tiff"
+    profile = tmp_path / "camera.icc"
+    profile.write_bytes(b"p" * 256)
+    image = np.full((6, 8, 3), 0.25, dtype=np.float32)
+
+    mode = write_profiled_tiff(
+        out,
+        image,
+        recipe=Recipe(output_space="scene_linear_camera_rgb", output_linear=True),
+        profile_path=profile,
+        tiff_compression="zip",
+    )
+
+    assert mode == "camera_rgb_with_input_icc"
+    with tifffile.TiffFile(out) as tif:
+        assert tif.pages[0].compression.name == "ADOBE_DEFLATE"
+        assert 34675 in tif.pages[0].tags
+
+
 def test_batch_develop_without_chart_uses_standard_output_profile(tmp_path: Path, monkeypatch):
     _fake_standard_profiles(tmp_path, monkeypatch)
     raws = tmp_path / "inputs"

@@ -78,6 +78,29 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.16
+
+La release 0.3.16 mejora el control de exportacion TIFF y la revision en GUI:
+
+- los TIFF finales pueden exportarse sin compresion o con ZIP/Deflate, LZW,
+  JPEG o ZSTD,
+- `imagecodecs` queda incluido en runtime y empaquetado Windows para codecs
+  TIFF,
+- la exportacion TIFF comprimida puede acotar workers por TIFF y el lote reparte
+  CPU entre trabajos activos,
+- el nivelado horizontal/vertical usa una linea arrastrable y las rotaciones
+  exportadas se recortan para evitar bordes negros,
+- el arbol de carpetas puede abrir directorios en el explorador del sistema,
+- la cola de revelado muestra barras de progreso por archivo.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.16-Setup.exe`
+- `ProbRAW-0.3.16-Setup.exe.sha256`
+- `probraw-0.3.16.tar.gz`
+- `probraw-0.3.16-py3-none-any.whl`
+- `probraw_0.3.16_python_artifacts.sha256`
+
 ## Release 0.3.15
 
 La release 0.3.15 corrige fidelidad de exportacion y reduce trabajo pesado en

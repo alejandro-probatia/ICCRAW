@@ -217,6 +217,8 @@ class SessionStateMixin:
             "preview_apply_profile": active_profile_valid,
             "batch_embed_profile": True,
             "batch_apply_adjustments": bool(self.batch_apply_adjustments.isChecked()),
+            "tiff_compression": self._selected_tiff_compression(),
+            "tiff_maxworkers": self._selected_tiff_maxworkers() or 0,
             "fast_raw_preview": False,
             "preview_max_side": 0,
             "adjustments": self._detail_adjustment_state(),
@@ -329,6 +331,8 @@ class SessionStateMixin:
             "preview_apply_profile": False,
             "batch_embed_profile": True,
             "batch_apply_adjustments": True,
+            "tiff_compression": "none",
+            "tiff_maxworkers": 0,
             "fast_raw_preview": False,
             "preview_max_side": 0,
             "adjustments": self._default_detail_adjustment_state(),
@@ -480,6 +484,13 @@ class SessionStateMixin:
         self.chk_apply_profile.setChecked(bool(self.path_profile_active.text().strip()))
         self.batch_embed_profile.setChecked(True)
         self.batch_apply_adjustments.setChecked(bool(state.get("batch_apply_adjustments", self.batch_apply_adjustments.isChecked())))
+        if hasattr(self, "combo_tiff_compression"):
+            self._set_combo_data(self.combo_tiff_compression, str(state.get("tiff_compression") or "none"))
+        if hasattr(self, "spin_tiff_maxworkers"):
+            try:
+                self.spin_tiff_maxworkers.setValue(max(0, int(state.get("tiff_maxworkers") or 0)))
+            except Exception:
+                self.spin_tiff_maxworkers.setValue(0)
 
         try:
             self.spin_preview_max_side.setValue(0)
@@ -544,6 +555,7 @@ class SessionStateMixin:
             {
                 "source": str(item.get("source") or ""),
                 "status": str(item.get("status") or "pending"),
+                "progress": self._queue_normalized_progress(item.get("progress")),
                 "output_tiff": str(item.get("output_tiff") or ""),
                 "message": str(item.get("message") or ""),
                 "development_profile_id": str(item.get("development_profile_id") or ""),

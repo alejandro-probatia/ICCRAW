@@ -182,6 +182,14 @@ FILTER_MODE_OPTIONS = [
     "strong",
 ]
 
+TIFF_COMPRESSION_OPTIONS = [
+    ("Sin compresion", "none"),
+    ("ZIP / Deflate", "zip"),
+    ("LZW", "lzw"),
+    ("JPEG", "jpeg"),
+    ("ZSTD", "zstd"),
+]
+
 PROFILE_ALGO_OPTIONS = [
     ("shaper+matrix (-as)", "-as"),
     ("gamma+matrix (-ag)", "-ag"),

@@ -18,6 +18,40 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.3.16] - 2026-05-07
+
+### Added
+
+- Anadidas opciones de compresion TIFF para exportaciones finales: ninguna,
+  ZIP/Deflate, LZW, JPEG y ZSTD, respaldadas por `imagecodecs`.
+- Anadido control acotado de workers de compresion TIFF en GUI, CLI
+  (`--tiff-workers`) y `PROBRAW_TIFF_MAXWORKERS`.
+- Anadido nivelado horizontal/vertical con linea arrastrable y lectura de
+  angulo en vivo.
+- Anadida accion contextual en el arbol de carpetas para abrir directorios en
+  el explorador del sistema.
+- Anadidas barras de progreso por archivo en la tabla de cola de revelado.
+
+### Changed
+
+- La exportacion TIFF comprimida en lote reparte los hilos de compresion entre
+  workers activos para evitar sobresaturar la CPU.
+- La compresion TIFF queda registrada en ajustes de render/Proof.
+
+### Fixed
+
+- La exportacion con nivelado recorta el area valida de la imagen rotada para no
+  escribir bordes negros en los TIFF finales.
+- Las conversiones de salida de ArgyllCMS se recomprimen despues de `cctiff`
+  cuando se elige un modo de compresion TIFF.
+
+### Tests
+
+- Suite completa: `438 passed, 2 warnings`.
+- Anadida cobertura de regresion para codecs TIFF, dispatch de workers de
+  compresion TIFF, nivelado arrastrable, recorte de bordes en exportacion,
+  accion de abrir carpetas y barras de progreso en cola.
+
 ## [0.3.15] - 2026-05-06
 
 ### Added

@@ -18,16 +18,19 @@ for dist_name in ("rawpy-demosaic", "rawpy"):
         datas += copy_metadata(dist_name)
     except Exception:
         pass
+datas += copy_metadata("imagecodecs")
 hiddenimports = collect_submodules("probraw")
 hiddenimports += collect_submodules("c2pa")
+hiddenimports += collect_submodules("imagecodecs")
 rawpy_binaries = collect_dynamic_libs("rawpy")
 c2pa_binaries = collect_dynamic_libs("c2pa")
+imagecodecs_binaries = collect_dynamic_libs("imagecodecs")
 datas += collect_data_files("c2pa")
 
 a_cli = Analysis(
     [str(root / "packaging" / "windows" / "launcher_cli.py")],
     pathex=[str(root)],
-    binaries=rawpy_binaries + c2pa_binaries,
+    binaries=rawpy_binaries + c2pa_binaries + imagecodecs_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -61,7 +64,7 @@ cli = EXE(
 a_gui = Analysis(
     [str(root / "packaging" / "windows" / "launcher_gui.py")],
     pathex=[str(root)],
-    binaries=rawpy_binaries + c2pa_binaries,
+    binaries=rawpy_binaries + c2pa_binaries + imagecodecs_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

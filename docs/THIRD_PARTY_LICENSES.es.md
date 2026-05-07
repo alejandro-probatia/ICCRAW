@@ -63,6 +63,7 @@ Fecha de revision: 2026-04-25.
 
 - `opencv-python-headless`: BSD-3-Clause (OpenCV).
 - `tifffile`: BSD.
+- `imagecodecs`: BSD-3-Clause; codecs TIFF para compresion LZW, JPEG y ZSTD.
 - `numpy`: BSD-3-Clause.
 - `scipy`: BSD-3-Clause.
 - `PyYAML`: MIT.

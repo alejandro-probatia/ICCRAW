@@ -83,6 +83,9 @@ class BatchWorkflowMixin:
         sidecar_detail_adjustments: dict[str, Any] | None = None,
         sidecar_render_adjustments: dict[str, Any] | None = None,
         development_profile: dict[str, str] | None = None,
+        tiff_compression: str | None = None,
+        tiff_maxworkers: int | None = None,
+        progress_callback: Any | None = None,
     ) -> dict[str, Any]:
         out_dir.mkdir(parents=True, exist_ok=True)
         outputs: list[dict[str, str]] = []
@@ -145,6 +148,33 @@ class BatchWorkflowMixin:
             "crop_normalized": None,
             "rotation_degrees": 0.0,
         }
+        worker_count = self._batch_worker_count(len(planned))
+        resolved_tiff_maxworkers = resolve_tiff_maxworkers(tiff_maxworkers, compression=tiff_compression)
+        if resolved_tiff_maxworkers is None and str(tiff_compression or "none").strip().lower() != "none":
+            resolved_tiff_maxworkers = max(1, int(os.cpu_count() or 1) // max(1, worker_count))
+
+        def emit_progress(
+            src: Path,
+            *,
+            status: str,
+            progress: int,
+            message: str = "",
+            output: Path | None = None,
+        ) -> None:
+            if progress_callback is None:
+                return
+            try:
+                progress_callback(
+                    {
+                        "source": str(src),
+                        "status": str(status),
+                        "progress": int(max(0, min(100, progress))),
+                        "message": str(message),
+                        "output_tiff": str(output) if output is not None else "",
+                    }
+                )
+            except Exception:
+                pass
 
         def process_one(
             index: int,
@@ -153,6 +183,7 @@ class BatchWorkflowMixin:
             out_path: Path,
         ) -> tuple[int, dict[str, str] | None, dict[str, str] | None]:
             try:
+                emit_progress(src, status="processing", progress=5, message=self.tr("Leyendo imagen"))
                 if src.suffix.lower() in RAW_EXTENSIONS:
                     decode_recipe = Recipe(**asdict(recipe))
                     decode_recipe.use_cache = True
@@ -165,6 +196,7 @@ class BatchWorkflowMixin:
                 else:
                     image = read_image(src)
 
+                emit_progress(src, status="processing", progress=35, message=self.tr("Aplicando ajustes"))
                 geometry_adjustments = (
                     self._output_geometry_adjustment_state(image)
                     if apply_global_geometry
@@ -203,6 +235,7 @@ class BatchWorkflowMixin:
                     else sidecar_render_state
                 )
 
+                emit_progress(src, status="processing", progress=70, message=self.tr("Escribiendo TIFF"))
                 mode, proof_result = write_signed_profiled_tiff(
                     out_path,
                     image,
@@ -217,8 +250,12 @@ class BatchWorkflowMixin:
                         "entrypoint": "gui_batch_develop",
                         "apply_adjustments": bool(apply_adjust),
                         "geometry": geometry_adjustments,
+                        "tiff_compression": tiff_compression or "none",
+                        "tiff_maxworkers": resolved_tiff_maxworkers,
                     },
                     generic_profile_dir=generic_profile_dir,
+                    tiff_compression=tiff_compression,
+                    tiff_maxworkers=resolved_tiff_maxworkers,
                 )
                 rendered_profile_path = profile_path_for_render_settings(
                     recipe,
@@ -250,11 +287,12 @@ class BatchWorkflowMixin:
                         status="rendered",
                     )
                     output["raw_sidecar"] = str(sidecar_path)
+                emit_progress(src, status="done", progress=100, message=self.tr("Completado"), output=out_path)
                 return index, output, None
             except Exception as exc:
+                emit_progress(src, status="error", progress=100, message=str(exc), output=None)
                 return index, None, {"source": str(src), "error": str(exc)}
 
-        worker_count = self._batch_worker_count(len(planned))
         if worker_count <= 1:
             for idx, src, requested_out_path, out_path in planned:
                 i, output, error = process_one(idx, src, requested_out_path, out_path)
@@ -281,6 +319,7 @@ class BatchWorkflowMixin:
             "errors": errors,
             "development_profile": development_profile or {},
             "workers": worker_count,
+            "tiff_maxworkers": resolved_tiff_maxworkers,
             "geometry_policy": "single_file_only" if apply_adjust else "not_applied",
         }
 
@@ -293,6 +332,8 @@ class BatchWorkflowMixin:
         out_dir = Path(self.batch_out_dir.text().strip())
         apply_adjust = bool(self.batch_apply_adjustments.isChecked())
         embed_profile = bool(self.batch_embed_profile.isChecked())
+        tiff_compression = self._selected_tiff_compression()
+        tiff_maxworkers = self._selected_tiff_maxworkers()
         settings = self._development_profile_settings(self._active_development_profile_id)
         detail = self._detail_adjustment_kwargs_from_state(settings["detail_adjustments"])
         stored_profile_path = settings.get("icc_profile_path")
@@ -339,6 +380,8 @@ class BatchWorkflowMixin:
                 c2pa_config=c2pa_config,
                 proof_config=proof_config,
                 development_profile=self._profile_payload_from_development_settings(settings),
+                tiff_compression=tiff_compression,
+                tiff_maxworkers=tiff_maxworkers,
             )
             payload["task"] = task_label
             return payload

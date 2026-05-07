@@ -72,6 +72,28 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.16
+
+Release 0.3.16 improves TIFF export control and GUI review workflows:
+
+- final TIFFs can be exported uncompressed or with ZIP/Deflate, LZW, JPEG or
+  ZSTD compression,
+- `imagecodecs` is included in runtime and Windows packaging for TIFF codecs,
+- compressed TIFF export can bound per-TIFF compression workers and batch export
+  distributes CPU across active jobs,
+- horizontal/vertical leveling uses a draggable line and exported rotations are
+  cropped to avoid black canvas borders,
+- the folder tree can open directories in the system file browser,
+- the render queue shows per-file progress bars.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.16-Setup.exe`
+- `ProbRAW-0.3.16-Setup.exe.sha256`
+- `probraw-0.3.16.tar.gz`
+- `probraw-0.3.16-py3-none-any.whl`
+- `probraw_0.3.16_python_artifacts.sha256`
+
 ## Release 0.3.15
 
 Release 0.3.15 fixes export fidelity and reduces heavy work in preview,

@@ -60,6 +60,10 @@ def test_parser_accepts_batch_worker_controls():
             "2",
             "--cache-dir",
             "cache",
+            "--tiff-compression",
+            "zip",
+            "--tiff-workers",
+            "4",
         ]
     )
     auto = parser.parse_args(
@@ -91,6 +95,8 @@ def test_parser_accepts_batch_worker_controls():
     assert develop.cache_dir == "cache"
     assert batch.workers == 2
     assert batch.cache_dir == "cache"
+    assert batch.tiff_compression == "zip"
+    assert batch.tiff_workers == 4
     assert auto.workers == 3
     assert auto.cache_dir == "cache"
 

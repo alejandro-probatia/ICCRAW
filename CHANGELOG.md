@@ -20,6 +20,39 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+## [0.3.16] - 2026-05-07
+
+### Added
+
+- Added TIFF compression choices for final exports: none, ZIP/Deflate, LZW,
+  JPEG and ZSTD, backed by `imagecodecs`.
+- Added bounded TIFF compression worker controls in GUI, CLI
+  (`--tiff-workers`) and `PROBRAW_TIFF_MAXWORKERS`.
+- Added draggable horizontal/vertical leveling lines with live angle feedback.
+- Added a folder-tree context action to open directories in the system file
+  browser.
+- Added per-file render progress bars to the queue table.
+
+### Changed
+
+- Compressed batch TIFF export now distributes compression threads across active
+  batch workers to avoid oversubscribing CPU cores.
+- TIFF compression metadata is recorded in render settings/Proof context.
+
+### Fixed
+
+- Leveling export crops the valid rotated image area so black canvas borders are
+  not written into final TIFFs.
+- ArgyllCMS output conversions are recompressed after `cctiff` when a TIFF
+  compression mode is selected.
+
+### Tests
+
+- Full suite: `438 passed, 2 warnings`.
+- Added regression coverage for TIFF codecs, TIFF compression worker dispatch,
+  draggable leveling, export border cropping, folder-tree open action and queue
+  progress bars.
+
 ## [0.3.15] - 2026-05-06
 
 ### Added

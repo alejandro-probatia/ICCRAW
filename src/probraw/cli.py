@@ -144,10 +144,22 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
     s.add_argument("--out", required=True)
     s.add_argument(
+        "--tiff-compression",
+        choices=["none", "zip", "lzw", "jpeg", "zstd"],
+        default="none",
+        help="Compresion del TIFF final: none, zip/deflate, lzw, jpeg o zstd",
+    )
+    s.add_argument(
         "--workers",
         type=int,
         default=None,
         help="Numero de trabajadores para el lote; 1 fuerza serial, 0/omitido usa auto",
+    )
+    s.add_argument(
+        "--tiff-workers",
+        type=int,
+        default=None,
+        help="Hilos de compresion por TIFF; 0/omitido reparte CPU automaticamente en lote",
     )
     s.add_argument("--cache-dir", default=None, help="Directorio de cache numerica de demosaico si la receta usa use_cache")
     s.add_argument("--c2pa-sign", action="store_true", help="Firma C2PA opcional si hay certificado disponible")
@@ -423,6 +435,8 @@ def main(argv: list[str] | None = None) -> int:
                 cache_dir=Path(args.cache_dir) if args.cache_dir else None,
                 c2pa_config=c2pa_config,
                 proof_config=proof_config,
+                tiff_compression=args.tiff_compression,
+                tiff_maxworkers=args.tiff_workers,
             )
             manifest_path = Path(args.out) / "batch_manifest.json"
             write_json(manifest_path, manifest)

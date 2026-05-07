@@ -41,7 +41,13 @@ from ...analysis.mtf import MTFResult, analyze_slanted_edge_mtf
 from ...core.models import Recipe, to_json_dict, write_json
 from ...core.recipe import load_recipe, save_recipe
 from ...core.external import external_tool_path, run_external
-from ...core.utils import RAW_EXTENSIONS, read_image as _read_image, versioned_output_path, write_tiff16
+from ...core.utils import (
+    RAW_EXTENSIONS,
+    read_image as _read_image,
+    resolve_tiff_maxworkers,
+    versioned_output_path,
+    write_tiff16,
+)
 from ...display_color import (
     detect_system_display_profile as _detect_system_display_profile,
     display_profile_label,

@@ -10,7 +10,7 @@ Revelado RAW/TIFF reproducible y auditable para fotografía científica, forense
 patrimonial, con perfilado ICC por sesión, ajustes paramétricos por archivo y
 trazabilidad abierta AGPL.
 
-![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.15-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
+![Licencia AGPL-3.0-or-later](https://img.shields.io/badge/licencia-AGPL--3.0--or--later-blue) ![CI](https://img.shields.io/badge/CI-pendiente-lightgrey) ![Versión](https://img.shields.io/badge/version-v0.3.16-brightgreen) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20macOS%20%7C%20Windows-informational)
 
 ![Interfaz principal de ProbRAW](docs/assets/screenshots/probraw-portada.png)
 
@@ -31,19 +31,20 @@ El flujo actual está centrado de forma deliberada en ICC:
 
 ## Estado Actual
 
-ProbRAW 0.3.15 es adecuado para pruebas controladas, revisión metodológica y
+ProbRAW 0.3.16 es adecuado para pruebas controladas, revisión metodológica y
 validación de candidata a release. Todavía no es un sistema certificado para
 producción científica o forense.
 
-La version actual mejora fidelidad de exportacion y rendimiento: los TIFF
-renderizados incluyen recorte/nivelado visual, los lotes con varios archivos
-evitan aplicar la geometria de una sola imagen a todas, y preview/perfilado/cache
-usan defaults mas contenidos de memoria y procesos.
+La version actual mejora el control de exportacion TIFF y la revision en GUI:
+los TIFF comprimidos admiten codecs seleccionables y workers de compresion
+acotados, el nivelado visual usa una linea arrastrable con angulo, el arbol de
+carpetas puede abrir directorios en el explorador del sistema y la cola muestra
+progreso por archivo.
 
 La última validación de empaquetado pasó con:
 
 ```text
-426 passed, 2 warnings
+438 passed, 2 warnings
 ```
 
 ## Documentación

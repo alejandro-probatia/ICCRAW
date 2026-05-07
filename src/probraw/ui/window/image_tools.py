@@ -97,7 +97,7 @@ class ImageToolsMixin:
         self._update_viewer_interaction_cursor()
         self._sync_image_tool_overlays()
         label = self.tr("horizontal") if mode == "horizontal" else self.tr("vertical")
-        self._set_status(self.tr("Nivelar") + f" {label}: " + self.tr("marca dos puntos de una referencia"))
+        self._set_status(self.tr("Nivelar") + f" {label}: " + self.tr("arrastra una linea sobre una referencia"))
 
     def _deactivate_image_level_tool(self) -> None:
         if not bool(getattr(self, "_image_level_selection_active", False)):
@@ -118,6 +118,11 @@ class ImageToolsMixin:
         if hasattr(self, "_push_edit_history_snapshot"):
             self._push_edit_history_snapshot("clear_level")
         self._set_status(self.tr("Nivelado limpiado"))
+
+    def _on_viewer_line_selected(self, x0: float, y0: float, x1: float, y1: float) -> None:
+        if not bool(getattr(self, "_image_level_selection_active", False)):
+            return
+        self._apply_image_level_from_points((float(x0), float(y0)), (float(x1), float(y1)))
 
     def _handle_image_tool_click(self, x: float, y: float) -> bool:
         if not bool(getattr(self, "_image_level_selection_active", False)):
@@ -172,6 +177,11 @@ class ImageToolsMixin:
             panel = getattr(self, panel_name, None)
             if panel is None:
                 continue
+            if hasattr(panel, "set_line_selection_enabled"):
+                panel.set_line_selection_enabled(
+                    bool(getattr(self, "_image_level_selection_active", False)),
+                    reference_axis=str(getattr(self, "_image_level_mode", "horizontal") or "horizontal"),
+                )
             panel_crop_rect = self._crop_rect_for_panel(panel) if crop_rect is not None else None
             if hasattr(panel, "set_view_crop_rect"):
                 panel.set_view_crop_rect(panel_crop_rect)
@@ -276,12 +286,12 @@ class ImageToolsMixin:
                 self.tr("Nivelar horizontal"),
                 lambda: self._start_image_level_tool("horizontal"),
                 icon=self._text_badge_icon("H"),
-                tooltip=self.tr("Marcar dos puntos de una referencia horizontal"),
+                tooltip=self.tr("Arrastrar una linea sobre una referencia horizontal"),
             ),
             self._viewer_action(
                 self.tr("Nivelar vertical"),
                 lambda: self._start_image_level_tool("vertical"),
                 icon=self._text_badge_icon("V"),
-                tooltip=self.tr("Marcar dos puntos de una referencia vertical"),
+                tooltip=self.tr("Arrastrar una linea sobre una referencia vertical"),
             ),
         ]

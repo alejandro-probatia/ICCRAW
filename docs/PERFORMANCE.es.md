@@ -72,6 +72,9 @@ Variables de control:
   Por defecto son 2800 MiB, ajustado a partir de una D850 de 45,7 MP: el
   demosaico DCB consume ~1,52 GiB por proceso y el batch real necesita margen
   adicional para escribir TIFF lineal/final.
+- `PROBRAW_TIFF_MAXWORKERS`: hilos de compresion por TIFF para `tifffile`.
+  Si se omite, ProbRAW reparte CPU automaticamente en lotes comprimidos; en una
+  exportacion individual `tifffile` mantiene su modo automatico.
 
 Desde la serie posterior, el modo automatico ajusta ese presupuesto usando el
 tamano de las capturas y el algoritmo de demosaico. `PROBRAW_BATCH_WORKER_RAM_MB`

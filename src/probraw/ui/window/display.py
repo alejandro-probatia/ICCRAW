@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from ._imports import *  # noqa: F401,F403
 
 
@@ -423,6 +425,19 @@ class DisplayControlsMixin:
     def _ca_scale_factors(self) -> tuple[float, float]:
         return 1.0 + self.slider_ca_red.value() / 10000.0, 1.0 + self.slider_ca_blue.value() / 10000.0
 
+    def _selected_tiff_compression(self) -> str:
+        combo = getattr(self, "combo_tiff_compression", None)
+        if combo is None:
+            return "none"
+        return str(combo.currentData() or "none")
+
+    def _selected_tiff_maxworkers(self) -> int | None:
+        spin = getattr(self, "spin_tiff_maxworkers", None)
+        if spin is None:
+            return None
+        value = int(spin.value())
+        return value if value > 0 else None
+
     def _apply_output_adjustments(
         self,
         image: np.ndarray,
@@ -525,7 +540,68 @@ class DisplayControlsMixin:
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=(0.0, 0.0, 0.0),
         )
+        crop = self._valid_rotated_output_crop_rect(w, h, float(rotation_degrees), new_w, new_h)
+        if crop is not None:
+            x, y, cw, ch = crop
+            rotated = rotated[y : y + ch, x : x + cw, :]
         return np.ascontiguousarray(np.clip(rotated, 0.0, 1.0).astype(np.float32, copy=False))
+
+    def _valid_rotated_output_crop_rect(
+        self,
+        width: int,
+        height: int,
+        rotation_degrees: float,
+        output_width: int,
+        output_height: int,
+    ) -> tuple[int, int, int, int] | None:
+        crop_w, crop_h = self._largest_rotated_rect_without_borders(
+            float(width),
+            float(height),
+            math.radians(float(rotation_degrees)),
+        )
+        angle_mod = abs(((float(rotation_degrees) + 45.0) % 90.0) - 45.0)
+        safety_margin = 0 if angle_mod <= 1e-6 else 2
+        crop_w = int(np.floor(min(float(output_width), max(1.0, crop_w)))) - safety_margin
+        crop_h = int(np.floor(min(float(output_height), max(1.0, crop_h)))) - safety_margin
+        if crop_w <= 0 or crop_h <= 0:
+            return None
+        x0 = max(0, int(round((int(output_width) - crop_w) / 2.0)))
+        y0 = max(0, int(round((int(output_height) - crop_h) / 2.0)))
+        crop_w = min(crop_w, int(output_width) - x0)
+        crop_h = min(crop_h, int(output_height) - y0)
+        if crop_w <= 0 or crop_h <= 0:
+            return None
+        return x0, y0, crop_w, crop_h
+
+    @staticmethod
+    def _largest_rotated_rect_without_borders(width: float, height: float, angle_radians: float) -> tuple[float, float]:
+        if width <= 0.0 or height <= 0.0:
+            return 0.0, 0.0
+        sin_a = abs(math.sin(angle_radians))
+        cos_a = abs(math.cos(angle_radians))
+        if sin_a <= 1e-12:
+            return width, height
+        if cos_a <= 1e-12:
+            return height, width
+
+        width_is_longer = width >= height
+        side_long = width if width_is_longer else height
+        side_short = height if width_is_longer else width
+
+        if side_short <= 2.0 * sin_a * cos_a * side_long or abs(sin_a - cos_a) < 1e-12:
+            x = 0.5 * side_short
+            if width_is_longer:
+                return x / sin_a, x / cos_a
+            return x / cos_a, x / sin_a
+
+        cos_2a = cos_a * cos_a - sin_a * sin_a
+        if abs(cos_2a) <= 1e-12:
+            side = side_short / math.sqrt(2.0)
+            return side, side
+        return (
+            (width * cos_a - height * sin_a) / cos_2a,
+            (height * cos_a - width * sin_a) / cos_2a,
+        )
 
     def _detail_cache_key(
         self,

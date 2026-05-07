@@ -2291,6 +2291,7 @@ if QtWidgets is not None:
     class ImagePanel(QtWidgets.QLabel):
         imageClicked = QtCore.Signal(float, float)
         roiSelected = QtCore.Signal(float, float, float, float)
+        lineSelected = QtCore.Signal(float, float, float, float)
         viewTransformChanged = QtCore.Signal(float, float)
         PIXEL_EXACT_MIN_SCALE = 1.0
         PIXEL_GRID_MIN_SCALE = 8.0
@@ -2323,6 +2324,10 @@ if QtWidgets is not None:
             self._roi_selection_enabled = False
             self._roi_drag_start_image: tuple[float, float] | None = None
             self._roi_drag_current_image: tuple[float, float] | None = None
+            self._line_selection_enabled = False
+            self._line_reference_axis = "horizontal"
+            self._line_drag_start_image: tuple[float, float] | None = None
+            self._line_drag_current_image: tuple[float, float] | None = None
             self._pan = QtCore.QPointF(0.0, 0.0)
             self._drag_start: QtCore.QPointF | None = None
             self._drag_last: QtCore.QPointF | None = None
@@ -2455,6 +2460,15 @@ if QtWidgets is not None:
             self._roi_selection_enabled = bool(enabled)
             self._roi_drag_start_image = None
             self._roi_drag_current_image = None
+            self._apply_idle_cursor()
+            self.update()
+
+        def set_line_selection_enabled(self, enabled: bool, *, reference_axis: str = "horizontal") -> None:
+            self._line_selection_enabled = bool(enabled)
+            axis = str(reference_axis or "horizontal").strip().lower()
+            self._line_reference_axis = "vertical" if axis == "vertical" else "horizontal"
+            self._line_drag_start_image = None
+            self._line_drag_current_image = None
             self._apply_idle_cursor()
             self.update()
 
@@ -2610,6 +2624,13 @@ if QtWidgets is not None:
                 self._drag_moved = False
                 self.setCursor(QtCore.Qt.ClosedHandCursor)
                 return
+            if self._line_selection_enabled and event.button() == QtCore.Qt.LeftButton and self._base_pixmap is not None:
+                mapped = self._map_widget_to_image(event.position())
+                if mapped is not None:
+                    self._line_drag_start_image = mapped
+                    self._line_drag_current_image = mapped
+                    self.update()
+                    return
             if self._roi_selection_enabled and event.button() == QtCore.Qt.LeftButton and self._base_pixmap is not None:
                 mapped = self._map_widget_to_image(event.position())
                 if mapped is not None:
@@ -2630,6 +2651,12 @@ if QtWidgets is not None:
             super().mousePressEvent(event)
 
         def mouseMoveEvent(self, event) -> None:  # noqa: N802
+            if self._line_selection_enabled and self._line_drag_start_image is not None:
+                mapped = self._map_widget_to_image(event.position())
+                if mapped is not None:
+                    self._line_drag_current_image = mapped
+                    self.update()
+                return
             if self._roi_selection_enabled and self._roi_drag_start_image is not None:
                 mapped = self._map_widget_to_image(event.position())
                 if mapped is not None:
@@ -2650,6 +2677,24 @@ if QtWidgets is not None:
             super().mouseMoveEvent(event)
 
         def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+            if (
+                self._line_selection_enabled
+                and event.button() == QtCore.Qt.LeftButton
+                and self._line_drag_start_image is not None
+            ):
+                mapped = self._map_widget_to_image(event.position()) or self._line_drag_current_image
+                start = self._line_drag_start_image
+                self._line_drag_current_image = mapped
+                if mapped is not None:
+                    dx = float(mapped[0]) - float(start[0])
+                    dy = float(mapped[1]) - float(start[1])
+                    if math.hypot(dx, dy) >= 3.0:
+                        self.lineSelected.emit(float(start[0]), float(start[1]), float(mapped[0]), float(mapped[1]))
+                self._line_drag_start_image = None
+                self._line_drag_current_image = None
+                self._apply_idle_cursor()
+                self.update()
+                return
             if (
                 self._roi_selection_enabled
                 and event.button() == QtCore.Qt.LeftButton
@@ -2733,6 +2778,25 @@ if QtWidgets is not None:
                     painter.drawEllipse(point, 6, 6)
                     painter.drawText(point + QtCore.QPointF(8, -8), str(idx))
 
+            if self._line_drag_start_image is not None and self._line_drag_current_image is not None and self._image_size is not None:
+                start = self._map_image_to_widget(
+                    self._line_drag_start_image[0],
+                    self._line_drag_start_image[1],
+                    rect,
+                    scale,
+                    transform,
+                    bounds,
+                )
+                end = self._map_image_to_widget(
+                    self._line_drag_current_image[0],
+                    self._line_drag_current_image[1],
+                    rect,
+                    scale,
+                    transform,
+                    bounds,
+                )
+                self._draw_level_line_overlay(painter, start, end)
+
             if self._roi_rect is not None and self._image_size is not None:
                 x, y, w, h = self._roi_rect
                 corners = [
@@ -2806,12 +2870,67 @@ if QtWidgets is not None:
                 self.setCursor(QtCore.Qt.OpenHandCursor)
             elif self._roi_selection_enabled:
                 self.setCursor(QtCore.Qt.CrossCursor)
+            elif self._line_selection_enabled:
+                self.setCursor(QtCore.Qt.CrossCursor)
             elif self._interaction_cursor is not None:
                 self.setCursor(self._interaction_cursor)
             elif self._image_can_pan():
                 self.setCursor(QtCore.Qt.OpenHandCursor)
             else:
                 self.unsetCursor()
+
+        def _draw_level_line_overlay(
+            self,
+            painter: QtGui.QPainter,
+            start: QtCore.QPointF,
+            end: QtCore.QPointF,
+        ) -> None:
+            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            painter.setPen(QtGui.QPen(QtGui.QColor("#f59e0b"), 2))
+            painter.setBrush(QtCore.Qt.NoBrush)
+            painter.drawLine(start, end)
+            painter.setBrush(QtGui.QBrush(QtGui.QColor(245, 158, 11, 180)))
+            painter.setPen(QtGui.QPen(QtGui.QColor("#111827"), 1))
+            painter.drawEllipse(start, 5, 5)
+            painter.drawEllipse(end, 5, 5)
+
+            text = self._level_line_angle_text()
+            if not text:
+                return
+            metrics = painter.fontMetrics()
+            mid = QtCore.QPointF((start.x() + end.x()) / 2.0, (start.y() + end.y()) / 2.0)
+            text_w = metrics.horizontalAdvance(text)
+            label_rect = QtCore.QRectF(mid.x() + 8, mid.y() - metrics.height() - 8, text_w + 12, metrics.height() + 6)
+            bounds = QtCore.QRectF(self.rect()).adjusted(4, 4, -4, -4)
+            if label_rect.right() > bounds.right():
+                label_rect.moveRight(bounds.right())
+            if label_rect.left() < bounds.left():
+                label_rect.moveLeft(bounds.left())
+            if label_rect.top() < bounds.top():
+                label_rect.moveTop(bounds.top())
+            if label_rect.bottom() > bounds.bottom():
+                label_rect.moveBottom(bounds.bottom())
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(QtGui.QColor(17, 24, 39, 215))
+            painter.drawRoundedRect(label_rect, 4, 4)
+            painter.setPen(QtGui.QColor("#fbbf24"))
+            painter.drawText(label_rect, QtCore.Qt.AlignCenter, text)
+
+        def _level_line_angle_text(self) -> str:
+            if self._line_drag_start_image is None or self._line_drag_current_image is None:
+                return ""
+            dx = float(self._line_drag_current_image[0]) - float(self._line_drag_start_image[0])
+            dy = float(self._line_drag_current_image[1]) - float(self._line_drag_start_image[1])
+            if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+                return "0.00 grados"
+            angle = math.degrees(math.atan2(dy, dx))
+            if self._line_reference_axis == "vertical":
+                delta = ((angle - 90.0 + 180.0) % 360.0) - 180.0
+                prefix = "V"
+            else:
+                delta = ((angle + 180.0) % 360.0) - 180.0
+                prefix = "H"
+            return f"{prefix} {delta:+.2f} grados"
 
         def _map_widget_to_image(self, pos: QtCore.QPointF) -> tuple[float, float] | None:
             if self._base_pixmap is None or self._image_size is None:

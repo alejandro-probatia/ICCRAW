@@ -668,6 +668,36 @@ class ControlPanelsMixin:
         raw_note.setStyleSheet("font-size: 12px; color: #6b7280;")
         outer.addWidget(raw_note)
 
+        tiff_box = QtWidgets.QGroupBox(self.tr("Exportacion TIFF"))
+        tiff_grid = QtWidgets.QGridLayout(tiff_box)
+        tiff_grid.addWidget(QtWidgets.QLabel(self.tr("Compresion")), 0, 0)
+        self.combo_tiff_compression = QtWidgets.QComboBox()
+        for label, value in TIFF_COMPRESSION_OPTIONS:
+            self.combo_tiff_compression.addItem(self.tr(label), value)
+        self.combo_tiff_compression.setToolTip(
+            self.tr("La salida sigue siendo TIFF RGB 16-bit. JPEG/LZW/ZSTD pueden requerir codecs adicionales.")
+        )
+        tiff_grid.addWidget(self.combo_tiff_compression, 0, 1)
+        tiff_grid.addWidget(QtWidgets.QLabel(self.tr("Hilos compresion")), 1, 0)
+        self.spin_tiff_maxworkers = QtWidgets.QSpinBox()
+        self.spin_tiff_maxworkers.setRange(0, 64)
+        self.spin_tiff_maxworkers.setValue(0)
+        self.spin_tiff_maxworkers.setSpecialValueText(self.tr("Auto"))
+        self.spin_tiff_maxworkers.setToolTip(
+            self.tr("0 reparte CPU automaticamente en lote; valores mayores fuerzan hilos por TIFF.")
+        )
+        tiff_grid.addWidget(self.spin_tiff_maxworkers, 1, 1)
+        tiff_note = QtWidgets.QLabel(
+            self.tr(
+                "ZIP, LZW y ZSTD son compresiones sin perdida. JPEG reduce tamano pero puede alterar pixeles. "
+                "Auto usa varios nucleos sin saturar el equipo durante lotes."
+            )
+        )
+        tiff_note.setWordWrap(True)
+        tiff_note.setStyleSheet("font-size: 12px; color: #6b7280;")
+        tiff_grid.addWidget(tiff_note, 2, 0, 1, 2)
+        outer.addWidget(tiff_box)
+
         self._build_hidden_raw_compatibility_controls(tab)
         outer.addWidget(self._build_named_adjustment_profile_panel("raw_export", self.tr("Exportacion RAW")))
         outer.addStretch(1)

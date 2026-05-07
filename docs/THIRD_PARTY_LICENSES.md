@@ -64,6 +64,7 @@ Side6/Qt (GUI optional)
 
 - `opencv-python-headless`: BSD-3-Clause (OpenCV).
 - `tifffile`: BSD.
+- `imagecodecs`: BSD-3-Clause; TIFF codecs for LZW, JPEG and ZSTD compression.
 - `numpy`: BSD-3-Clause.
 - `scipy`: BSD-3-Clause.
 - `PyYAML`: MIT.

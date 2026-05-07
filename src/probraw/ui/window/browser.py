@@ -75,6 +75,42 @@ class BrowserMetadataMixin:
         p = Path(self._dir_model.filePath(index))
         self._set_current_directory(p)
 
+    def _show_directory_tree_context_menu(self, pos: QtCore.QPoint) -> None:
+        index = self.dir_tree.indexAt(pos)
+        folder = self._directory_tree_path_for_index(index)
+        if folder is None:
+            folder = self._current_dir
+        else:
+            self.dir_tree.setCurrentIndex(index)
+
+        menu = QtWidgets.QMenu(self)
+        open_action = menu.addAction(
+            self.tr("Abrir en el explorador del sistema"),
+            lambda p=folder: self._open_directory_in_system_file_browser(p),
+        )
+        open_action.setEnabled(folder.exists() and folder.is_dir())
+        menu.exec(self.dir_tree.viewport().mapToGlobal(pos))
+
+    def _directory_tree_path_for_index(self, index: QtCore.QModelIndex) -> Path | None:
+        if not index.isValid():
+            return None
+        path_text = self._dir_model.filePath(index)
+        if not path_text:
+            return None
+        folder = Path(path_text)
+        return folder if folder.exists() and folder.is_dir() else None
+
+    def _open_directory_in_system_file_browser(self, folder: Path) -> None:
+        folder = Path(folder)
+        if not folder.exists() or not folder.is_dir():
+            self._set_status(self.tr("Directorio no encontrado:") + f" {folder}")
+            return
+        ok = QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
+        if ok:
+            self._set_status(self.tr("Carpeta abierta en el explorador del sistema:") + f" {folder}")
+        else:
+            self._set_status(self.tr("No se pudo abrir el explorador del sistema para:") + f" {folder}")
+
     def _set_current_directory(self, folder: Path) -> None:
         resolved_folder = self._resolve_existing_directory(folder)
         if resolved_folder is None:

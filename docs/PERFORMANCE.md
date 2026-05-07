@@ -62,6 +62,9 @@ Control variables:
   By default it is 2800 MiB, adjusted from a 45.7 MP D850: the
   DCB demosaic consumes ~1.52 GiB per process and the real batch needs margin
   additional to write linear/final TIFF.
+- `PROBRAW_TIFF_MAXWORKERS`: compression threads per TIFF for `tifffile`.
+  If omitted, ProbRAW distributes CPU automatically in compressed batches; for
+  a single export, `tifffile` keeps its automatic mode.
 
 ## Numerical demosaic cache
 

@@ -403,6 +403,25 @@ def test_raw_develop_layout_prioritizes_viewer_area(qapp):
         window.close()
 
 
+def test_directory_tree_can_open_folder_in_system_file_browser(tmp_path: Path, monkeypatch, qapp):
+    opened: list[str] = []
+
+    def fake_open_url(url):
+        opened.append(url.toLocalFile())
+        return True
+
+    monkeypatch.setattr(gui_module.QtGui.QDesktopServices, "openUrl", fake_open_url)
+
+    window = ICCRawMainWindow()
+    try:
+        window._open_directory_in_system_file_browser(tmp_path)
+
+        assert [Path(path) for path in opened] == [tmp_path]
+        assert "explorador del sistema" in window.statusBar().currentMessage()
+    finally:
+        window.close()
+
+
 def test_gamut_widget_resets_camera_when_payload_changes(qapp):
     widget = gui_module.Gamut3DWidget()
     try:
@@ -662,12 +681,40 @@ def test_image_tools_accept_real_mouse_events_on_viewer(qapp):
         assert window._image_crop_rect == (10, 10, 50, 40)
 
         window._start_image_level_tool("horizontal")
-        QtTest.QTest.mouseClick(window.image_result_single, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(20, 20))
-        QtTest.QTest.mouseClick(window.image_result_single, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(120, 100))
+        QtTest.QTest.mousePress(window.image_result_single, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(20, 20))
+        QtTest.QTest.mouseMove(window.image_result_single, QtCore.QPoint(120, 100))
+        QtTest.QTest.mouseRelease(window.image_result_single, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(120, 100))
         qapp.processEvents()
 
         signed_rotation = ((float(window._viewer_rotation) + 180.0) % 360.0) - 180.0
         assert signed_rotation == pytest.approx(-38.6598, abs=1e-3)
+    finally:
+        window.close()
+
+
+def test_image_level_drag_line_sets_rotation_and_angle_overlay(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._original_linear = gui_module.np.zeros((100, 100, 3), dtype=gui_module.np.float32)
+        window.image_result_single.setFixedSize(200, 200)
+        window.image_result_single.set_rgb_u8_image(gui_module.np.zeros((100, 100, 3), dtype=gui_module.np.uint8))
+        window.show()
+        qapp.processEvents()
+
+        window._start_image_level_tool("horizontal")
+        assert window.image_result_single._line_selection_enabled is True
+        QtTest.QTest.mousePress(window.image_result_single, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(20, 20))
+        QtTest.QTest.mouseMove(window.image_result_single, QtCore.QPoint(120, 100))
+        qapp.processEvents()
+
+        assert window.image_result_single._level_line_angle_text() == "H +38.66 grados"
+        QtTest.QTest.mouseRelease(window.image_result_single, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(120, 100))
+        qapp.processEvents()
+
+        signed_rotation = ((float(window._viewer_rotation) + 180.0) % 360.0) - 180.0
+        assert signed_rotation == pytest.approx(-38.6598, abs=1e-3)
+        assert window._image_level_selection_active is False
+        assert window.image_result_single._line_selection_enabled is False
     finally:
         window.close()
 
@@ -3861,6 +3908,39 @@ def test_queue_assignment_writes_and_reuses_raw_sidecar(tmp_path: Path, qapp):
         window.close()
 
 
+def test_queue_table_shows_per_file_progress_bar(tmp_path: Path, qapp):
+    raw = tmp_path / "capture.NEF"
+    raw.write_bytes(b"raw")
+
+    window = ICCRawMainWindow()
+    try:
+        window._queue_add_files([raw])
+
+        assert window.queue_table.columnCount() == 6
+        progress = window.queue_table.cellWidget(0, 3)
+        assert isinstance(progress, QtWidgets.QProgressBar)
+        assert progress.value() == 0
+
+        window._apply_queue_render_progress(
+            {
+                "source": str(raw),
+                "status": "processing",
+                "progress": 70,
+                "message": "Escribiendo TIFF",
+            }
+        )
+
+        progress = window.queue_table.cellWidget(0, 3)
+        assert isinstance(progress, QtWidgets.QProgressBar)
+        assert progress.value() == 70
+        assert window._develop_queue[0]["status"] == "processing"
+        assert window._develop_queue[0]["message"] == "Escribiendo TIFF"
+        assert window.queue_table.item(0, 2).text() == "processing"
+        assert window.queue_table.item(0, 5).text() == "Escribiendo TIFF"
+    finally:
+        window.close()
+
+
 def test_queue_process_uses_inline_raw_sidecar_sharpening(tmp_path: Path, monkeypatch, qapp):
     root = tmp_path / "session"
     raw = root / "01_ORG" / "capture.NEF"
@@ -6612,6 +6692,8 @@ def test_process_batch_files_passes_gui_c2pa_config_to_signer(tmp_path: Path, mo
         captured["source_raw"] = kwargs["source_raw"]
         captured["recipe"] = kwargs["recipe"]
         captured["render_adjustments"] = kwargs["render_adjustments"]
+        captured["tiff_compression"] = kwargs["tiff_compression"]
+        captured["tiff_maxworkers"] = kwargs["tiff_maxworkers"]
         Path(out_tiff).parent.mkdir(parents=True, exist_ok=True)
         Path(out_tiff).write_bytes(b"signed tiff")
         return "embedded_profile", ProbRawProofResult(
@@ -6642,6 +6724,8 @@ def test_process_batch_files_passes_gui_c2pa_config_to_signer(tmp_path: Path, mo
             render_adjustments={},
             c2pa_config=c2pa_config,
             proof_config=proof_config,
+            tiff_compression="zip",
+            tiff_maxworkers=3,
         )
 
         assert payload["errors"] == []
@@ -6650,6 +6734,9 @@ def test_process_batch_files_passes_gui_c2pa_config_to_signer(tmp_path: Path, mo
         assert captured["source_raw"] == image_path
         assert captured["recipe"].output_space == "srgb"
         assert captured["render_adjustments"] == {"applied": False}
+        assert captured["tiff_compression"] == "zip"
+        assert captured["tiff_maxworkers"] == 3
+        assert payload["tiff_maxworkers"] == 3
     finally:
         window.close()
 
@@ -6743,6 +6830,30 @@ def test_output_adjustments_apply_view_crop_and_level_rotation(qapp):
         state = window._output_geometry_adjustment_state(image)
         assert state["crop_rect"] == [10, 5, 10, 10]
         assert state["rotation_degrees"] == pytest.approx(90.0)
+    finally:
+        window.close()
+
+
+def test_output_level_rotation_crops_black_canvas_border(qapp):
+    window = ICCRawMainWindow()
+    try:
+        image = gui_module.np.ones((80, 120, 3), dtype=gui_module.np.float32)
+        window._viewer_rotation = 7.5
+
+        out = window._apply_output_adjustments(
+            image,
+            denoise_luma=0.0,
+            denoise_color=0.0,
+            sharpen_amount=0.0,
+            sharpen_radius=1.0,
+            lateral_ca_red_scale=1.0,
+            lateral_ca_blue_scale=1.0,
+            render_adjustments={},
+        )
+
+        assert out.shape[0] < 80
+        assert out.shape[1] < 120
+        assert float(gui_module.np.min(out)) > 0.95
     finally:
         window.close()
 

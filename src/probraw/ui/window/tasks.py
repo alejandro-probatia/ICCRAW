@@ -119,13 +119,15 @@ class TaskStatusMixin:
         self._interactive_preview_inflight_include_analysis = False
         self._interactive_histogram_last_started_at = 0.0
 
-    def _start_background_task(self, label: str, task, on_success) -> None:
+    def _start_background_task(self, label: str, task, on_success, *, on_progress=None) -> None:
         self._set_status(self.tr("Ejecutando:") + f" {label}")
         task_row = self._monitor_task_start(label)
         app = QtWidgets.QApplication.instance()
         if app is not None:
             app.processEvents(QtCore.QEventLoop.ExcludeUserInputEvents)
-        thread = TaskThread(task)
+        thread = TaskThread(task, progress_enabled=on_progress is not None)
+        if on_progress is not None:
+            thread.progress.connect(on_progress)
         self._threads.append(thread)
 
         def cleanup() -> None:

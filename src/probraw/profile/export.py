@@ -16,7 +16,15 @@ import colour
 
 from ..core.models import BatchManifest, BatchManifestEntry, Recipe
 from ..core.external import external_tool_path, run_external
-from ..core.utils import RAW_EXTENSIONS, list_raw_files, sha256_file, write_tiff16
+from ..core.utils import (
+    RAW_EXTENSIONS,
+    list_raw_files,
+    resolve_tiff_maxworkers,
+    rewrite_tiff_compression,
+    sha256_file,
+    tiff_compression_for_metadata,
+    write_tiff16,
+)
 from .generic import (
     canonical_generic_output_space,
     ensure_generic_output_profile,
@@ -63,6 +71,8 @@ def batch_develop(
     cache_dir: Path | None = None,
     c2pa_config: C2PASignConfig | None = None,
     proof_config: ProbRawProofConfig | None = None,
+    tiff_compression: str | None = None,
+    tiff_maxworkers: int | None = None,
 ) -> BatchManifest:
     out_dir.mkdir(parents=True, exist_ok=True)
     linear_audit_dir = out_dir / "_linear_audit"
@@ -92,6 +102,11 @@ def batch_develop(
 
     recipe_sha = hashlib.sha256(json.dumps(asdict(recipe), sort_keys=True).encode("utf-8")).hexdigest()
     worker_count = _resolve_batch_workers(len(files), workers=workers, files=files, recipe=recipe)
+    resolved_tiff_maxworkers = _resolve_batch_tiff_maxworkers(
+        worker_count,
+        tiff_compression=tiff_compression,
+        configured=tiff_maxworkers,
+    )
     demosaic_cache_dir = _resolve_demosaic_cache_dir(
         raws_dir=raws_dir,
         out_dir=out_dir,
@@ -123,6 +138,8 @@ def batch_develop(
             proof_sign_config,
             color_mode,
             demosaic_cache_dir,
+            tiff_compression_for_metadata(tiff_compression),
+            resolved_tiff_maxworkers,
         )
         for idx, raw, out_final, out_linear in planned_jobs
     ]
@@ -208,6 +225,20 @@ def _available_cpu_count() -> int:
     return max(1, available_cpus)
 
 
+def _resolve_batch_tiff_maxworkers(
+    batch_workers: int,
+    *,
+    tiff_compression: str | None,
+    configured: int | None = None,
+) -> int | None:
+    resolved = resolve_tiff_maxworkers(configured, compression=tiff_compression)
+    if resolved is not None:
+        return resolved
+    if tiff_compression_for_metadata(tiff_compression) == "none":
+        return None
+    return max(1, _available_cpu_count() // max(1, int(batch_workers)))
+
+
 def _memory_limited_batch_workers(
     total_items: int,
     *,
@@ -283,6 +314,8 @@ def _process_batch_develop_job(
         ProbRawProofConfig,
         str,
         Path | None,
+        str,
+        int | None,
     ],
 ) -> tuple[int, BatchManifestEntry]:
     (
@@ -296,6 +329,8 @@ def _process_batch_develop_job(
         proof_sign_config,
         color_mode,
         demosaic_cache_dir,
+        tiff_compression,
+        tiff_maxworkers,
     ) = job
     if profile_path is None and is_generic_output_space(recipe.output_space):
         linear = develop_standard_linear_array(raw, recipe, cache_dir=demosaic_cache_dir)
@@ -317,6 +352,8 @@ def _process_batch_develop_job(
         proof_config=proof_sign_config,
         render_context={"entrypoint": "batch_develop", "linear_audit_tiff": str(out_linear)},
         generic_profile_dir=generic_profile_dir,
+        tiff_compression=tiff_compression,
+        tiff_maxworkers=tiff_maxworkers,
     )
     rendered_profile_path = profile_path_for_render_settings(
         recipe,
@@ -523,6 +560,8 @@ def write_profiled_tiff(
     recipe: Recipe,
     profile_path: Path | None,
     generic_profile_dir: Path | None = None,
+    tiff_compression: str | None = None,
+    tiff_maxworkers: int | None = None,
 ) -> str:
     if profile_path is None:
         if is_generic_output_space(recipe.output_space):
@@ -533,7 +572,13 @@ def write_profiled_tiff(
                 )
             output_profile = ensure_generic_output_profile(recipe.output_space, directory=generic_profile_dir)
             space = generic_output_profile(recipe.output_space).key
-            write_tiff16(out_tiff, image_linear_rgb, icc_profile=output_profile.read_bytes())
+            write_tiff16(
+                out_tiff,
+                image_linear_rgb,
+                icc_profile=output_profile.read_bytes(),
+                compression=tiff_compression,
+                maxworkers=tiff_maxworkers,
+            )
             return f"standard_{space}_output_icc"
         raise RuntimeError(
             f"output_space={recipe.output_space} requiere un perfil ICC de entrada activo. "
@@ -547,7 +592,13 @@ def write_profiled_tiff(
 
     mode = color_management_mode(recipe)
     if mode == "camera_rgb_with_input_icc":
-        write_tiff16(out_tiff, image_linear_rgb, icc_profile=profile_path.read_bytes())
+        write_tiff16(
+            out_tiff,
+            image_linear_rgb,
+            icc_profile=profile_path.read_bytes(),
+            compression=tiff_compression,
+            maxworkers=tiff_maxworkers,
+        )
         return mode
 
     if mode == "converted_srgb":
@@ -557,6 +608,8 @@ def write_profiled_tiff(
             input_profile=profile_path,
             output_space="srgb",
             generic_profile_dir=generic_profile_dir,
+            tiff_compression=tiff_compression,
+            tiff_maxworkers=tiff_maxworkers,
         )
         return mode
 
@@ -568,6 +621,8 @@ def write_profiled_tiff(
             input_profile=profile_path,
             output_space=output_space,
             generic_profile_dir=generic_profile_dir,
+            tiff_compression=tiff_compression,
+            tiff_maxworkers=tiff_maxworkers,
         )
         return mode
 
@@ -587,6 +642,8 @@ def write_signed_profiled_tiff(
     render_adjustments: dict[str, Any] | None = None,
     render_context: dict[str, Any] | None = None,
     generic_profile_dir: Path | None = None,
+    tiff_compression: str | None = None,
+    tiff_maxworkers: int | None = None,
 ) -> tuple[str, ProbRawProofResult]:
     proof_sign_config = proof_config or proof_config_from_environment()
     out_tiff = Path(out_tiff)
@@ -599,6 +656,8 @@ def write_signed_profiled_tiff(
             recipe=recipe,
             profile_path=profile_path,
             generic_profile_dir=generic_profile_dir,
+            tiff_compression=tiff_compression,
+            tiff_maxworkers=tiff_maxworkers,
         )
         rendered_profile_path = profile_path_for_render_settings(
             recipe,
@@ -607,6 +666,10 @@ def write_signed_profiled_tiff(
             generic_profile_dir=generic_profile_dir,
         )
         enriched_context = dict(render_context or {})
+        enriched_context["tiff_compression"] = tiff_compression_for_metadata(tiff_compression)
+        resolved_tiff_maxworkers = resolve_tiff_maxworkers(tiff_maxworkers, compression=tiff_compression)
+        if resolved_tiff_maxworkers is not None:
+            enriched_context["tiff_maxworkers"] = resolved_tiff_maxworkers
         if _uses_input_profile_for_conversion(mode) and profile_path is not None:
             enriched_context["source_input_icc_path_auxiliary"] = str(profile_path)
             if profile_path.exists():
@@ -722,6 +785,8 @@ def _write_converted_output_tiff_with_argyll(
     input_profile: Path,
     output_space: str,
     generic_profile_dir: Path | None = None,
+    tiff_compression: str | None = None,
+    tiff_maxworkers: int | None = None,
 ) -> None:
     cctiff = external_tool_path("cctiff")
     if cctiff is None:
@@ -753,6 +818,7 @@ def _write_converted_output_tiff_with_argyll(
         proc = run_external(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         if proc.returncode != 0:
             raise RuntimeError(f"cctiff retorno {proc.returncode}: {proc.stdout[-800:]}")
+        rewrite_tiff_compression(out_tiff, tiff_compression, maxworkers=tiff_maxworkers)
 
 
 def _argyll_reference_profile(name: str) -> Path:

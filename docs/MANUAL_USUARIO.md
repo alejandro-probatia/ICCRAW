@@ -197,6 +197,7 @@ tab is gone: its actions moved to the central viewer toolbar to save space.
 | `Unidad / raíz` | Select the visible drive or mount point for the browser. |
 | `Actualizar` | Re-read mounted drives and refresh the tree. |
 | Folder tree | Changes the current directory. ProbRAW lists compatible files in the thumbnail strip. |
+| Right-click on folder | Opens that folder in the system file browser. |
 
 Browsable files: RAW supported by the engine, DNG, TIFF, PNG, JPEG and JPG. For
 colorimetric references, use original RAW/DNG/TIFF captures, not derived outputs.
@@ -421,7 +422,8 @@ belongs to each file.
 | `Revelar cola` | Run TIFF rendering for valid items. |
 | Table `Archivo` | RAW/TIFF/image source. |
 | Table `Perfil` | Profile or settings assigned to the file. |
-| Table `Estado` | `pending`, `done` or `error`. |
+| Table `Estado` | `pending`, `queued`, `processing`, `done` or `error`. |
+| Table `Progreso` | Per-file progress bar: reading, adjustments, TIFF writing, completed or error. |
 | Table `TIFF salida` | Generated TIFF path. |
 | Table `Mensaje` | Process or error message. |
 | `Monitoreo de ejecución` | Global state, progress, task table and log. |
@@ -441,6 +443,8 @@ file or from the current sliders.
 | `Salida TIFF derivados` | Folder where final TIFFs are saved. In a normal session it points to `02_DRV/`. |
 | `Incrustar/aplicar ICC en TIFF` | Always enabled. Embeds the ICC selected for the image: camera/session ICC or standard RGB ICC profile. |
 | `Aplicar ajustes básicos y de nitidez` | Applies tone, color, sharpening, noise and CA settings from the profile to the TIFF. |
+| `Compresión` | Final TIFF mode: uncompressed, ZIP/Deflate, LZW, JPEG or ZSTD. ZIP, LZW and ZSTD are lossless; JPEG can alter pixels. |
+| `Hilos compresión` | `Auto` distributes CPU during batches; a fixed value forces threads per TIFF. |
 | `Usar carpeta actual` | Uses the browser directory as batch input. |
 | `Aplicar a selección` | Renders the current selection. |
 | `Aplicar a carpeta` | Renders all compatible files in the input folder. |
