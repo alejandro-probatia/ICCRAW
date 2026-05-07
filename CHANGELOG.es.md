@@ -18,6 +18,20 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.3.18] - 2026-05-07
+
+### Fixed
+
+- Deshacer/rehacer cambios de geometria de visor, solo recorte o nivelado, ya
+  no fuerza una reconstruccion final de preview. Esto evita un cuelgue aparente
+  al volver atras justo despues de reencuadrar una preview RAW grande.
+
+### Tests
+
+- Suite completa: `439 passed, 2 warnings`.
+- Anadida cobertura de regresion para evitar refresco de preview al deshacer
+  solo recorte.
+
 ## [0.3.17] - 2026-05-07
 
 ### Changed

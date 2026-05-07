@@ -20,6 +20,19 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+## [0.3.18] - 2026-05-07
+
+### Fixed
+
+- Undo/redo of viewer-only crop or leveling geometry no longer forces a final
+  preview rebuild. This avoids an apparent hang when going back immediately
+  after recropping a large RAW preview.
+
+### Tests
+
+- Full suite: `439 passed, 2 warnings`.
+- Added regression coverage for crop-only undo avoiding preview refresh.
+
 ## [0.3.17] - 2026-05-07
 
 ### Changed

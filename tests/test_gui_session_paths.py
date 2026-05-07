@@ -832,6 +832,27 @@ def test_edit_clear_adjustments_resets_recipe_render_detail_and_viewer(qapp):
         window.close()
 
 
+def test_edit_undo_crop_only_does_not_force_preview_refresh(qapp):
+    window = ICCRawMainWindow()
+    try:
+        window._original_linear = gui_module.np.zeros((100, 120, 3), dtype=gui_module.np.float32)
+        window._current_result_display_u8 = gui_module.np.zeros((100, 120, 3), dtype=gui_module.np.uint8)
+        window._initialize_edit_history()
+
+        calls: list[bool] = []
+        window._refresh_preview = lambda *args, **kwargs: calls.append(bool(kwargs.get("force_final")))
+
+        window._on_image_crop_selected(10, 12, 40, 30)
+        assert window._image_crop_rect == (10, 12, 40, 30)
+
+        window._edit_undo()
+
+        assert window._image_crop_rect is None
+        assert calls == []
+    finally:
+        window.close()
+
+
 def test_edit_menu_shortcuts_are_registered(qapp):
     window = ICCRawMainWindow()
     try:

@@ -72,6 +72,22 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.18
+
+Release 0.3.18 fixes undo after viewer geometry changes:
+
+- crop-only and leveling-only undo/redo no longer force a final preview rebuild,
+- going back after recropping a large RAW preview avoids the apparent UI hang
+  caused by unnecessary preview recomputation.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.18-Setup.exe`
+- `ProbRAW-0.3.18-Setup.exe.sha256`
+- `probraw-0.3.18.tar.gz`
+- `probraw-0.3.18-py3-none-any.whl`
+- `probraw_0.3.18_python_artifacts.sha256`
+
 ## Release 0.3.17
 
 Release 0.3.17 improves interactive preview and cached RAW session performance:

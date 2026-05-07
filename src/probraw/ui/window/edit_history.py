@@ -39,6 +39,18 @@ class EditHistoryMixin:
     def _edit_state_key(self, state: dict[str, Any]) -> str:
         return json.dumps(state, sort_keys=True, ensure_ascii=False, default=str)
 
+    def _edit_state_preview_key(self, state: dict[str, Any]) -> str:
+        preview_state = {
+            "recipe": state.get("recipe") if isinstance(state.get("recipe"), dict) else {},
+            "render_adjustments": state.get("render_adjustments")
+            if isinstance(state.get("render_adjustments"), dict)
+            else {},
+            "detail_adjustments": state.get("detail_adjustments")
+            if isinstance(state.get("detail_adjustments"), dict)
+            else {},
+        }
+        return self._edit_state_key(preview_state)
+
     def _push_edit_history_snapshot(self, label: str = "") -> None:
         if bool(getattr(self, "_applying_edit_history", False)):
             return
@@ -61,6 +73,7 @@ class EditHistoryMixin:
             self._last_edit_history_label = str(label)
 
     def _restore_edit_state(self, state: dict[str, Any]) -> None:
+        previous_state = self._capture_edit_state()
         raw_suspend = int(getattr(self, "_suspend_raw_export_autosave", 0) or 0)
         render_suspend = int(getattr(self, "_suspend_render_adjustment_autosave", 0) or 0)
         detail_suspend = int(getattr(self, "_suspend_detail_adjustment_autosave", 0) or 0)
@@ -113,9 +126,11 @@ class EditHistoryMixin:
             self._suspend_edit_history = history_suspend
             self._applying_edit_history = False
 
-        self._invalidate_preview_cache()
-        if getattr(self, "_original_linear", None) is not None:
-            self._refresh_preview(force_final=True)
+        preview_changed = self._edit_state_preview_key(previous_state) != self._edit_state_preview_key(state)
+        if preview_changed:
+            self._invalidate_preview_cache()
+            if getattr(self, "_original_linear", None) is not None:
+                self._refresh_preview(force_final=True)
         if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
             self._schedule_render_adjustment_sidecar_persist(immediate=True)
         if hasattr(self, "_schedule_detail_adjustment_sidecar_persist"):

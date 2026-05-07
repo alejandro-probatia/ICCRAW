@@ -78,6 +78,23 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.18
+
+La release 0.3.18 corrige deshacer tras cambios de geometria de visor:
+
+- deshacer/rehacer solo recorte o solo nivelado ya no fuerza una reconstruccion
+  final de preview,
+- volver atras tras reencuadrar una preview RAW grande evita el cuelgue aparente
+  causado por recomputacion innecesaria de preview.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.18-Setup.exe`
+- `ProbRAW-0.3.18-Setup.exe.sha256`
+- `probraw-0.3.18.tar.gz`
+- `probraw-0.3.18-py3-none-any.whl`
+- `probraw_0.3.18_python_artifacts.sha256`
+
 ## Release 0.3.17
 
 La release 0.3.17 mejora el rendimiento de preview interactiva y sesiones RAW
