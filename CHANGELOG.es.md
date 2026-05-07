@@ -18,6 +18,28 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+### Added
+
+- Anadido empaquetado macOS en `packaging/macos/` con spec PyInstaller,
+  launchers GUI/CLI y script `build_app.sh` para generar `ProbRAW.app`, CLI
+  empaquetada, zip y SHA-256 desde un host macOS.
+- Anadido extra opcional `macos` para instalar dependencias de build GUI,
+  PyInstaller y C2PA con un unico selector.
+- Documentado el flujo de instalacion/build macOS, validacion de artefactos,
+  variables de AMaZE, firma opcional y recomendaciones de Python 3.11/3.12.
+
+### Changed
+
+- El selector de assets de actualizacion en macOS prefiere `.dmg`, `.pkg` y
+  `.zip` antes de tarballs de fuente.
+- Los scripts `.sh` quedan normalizados a LF mediante `.gitattributes` para
+  evitar problemas al preparar builds macOS desde Windows.
+
+### Tests
+
+- Validado con `bash -n packaging/macos/build_app.sh`, `python -m compileall`,
+  comprobacion sintactica del spec macOS y `pytest` sobre docs/update/external.
+
 ## [0.3.18] - 2026-05-07
 
 ### Fixed

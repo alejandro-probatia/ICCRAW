@@ -76,9 +76,10 @@ Side6/Qt (GUI optional)
 - `rawpy-demosaic`: GPL-3.0-or-later; enables demosaic packs GPL2/GPL3.
 - `c2pa-python`: Apache-2.0 or MIT; required to sign final TIFFs.
 
-## 8) Windows Packaging Tools
+## 8) Packaging Tools
 
-- `PyInstaller`: build tool to create Windows executables.
+- `PyInstaller`: build tool to create Windows executables and local macOS
+  bundles.
 - `Inno Setup`: external tool to generate the `.exe` installer.
 - ProbRAW Policy:
   - are used as construction tools,

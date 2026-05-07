@@ -58,7 +58,7 @@ The latest packaging validation passed with:
 - [C2PA/CAI](docs/C2PA_CAI.md)
 - [LibRaw + ArgyllCMS Integration](docs/INTEGRACION_LIBRAW_ARGYLL.md)
 - [Debian Package](docs/DEBIAN_PACKAGE.md)
-- [macOS Installation](docs/MACOS_INSTALL.md)
+- [macOS Installation and Build](docs/MACOS_INSTALL.md)
 - [Windows Installer](docs/WINDOWS_INSTALLER.md)
 - [Legal Compliance](docs/LEGAL_COMPLIANCE.md)
 - [Third-party Licenses](docs/THIRD_PARTY_LICENSES.md)
@@ -106,6 +106,20 @@ canonical launchers:
 Legacy `nexoraw`/`iccraw` launchers and internal compatibility scripts are no
 longer installed. The package declares replacement/conflict metadata so current
 installers can supersede previous beta names cleanly.
+
+## macOS Build
+
+From a Mac with Homebrew installed:
+
+```bash
+brew install python@3.12 argyll-cms exiftool
+bash packaging/macos/build_app.sh
+open dist/macos/ProbRAW.app
+```
+
+The script generates `ProbRAW.app`, a packaged CLI in `dist/macos/probraw/` and
+a `.zip` with SHA-256. For releases, use `PROBRAW_REQUIRE_AMAZE=1` and
+`PROBRAW_MACOS_STRICT_TOOLS=1`.
 
 ## GUI Workflow
 

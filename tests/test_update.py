@@ -251,3 +251,31 @@ def test_pick_asset_fallback_skips_metadata_assets(monkeypatch) -> None:
     assert url == "https://example.com/ProbRAW-portable.zip"
     assert size == 123
 
+
+def test_pick_asset_prefers_macos_zip_over_source_tarball(monkeypatch) -> None:
+    monkeypatch.setattr(update_mod.sys, "platform", "darwin")
+    assets = [
+        {
+            "name": "probraw-0.3.18.tar.gz",
+            "browser_download_url": "https://example.com/probraw-0.3.18.tar.gz",
+            "size": 10,
+        },
+        {
+            "name": "ProbRAW-0.3.18-macos-arm64.zip",
+            "browser_download_url": "https://example.com/ProbRAW-0.3.18-macos-arm64.zip",
+            "size": 123,
+        },
+        {
+            "name": "ProbRAW-0.3.18-macos-arm64.zip.sha256",
+            "browser_download_url": "https://example.com/ProbRAW-0.3.18-macos-arm64.zip.sha256",
+        },
+    ]
+
+    name, url, size, _digest, checksum_name, checksum_url = update_mod._pick_asset(assets)
+
+    assert name == "ProbRAW-0.3.18-macos-arm64.zip"
+    assert url == "https://example.com/ProbRAW-0.3.18-macos-arm64.zip"
+    assert size == 123
+    assert checksum_name == "ProbRAW-0.3.18-macos-arm64.zip.sha256"
+    assert checksum_url == "https://example.com/ProbRAW-0.3.18-macos-arm64.zip.sha256"
+

@@ -1,2 +1,4 @@
 dist/*.deb filter=lfs diff=lfs merge=lfs -text
 dist/windows/installer/*.exe filter=lfs diff=lfs merge=lfs -text
+*.sh text eol=lf
+packaging/macos/*.spec text eol=lf

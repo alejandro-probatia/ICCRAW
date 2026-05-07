@@ -75,9 +75,10 @@ Fecha de revision: 2026-04-25.
 - `rawpy-demosaic`: GPL-3.0-or-later; habilita demosaic packs GPL2/GPL3.
 - `c2pa-python`: Apache-2.0 o MIT; requerido para firmar TIFFs finales.
 
-## 8) Herramientas de empaquetado Windows
+## 8) Herramientas de empaquetado
 
-- `PyInstaller`: herramienta de build para crear los ejecutables Windows.
+- `PyInstaller`: herramienta de build para crear ejecutables Windows y bundles
+  macOS locales.
 - `Inno Setup`: herramienta externa para generar el instalador `.exe`.
 - Politica en ProbRAW:
   - se usan como herramientas de construccion,

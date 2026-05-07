@@ -48,6 +48,11 @@ installer = [
 c2pa = [
   "c2pa-python>=0.32",
 ]
+macos = [
+  "PySide6>=6.8",
+  "pyinstaller>=6.10",
+  "c2pa-python>=0.32",
+]
 
 [project.scripts]
 probraw = "probraw.cli:main"

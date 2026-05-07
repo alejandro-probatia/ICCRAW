@@ -64,6 +64,37 @@ El build no debe generar `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` ni
 `iccraw-ui.exe`. Los accesos directos deben apuntar a `probraw-ui.exe` y usar el
 icono `probraw-icon.ico`.
 
+## macOS
+
+El artefacto macOS se genera desde un host macOS con PyInstaller:
+
+```bash
+PROBRAW_REQUIRE_AMAZE=1 \
+PROBRAW_MACOS_STRICT_TOOLS=1 \
+bash packaging/macos/build_app.sh
+```
+
+Salidas esperadas:
+
+- `dist/macos/ProbRAW.app`
+- `dist/macos/probraw/probraw`
+- `dist/macos/ProbRAW-<version>-macos-<arch>.zip`
+- `dist/macos/ProbRAW-<version>-macos-<arch>.zip.sha256`
+
+La build debe validarse al menos con:
+
+```bash
+dist/macos/probraw/probraw --version
+dist/macos/probraw/probraw check-tools --strict
+dist/macos/probraw/probraw check-amaze
+open dist/macos/ProbRAW.app
+```
+
+La firma Developer ID y la notarizacion no se ejecutan por defecto. Para firmar
+localmente el `.app` generado, usar `PROBRAW_MACOS_CODESIGN_IDENTITY`. Un asset
+publico debe documentar si esta firmado/notarizado o si es un zip local para
+pruebas.
+
 ## Releases
 
 1. Ejecutar tests del proyecto.

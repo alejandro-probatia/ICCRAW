@@ -112,7 +112,7 @@ def _pick_asset(
     if not assets:
         return None, None, None, None, None, None
 
-    wanted_ext = [".exe", ".msi"] if sys.platform == "win32" else [".pkg", ".dmg", ".deb", ".rpm", ".appimage", ".tar.gz"]
+    wanted_ext = _wanted_asset_extensions()
     candidates = [a for a in assets if _asset_url(a)]
 
     for ext in wanted_ext:
@@ -131,6 +131,14 @@ def _pick_asset(
         checksum_name, checksum_url = _find_checksum_asset(assets, name)
         return name, url, _asset_size(asset), str(asset.get("digest") or "") or None, checksum_name, checksum_url
     return None, None, None, None, None, None
+
+
+def _wanted_asset_extensions() -> list[str]:
+    if sys.platform == "win32":
+        return [".exe", ".msi"]
+    if sys.platform == "darwin":
+        return [".dmg", ".pkg", ".zip", ".tar.gz"]
+    return [".deb", ".rpm", ".appimage", ".tar.gz"]
 
 
 def check_latest_release(*, api_url: str | None = None, repository: str | None = None, timeout: float = 8.0) -> UpdateCheckResult:
