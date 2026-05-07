@@ -18,6 +18,26 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+## [0.3.17] - 2026-05-07
+
+### Changed
+
+- Reutilizados los mapas de remapeo de aberracion cromatica lateral durante
+  ediciones repetidas de preview para reducir asignaciones grandes por frame.
+- Reducidas las asignaciones temporales en ajustes de vibrance/saturacion de
+  preview.
+- Limitada por tiempo la poda de cache de demosaic tras escrituras de cache
+  para evitar escaneos repetidos de directorio en sesiones batch.
+- Reducidas las asignaciones temporales en la supresion local de falso color
+  sin cambiar hashes canonicos de regresion.
+
+### Tests
+
+- Suite completa: `438 passed, 2 warnings`.
+- Hashes de regresion: `2 passed`.
+- Smoke benchmark GUI: `scripts/benchmark_gui_interaction.py --synthetic-size
+  900x1350 --steps 8`.
+
 ## [0.3.16] - 2026-05-07
 
 ### Added

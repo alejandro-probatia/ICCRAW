@@ -20,6 +20,25 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+## [0.3.17] - 2026-05-07
+
+### Changed
+
+- Reused lateral chromatic-aberration remap coordinates during repeated preview
+  edits to reduce large per-frame allocations.
+- Reduced temporary allocations in preview vibrance/saturation adjustments.
+- Rate-limited demosaic cache pruning after cache writes to avoid repeated
+  directory scans in batch sessions.
+- Reduced temporary allocations in local false-color suppression without
+  changing canonical regression hashes.
+
+### Tests
+
+- Full suite: `438 passed, 2 warnings`.
+- Regression hashes: `2 passed`.
+- GUI benchmark smoke: `scripts/benchmark_gui_interaction.py --synthetic-size
+  900x1350 --steps 8`.
+
 ## [0.3.16] - 2026-05-07
 
 ### Added

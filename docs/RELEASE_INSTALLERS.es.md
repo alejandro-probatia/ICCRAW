@@ -78,6 +78,27 @@ icono `probraw-icon.ico`.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.17
+
+La release 0.3.17 mejora el rendimiento de preview interactiva y sesiones RAW
+con cache:
+
+- las coordenadas de remapeo de aberracion cromatica lateral se reutilizan en
+  ediciones repetidas de preview,
+- los ajustes de vibrance/saturacion de preview asignan menos arrays temporales,
+- la poda de cache de demosaic queda limitada por tiempo durante escrituras de
+  batch/cache,
+- la supresion local de falso color reduce asignaciones temporales y preserva
+  los hashes canonicos de regresion.
+
+Artefactos esperados:
+
+- `ProbRAW-0.3.17-Setup.exe`
+- `ProbRAW-0.3.17-Setup.exe.sha256`
+- `probraw-0.3.17.tar.gz`
+- `probraw-0.3.17-py3-none-any.whl`
+- `probraw_0.3.17_python_artifacts.sha256`
+
 ## Release 0.3.16
 
 La release 0.3.16 mejora el control de exportacion TIFF y la revision en GUI:

@@ -4,6 +4,7 @@ import io
 from pathlib import Path
 import os
 import subprocess
+import threading
 from dataclasses import asdict
 from functools import lru_cache
 
@@ -25,6 +26,9 @@ from .pipeline import develop_image_array, develop_standard_output_array, is_sta
 
 _PROFILE_PREVIEW_LUT_CACHE: dict[tuple[str, int], np.ndarray] = {}
 _STANDARD_TO_SRGB_MATRIX_CACHE: dict[str, np.ndarray] = {}
+_RADIAL_MAP_CACHE: dict[tuple[int, int, float], tuple[np.ndarray, np.ndarray]] = {}
+_RADIAL_MAP_CACHE_LOCK = threading.RLock()
+_RADIAL_MAP_CACHE_MAX = 4
 PREVIEW_HQ_HALF_SIZE_ENV = "PROBRAW_PREVIEW_HQ_HALF_SIZE"
 
 
@@ -741,12 +745,18 @@ def _apply_tonal_region_adjustments(
 
 def _apply_vibrance_saturation(image: np.ndarray, *, vibrance: float, saturation: float) -> np.ndarray:
     out = np.clip(np.asarray(image, dtype=np.float32), 0.0, 1.0)
-    y = _linear_luminance(out)[..., None]
-    sat_factor = max(0.0, 1.0 + float(saturation))
-    chroma = np.max(out, axis=2, keepdims=True) - np.min(out, axis=2, keepdims=True)
-    vibrance_factor = np.clip(1.0 + float(vibrance) * (1.0 - chroma), 0.0, 2.5)
-    adjusted = y + (out - y) * sat_factor * vibrance_factor
-    return np.clip(adjusted, 0.0, 1.0).astype(np.float32)
+    y = _linear_luminance(out)
+    chroma = np.max(out, axis=2) - np.min(out, axis=2)
+    np.multiply(chroma, -float(vibrance), out=chroma)
+    chroma += np.float32(1.0 + float(vibrance))
+    np.clip(chroma, 0.0, 2.5, out=chroma)
+    chroma *= np.float32(max(0.0, 1.0 + float(saturation)))
+    y_view = y[..., np.newaxis]
+    out -= y_view
+    out *= chroma[..., np.newaxis]
+    out += y_view
+    np.clip(out, 0.0, 1.0, out=out)
+    return out.astype(np.float32, copy=False)
 
 
 def _hue_color(hue_degrees: float) -> np.ndarray:
@@ -1066,15 +1076,25 @@ def _scale_channel_radially(channel: np.ndarray, scale: float) -> np.ndarray:
         return channel.astype(np.float32)
 
     h, w = channel.shape[:2]
-    y, x = np.indices((h, w), dtype=np.float32)
-    cx = (w - 1) / 2.0
-    cy = (h - 1) / 2.0
-    map_x = ((x - cx) / scale + cx).astype(np.float32)
-    map_y = ((y - cy) / scale + cy).astype(np.float32)
+    cache_key = (int(h), int(w), round(float(scale), 9))
+    with _RADIAL_MAP_CACHE_LOCK:
+        maps = _RADIAL_MAP_CACHE.get(cache_key)
+        if maps is None:
+            y, x = np.indices((h, w), dtype=np.float32)
+            cx = (w - 1) / 2.0
+            cy = (h - 1) / 2.0
+            map_x = ((x - cx) / scale + cx).astype(np.float32)
+            map_y = ((y - cy) / scale + cy).astype(np.float32)
+            map_x.setflags(write=False)
+            map_y.setflags(write=False)
+            while len(_RADIAL_MAP_CACHE) >= _RADIAL_MAP_CACHE_MAX:
+                _RADIAL_MAP_CACHE.pop(next(iter(_RADIAL_MAP_CACHE)))
+            _RADIAL_MAP_CACHE[cache_key] = (map_x, map_y)
+            maps = (map_x, map_y)
     return cv2.remap(
         channel.astype(np.float32),
-        map_x,
-        map_y,
+        maps[0],
+        maps[1],
         interpolation=cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_REFLECT,
     )

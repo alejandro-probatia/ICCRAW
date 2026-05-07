@@ -72,6 +72,25 @@ The build should not generate `nexoraw.exe`, `nexoraw-ui.exe`, `iccraw.exe` or
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.17
+
+Release 0.3.17 improves interactive preview and cached RAW session performance:
+
+- lateral chromatic-aberration remap coordinates are reused during repeated
+  preview edits,
+- vibrance/saturation preview adjustments allocate fewer temporary arrays,
+- demosaic cache pruning is rate-limited during batch/cache writes,
+- local false-color suppression reduces temporary allocations while preserving
+  canonical regression hashes.
+
+Expected artifacts:
+
+- `ProbRAW-0.3.17-Setup.exe`
+- `ProbRAW-0.3.17-Setup.exe.sha256`
+- `probraw-0.3.17.tar.gz`
+- `probraw-0.3.17-py3-none-any.whl`
+- `probraw_0.3.17_python_artifacts.sha256`
+
 ## Release 0.3.16
 
 Release 0.3.16 improves TIFF export control and GUI review workflows:

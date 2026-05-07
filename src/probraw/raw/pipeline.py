@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 from functools import lru_cache
 import threading
+import time as _time
 
 import cv2
 import numpy as np
@@ -55,6 +56,9 @@ RAW_SHA_CACHE_ENV = "PROBRAW_RAW_SHA_CACHE"
 _RAW_SHA_CACHE_LOCK = threading.RLock()
 _RAW_SHA_CACHE: dict[tuple[str, int, int], str] = {}
 _RAW_SHA_CACHE_MAX_ENTRIES = 256
+_DEMOSAIC_PRUNE_INTERVAL_S = 120.0
+_DEMOSAIC_PRUNE_LAST: dict[str, float] = {}
+_DEMOSAIC_PRUNE_LAST_LOCK = threading.RLock()
 
 STANDARD_OUTPUT_ALIASES = {
     "srgb": "srgb",
@@ -132,7 +136,7 @@ def develop_scene_linear_array(
             return cached
         image = develop_with_libraw(input_path, recipe, half_size=half_size, output_color_space="camera_raw")
         _write_demosaic_cache(input_path, recipe, cache_dir, image, output_color_space="camera_raw")
-        _prune_demosaic_cache(cache_dir)
+        _maybe_prune_demosaic_cache(cache_dir)
         return image
     return develop_with_libraw(input_path, recipe, half_size=half_size, output_color_space="camera_raw")
 
@@ -161,7 +165,7 @@ def develop_standard_linear_array(
             return cached
         image = develop_with_libraw(input_path, recipe, half_size=half_size, output_color_space=output_space)
         _write_demosaic_cache(input_path, recipe, cache_dir, image, output_color_space=output_space)
-        _prune_demosaic_cache(cache_dir)
+        _maybe_prune_demosaic_cache(cache_dir)
         return image
     return develop_with_libraw(input_path, recipe, half_size=half_size, output_color_space=output_space)
 
@@ -345,8 +349,10 @@ def suppress_false_color(image: np.ndarray, steps: int) -> np.ndarray:
         red = y + r_chroma
         blue = y + b_chroma
         green = (y - y_weights[0] * red - y_weights[2] * blue) / y_weights[1]
-        out = np.stack((red, green, blue), axis=-1).astype(np.float32)
-        out = np.clip(out, 0.0, 1.0)
+        out[..., 0] = red
+        out[..., 1] = green
+        out[..., 2] = blue
+        np.clip(out, 0.0, 1.0, out=out)
     return out.astype(np.float32, copy=False)
 
 
@@ -646,6 +652,16 @@ def _demosaic_cache_max_bytes() -> int:
     except ValueError:
         gb = DEFAULT_DEMOSAIC_CACHE_MAX_GB
     return max(0, int(gb * 1024 * 1024 * 1024))
+
+
+def _maybe_prune_demosaic_cache(cache_root: Path) -> None:
+    key = str(Path(cache_root).resolve())
+    now = _time.monotonic()
+    with _DEMOSAIC_PRUNE_LAST_LOCK:
+        if now - _DEMOSAIC_PRUNE_LAST.get(key, 0.0) < _DEMOSAIC_PRUNE_INTERVAL_S:
+            return
+        _DEMOSAIC_PRUNE_LAST[key] = now
+    _prune_demosaic_cache(cache_root)
 
 
 def _prune_demosaic_cache(cache_root: Path) -> None:
