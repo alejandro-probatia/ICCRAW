@@ -372,13 +372,14 @@ def _process_batch_develop_job(
             color_management_mode=write_mode,
             output_tiff=out_final,
             proof_path=Path(proof_result.proof_path),
+            source_sha256=proof_result.raw_sha256,
             status="rendered",
         )
     entry = BatchManifestEntry(
         source_raw=str(raw),
-        source_sha256=sha256_file(raw),
+        source_sha256=proof_result.raw_sha256,
         output_tiff=str(out_final),
-        output_sha256=sha256_file(out_final),
+        output_sha256=proof_result.output_tiff_sha256,
         profile_path=str(rendered_profile_path or profile_path or ""),
         color_management_mode=color_mode,
         output_color_space=recipe.output_space,

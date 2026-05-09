@@ -110,6 +110,8 @@ class TaskStatusMixin:
         self._thumbnail_scan_index = 0
         self._metadata_pending_request = None
         self._preview_load_pending_request = None
+        self._preview_prefetch_pending_request = None
+        self._raw_embedded_preview_expected_key = None
         self._profile_preview_pending_request = None
         self._interactive_preview_pending_request = None
         self._mtf_base_roi_pending_request = None

@@ -245,6 +245,7 @@ class PreviewExportMixin:
                 color_management_mode=mode,
                 output_tiff=out_path,
                 proof_path=Path(proof_result.proof_path),
+                source_sha256=proof_result.raw_sha256,
                 status="rendered",
             )
             return {

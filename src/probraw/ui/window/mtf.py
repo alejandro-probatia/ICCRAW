@@ -2622,6 +2622,8 @@ class MTFAnalysisMixin:
         except Exception as exc:
             self._log_preview(f"Aviso: no se pudo guardar MTF en sidecar: {exc}")
             return
+        if hasattr(self, "_invalidate_raw_sidecar_cache_for_path"):
+            self._invalidate_raw_sidecar_cache_for_path(Path(selected))
         self._mtf_persisted_payload_key = payload_key
         self._refresh_mtf_sidecar_indicator_for_path(Path(selected))
         self._set_status(self.tr("MTF guardada en sidecar:") + f" {Path(selected).name}")
@@ -2636,9 +2638,14 @@ class MTFAnalysisMixin:
         item.setToolTip(self._file_item_tooltip(path))
 
     def _load_persisted_mtf_analysis(self, path: Path) -> dict[str, Any] | None:
-        try:
-            sidecar = load_raw_sidecar(path)
-        except Exception:
+        if hasattr(self, "_cached_raw_sidecar_payload"):
+            sidecar = self._cached_raw_sidecar_payload(path)
+        else:
+            try:
+                sidecar = load_raw_sidecar(path)
+            except Exception:
+                sidecar = None
+        if sidecar is None:
             return None
         payload = sidecar.get("mtf_analysis")
         return payload if isinstance(payload, dict) else None

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
+from typing import Any, Literal
 
 from ._imports import QtCore, QtWidgets
 
@@ -67,6 +67,8 @@ class ImageToolsMixin:
         self._sync_image_tool_overlays()
         if hasattr(self, "_push_edit_history_snapshot"):
             self._push_edit_history_snapshot("crop")
+        if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist()
         x0, y0, w, h = self._image_crop_rect
         self._set_status(self.tr("Recorte definido:") + f" x={x0}, y={y0}, {w}x{h}px")
 
@@ -80,6 +82,8 @@ class ImageToolsMixin:
         self._sync_image_tool_overlays()
         if hasattr(self, "_push_edit_history_snapshot"):
             self._push_edit_history_snapshot("clear_crop")
+        if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist()
         self._set_status(self.tr("Recorte limpiado"))
 
     def _start_image_level_tool(self, mode: Literal["horizontal", "vertical"]) -> None:
@@ -117,7 +121,52 @@ class ImageToolsMixin:
         self._sync_image_tool_overlays()
         if hasattr(self, "_push_edit_history_snapshot"):
             self._push_edit_history_snapshot("clear_level")
+        if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist()
         self._set_status(self.tr("Nivelado limpiado"))
+
+    def _apply_output_geometry_adjustment_state(self, geometry: Any | None) -> None:
+        state = geometry if isinstance(geometry, dict) else {}
+
+        crop_rect = state.get("crop_rect")
+        if isinstance(crop_rect, (list, tuple)) and len(crop_rect) >= 4:
+            try:
+                parsed_crop = tuple(int(round(float(v))) for v in crop_rect[:4])
+                self._image_crop_rect = parsed_crop if parsed_crop[2] > 0 and parsed_crop[3] > 0 else None
+            except Exception:
+                self._image_crop_rect = None
+        else:
+            self._image_crop_rect = None
+
+        normalized = state.get("crop_normalized")
+        if isinstance(normalized, (list, tuple)) and len(normalized) >= 4:
+            try:
+                nx, ny, nw, nh = (float(v) for v in normalized[:4])
+                valid = 0.0 <= nx < 1.0 and 0.0 <= ny < 1.0 and nw > 0.0 and nh > 0.0
+                self._image_crop_normalized_rect = (
+                    (nx, ny, min(nw, 1.0 - nx), min(nh, 1.0 - ny))
+                    if valid
+                    else None
+                )
+            except Exception:
+                self._image_crop_normalized_rect = None
+        else:
+            self._image_crop_normalized_rect = None
+
+        self._image_crop_base_size = None
+        self._image_crop_selection_active = False
+        self._image_level_selection_active = False
+        self._image_level_points = []
+        rotation = float(state.get("rotation_degrees", 0.0) or 0.0)
+        signed_rotation = ((rotation + 180.0) % 360.0) - 180.0
+        self._image_level_rotation_degrees = float(signed_rotation)
+        self._viewer_rotation = float(signed_rotation) % 360.0
+        if hasattr(self, "_sync_viewer_transform"):
+            self._sync_viewer_transform()
+        if hasattr(self, "_update_viewer_interaction_cursor"):
+            self._update_viewer_interaction_cursor()
+        if hasattr(self, "_sync_image_tool_overlays"):
+            self._sync_image_tool_overlays()
 
     def _on_viewer_line_selected(self, x0: float, y0: float, x1: float, y1: float) -> None:
         if not bool(getattr(self, "_image_level_selection_active", False)):
@@ -163,6 +212,8 @@ class ImageToolsMixin:
         self._sync_image_tool_overlays()
         if hasattr(self, "_push_edit_history_snapshot"):
             self._push_edit_history_snapshot("level")
+        if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist()
         label = self.tr("horizontal") if mode == "horizontal" else self.tr("vertical")
         self._set_status(self.tr("Nivelado") + f" {label}: {correction:+.2f} grados")
 

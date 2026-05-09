@@ -47,6 +47,7 @@ def write_raw_sidecar(
     session_name: str | None = None,
     output_tiff: Path | None = None,
     proof_path: Path | None = None,
+    source_sha256: str | None = None,
     status: str = "configured",
 ) -> Path:
     source_path = Path(source_path).expanduser()
@@ -86,7 +87,12 @@ def write_raw_sidecar(
             "name": session_name or "",
             "root_path": str(Path(session_root).expanduser()) if session_root is not None else "",
         },
-        "source": _source_payload(source_path, session_root),
+        "source": _source_payload(
+            source_path,
+            session_root,
+            existing_source=existing.get("source") if isinstance(existing.get("source"), dict) else None,
+            source_sha256=source_sha256,
+        ),
         "development_profile": _development_profile_payload(development_profile),
         "adjustment_profiles": _adjustment_profiles_payload(stored_adjustment_profiles),
         "recipe": asdict(recipe),
@@ -177,19 +183,47 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _source_payload(source_path: Path, session_root: Path | None, *, hash_file: bool = True) -> dict[str, Any]:
+def _source_payload(
+    source_path: Path,
+    session_root: Path | None,
+    *,
+    hash_file: bool = True,
+    existing_source: dict[str, Any] | None = None,
+    source_sha256: str | None = None,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "basename": source_path.name,
         "path": _stored_path(source_path, session_root),
         "relative_path": _relative_path(source_path, session_root),
         "sha256": None,
         "size_bytes": None,
+        "mtime_ns": None,
     }
     if source_path.exists() and source_path.is_file():
-        if hash_file:
-            payload["sha256"] = sha256_file(source_path)
-        payload["size_bytes"] = int(source_path.stat().st_size)
+        stat = source_path.stat()
+        payload["size_bytes"] = int(stat.st_size)
+        payload["mtime_ns"] = int(stat.st_mtime_ns)
+        if source_sha256:
+            payload["sha256"] = str(source_sha256)
+        elif hash_file:
+            payload["sha256"] = _reusable_source_sha256(existing_source, stat) or sha256_file(source_path)
     return payload
+
+
+def _reusable_source_sha256(existing_source: dict[str, Any] | None, stat: Any) -> str | None:
+    if not isinstance(existing_source, dict):
+        return None
+    digest = existing_source.get("sha256")
+    if not digest:
+        return None
+    try:
+        if int(existing_source.get("size_bytes")) != int(stat.st_size):
+            return None
+        if int(existing_source.get("mtime_ns")) != int(stat.st_mtime_ns):
+            return None
+    except Exception:
+        return None
+    return str(digest)
 
 
 def _development_profile_payload(profile: dict[str, Any] | None) -> dict[str, str]:

@@ -69,6 +69,28 @@ def test_write_raw_sidecar_preserves_output_history(tmp_path: Path):
     payload = load_raw_sidecar(raw)
     assert [Path(item["tiff_path"]).name for item in payload["outputs"]] == ["first.tiff", "second.tiff"]
     assert payload["recipe"]["exposure_compensation"] == 0.5
+    assert isinstance(payload["source"]["mtime_ns"], int)
+
+
+def test_write_raw_sidecar_reuses_source_hash_when_file_is_unchanged(tmp_path: Path, monkeypatch):
+    raw = tmp_path / "capture.NEF"
+    raw.write_bytes(b"raw bytes")
+
+    first = write_raw_sidecar(raw, recipe=Recipe(), status="configured")
+    first_payload = json.loads(first.read_text(encoding="utf-8"))
+    expected_sha = first_payload["source"]["sha256"]
+
+    def fail_sha256(_path: Path) -> str:
+        raise AssertionError("source hash should be reused for unchanged sidecar writes")
+
+    import probraw.sidecar as sidecar_module
+
+    monkeypatch.setattr(sidecar_module, "sha256_file", fail_sha256)
+    write_raw_sidecar(raw, recipe=Recipe(exposure_compensation=0.5), status="configured")
+
+    payload = load_raw_sidecar(raw)
+    assert payload["source"]["sha256"] == expected_sha
+    assert payload["recipe"]["exposure_compensation"] == 0.5
 
 
 def test_write_raw_mtf_analysis_persists_and_survives_recipe_updates(tmp_path: Path):

@@ -11,13 +11,13 @@ from ..core.models import RawMetadata
 from ..core.utils import sha256_file
 
 
-def raw_info(path: Path) -> RawMetadata:
+def raw_info(path: Path, *, input_sha256: str | None = None) -> RawMetadata:
     if not path.exists():
         raise FileNotFoundError(f"RAW no encontrado: {path}")
 
     exif = _read_exif(path)
     if rawpy is None:
-        return _fallback_metadata(path, exif)
+        return _fallback_metadata(path, exif, input_sha256=input_sha256)
 
     try:
         with open_rawpy(path) as raw:
@@ -34,7 +34,7 @@ def raw_info(path: Path) -> RawMetadata:
 
             return RawMetadata(
                 source_file=str(path),
-                input_sha256=sha256_file(path),
+                input_sha256=input_sha256 or sha256_file(path),
                 camera_model=exif.get("Model") or exif.get("CameraModelName"),
                 cfa_pattern=cfa_pattern,
                 available_white_balance="camera_metadata" if wb else "unknown",
@@ -53,7 +53,7 @@ def raw_info(path: Path) -> RawMetadata:
                 embedded_profile_source=_embedded_profile_source(exif),
             )
     except Exception:
-        return _fallback_metadata(path, exif)
+        return _fallback_metadata(path, exif, input_sha256=input_sha256)
 
 
 def estimate_pixel_pitch_um(
@@ -120,10 +120,10 @@ def _to_float(value) -> float | None:
         return None
 
 
-def _fallback_metadata(path: Path, exif: dict[str, Any]) -> RawMetadata:
+def _fallback_metadata(path: Path, exif: dict[str, Any], *, input_sha256: str | None = None) -> RawMetadata:
     return RawMetadata(
         source_file=str(path),
-        input_sha256=sha256_file(path),
+        input_sha256=input_sha256 or sha256_file(path),
         camera_model=exif.get("Model") or exif.get("CameraModelName"),
         cfa_pattern="unknown",
         available_white_balance="unknown",

@@ -1584,6 +1584,32 @@ class PreviewRenderMixin:
             source_key = self._last_loaded_preview_key or str(id(self._original_linear))
             source_profile = self._source_profile_for_preview_recipe(recipe)
             monitor_profile = None if bypass_display_profile else self._active_display_profile_path()
+            final_display_max_side = int(self._final_adjustment_preview_max_side())
+            final_display_cache_key = None
+            if not interactive:
+                final_display_cache_key = self._display_preview_cache_key(
+                    source_key=source_key,
+                    detail_kwargs=detail_kwargs,
+                    render_kwargs=render_kwargs,
+                    output_space=str(recipe.output_space),
+                    source_profile=source_profile,
+                    monitor_profile=monitor_profile,
+                    max_side_limit=final_display_max_side,
+                    bypass_profile=bypass_display_profile,
+                )
+                cached_display = self._cached_display_preview(final_display_cache_key)
+                if cached_display is not None:
+                    display_u8, colorimetric_u8, preview_srgb, analysis_text = cached_display
+                    if preview_srgb is not None:
+                        self._preview_srgb = preview_srgb
+                    self._set_result_u8_pair(
+                        display_u8,
+                        colorimetric_u8,
+                        compare_enabled=compare_enabled,
+                        bypass_profile=bypass_display_profile,
+                    )
+                    self.preview_analysis.setPlainText(analysis_text)
+                    return
             if interactive:
                 apply_detail = bool(detail_interactive or self._detail_kwargs_have_effect(detail_kwargs))
                 viewport_rect = self._interactive_viewport_rect(
@@ -1660,7 +1686,7 @@ class PreviewRenderMixin:
                         render_kwargs,
                         compare_enabled,
                         False,
-                        int(self._final_adjustment_preview_max_side()),
+                        final_display_max_side,
                         True,
                         True,
                         str(recipe.output_space),
@@ -1675,7 +1701,7 @@ class PreviewRenderMixin:
 
             preview_source = self._interactive_preview_source(
                 self._original_linear,
-                max_side_limit=int(self._final_adjustment_preview_max_side()),
+                max_side_limit=final_display_max_side,
             )
             self._update_tone_curve_histogram_for_current_controls(
                 max_side_limit=0,
@@ -1727,8 +1753,23 @@ class PreviewRenderMixin:
                     self._preview_srgb,
                     bypass_profile=bypass_display_profile,
                 )
-            self._set_result_display_u8(display_u8, compare_enabled=compare_enabled)
-            self.preview_analysis.setPlainText(preview_analysis_text(preview_source, adjusted))
+            colorimetric_u8 = self._preview_colorimetric_u8(display_u8)
+            self._set_result_u8_pair(
+                display_u8,
+                colorimetric_u8,
+                compare_enabled=compare_enabled,
+                bypass_profile=bypass_display_profile,
+            )
+            analysis_text = preview_analysis_text(preview_source, adjusted)
+            self.preview_analysis.setPlainText(analysis_text)
+            if final_display_cache_key is not None:
+                self._cache_display_preview(
+                    final_display_cache_key,
+                    display_u8=display_u8,
+                    colorimetric_u8=colorimetric_u8,
+                    preview_srgb=self._preview_srgb,
+                    analysis_text=analysis_text,
+                )
         except Exception as exc:
             QtWidgets.QMessageBox.warning(self, self.tr("Aviso"), str(exc))
 
@@ -1746,7 +1787,13 @@ class PreviewRenderMixin:
             return
         self._mark_preview_control_interaction(duration_ms=450)
         timer = getattr(self, "_tone_curve_preview_timer", None)
-        delay = max(1, int(PREVIEW_TONE_CURVE_DRAG_THROTTLE_MS))
+        editor = getattr(self, "tone_curve_editor", None)
+        range_dragging = bool(
+            editor is not None
+            and hasattr(editor, "is_range_dragging")
+            and editor.is_range_dragging()
+        )
+        delay = 0 if range_dragging else max(1, int(PREVIEW_TONE_CURVE_DRAG_THROTTLE_MS))
         if timer is None:
             QtCore.QTimer.singleShot(delay, self._run_tone_curve_drag_preview_refresh)
             return

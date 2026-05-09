@@ -27,6 +27,7 @@ TIFF_COMPRESSION_OPTIONS = {
     "zfs": "zstd",
 }
 TIFF_MAXWORKERS_ENV = "PROBRAW_TIFF_MAXWORKERS"
+TIFF_QUANTIZE_TILE_PIXELS = 4_000_000
 
 
 def sha256_file(path: Path) -> str:
@@ -173,12 +174,33 @@ def write_tiff16(
 ) -> None:
     ensure_parent(path)
     source = np.asarray(image_linear_rgb, dtype=np.float32)
-    work = np.empty(source.shape, dtype=np.float32)
-    np.clip(source, 0.0, 1.0, out=work)
-    np.multiply(work, 65535.0, out=work)
-    np.rint(work, out=work)
-    data = work.astype(np.uint16, copy=False)
+    data = _quantize_float_to_uint16_tiled(source)
     _write_tiff_array(path, data, icc_profile=icc_profile, compression=compression, maxworkers=maxworkers)
+
+
+def _quantize_float_to_uint16_tiled(source: np.ndarray) -> np.ndarray:
+    source = np.asarray(source, dtype=np.float32)
+    data = np.empty(source.shape, dtype=np.uint16)
+    if source.ndim < 2 or source.size <= TIFF_QUANTIZE_TILE_PIXELS:
+        work = np.empty(source.shape, dtype=np.float32)
+        np.clip(source, 0.0, 1.0, out=work)
+        np.multiply(work, 65535.0, out=work)
+        np.rint(work, out=work)
+        data[...] = work.astype(np.uint16, copy=False)
+        return data
+
+    height = int(source.shape[0])
+    width = int(source.shape[1])
+    rows = max(1, min(height, int(TIFF_QUANTIZE_TILE_PIXELS) // max(1, width)))
+    for y0 in range(0, height, rows):
+        y1 = min(height, y0 + rows)
+        block = source[y0:y1]
+        work = np.empty(block.shape, dtype=np.float32)
+        np.clip(block, 0.0, 1.0, out=work)
+        np.multiply(work, 65535.0, out=work)
+        np.rint(work, out=work)
+        data[y0:y1] = work.astype(np.uint16, copy=False)
+    return data
 
 
 def rewrite_tiff_compression(path: Path, compression: str | None, *, maxworkers: int | None = None) -> None:

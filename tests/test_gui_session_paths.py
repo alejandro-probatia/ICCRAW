@@ -1555,6 +1555,103 @@ def test_preview_disk_cache_reuses_pyramid_level(tmp_path: Path, qapp):
         window.close()
 
 
+def test_raw_embedded_preview_placeholder_updates_display_without_loaded_source(tmp_path: Path, monkeypatch, qapp):
+    raw_path = tmp_path / "sample.NEF"
+    raw_path.write_bytes(b"raw")
+    rgb = gui_module.np.zeros((20, 30, 3), dtype=gui_module.np.uint8)
+    rgb[..., 0] = 30
+    rgb[..., 1] = 120
+    rgb[..., 2] = 220
+    thumbnail_orientation_flags: list[bool] = []
+
+    def fake_extract_embedded_thumbnail(_path, max_side=0, apply_orientation=True):
+        thumbnail_orientation_flags.append(bool(apply_orientation))
+        return rgb
+
+    monkeypatch.setattr(gui_module, "extract_embedded_thumbnail", fake_extract_embedded_thumbnail)
+
+    window = ICCRawMainWindow()
+    try:
+        window._selected_file = raw_path
+
+        window._queue_raw_embedded_preview(
+            selected=raw_path,
+            max_preview_side=700,
+            final_cache_key="final-key",
+        )
+
+        assert window._original_linear is None
+        assert window._current_result_display_u8 is not None
+        assert gui_module.np.array_equal(window._current_result_colorimetric_u8, rgb)
+        assert thumbnail_orientation_flags == [False]
+        assert "embebida" in window.preview_analysis.toPlainText()
+    finally:
+        window.close()
+
+
+def test_preview_load_new_request_preempts_inflight_load(tmp_path: Path, monkeypatch, qapp):
+    raw_path = tmp_path / "sample.NEF"
+    raw_path.write_bytes(b"raw")
+    window = ICCRawMainWindow()
+    try:
+        request = (raw_path, Recipe(), False, 700, "new-key", None)
+        preempted: list[tuple] = []
+        window._preview_load_task_active = True
+        window._preview_load_inflight_key = "old-key"
+        monkeypatch.setattr(window, "_preempt_preview_load_task", lambda payload: preempted.append(payload))
+
+        window._queue_preview_load_request(request)
+
+        assert preempted == [request]
+    finally:
+        window.close()
+
+
+def test_adjacent_preview_prefetch_paths_follow_file_list_order(tmp_path: Path, qapp):
+    paths = [tmp_path / f"image_{index}.jpg" for index in range(4)]
+    for path in paths:
+        Image.new("RGB", (8, 8), (20, 120, 220)).save(path)
+    window = ICCRawMainWindow()
+    try:
+        window.file_list.clear()
+        for path in paths:
+            item = QtWidgets.QListWidgetItem(path.name)
+            item.setData(QtCore.Qt.UserRole, str(path))
+            window.file_list.addItem(item)
+
+        adjacent = window._adjacent_preview_prefetch_paths(paths[1], limit=2)
+
+        assert adjacent == [paths[2], paths[0]]
+    finally:
+        window.close()
+
+
+def test_display_preview_cache_roundtrips_arrays(qapp):
+    window = ICCRawMainWindow()
+    try:
+        display = gui_module.np.full((6, 8, 3), 40, dtype=gui_module.np.uint8)
+        colorimetric = gui_module.np.full((6, 8, 3), 80, dtype=gui_module.np.uint8)
+        preview = gui_module.np.full((6, 8, 3), 0.25, dtype=gui_module.np.float32)
+
+        window._cache_display_preview(
+            "display-key",
+            display_u8=display,
+            colorimetric_u8=colorimetric,
+            preview_srgb=preview,
+            analysis_text="analysis",
+        )
+        restored = window._cached_display_preview("display-key")
+
+        assert restored is not None
+        restored_display, restored_colorimetric, restored_preview, analysis = restored
+        assert gui_module.np.array_equal(restored_display, display)
+        assert gui_module.np.array_equal(restored_colorimetric, colorimetric)
+        assert gui_module.np.allclose(restored_preview, preview)
+        assert analysis == "analysis"
+    finally:
+        window.close()
+
+
 def test_raw_preview_uses_bounded_high_quality_mode(tmp_path: Path, monkeypatch, qapp):
     raw_path = tmp_path / "sample.NEF"
     raw_path.write_bytes(b"raw")
@@ -2931,6 +3028,35 @@ def test_tone_curve_range_slider_drag_defers_heavy_updates(qapp, monkeypatch):
         assert window.tone_curve_editor._white_point == pytest.approx(1.0)
     finally:
         window.slider_tone_curve_black.setSliderDown(False)
+        window.close()
+
+
+def test_tone_curve_range_drag_preview_refresh_is_immediate(qapp):
+    window = ICCRawMainWindow()
+    original_timer = getattr(window, "_tone_curve_preview_timer", None)
+    try:
+        starts: list[int] = []
+
+        class _Timer:
+            def isActive(self) -> bool:
+                return False
+
+            def start(self, delay: int) -> None:
+                starts.append(int(delay))
+
+        window._original_linear = gui_module.np.zeros((120, 160, 3), dtype=gui_module.np.float32)
+        window._tone_curve_preview_timer = _Timer()
+
+        window.tone_curve_editor.set_range_dragging(True)
+        window._schedule_tone_curve_drag_preview_refresh()
+
+        window.tone_curve_editor.set_range_dragging(False)
+        window._schedule_tone_curve_drag_preview_refresh()
+
+        assert starts == [0, preview_render_module.PREVIEW_TONE_CURVE_DRAG_THROTTLE_MS]
+    finally:
+        if original_timer is not None:
+            window._tone_curve_preview_timer = original_timer
         window.close()
 
 
@@ -4352,6 +4478,9 @@ def test_file_selection_without_sidecar_resets_previous_adjustment_controls(tmp_
         assert window.slider_brightness.value() == 31
         assert window.slider_contrast.value() == 22
 
+        window._viewer_rotation = 90.0
+        window._image_crop_rect = (4, 5, 20, 30)
+        window._image_crop_normalized_rect = (0.1, 0.1, 0.4, 0.5)
         _activate_fake_session_icc(window, root)
         assert window.chk_apply_profile.isChecked()
         window._active_development_profile_id = "stale-profile"
@@ -4378,6 +4507,9 @@ def test_file_selection_without_sidecar_resets_previous_adjustment_controls(tmp_
         assert window.slider_black_point.value() == 0
         assert window.slider_contrast.value() == 0
         assert window.slider_midtone.value() == 100
+        assert float(window._viewer_rotation) == pytest.approx(0.0)
+        assert window._image_crop_rect is None
+        assert window._image_crop_normalized_rect is None
     finally:
         window._selection_load_timer.stop()
         window._metadata_timer.stop()
@@ -4409,6 +4541,9 @@ def test_partial_raw_sidecar_resets_missing_adjustment_blocks(tmp_path: Path, qa
         window.slider_noise_luma.setValue(30)
         window.slider_brightness.setValue(45)
         window.slider_contrast.setValue(33)
+        window._viewer_rotation = 270.0
+        window._image_crop_rect = (4, 5, 20, 30)
+        window._image_crop_normalized_rect = (0.1, 0.1, 0.4, 0.5)
         window._active_development_profile_id = "stale-profile"
         _activate_fake_session_icc(window, root)
 
@@ -4423,7 +4558,120 @@ def test_partial_raw_sidecar_resets_missing_adjustment_blocks(tmp_path: Path, qa
         assert window.slider_noise_luma.value() == 0
         assert window.slider_brightness.value() == 0
         assert window.slider_contrast.value() == 0
+        assert float(window._viewer_rotation) == pytest.approx(0.0)
+        assert window._image_crop_rect is None
+        assert window._image_crop_normalized_rect is None
     finally:
+        window.close()
+
+
+def test_raw_sidecar_restores_image_geometry(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "rotated.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"rotated raw")
+    payload = create_session(root, name="Sesion geometria")
+    write_raw_sidecar(
+        raw,
+        recipe=Recipe(output_space="prophoto_rgb", output_linear=False),
+        development_profile={"id": "", "name": "Ajustes actuales", "kind": "manual", "profile_type": "basic"},
+        detail_adjustments={},
+        render_adjustments={
+            "brightness_ev": 0.12,
+            "geometry": {
+                "crop_rect": [3, 4, 25, 30],
+                "crop_normalized": [0.1, 0.2, 0.5, 0.6],
+                "rotation_degrees": -90.0,
+            },
+        },
+        session_root=root,
+        status="configured",
+    )
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+
+        assert window._apply_raw_sidecar_to_controls(raw) is True
+
+        assert window.slider_brightness.value() == 12
+        assert float(window._viewer_rotation) == pytest.approx(270.0)
+        assert window._image_crop_rect == (3, 4, 25, 30)
+        assert window._image_crop_normalized_rect == pytest.approx((0.1, 0.2, 0.5, 0.6))
+    finally:
+        window.close()
+
+
+def test_current_raw_settings_sidecar_persists_image_geometry(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw = root / "01_ORG" / "capture.NEF"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw")
+    payload = create_session(root, name="Sesion geometria actual")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window._selected_file = raw
+        window._set_combo_text(window.combo_output_space, "prophoto_rgb")
+        window._apply_output_space_defaults_to_controls("prophoto_rgb")
+        window._viewer_rotation = 90.0
+        window._image_crop_rect = (3, 4, 25, 30)
+        window._image_crop_normalized_rect = (0.1, 0.2, 0.5, 0.6)
+
+        window._write_current_development_settings_to_raw(raw)
+
+        sidecar = load_raw_sidecar(raw)
+        geometry = sidecar["render_adjustments"]["geometry"]
+        assert geometry["rotation_degrees"] == pytest.approx(90.0)
+        assert geometry["crop_rect"] == [3, 4, 25, 30]
+        assert geometry["crop_normalized"] == pytest.approx([0.1, 0.2, 0.5, 0.6])
+    finally:
+        window.close()
+
+
+def test_file_selection_flushes_pending_geometry_to_previous_raw(tmp_path: Path, qapp):
+    root = tmp_path / "session"
+    raw_a = root / "01_ORG" / "a.NEF"
+    raw_b = root / "01_ORG" / "b.NEF"
+    raw_a.parent.mkdir(parents=True)
+    raw_a.write_bytes(b"a")
+    raw_b.write_bytes(b"b")
+    payload = create_session(root, name="Sesion giro pendiente")
+
+    window = ICCRawMainWindow()
+    try:
+        window._activate_session(root, payload)
+        window.file_list.clear()
+        window._file_items_by_key.clear()
+        for raw in (raw_a, raw_b):
+            item = QtWidgets.QListWidgetItem(raw.name)
+            item.setData(QtCore.Qt.UserRole, str(raw))
+            window.file_list.addItem(item)
+
+        window.file_list.setCurrentRow(0)
+        qapp.processEvents()
+        window._selection_load_timer.stop()
+        assert window._selected_file == raw_a
+
+        window._viewer_rotation = 90.0
+        window._schedule_render_adjustment_sidecar_persist()
+        assert window._render_adjustment_sidecar_timer.isActive()
+
+        window.file_list.setCurrentRow(1)
+        qapp.processEvents()
+        window._selection_load_timer.stop()
+
+        assert window._selected_file == raw_b
+        assert not window._render_adjustment_sidecar_timer.isActive()
+        assert float(window._viewer_rotation) == pytest.approx(0.0)
+
+        sidecar_a = load_raw_sidecar(raw_a)
+        geometry_a = sidecar_a["render_adjustments"]["geometry"]
+        assert geometry_a["rotation_degrees"] == pytest.approx(90.0)
+        assert not raw_sidecar_path(raw_b).exists()
+    finally:
+        window._selection_load_timer.stop()
         window.close()
 
 

@@ -44,8 +44,7 @@ def load_image_for_preview(
         raise FileNotFoundError(f"No existe el archivo de entrada: {input_path}")
 
     if input_path.suffix.lower() not in RAW_EXTENSIONS:
-        image = read_image(input_path)
-        image = _downscale_for_preview(image, max_preview_side=max_preview_side)
+        image = _read_non_raw_image_for_preview(input_path, max_preview_side=max_preview_side)
         return image, f"Imagen cargada: {input_path.name}"
 
     if recipe is None:
@@ -160,7 +159,38 @@ def _env_enabled(name: str, *, default: bool) -> bool:
     return bool(default)
 
 
-def extract_embedded_preview(input_path: Path, *, max_preview_side: int = 0) -> np.ndarray | None:
+def _read_non_raw_image_for_preview(input_path: Path, *, max_preview_side: int) -> np.ndarray:
+    if int(max_preview_side) <= 0:
+        return read_image(input_path).astype(np.float32)
+    try:
+        return _read_non_raw_image_scaled_with_pillow(input_path, max_preview_side=int(max_preview_side))
+    except Exception:
+        image = read_image(input_path)
+        return _downscale_for_preview(image, max_preview_side=int(max_preview_side))
+
+
+def _read_non_raw_image_scaled_with_pillow(input_path: Path, *, max_preview_side: int) -> np.ndarray:
+    target = int(max_preview_side)
+    if target <= 0:
+        raise ValueError("max_preview_side debe ser positivo para lectura escalada.")
+    with Image.open(input_path) as img:
+        try:
+            img.draft("RGB", (target, target))
+        except Exception:
+            pass
+        img = ImageOps.exif_transpose(img)
+        img = img.convert("RGB")
+        img.thumbnail((target, target), Image.Resampling.LANCZOS)
+        rgb = np.asarray(img, dtype=np.uint8).copy()
+    return np.ascontiguousarray(rgb.astype(np.float32) / np.float32(255.0))
+
+
+def extract_embedded_preview(
+    input_path: Path,
+    *,
+    max_preview_side: int = 0,
+    apply_orientation: bool = True,
+) -> np.ndarray | None:
     try:
         with open_rawpy(input_path) as raw:
             raw_orientation = _rawpy_orientation(raw)
@@ -173,6 +203,7 @@ def extract_embedded_preview(input_path: Path, *, max_preview_side: int = 0) -> 
             bytes(thumb.data),
             max_preview_side=max_preview_side,
             raw_orientation=raw_orientation,
+            apply_orientation=apply_orientation,
         )
         if decoded is None:
             return None
@@ -184,7 +215,8 @@ def extract_embedded_preview(input_path: Path, *, max_preview_side: int = 0) -> 
             decoded = decoded[..., :3]
         else:
             return None
-        decoded = _apply_orientation_array(decoded, raw_orientation)
+        if apply_orientation:
+            decoded = _apply_orientation_array(decoded, raw_orientation)
         decoded = _downscale_uint_preview(decoded, max_preview_side=max_preview_side)
     else:
         return None
@@ -200,7 +232,12 @@ def extract_embedded_preview(input_path: Path, *, max_preview_side: int = 0) -> 
     return srgb_to_linear_display(srgb)
 
 
-def extract_embedded_thumbnail(input_path: Path, *, max_side: int = 220) -> np.ndarray | None:
+def extract_embedded_thumbnail(
+    input_path: Path,
+    *,
+    max_side: int = 220,
+    apply_orientation: bool = True,
+) -> np.ndarray | None:
     try:
         with open_rawpy(input_path) as raw:
             raw_orientation = _rawpy_orientation(raw)
@@ -213,6 +250,7 @@ def extract_embedded_thumbnail(input_path: Path, *, max_side: int = 220) -> np.n
             bytes(thumb.data),
             max_preview_side=int(max_side),
             raw_orientation=raw_orientation,
+            apply_orientation=apply_orientation,
         )
         if decoded is None:
             return None
@@ -224,7 +262,8 @@ def extract_embedded_thumbnail(input_path: Path, *, max_side: int = 220) -> np.n
             decoded = decoded[..., :3]
         else:
             return None
-        decoded = _apply_orientation_array(decoded, raw_orientation)
+        if apply_orientation:
+            decoded = _apply_orientation_array(decoded, raw_orientation)
         decoded = _downscale_uint_preview(decoded, max_preview_side=int(max_side))
     else:
         return None
@@ -236,6 +275,7 @@ def _decode_embedded_preview_jpeg(
     *,
     max_preview_side: int,
     raw_orientation: int = 0,
+    apply_orientation: bool = True,
 ) -> np.ndarray | None:
     try:
         with Image.open(io.BytesIO(data)) as img:
@@ -246,9 +286,10 @@ def _decode_embedded_preview_jpeg(
                 except Exception:
                     pass
             embedded_orientation = _pil_orientation(img)
-            img = ImageOps.exif_transpose(img)
-            if embedded_orientation in {0, 1, None}:
-                img = _apply_orientation_image(img, raw_orientation)
+            if apply_orientation:
+                img = ImageOps.exif_transpose(img)
+                if embedded_orientation in {0, 1, None}:
+                    img = _apply_orientation_image(img, raw_orientation)
             img = img.convert("RGB")
             if target > 0:
                 img.thumbnail((target, target), Image.Resampling.LANCZOS)

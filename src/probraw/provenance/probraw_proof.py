@@ -246,7 +246,9 @@ def build_probraw_proof_payload(
     c2pa_status: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     generated = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    raw_metadata = raw_info(source_raw)
+    source_sha256 = sha256_file(source_raw)
+    output_sha256 = sha256_file(output_tiff)
+    raw_metadata = raw_info(source_raw, input_sha256=source_sha256)
     return {
         "schema": PROOF_SCHEMA,
         "schema_version": 1,
@@ -254,7 +256,7 @@ def build_probraw_proof_payload(
         "generated_at_utc": generated,
         "subject": {
             "source_raw": {
-                "sha256": sha256_file(source_raw),
+                "sha256": source_sha256,
                 "size_bytes": source_raw.stat().st_size,
                 "basename": source_raw.name,
                 "extension": source_raw.suffix.lower(),
@@ -263,7 +265,7 @@ def build_probraw_proof_payload(
                 "path_auxiliary_role": "non_probative_locator",
             },
             "output_tiff": {
-                "sha256": sha256_file(output_tiff),
+                "sha256": output_sha256,
                 "size_bytes": output_tiff.stat().st_size,
                 "basename": output_tiff.name,
                 "extension": output_tiff.suffix.lower(),

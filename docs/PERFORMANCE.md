@@ -177,6 +177,43 @@ ProPhoto RGB, monitor ICC and clipping overlay enabled:
 This preserves strict color management while reducing long UI stalls without
 sacrificing colorimetry or sharpness.
 
+### Fast Loading And Viewer Geometry
+
+The recent loading path takes several ideas from fast viewers such as Gwenview,
+but adapts them to ProbRAW's colorimetric constraints:
+
+- non-RAW images use scaled Pillow decoding (`draft` + `thumbnail`) before
+  conversion to `float32`, avoiding a full decode when the viewer only needs a
+  bounded preview;
+- RAW files show a provisional 8-bit embedded preview while the final LibRaw
+  development continues in the background;
+- that embedded preview is cached by file, requested size and orientation
+  policy, and is shown through the same display ICC path as the rest of the
+  viewer;
+- the provisional embedded preview keeps sensor orientation so it matches the
+  final `rawpy`/LibRaw render configured with `user_flip=0`, preventing rotation
+  jumps when the definitive image arrives;
+- a new load request invalidates the in-flight task and lets stale results feed
+  only the cache, without updating the visible image;
+- after loading one image, adjacent previews from the thumbnail strip are
+  prefetched when they do not compete with the active load;
+- the display-ready preview cache avoids repeating adjustments, monitor ICC
+  conversion and quantization when the visible recipe has not changed.
+
+Viewer geometry (crop, leveling and 90-degree rotations) is persisted in the RAW
+sidecar as part of render adjustments. Before changing files, ProbRAW flushes
+any pending sidecar write so the rotation applied to the current RAW cannot be
+accidentally persisted onto the next selected RAW. Files without a sidecar, or
+partial sidecars without a geometry block, always reset rotation and crop to
+zero.
+
+The MTF path does not change its calculations or plots. The numeric core
+`probraw.analysis.mtf` is not involved in this optimization; the only related
+interaction is sidecar-cache invalidation after saving MTF, so thumbnail
+indicators and comparisons read the updated sidecar. Regressions cover ROI,
+full-resolution crop, auto-sharpening, MTF persistence and ESF/LSF/MTF/CA
+widgets.
+
 ### Interactive Preview 0.3.11
 
 The interactive path again uses bounded proxy sources during color, contrast,

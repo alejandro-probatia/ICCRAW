@@ -66,6 +66,7 @@ from .ui.window._imports import (
     detect_system_display_profile,
     develop_image_array,
     extract_embedded_preview,
+    extract_embedded_thumbnail,
     load_image_for_preview,
     read_image,
     write_raw_mtf_analysis,
@@ -117,6 +118,7 @@ if QtWidgets is not None:
             self._background_threads_shutdown = False
             self._thumb_cache: dict[str, QtGui.QIcon] = {}
             self._image_thumb_cache: dict[str, QtGui.QIcon] = {}
+            self._raw_sidecar_cache: dict[str, tuple[tuple[object, ...], dict[str, Any] | None]] = {}
             self._file_items_by_key: dict[str, QtWidgets.QListWidgetItem] = {}
             self._thumbnail_generation = 0
             self._metadata_generation = 0
@@ -129,7 +131,14 @@ if QtWidgets is not None:
             self._queued_metadata_include_c2pa = True
             self._preview_load_task_active = False
             self._preview_load_inflight_key: str | None = None
+            self._preview_load_task_token = 0
             self._preview_load_pending_request: tuple[Path, Recipe, bool, int, str, Path | None] | None = None
+            self._raw_embedded_preview_expected_key: str | None = None
+            self._raw_embedded_preview_cache: dict[str, np.ndarray] = {}
+            self._raw_embedded_preview_cache_order: list[str] = []
+            self._preview_prefetch_task_active = False
+            self._preview_prefetch_pending_request: tuple[Path, Recipe, int, Path | None] | None = None
+            self._preview_prefetch_generation = 0
             self._preview_load_progress_started_at: float | None = None
             self._preview_load_progress_estimated_seconds: float | None = None
             self._preview_load_progress_label = ""
@@ -141,6 +150,8 @@ if QtWidgets is not None:
             self._loaded_preview_source_profile_path: Path | None = None
             self._preview_cache: dict[str, np.ndarray] = {}
             self._preview_cache_order: list[str] = []
+            self._display_preview_cache: dict[str, tuple[np.ndarray, np.ndarray | None, np.ndarray | None, str]] = {}
+            self._display_preview_cache_order: list[str] = []
             self._profile_preview_cache: dict[str, np.ndarray] = {}
             self._profile_preview_cache_order: list[str] = []
             self._profile_preview_task_active = False

@@ -1595,9 +1595,14 @@ class SessionDevelopmentMixin:
             return None
 
     def _development_profile_from_sidecar(self, path: Path) -> str:
-        try:
-            payload = load_raw_sidecar(path)
-        except Exception:
+        if hasattr(self, "_cached_raw_sidecar_payload"):
+            payload = self._cached_raw_sidecar_payload(path)
+        else:
+            try:
+                payload = load_raw_sidecar(path)
+            except Exception:
+                payload = None
+        if payload is None:
             return ""
         profile = payload.get("development_profile") if isinstance(payload, dict) else {}
         profile_id = str(profile.get("id") or "") if isinstance(profile, dict) else ""
@@ -1606,9 +1611,14 @@ class SessionDevelopmentMixin:
         return ""
 
     def _development_settings_from_raw_sidecar(self, path: Path) -> dict[str, Any] | None:
-        try:
-            payload = load_raw_sidecar(path)
-        except Exception:
+        if hasattr(self, "_cached_raw_sidecar_payload"):
+            payload = self._cached_raw_sidecar_payload(path)
+        else:
+            try:
+                payload = load_raw_sidecar(path)
+            except Exception:
+                payload = None
+        if payload is None:
             return None
         recipe = self._recipe_from_payload(payload.get("recipe"))
         if recipe is None:
@@ -1762,12 +1772,18 @@ class SessionDevelopmentMixin:
     ) -> Path | None:
         recipe = self._build_effective_recipe()
         _input_profile, rendered_profile, mode = self._configured_color_profile_for_recipe(recipe)
+        render_state = self._render_adjustment_state()
+        if hasattr(self, "_output_geometry_adjustment_state"):
+            render_state = {
+                **render_state,
+                "geometry": self._output_geometry_adjustment_state(),
+            }
         sidecar = self._write_raw_settings_sidecar(
             path,
             recipe=recipe,
             development_profile=self._development_profile_payload_for_active_settings(),
             detail_adjustments=self._detail_adjustment_state(),
-            render_adjustments=self._render_adjustment_state(),
+            render_adjustments=render_state,
             profile_path=rendered_profile,
             color_management_mode=mode,
             status=status,
@@ -1784,6 +1800,7 @@ class SessionDevelopmentMixin:
                 "development_profile": self._development_profile_payload_for_active_settings(),
                 "detail": self._detail_adjustment_state(),
                 "render": self._render_adjustment_state(),
+                "geometry": self._output_geometry_adjustment_state() if hasattr(self, "_output_geometry_adjustment_state") else {},
                 "profiles": self._current_named_adjustment_profiles_payload(),
                 "icc": str(self._active_session_icc_for_settings() or ""),
             },
@@ -1799,8 +1816,13 @@ class SessionDevelopmentMixin:
             return
         path = Path(selected)
         has_named_color_profile = bool(self._active_named_adjustment_profile_id("color_contrast"))
+        geometry_has_effect = bool(
+            hasattr(self, "_output_geometry_adjustment_state_has_effect")
+            and self._output_geometry_adjustment_state_has_effect()
+        )
         if (
             not self._render_adjustment_state_has_effect()
+            and not geometry_has_effect
             and not raw_sidecar_path(path).exists()
             and not has_named_color_profile
         ):
@@ -1823,8 +1845,13 @@ class SessionDevelopmentMixin:
         if path.suffix.lower() not in RAW_EXTENSIONS:
             return
         has_named_color_profile = bool(self._active_named_adjustment_profile_id("color_contrast"))
+        geometry_has_effect = bool(
+            hasattr(self, "_output_geometry_adjustment_state_has_effect")
+            and self._output_geometry_adjustment_state_has_effect()
+        )
         if (
             not self._render_adjustment_state_has_effect()
+            and not geometry_has_effect
             and not raw_sidecar_path(path).exists()
             and not has_named_color_profile
         ):
@@ -2001,10 +2028,31 @@ class SessionDevelopmentMixin:
             timer.stop()
         self._persist_raw_export_settings_for_selected()
 
+    def _flush_pending_adjustment_sidecar_persists_for_file_change(self) -> None:
+        pending_flushes = (
+            ("_render_adjustment_sidecar_timer", self._persist_render_adjustments_for_selected),
+            ("_detail_adjustment_sidecar_timer", self._persist_detail_adjustments_for_selected),
+            ("_raw_export_sidecar_timer", self._persist_raw_export_settings_for_selected),
+        )
+        for timer_name, persist in pending_flushes:
+            timer = getattr(self, timer_name, None)
+            if timer is None or not timer.isActive():
+                continue
+            timer.stop()
+            try:
+                persist()
+            except Exception as exc:
+                self._log_preview(f"Aviso: no se pudo guardar ajustes pendientes antes de cambiar de archivo: {exc}")
+
     def _raw_sidecar_development_summary(self, path: Path) -> str:
-        try:
-            payload = load_raw_sidecar(path)
-        except Exception:
+        if hasattr(self, "_cached_raw_sidecar_payload"):
+            payload = self._cached_raw_sidecar_payload(path)
+        else:
+            try:
+                payload = load_raw_sidecar(path)
+            except Exception:
+                payload = None
+        if payload is None:
             return ""
         profile = payload.get("development_profile") if isinstance(payload.get("development_profile"), dict) else {}
         profile_type = self._adjustment_profile_type_from_sidecar(payload)
@@ -2037,9 +2085,14 @@ class SessionDevelopmentMixin:
     def _raw_adjustment_profile_type(self, path: Path) -> str:
         if path.suffix.lower() not in RAW_EXTENSIONS:
             return ""
-        try:
-            payload = load_raw_sidecar(path)
-        except Exception:
+        if hasattr(self, "_cached_raw_sidecar_payload"):
+            payload = self._cached_raw_sidecar_payload(path)
+        else:
+            try:
+                payload = load_raw_sidecar(path)
+            except Exception:
+                payload = None
+        if payload is None:
             return ""
         return self._adjustment_profile_type_from_sidecar(payload)
 
@@ -2460,6 +2513,8 @@ class SessionDevelopmentMixin:
         self._apply_recipe_to_controls(self._default_unconfigured_recipe())
         self._apply_detail_adjustment_state(self._default_detail_adjustment_state())
         self._apply_render_adjustment_state(self._default_render_adjustment_state())
+        if hasattr(self, "_apply_output_geometry_adjustment_state"):
+            self._apply_output_geometry_adjustment_state(None)
         self._active_development_profile_id = ""
         self._refresh_development_profile_combo()
         self._clear_active_input_profile_for_unconfigured_file()
@@ -2508,6 +2563,9 @@ class SessionDevelopmentMixin:
         self._apply_render_adjustment_state(
             render_state if isinstance(render_state, dict) else self._default_render_adjustment_state()
         )
+        geometry_state = render_state.get("geometry") if isinstance(render_state, dict) else None
+        if hasattr(self, "_apply_output_geometry_adjustment_state"):
+            self._apply_output_geometry_adjustment_state(geometry_state)
 
         profile = payload.get("development_profile") if isinstance(payload.get("development_profile"), dict) else {}
         profile_id = str(profile.get("id") or "")
@@ -2578,12 +2636,13 @@ class SessionDevelopmentMixin:
         color_management_mode: str | None = None,
         output_tiff: Path | None = None,
         proof_path: Path | None = None,
+        source_sha256: str | None = None,
         status: str = "configured",
     ) -> Path | None:
         if source.suffix.lower() not in RAW_EXTENSIONS:
             return None
         session_name = self.session_name_edit.text().strip() if hasattr(self, "session_name_edit") else ""
-        return write_raw_sidecar(
+        sidecar = write_raw_sidecar(
             source,
             recipe=recipe,
             development_profile=development_profile,
@@ -2596,8 +2655,12 @@ class SessionDevelopmentMixin:
             session_name=session_name,
             output_tiff=output_tiff,
             proof_path=proof_path,
+            source_sha256=source_sha256,
             status=status,
         )
+        if hasattr(self, "_invalidate_raw_sidecar_cache_for_path"):
+            self._invalidate_raw_sidecar_cache_for_path(source)
+        return sidecar
 
     def _save_current_development_profile(self) -> None:
         if self._active_session_root is None:

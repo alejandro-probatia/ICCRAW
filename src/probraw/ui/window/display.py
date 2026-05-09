@@ -463,7 +463,7 @@ class DisplayControlsMixin:
         return self._apply_output_geometry_adjustments(adjusted)
 
     def _output_geometry_adjustment_state(self, image: np.ndarray | None = None) -> dict[str, Any]:
-        crop_rect = self._export_crop_rect_for_image(image) if image is not None else None
+        crop_rect = self._export_crop_rect_for_image(image) if image is not None else getattr(self, "_image_crop_rect", None)
         rotation = float(getattr(self, "_viewer_rotation", 0.0) or 0.0) % 360.0
         signed_rotation = ((rotation + 180.0) % 360.0) - 180.0
         return {
@@ -471,6 +471,18 @@ class DisplayControlsMixin:
             "crop_normalized": list(getattr(self, "_image_crop_normalized_rect", None) or []) or None,
             "rotation_degrees": float(signed_rotation),
         }
+
+    def _output_geometry_adjustment_state_has_effect(self, state: dict[str, Any] | None = None) -> bool:
+        if not isinstance(state, dict):
+            state = self._output_geometry_adjustment_state()
+        if state.get("crop_rect") is not None or state.get("crop_normalized") is not None:
+            return True
+        try:
+            rotation = float(state.get("rotation_degrees", 0.0) or 0.0)
+        except Exception:
+            return False
+        signed_rotation = ((rotation + 180.0) % 360.0) - 180.0
+        return abs(float(signed_rotation)) > 1e-4
 
     def _apply_output_geometry_adjustments(self, image: np.ndarray) -> np.ndarray:
         array = np.asarray(image, dtype=np.float32)
@@ -898,17 +910,36 @@ class DisplayControlsMixin:
         update_histogram: bool = True,
     ) -> None:
         colorimetric_u8 = self._preview_colorimetric_u8(display_u8)
-        self._current_result_display_u8 = np.asarray(display_u8, dtype=np.uint8).copy()
-        self._current_result_colorimetric_u8 = np.asarray(colorimetric_u8, dtype=np.uint8).copy()
+        self._set_result_u8_pair(
+            display_u8,
+            colorimetric_u8,
+            compare_enabled=compare_enabled,
+            bypass_profile=bypass_profile,
+            update_histogram=update_histogram,
+        )
+
+    def _set_result_u8_pair(
+        self,
+        display_u8: np.ndarray,
+        colorimetric_u8: np.ndarray | None,
+        *,
+        compare_enabled: bool,
+        bypass_profile: bool = False,
+        update_histogram: bool = True,
+    ) -> None:
+        display_array = np.asarray(display_u8, dtype=np.uint8)
+        colorimetric_array = None if colorimetric_u8 is None else np.asarray(colorimetric_u8, dtype=np.uint8)
+        self._current_result_display_u8 = display_array.copy()
+        self._current_result_colorimetric_u8 = None if colorimetric_array is None else colorimetric_array.copy()
         color_space = self._display_panel_color_space(bypass_profile=bypass_profile)
         if bool(compare_enabled and self._compare_view_active()):
-            self.image_result_compare.set_rgb_u8_image(display_u8, color_space=color_space)
-            self._apply_clip_overlay_to_panel(self.image_result_compare, colorimetric_u8)
+            self.image_result_compare.set_rgb_u8_image(display_array, color_space=color_space)
+            self._apply_clip_overlay_to_panel(self.image_result_compare, colorimetric_array)
         else:
-            self.image_result_single.set_rgb_u8_image(display_u8, color_space=color_space)
-            self._apply_clip_overlay_to_panel(self.image_result_single, colorimetric_u8)
+            self.image_result_single.set_rgb_u8_image(display_array, color_space=color_space)
+            self._apply_clip_overlay_to_panel(self.image_result_single, colorimetric_array)
         if bool(update_histogram):
-            self._update_viewer_histogram(colorimetric_u8)
+            self._update_viewer_histogram(colorimetric_array)
         if hasattr(self, "_sync_mtf_roi_overlay"):
             self._sync_mtf_roi_overlay()
         if hasattr(self, "_sync_viewer_real_pixel_scale_if_requested"):

@@ -98,6 +98,7 @@ from ...raw.preview import (
     apply_profile_preview,
     estimate_temperature_tint_from_neutral_sample,
     extract_embedded_preview as _extract_embedded_preview,
+    extract_embedded_thumbnail as _extract_embedded_thumbnail,
     linear_to_srgb_display,
     load_image_for_preview as _load_image_for_preview,
     normalize_tone_curve_points,
@@ -109,6 +110,7 @@ from ...raw.preview import (
 from ...reporting import check_amaze_backend, check_external_tools
 from ...session import create_session, ensure_session_structure, load_session, save_session, session_file_path
 from ...sidecar import (
+    LEGACY_RAW_SIDECAR_SUFFIXES,
     load_raw_sidecar,
     raw_sidecar_path,
     write_raw_mtf_analysis as _write_raw_mtf_analysis,
@@ -172,6 +174,10 @@ def apply_adjustments(*args, **kwargs):
 
 def extract_embedded_preview(*args, **kwargs):
     return _gui_callable("extract_embedded_preview", _extract_embedded_preview)(*args, **kwargs)
+
+
+def extract_embedded_thumbnail(*args, **kwargs):
+    return _gui_callable("extract_embedded_thumbnail", _extract_embedded_thumbnail)(*args, **kwargs)
 
 
 def load_image_for_preview(*args, **kwargs):

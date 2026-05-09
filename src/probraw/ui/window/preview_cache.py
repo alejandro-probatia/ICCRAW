@@ -166,6 +166,81 @@ class PreviewCacheMixin:
         except Exception:
             return str(input_profile_path)
 
+    def _display_preview_cache_key(
+        self,
+        *,
+        source_key: str,
+        detail_kwargs: dict[str, float],
+        render_kwargs: dict[str, Any],
+        output_space: str,
+        source_profile: Path | None,
+        monitor_profile: Path | None,
+        max_side_limit: int,
+        bypass_profile: bool,
+    ) -> str:
+        payload = {
+            "source": str(source_key),
+            "detail": {str(k): round(float(v), 8) for k, v in sorted(detail_kwargs.items())},
+            "render": {
+                str(k): (round(float(v), 8) if isinstance(v, (int, float, np.floating)) else v)
+                for k, v in sorted(render_kwargs.items())
+            },
+            "output_space": str(output_space),
+            "source_profile": self._preview_input_profile_signature(source_profile),
+            "monitor_profile": self._preview_input_profile_signature(monitor_profile),
+            "max_side": int(max_side_limit),
+            "bypass": bool(bypass_profile),
+            "display_cache": 1,
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _cache_display_preview(
+        self,
+        key: str,
+        *,
+        display_u8: np.ndarray,
+        colorimetric_u8: np.ndarray | None,
+        preview_srgb: np.ndarray | None,
+        analysis_text: str,
+    ) -> None:
+        display = np.ascontiguousarray(np.asarray(display_u8, dtype=np.uint8)[..., :3]).copy()
+        colorimetric = (
+            None
+            if colorimetric_u8 is None
+            else np.ascontiguousarray(np.asarray(colorimetric_u8, dtype=np.uint8)[..., :3]).copy()
+        )
+        preview = (
+            None
+            if preview_srgb is None
+            else np.ascontiguousarray(np.asarray(preview_srgb, dtype=np.float32)[..., :3]).copy()
+        )
+        if key in self._display_preview_cache:
+            self._display_preview_cache.pop(key, None)
+            self._display_preview_cache_order = [k for k in self._display_preview_cache_order if k != key]
+        self._display_preview_cache[key] = (display, colorimetric, preview, str(analysis_text or ""))
+        self._display_preview_cache_order.append(key)
+        while len(self._display_preview_cache_order) > 6:
+            old = self._display_preview_cache_order.pop(0)
+            self._display_preview_cache.pop(old, None)
+
+    def _cached_display_preview(
+        self,
+        key: str,
+    ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None, str] | None:
+        cached = self._display_preview_cache.get(key)
+        if cached is None:
+            return None
+        self._display_preview_cache_order = [k for k in self._display_preview_cache_order if k != key]
+        self._display_preview_cache_order.append(key)
+        display, colorimetric, preview, analysis_text = cached
+        return (
+            display.copy(),
+            None if colorimetric is None else colorimetric.copy(),
+            None if preview is None else preview.copy(),
+            str(analysis_text),
+        )
+
     @staticmethod
     def _run_preview_load_inline() -> bool:
         # Tests expect deterministic preview loading without waiting for Qt threads.
@@ -385,6 +460,8 @@ class PreviewCacheMixin:
     def _invalidate_preview_cache(self) -> None:
         self._preview_cache.clear()
         self._preview_cache_order.clear()
+        self._display_preview_cache.clear()
+        self._display_preview_cache_order.clear()
         self._last_loaded_preview_key = None
         self._loaded_preview_base_signature = None
         self._loaded_preview_fast_raw = None

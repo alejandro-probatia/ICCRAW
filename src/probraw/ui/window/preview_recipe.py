@@ -977,10 +977,18 @@ class PreviewRecipeMixin:
     def _viewer_rotate_left(self) -> None:
         self._viewer_rotation = (float(self._viewer_rotation) - 90.0) % 360.0
         self._sync_viewer_transform()
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("rotate_left")
+        if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist()
 
     def _viewer_rotate_right(self) -> None:
         self._viewer_rotation = (float(self._viewer_rotation) + 90.0) % 360.0
         self._sync_viewer_transform()
+        if hasattr(self, "_push_edit_history_snapshot"):
+            self._push_edit_history_snapshot("rotate_right")
+        if hasattr(self, "_schedule_render_adjustment_sidecar_persist"):
+            self._schedule_render_adjustment_sidecar_persist()
 
     def _on_histogram_clip_witness_toggled(self, checked: bool) -> None:
         self._settings.setValue("view/histogram_clip_witness", bool(checked))

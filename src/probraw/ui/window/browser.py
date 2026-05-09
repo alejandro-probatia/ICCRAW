@@ -335,6 +335,48 @@ class BrowserMetadataMixin:
         self._prune_thumbnail_cache()
         return icon
 
+    def _cached_raw_sidecar_payload(self, path: Path) -> dict[str, Any] | None:
+        cache = getattr(self, "_raw_sidecar_cache", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            self._raw_sidecar_cache = cache
+        key = self._normalized_path_key(path)
+        stamp = self._raw_sidecar_cache_stamp(path)
+        cached = cache.get(key)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        try:
+            payload = load_raw_sidecar(path)
+            if not isinstance(payload, dict):
+                payload = None
+        except Exception:
+            payload = None
+        cache[key] = (stamp, payload)
+        while len(cache) > 1024:
+            cache.pop(next(iter(cache)))
+        return payload
+
+    def _invalidate_raw_sidecar_cache_for_path(self, path: Path) -> None:
+        cache = getattr(self, "_raw_sidecar_cache", None)
+        if isinstance(cache, dict):
+            cache.pop(self._normalized_path_key(path), None)
+
+    def _raw_sidecar_cache_stamp(self, path: Path) -> tuple[object, ...]:
+        source = Path(path)
+        candidates = [raw_sidecar_path(source)]
+        candidates.extend(source.with_name(source.name + suffix) for suffix in LEGACY_RAW_SIDECAR_SUFFIXES)
+        for candidate in candidates:
+            try:
+                stat = candidate.stat()
+            except OSError:
+                continue
+            try:
+                resolved = str(candidate.expanduser().resolve(strict=False))
+            except Exception:
+                resolved = str(candidate)
+            return (resolved, int(stat.st_mtime_ns), int(stat.st_size))
+        return ("missing",)
+
     def _user_disk_cache_dir(self, kind: str) -> Path:
         if sys.platform == "win32":
             base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
@@ -530,7 +572,14 @@ class BrowserMetadataMixin:
 
     def _is_color_reference_file(self, path: Path) -> bool:
         key = self._normalized_path_key(path)
-        return key in {self._normalized_path_key(p) for p in self._selected_chart_files}
+        return key in self._selected_chart_file_key_set()
+
+    def _selected_chart_file_key_set(self) -> set[str]:
+        files = tuple(str(p) for p in getattr(self, "_selected_chart_files", []))
+        if getattr(self, "_selected_chart_file_key_source", None) != files:
+            self._selected_chart_file_key_source = files
+            self._selected_chart_file_keys = {self._normalized_path_key(Path(p)) for p in files}
+        return getattr(self, "_selected_chart_file_keys", set())
 
     @staticmethod
     def _normalized_path_key(path: Path) -> str:
@@ -548,9 +597,8 @@ class BrowserMetadataMixin:
     def _raw_adjustment_profile_badges(self, path: Path) -> list[str]:
         if path.suffix.lower() not in RAW_EXTENSIONS:
             return []
-        try:
-            payload = load_raw_sidecar(path)
-        except Exception:
+        payload = self._cached_raw_sidecar_payload(path)
+        if payload is None:
             return []
         profiles = payload.get("adjustment_profiles") if isinstance(payload.get("adjustment_profiles"), dict) else {}
         badges: list[str] = []
@@ -578,9 +626,8 @@ class BrowserMetadataMixin:
     def _raw_adjustment_profile_badge_summary(self, path: Path) -> str:
         if path.suffix.lower() not in RAW_EXTENSIONS:
             return ""
-        try:
-            payload = load_raw_sidecar(path)
-        except Exception:
+        payload = self._cached_raw_sidecar_payload(path)
+        if payload is None:
             return ""
         profiles = payload.get("adjustment_profiles") if isinstance(payload.get("adjustment_profiles"), dict) else {}
         labels = {
@@ -1005,6 +1052,8 @@ class BrowserMetadataMixin:
     def _on_file_selection_changed(self) -> None:
         item = self.file_list.currentItem()
         if item is None:
+            if hasattr(self, "_flush_pending_adjustment_sidecar_persists_for_file_change"):
+                self._flush_pending_adjustment_sidecar_persists_for_file_change()
             self._selected_file = None
             self._clear_manual_chart_points_for_file_change()
             self._clear_mtf_roi_for_file_change()
@@ -1017,6 +1066,8 @@ class BrowserMetadataMixin:
             return
         raw_path = item.data(QtCore.Qt.UserRole)
         if not raw_path:
+            if hasattr(self, "_flush_pending_adjustment_sidecar_persists_for_file_change"):
+                self._flush_pending_adjustment_sidecar_persists_for_file_change()
             self._selected_file = None
             self._clear_manual_chart_points_for_file_change()
             self._clear_mtf_roi_for_file_change()
@@ -1033,7 +1084,13 @@ class BrowserMetadataMixin:
             return
         if self._normalized_path_key(selected) != self._normalized_path_key(stale_path):
             self._update_file_item_path(item, selected)
-        if self._selected_file is None or self._normalized_path_key(self._selected_file) != self._normalized_path_key(selected):
+        selection_changed = (
+            self._selected_file is None
+            or self._normalized_path_key(self._selected_file) != self._normalized_path_key(selected)
+        )
+        if selection_changed and hasattr(self, "_flush_pending_adjustment_sidecar_persists_for_file_change"):
+            self._flush_pending_adjustment_sidecar_persists_for_file_change()
+        if selection_changed:
             self._clear_manual_chart_points_for_file_change()
             self._clear_mtf_roi_for_file_change()
         self._selected_file = selected

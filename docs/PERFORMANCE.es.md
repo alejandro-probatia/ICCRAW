@@ -208,6 +208,43 @@ ProPhoto RGB, ICC de monitor y overlay activo:
 Esto preserva la seriedad de la gestion de color y reduce los bloqueos largos
 sin sacrificar colorimetria ni nitidez.
 
+### Carga rapida y geometria de visor
+
+La ruta de carga reciente toma varias ideas de visores rapidos como Gwenview,
+pero las adapta a las restricciones colorimetricas de ProbRAW:
+
+- las imagenes no RAW usan decodificacion escalada con Pillow (`draft` +
+  `thumbnail`) antes de convertir a `float32`, evitando decodificar el archivo
+  completo cuando el visor solo necesita una preview acotada;
+- los RAW muestran una preview embebida provisional en 8 bits mientras el
+  revelado LibRaw final sigue en segundo plano;
+- esa preview embebida se cachea por archivo, tamano solicitado y politica de
+  orientacion, y se muestra con la misma ruta ICC de pantalla que el resto del
+  visor;
+- la preview embebida provisional mantiene la orientacion de sensor para
+  coincidir con el revelado final `rawpy`/LibRaw configurado con `user_flip=0`,
+  evitando saltos de rotacion cuando llega la imagen definitiva;
+- una nueva solicitud de carga invalida la tarea en vuelo y permite que los
+  resultados obsoletos solo alimenten cache, sin tocar la imagen visible;
+- tras cargar una imagen se precalculan previews adyacentes de la tira de
+  miniaturas cuando no compiten con la carga activa;
+- la cache de preview lista para pantalla evita repetir ajustes, conversion ICC
+  de monitor y cuantizacion cuando no cambia la receta visible.
+
+La geometria de visor (recorte, nivelado y giros de 90 grados) se guarda en la
+mochila RAW como parte de los ajustes de render. Antes de cambiar de archivo,
+ProbRAW vacia cualquier guardado pendiente para que el giro aplicado al RAW
+actual no pueda persistirse accidentalmente sobre el siguiente RAW seleccionado.
+Los archivos sin mochila, o con mochilas parciales sin bloque de geometria,
+restablecen siempre giro y recorte a cero.
+
+La ruta MTF no cambia sus calculos ni sus graficas. El nucleo numerico
+`probraw.analysis.mtf` no participa en esta optimizacion; la unica interaccion
+relacionada es la invalidacion de la cache de mochila despues de guardar MTF,
+para que los indicadores de miniatura y las comparaciones lean el sidecar
+actualizado. Las regresiones cubren ROI, recorte full-res, auto-nitidez,
+persistencia MTF y widgets ESF/LSF/MTF/CA.
+
 ### Preview interactiva 0.3.11
 
 La ruta interactiva vuelve a usar fuentes proxy acotadas durante arrastres de

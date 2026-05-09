@@ -284,6 +284,7 @@ class BatchWorkflowMixin:
                         session_name=session_name,
                         output_tiff=out_path,
                         proof_path=Path(proof_result.proof_path),
+                        source_sha256=proof_result.raw_sha256,
                         status="rendered",
                     )
                     output["raw_sidecar"] = str(sidecar_path)
@@ -398,6 +399,9 @@ class BatchWorkflowMixin:
                 self.tr("Lote finalizado en") + f" {payload['output_dir']} "
                 f"(OK={ok_count}, " + self.tr("errores") + f"={error_count})"
             )
+            for item in payload.get("outputs", []):
+                if isinstance(item, dict) and item.get("source") and hasattr(self, "_invalidate_raw_sidecar_cache_for_path"):
+                    self._invalidate_raw_sidecar_cache_for_path(Path(str(item["source"])))
             self._refresh_color_reference_thumbnail_markers()
             self._sync_selected_after_batch_render(payload)
             self._save_active_session(silent=True)

@@ -6,7 +6,7 @@ import numpy as np
 import tifffile
 import colour
 import pytest
-from PIL import ImageCms
+from PIL import Image, ImageCms
 
 from probraw.core.models import Recipe
 from probraw.profile.export import apply_profile_matrix
@@ -388,6 +388,23 @@ def test_load_image_for_preview_downscales_non_raw(tmp_path: Path):
     assert max(loaded.shape[0], loaded.shape[1]) <= 1000
 
 
+def test_load_image_for_preview_non_raw_uses_decoder_scaled_path(tmp_path: Path, monkeypatch):
+    path = tmp_path / "large.jpg"
+    Image.new("RGB", (4200, 2800), (20, 120, 220)).save(path, format="JPEG", quality=90)
+
+    monkeypatch.setattr(
+        preview_module,
+        "read_image",
+        lambda _path: pytest.fail("preview should not full-decode non-RAW before scaling"),
+    )
+
+    loaded, msg = load_image_for_preview(path, max_preview_side=700)
+
+    assert "Imagen cargada" in msg
+    assert loaded.dtype == np.float32
+    assert max(loaded.shape[:2]) <= 700
+
+
 def test_extract_embedded_thumbnail_applies_raw_orientation(tmp_path: Path, monkeypatch):
     raw_path = tmp_path / "rotated.nef"
     raw_path.write_bytes(b"raw")
@@ -426,6 +443,46 @@ def test_extract_embedded_thumbnail_applies_raw_orientation(tmp_path: Path, monk
 
     assert thumb is not None
     assert thumb.shape[:2] == (4, 2)
+
+
+def test_extract_embedded_thumbnail_can_keep_raw_sensor_orientation(tmp_path: Path, monkeypatch):
+    raw_path = tmp_path / "rotated.nef"
+    raw_path.write_bytes(b"raw")
+    source = np.zeros((2, 4, 3), dtype=np.uint8)
+    source[:, :2] = [255, 0, 0]
+    source[:, 2:] = [0, 255, 0]
+
+    from PIL import Image
+    import io
+
+    encoded = io.BytesIO()
+    Image.fromarray(source, mode="RGB").save(encoded, format="JPEG")
+
+    class FakeSizes:
+        flip = 6
+
+    class FakeThumb:
+        format = preview_module.rawpy.ThumbFormat.JPEG
+        data = encoded.getvalue()
+
+    class FakeRaw:
+        sizes = FakeSizes()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def extract_thumb(self):
+            return FakeThumb()
+
+    monkeypatch.setattr(preview_module, "open_rawpy", lambda _path: FakeRaw())
+
+    thumb = extract_embedded_thumbnail(raw_path, max_side=100, apply_orientation=False)
+
+    assert thumb is not None
+    assert thumb.shape[:2] == (2, 4)
 
 
 def test_load_image_for_preview_hq_uses_half_size_when_preview_is_smaller(tmp_path: Path, monkeypatch):
