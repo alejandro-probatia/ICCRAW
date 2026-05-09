@@ -51,6 +51,49 @@ Smoke GUI minimo antes de publicar:
 - revisar `Configuracion > Configuracion global` y confirmar deteccion o
   fallback del perfil ICC del monitor.
 
+## Linux Arch/CachyOS
+
+El paquete Arch/CachyOS se construye desde `packaging/arch/build_pkg.sh` y usa
+el `PKGBUILD` versionado del repositorio:
+
+```bash
+PROBRAW_ARCH_PKGREL=3 \
+PROBRAW_ARCH_NATIVE=1 \
+PROBRAW_BUILD_AMAZE=1 \
+packaging/arch/build_pkg.sh
+```
+
+Para una build local optimizada de CachyOS, `PROBRAW_ARCH_NATIVE=1` activa
+`-O3 -march=native -mtune=native` en extensiones C/C++. No debe usarse para un
+paquete que se vaya a distribuir a maquinas con CPU distinta. El paquete instala
+la aplicacion en `/opt/probraw/venv`, expone solo `probraw` y `probraw-ui`,
+declara conflicto/reemplazo de `iccraw`/`nexoraw` e incluye documentacion de
+validacion en `/usr/share/doc/probraw/`.
+
+Instalacion limpia local sin borrar datos de usuario:
+
+```bash
+sudo pacman -R --noconfirm probraw || true
+sudo rm -rf /opt/probraw
+sudo rm -f /usr/bin/probraw /usr/bin/probraw-ui /usr/bin/iccraw /usr/bin/iccraw-ui
+sudo pacman -U --noconfirm build/arch/probraw-<version>-<pkgrel>-x86_64.pkg.tar.zst
+```
+
+Validacion obligatoria en la instalacion real:
+
+```bash
+pacman -Qkk probraw
+bash /usr/share/doc/probraw/validate_cachyos_install.sh
+probraw check-tools --strict
+probraw check-amaze
+probraw check-color-environment --out color_environment.json
+```
+
+`check-color-environment` puede devolver `warning` si el sistema no expone un
+perfil ICC activo de monitor; eso documenta fallback visual sRGB, no un fallo de
+instalacion. La build solo es publicable si perfiles estandar, LittleCMS2,
+ArgyllCMS y AMaZE quedan verificados.
+
 ## Windows
 
 El instalador Windows debe generarse desde `packaging/windows/build_installer.ps1`
@@ -117,11 +160,15 @@ La release 0.3.18 corrige deshacer tras cambios de geometria de visor:
   final de preview,
 - volver atras tras reencuadrar una preview RAW grande evita el cuelgue aparente
   causado por recomputacion innecesaria de preview.
+- la revision `0.3.18-3` para Arch/CachyOS incorpora busqueda de perfiles ICC
+  del sistema, preview ICC con LittleCMS2, validacion `check-color-environment`
+  y paquete nativo optimizado con AMaZE.
 
 Artefactos esperados:
 
 - `ProbRAW-0.3.18-Setup.exe`
 - `ProbRAW-0.3.18-Setup.exe.sha256`
+- `probraw-0.3.18-<pkgrel>-x86_64.pkg.tar.zst`
 - `probraw-0.3.18.tar.gz`
 - `probraw-0.3.18-py3-none-any.whl`
 - `probraw_0.3.18_python_artifacts.sha256`

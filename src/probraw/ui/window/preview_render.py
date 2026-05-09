@@ -1053,7 +1053,7 @@ class PreviewRenderMixin:
                 if self._profile_preview_error_key != key:
                     self._profile_preview_error_key = key
                     self._log_preview(
-                        f"Aviso: no se pudo aplicar preview ICC con ArgyllCMS: "
+                        f"Aviso: no se pudo aplicar preview ICC con LittleCMS: "
                         f"{trace.strip().splitlines()[-1] if trace.strip() else 'error'}"
                     )
             finally:

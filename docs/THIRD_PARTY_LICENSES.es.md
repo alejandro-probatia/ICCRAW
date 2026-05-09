@@ -68,9 +68,12 @@ Fecha de revision: 2026-04-25.
 - `scipy`: BSD-3-Clause.
 - `PyYAML`: MIT.
 - `colour-science`: BSD-3-Clause.
+- `lcms2` / LittleCMS2: MIT; motor CMM usado por Pillow `ImageCms` para preview
+  gestionada.
 - `Pillow`: HPND-like (PIL Software License). ProbRAW usa `ImageCms` solo
-  para conversion ICC de monitor en el visor; el pipeline cientifico/export
-  sigue usando ArgyllCMS para perfilado, validacion y conversiones ICC finales.
+  para conversion ICC de monitor en el visor y previsualizacion ICC de perfil;
+  el pipeline de perfilado/validacion y las conversiones ICC derivadas de
+  exportacion siguen usando ArgyllCMS.
 - `rawpy`: MIT; wheels estandar sin demosaic packs GPL.
 - `rawpy-demosaic`: GPL-3.0-or-later; habilita demosaic packs GPL2/GPL3.
 - `c2pa-python`: Apache-2.0 o MIT; requerido para firmar TIFFs finales.

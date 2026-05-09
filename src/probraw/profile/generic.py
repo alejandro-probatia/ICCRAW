@@ -9,6 +9,7 @@ import sys
 import numpy as np
 import colour
 from colour.adaptation import matrix_chromatic_adaptation_VonKries
+from PIL import ImageCms
 
 from ..core.external import external_tool_path
 from .builder import D50_XYZ, build_matrix_shaper_icc
@@ -22,6 +23,9 @@ class GenericRgbProfile:
     gamma: float
     preferred_filenames: tuple[str, ...]
     compatible_filenames: tuple[str, ...] = ()
+    preferred_descriptions: tuple[str, ...] = ()
+    compatible_descriptions: tuple[str, ...] = ()
+    rejected_descriptions: tuple[str, ...] = ()
 
 
 GENERIC_RGB_PROFILES: dict[str, GenericRgbProfile] = {
@@ -31,6 +35,7 @@ GENERIC_RGB_PROFILES: dict[str, GenericRgbProfile] = {
         colour_space="sRGB",
         gamma=2.2,
         preferred_filenames=("sRGB Color Space Profile.icm", "sRGB.icm", "sRGB.icc", "sRGB Profile.icc"),
+        preferred_descriptions=("sRGB", "sRGB IEC61966"),
     ),
     "adobe_rgb": GenericRgbProfile(
         key="adobe_rgb",
@@ -39,14 +44,18 @@ GENERIC_RGB_PROFILES: dict[str, GenericRgbProfile] = {
         gamma=2.19921875,
         preferred_filenames=("AdobeRGB1998.icc", "Adobe RGB (1998).icc", "Adobe RGB 1998.icc"),
         compatible_filenames=("ClayRGB1998.icm",),
+        preferred_descriptions=("Adobe RGB (1998)", "Compatible with Adobe RGB (1998)"),
+        compatible_descriptions=("ClayRGB1998", "Clay RGB 1998"),
     ),
     "prophoto_rgb": GenericRgbProfile(
         key="prophoto_rgb",
         label="ProPhoto RGB",
         colour_space="ProPhoto RGB",
         gamma=1.8,
-        preferred_filenames=("ProPhoto.icm", "ProPhoto RGB.icc", "ProPhoto.icc"),
+        preferred_filenames=("ProPhoto.icm", "ProPhoto RGB.icc", "ProPhotoRGB.icc", "ProPhoto.icc"),
         compatible_filenames=("ProPhoto.icm",),
+        preferred_descriptions=("ProPhoto RGB", "ROMM RGB"),
+        rejected_descriptions=("Linear",),
     ),
 }
 
@@ -116,11 +125,17 @@ def find_standard_output_profile(output_space: str | None) -> Path | None:
     profile = generic_output_profile(output_space)
     folders = _standard_profile_search_dirs()
     for filenames in (profile.preferred_filenames, profile.compatible_filenames):
-        for folder in folders:
-            for filename in filenames:
-                candidate = folder / filename
-                if candidate.exists() and candidate.is_file() and candidate.stat().st_size >= 128:
-                    return candidate
+        candidate = _find_standard_profile_by_filename(folders, filenames)
+        if candidate is not None:
+            return candidate
+    for descriptions in (profile.preferred_descriptions, profile.compatible_descriptions):
+        candidate = _find_standard_profile_by_description(
+            folders,
+            descriptions,
+            rejected_descriptions=profile.rejected_descriptions,
+        )
+        if candidate is not None:
+            return candidate
     return None
 
 
@@ -130,14 +145,21 @@ def available_standard_output_profiles(output_space: str | None) -> list[Path]:
     matches: list[Path] = []
     seen: set[Path] = set()
     for filenames in (profile.preferred_filenames, profile.compatible_filenames):
-        for folder in folders:
-            for filename in filenames:
-                candidate = folder / filename
-                if candidate.exists() and candidate.is_file() and candidate.stat().st_size >= 128:
-                    resolved = candidate.resolve(strict=False)
-                    if resolved not in seen:
-                        seen.add(resolved)
-                        matches.append(candidate)
+        for candidate in _standard_profiles_by_filename(folders, filenames):
+            resolved = candidate.resolve(strict=False)
+            if resolved not in seen:
+                seen.add(resolved)
+                matches.append(candidate)
+    for descriptions in (profile.preferred_descriptions, profile.compatible_descriptions):
+        for candidate in _standard_profiles_by_description(
+            folders,
+            descriptions,
+            rejected_descriptions=profile.rejected_descriptions,
+        ):
+            resolved = candidate.resolve(strict=False)
+            if resolved not in seen:
+                seen.add(resolved)
+                matches.append(candidate)
     return matches
 
 
@@ -166,6 +188,10 @@ def _rgb_to_xyz_d50_matrix(rgb_space: colour.RGB_Colourspace) -> np.ndarray:
     return np.asarray(adaptation @ matrix, dtype=np.float64)
 
 
+def standard_profile_search_dirs() -> list[Path]:
+    return _standard_profile_search_dirs()
+
+
 def _standard_profile_search_dirs() -> list[Path]:
     dirs: list[Path] = []
     configured = os.environ.get("PROBRAW_STANDARD_ICC_DIR", "").strip()
@@ -186,11 +212,24 @@ def _standard_profile_search_dirs() -> list[Path]:
             ]
         )
     else:
+        data_home = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share").expanduser()
+        data_dirs = [
+            Path(item).expanduser()
+            for item in os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":")
+            if item.strip()
+        ]
         dirs.extend(
             [
+                data_home / "color" / "icc",
+                data_home / "icc",
+                *(data_dir / "color" / "icc" for data_dir in data_dirs),
+                *(data_dir / "icc" for data_dir in data_dirs),
                 Path("/usr/share/color/icc"),
                 Path("/usr/share/color/icc/colord"),
+                Path("/usr/share/icc"),
                 Path("/usr/local/share/color/icc"),
+                Path("/usr/local/share/icc"),
+                Path("/var/lib/colord/icc"),
                 Path.home() / ".local" / "share" / "color" / "icc",
             ]
         )
@@ -208,6 +247,131 @@ def _standard_profile_search_dirs() -> list[Path]:
     return out
 
 
+def _find_standard_profile_by_filename(folders: list[Path], filenames: tuple[str, ...]) -> Path | None:
+    return next(iter(_standard_profiles_by_filename(folders, filenames)), None)
+
+
+def _standard_profiles_by_filename(folders: list[Path], filenames: tuple[str, ...]) -> list[Path]:
+    names = {str(filename) for filename in filenames}
+    matches: list[Path] = []
+    seen: set[Path] = set()
+    for folder in folders:
+        for filename in filenames:
+            candidate = folder / filename
+            if _valid_icc_file(candidate):
+                resolved = candidate.resolve(strict=False)
+                if resolved not in seen:
+                    seen.add(resolved)
+                    matches.append(candidate)
+    for candidate in _iter_system_icc_files(folders):
+        if candidate.name not in names:
+            continue
+        resolved = candidate.resolve(strict=False)
+        if resolved not in seen:
+            seen.add(resolved)
+            matches.append(candidate)
+    return matches
+
+
+def _find_standard_profile_by_description(
+    folders: list[Path],
+    descriptions: tuple[str, ...],
+    *,
+    rejected_descriptions: tuple[str, ...] = (),
+) -> Path | None:
+    return next(
+        iter(
+            _standard_profiles_by_description(
+                folders,
+                descriptions,
+                rejected_descriptions=rejected_descriptions,
+            )
+        ),
+        None,
+    )
+
+
+def _standard_profiles_by_description(
+    folders: list[Path],
+    descriptions: tuple[str, ...],
+    *,
+    rejected_descriptions: tuple[str, ...] = (),
+) -> list[Path]:
+    if not descriptions:
+        return []
+    matches: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in _iter_system_icc_files(folders):
+        resolved = candidate.resolve(strict=False)
+        if resolved in seen:
+            continue
+        if _profile_description_matches(candidate, descriptions, rejected_descriptions=rejected_descriptions):
+            seen.add(resolved)
+            matches.append(candidate)
+    return matches
+
+
+def _iter_system_icc_files(folders: list[Path]) -> list[Path]:
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for folder in folders:
+        if not folder.exists() or not folder.is_dir():
+            continue
+        try:
+            candidates = sorted(
+                (
+                    path
+                    for path in folder.rglob("*")
+                    if path.suffix.lower() in {".icc", ".icm"} and path.is_file()
+                ),
+                key=lambda path: (len(path.relative_to(folder).parts), path.name.lower(), str(path)),
+            )
+        except Exception:
+            continue
+        for candidate in candidates:
+            if not _valid_icc_file(candidate):
+                continue
+            resolved = candidate.resolve(strict=False)
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            files.append(candidate)
+    return files
+
+
+def _valid_icc_file(path: Path) -> bool:
+    try:
+        return path.exists() and path.is_file() and path.stat().st_size >= 128
+    except Exception:
+        return False
+
+
+def _profile_description_matches(
+    path: Path,
+    descriptions: tuple[str, ...],
+    *,
+    rejected_descriptions: tuple[str, ...] = (),
+) -> bool:
+    description = _normalized_profile_text(_profile_description(path))
+    if not description:
+        return False
+    if any(_normalized_profile_text(candidate) in description for candidate in rejected_descriptions):
+        return False
+    return any(_normalized_profile_text(candidate) in description for candidate in descriptions)
+
+
+def _profile_description(path: Path) -> str:
+    try:
+        profile = ImageCms.getOpenProfile(str(path))
+        return ImageCms.getProfileDescription(profile).strip()
+    except Exception:
+        return ""
+
+
+def _normalized_profile_text(value: str) -> str:
+    return "".join(ch for ch in str(value or "").casefold() if ch.isalnum())
+
+
 def _argyll_reference_dirs() -> list[Path]:
     dirs: list[Path] = []
     configured = os.environ.get("PROBRAW_ARGYLL_REF_DIR", "").strip()
@@ -223,6 +387,7 @@ def _argyll_reference_dirs() -> list[Path]:
         dirs.extend(
             [
                 root_dir / "ref",
+                root_dir / "share" / "argyllcms" / "ref",
                 root_dir / "share" / "color" / "argyll" / "ref",
                 bin_dir / "ref",
             ]
@@ -230,8 +395,11 @@ def _argyll_reference_dirs() -> list[Path]:
 
     dirs.extend(
         [
+            Path("/usr/share/argyllcms/ref"),
             Path("/usr/share/color/argyll/ref"),
+            Path("/usr/local/share/argyllcms/ref"),
             Path("/usr/local/share/color/argyll/ref"),
+            Path("/opt/homebrew/share/argyllcms/ref"),
             Path("/opt/homebrew/share/color/argyll/ref"),
         ]
     )

@@ -9,8 +9,9 @@ ProbRAW uses a single RAW development engine:
 - **LibRaw**, using the Python `rawpy` dependency, for decoding and
   RAW interpolation.
 - **ArgyllCMS** (`colprof`) as ICC profiling engine.
-- **ArgyllCMS** (`cctiff`/`xicclu`) as CMM for output ICC conversions,
-  profile validation and preview.
+- **ArgyllCMS** (`xicclu`/`icclu`) as validation tool for the generated ICC.
+- **LittleCMS2**, through Pillow `ImageCms`, as ICC preview CMM.
+- **ArgyllCMS** (`cctiff`) is kept for now for explicit output ICC conversions.
 
 The goal is to maintain a reproducible and auditable scientific flow with less
 code branches and no implicit mappings between different RAW engines.
@@ -39,9 +40,10 @@ Verification:
 bash scripts/check_tools.sh
 probraw check-tools --strict --out tools_report.json
 ```
-`probraw check-tools` records availability of ArgyllCMS and
-`exiftool`. The versions of `rawpy` and LibRaw are registered in the context
-execution (`run_context`).
+`probraw check-tools` records availability of ArgyllCMS and `exiftool`.
+`probraw check-color-environment` also records LittleCMS2, Qt/PySide, colord,
+Wayland/KWin and system ICC profiles. The versions of `rawpy` and LibRaw are
+registered in the execution context (`run_context`).
 
 ## LibRaw/rawpy integration
 
@@ -117,6 +119,10 @@ Validation:
 Key file:
 
 - `src/probraw/profile/export.py`
+
+This section describes the current derived export path. The GUI ICC preview no
+longer uses `xicclu`/`cctiff`: it builds its transforms with LittleCMS2 through
+Pillow `ImageCms`, and caches LUTs by profile and CMM version.
 
 Output modes:
 

@@ -6,6 +6,7 @@ import numpy as np
 import tifffile
 import colour
 import pytest
+from PIL import ImageCms
 
 from probraw.core.models import Recipe
 from probraw.profile.export import apply_profile_matrix
@@ -330,7 +331,7 @@ def test_preview_analysis_text_samples_large_images_without_changing_format():
     assert "Diferencia media absoluta global" in text
 
 
-def test_apply_profile_preview_uses_cached_argyll_lut(tmp_path: Path, monkeypatch):
+def test_apply_profile_preview_uses_cached_lcms_lut(tmp_path: Path, monkeypatch):
     profile = tmp_path / "camera.icc"
     profile.write_bytes(b"icc-placeholder")
     lut = np.zeros((3, 3, 3, 3), dtype=np.float32)
@@ -347,6 +348,18 @@ def test_apply_profile_preview_uses_cached_argyll_lut(tmp_path: Path, monkeypatc
     assert np.isfinite(out).all()
     assert float(np.min(out)) >= 0.0
     assert float(np.max(out)) <= 1.0
+
+
+def test_apply_profile_preview_uses_lcms_srgb_transform(tmp_path: Path):
+    profile = tmp_path / "srgb.icc"
+    profile.write_bytes(ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes())
+    image = np.asarray([[[0.0, 0.5, 1.0], [0.25, 0.75, 0.1]]], dtype=np.float32)
+
+    out = apply_profile_preview(image, profile)
+
+    assert out.dtype == np.float32
+    assert out.shape == image.shape
+    assert np.max(np.abs(out - image)) <= (2.0 / 255.0)
 
 
 def test_apply_profile_matrix_adapts_d50_neutral_to_srgb_neutral():

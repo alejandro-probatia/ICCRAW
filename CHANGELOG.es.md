@@ -27,6 +27,16 @@ Para mantener trazabilidad completa, cada cambio debe:
   PyInstaller y C2PA con un unico selector.
 - Documentado el flujo de instalacion/build macOS, validacion de artefactos,
   variables de AMaZE, firma opcional y recomendaciones de Python 3.11/3.12.
+- Anadido empaquetado nativo Arch/CachyOS con `PKGBUILD`, script
+  `packaging/arch/build_pkg.sh`, instalacion en `/opt/probraw/venv`, lanzadores
+  `probraw`/`probraw-ui`, validacion `validate_cachyos_install.sh` y soporte de
+  build AMaZE optimizada.
+- Anadido `probraw check-color-environment` para auditar proveedor de perfil de
+  pantalla, LittleCMS2, ArgyllCMS, Qt/PySide, colord, KWin/Wayland y perfiles
+  ICC estandar del sistema.
+- Documentada la gestion de color del sistema en Linux/Windows/macOS y el
+  contrato de CMM: LittleCMS2 para preview, ArgyllCMS para creacion,
+  validacion y conversiones derivadas.
 
 ### Changed
 
@@ -34,11 +44,24 @@ Para mantener trazabilidad completa, cada cambio debe:
   `.zip` antes de tarballs de fuente.
 - Los scripts `.sh` quedan normalizados a LF mediante `.gitattributes` para
   evitar problemas al preparar builds macOS desde Windows.
+- La busqueda de perfiles genericos sRGB, Adobe RGB y ProPhoto RGB usa rutas de
+  sistema XDG/colord/ArgyllCMS/Homebrew y valida descripciones ICC para evitar
+  seleccionar ProPhoto lineal como ProPhoto RGB gamma 1.8.
+- La preview ICC de perfil usa LittleCMS2 via Pillow `ImageCms`; `xicclu`/`icclu`
+  quedan para validacion del ICC generado y `cctiff` para exportaciones
+  derivadas.
+- Los dialogos de seleccion ICC empiezan ahora en directorios de perfiles del
+  sistema cuando no hay ruta previa.
+- La build `rawpy-demosaic` se adapta a toolchains actuales con CMake policy
+  minima, `Cython>=3.1`, `numpy` y `np.set_array_base`.
 
 ### Tests
 
 - Validado con `bash -n packaging/macos/build_app.sh`, `python -m compileall`,
   comprobacion sintactica del spec macOS y `pytest` sobre docs/update/external.
+- Validado en CachyOS con paquete instalado `probraw 0.3.18-3`: `pacman -Qkk`
+  sin ficheros alterados, `validate_cachyos_install.sh`, `check-tools --strict`,
+  `check-amaze` y smoke `probraw-ui` offscreen.
 
 ## [0.3.18] - 2026-05-07
 

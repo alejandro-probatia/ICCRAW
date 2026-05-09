@@ -469,3 +469,20 @@ def test_argyll_reference_profile_searches_debian_share_path(tmp_path: Path, mon
     monkeypatch.setattr(export_module, "external_tool_path", lambda command: str(tool) if command == "cctiff" else None)
 
     assert export_module._argyll_reference_profile("sRGB.icm") == profile
+
+
+def test_argyll_reference_profile_searches_argyllcms_share_path(tmp_path: Path, monkeypatch):
+    bin_dir = tmp_path / "usr" / "bin"
+    ref_dir = tmp_path / "usr" / "share" / "argyllcms" / "ref"
+    bin_dir.mkdir(parents=True)
+    ref_dir.mkdir(parents=True)
+    tool = bin_dir / "colprof"
+    profile = ref_dir / "ProPhoto.icm"
+    tool.write_text("", encoding="utf-8")
+    profile.write_bytes(b"profile")
+
+    import probraw.profile.export as export_module
+
+    monkeypatch.setattr(export_module, "external_tool_path", lambda command: str(tool) if command == "colprof" else None)
+
+    assert export_module._argyll_reference_profile("ProPhoto.icm") == profile

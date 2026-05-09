@@ -42,7 +42,8 @@ preview innecesaria. Mantiene las mejoras de rendimiento interactivo de 0.3.17.
 La última validación de empaquetado pasó con:
 
 ```text
-438 passed, 2 warnings
+439 passed, 2 warnings
+CachyOS probraw 0.3.18-3: pacman -Qkk -> 18160 ficheros, 0 alterados; validate_cachyos_install -> OK
 ```
 
 ## Documentación
@@ -50,6 +51,7 @@ La última validación de empaquetado pasó con:
 - [Manual de usuario](docs/MANUAL_USUARIO.es.md)
 - [Metodología RAW e ICC](docs/METODOLOGIA_COLOR_RAW.es.md)
 - [Pipeline de color](docs/COLOR_PIPELINE.es.md)
+- [Gestión de color del sistema](docs/GESTION_COLOR_LINUX_PROBRAW.es.md)
 - [Arquitectura](docs/ARCHITECTURE.es.md)
 - [Roadmap](docs/ROADMAP.es.md)
 - [Rendimiento](docs/PERFORMANCE.es.md)
@@ -228,8 +230,8 @@ probraw verify-c2pa ./02_DRV/captura.tiff \
   orientación no comercial es un objetivo de gobernanza, no una restricción
   adicional de licencia.
 - La redistribución debe respetar las licencias de dependencias directas e
-  indirectas, incluidas LibRaw/rawpy, rawpy-demosaic, ArgyllCMS, ExifTool,
-  Qt/PySide6 y herramientas C2PA.
+  indirectas, incluidas LibRaw/rawpy, rawpy-demosaic, ArgyllCMS, LittleCMS2,
+  Pillow/ImageCms, ExifTool, Qt/PySide6 y herramientas C2PA.
 
 ProbRAW está liderado por [**Probatia Forensics SL**](https://probatia.com) en
 colaboración con la

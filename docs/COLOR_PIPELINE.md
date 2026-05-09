@@ -11,6 +11,9 @@ system.
 
 The complete methodology is described in
 [RAW development methodology and ICC management](METODOLOGIA_COLOR_RAW.md).
+The operating-system integration with system profiles, LittleCMS2, WCS/ICM,
+ColorSync, colord, KDE/Wayland and environment validation is documented in
+[System Color Management in ProbRAW](GESTION_COLOR_LINUX_PROBRAW.md).
 
 ## Design Principle
 
@@ -109,8 +112,9 @@ This is a non-negotiable rule for ProbRAW:
   recipe encoding curve (`tone_curve: srgb`), or as an internal
   diagnostic/reference signal for histogram/parity checks. It must not replace
   the image input ICC or the monitor ICC in managed display.
-- A missing or broken monitor ICC is a display configuration problem. It must
-  not silently downgrade a managed preview to an sRGB display route.
+- A missing or broken monitor ICC is a display configuration problem. ProbRAW
+  may use visual sRGB fallback only when it is explicit and reported, without
+  replacing the input ICC or converting analysis data.
 
 ## Monitor Color Management
 
@@ -124,9 +128,10 @@ Detection:
 - Linux/BSD: `colord`, `colormgr` or `_ICC_PROFILE`.
 
 If the monitor profile disappears or cannot be opened, ProbRAW logs the problem
-and treats the managed display path as unavailable until a valid monitor ICC is
-detected or selected. Diagnostic bypasses must remain explicit and must not
-replace the image input profile.
+and marks the state as visual sRGB fallback until a valid monitor ICC is detected
+or selected. That fallback is display-only; it does not remove or replace the
+image input profile and does not participate in recipes, colorimetric
+histograms, TIFFs, Proof records or manifests.
 
 ## Preview and Histogram
 

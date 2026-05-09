@@ -109,8 +109,10 @@ Technical address:
 1. Define two explicit modes:
    - `assign-input-profile`: TIFF in RGB camera + embedded input ICC profile.
    - `convert-to-output-profile`: transformation with real CMM to sRGB/AdobeRGB/XYZ/Lab.
-2. Integrate a real CMM for ICC conversions:
-   - ArgyllCMS (`cctiff`/`xicclu`) to maintain a single external CMM provider.
+2. Integrate real CMMs with separated responsibilities:
+   - LittleCMS2 through Pillow `ImageCms` for managed display/profile preview.
+   - ArgyllCMS `cctiff` for derived export conversions.
+   - ArgyllCMS `xicclu`/`icclu` for generated ICC validation.
 3. Eliminate the silent application of the side array as the main output.
 4. Keep the matrix only as a diagnostic artifact, not as a substitute for the ICC.
 

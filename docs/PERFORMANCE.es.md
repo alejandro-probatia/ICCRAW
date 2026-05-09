@@ -347,8 +347,8 @@ Referencias:
   previews 1:1 sin tocar el render canonico.
 - Las llamadas externas de diagnostico basico (`exiftool`, `git rev-parse`)
   tienen timeout para evitar bloqueos indefinidos.
-- Las consultas `xicclu` de validacion y preview ICC ya operan en batch por
-  `stdin`; no se detecto un bucle de una invocacion por parche.
+- La preview ICC usa ahora LittleCMS2 via Pillow `ImageCms`; `xicclu` permanece
+  en la ruta de validacion de perfiles ICC generados.
 - El batch de revelado ya no usa hilos para trabajo CPU-bound salvo fallback
   C2PA; cada imagen se procesa en un proceso independiente.
 - El resultado numerico del demosaico puede persistirse como `.npy` para evitar

@@ -17,6 +17,7 @@ def test_parser_has_expected_commands():
     assert "check-amaze" in text
     assert "check-c2pa" in text
     assert "check-display-profile" in text
+    assert "check-color-environment" in text
     assert "verify-c2pa" in text
 
 

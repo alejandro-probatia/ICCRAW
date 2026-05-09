@@ -65,7 +65,12 @@ from ...profile.export import (
     profile_path_for_render_settings,
     write_signed_profiled_tiff as _write_signed_profiled_tiff,
 )
-from ...profile.generic import ensure_generic_output_profile, generic_output_profile, is_generic_output_space
+from ...profile.generic import (
+    ensure_generic_output_profile,
+    generic_output_profile,
+    is_generic_output_space,
+    standard_profile_search_dirs,
+)
 from ...profile.gamut import (
     build_gamut_diagnostics as _build_gamut_diagnostics,
     build_gamut_pair_diagnostics as _build_gamut_pair_diagnostics,

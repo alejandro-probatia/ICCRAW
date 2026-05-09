@@ -28,6 +28,7 @@ def patch_setup_py(source_dir: Path) -> None:
             "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"
         ),
         "url = 'https://github.com/letmaik/rawpy'": "url = 'https://github.com/exfab/rawpy-demosaic'",
+        "-DCMAKE_BUILD_TYPE=Release ": "-DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ",
         "-DENABLE_EXAMPLES=OFF -DENABLE_OPENMP=ON -DENABLE_RAWSPEED=OFF": (
             "-DENABLE_EXAMPLES=OFF -DENABLE_OPENMP=OFF -DENABLE_RAWSPEED=OFF"
         ),
@@ -103,6 +104,26 @@ def patch_libraw_sources(source_dir: Path) -> None:
         cmakelists.write_text(cmake_text, encoding="utf-8", errors="surrogateescape")
 
 
+def patch_rawpy_sources(source_dir: Path) -> None:
+    rawpy_pyx = source_dir / "rawpy" / "_rawpy.pyx"
+    if not rawpy_pyx.exists():
+        return
+    text = rawpy_pyx.read_text(encoding="utf-8", errors="surrogateescape")
+    text = text.replace(
+        "            ndarr.base = <PyObject*> self\n"
+        "            # Python doesn't know about above assignment as it's in C-level \n"
+        "            Py_INCREF(self)\n",
+        "            np.set_array_base(ndarr, self)\n",
+    )
+    text = text.replace(
+        "        ndarr.base = <PyObject*> self\n"
+        "        # Python doesn't know about above assignment as it's in C-level \n"
+        "        Py_INCREF(self)\n",
+        "        np.set_array_base(ndarr, self)\n",
+    )
+    rawpy_pyx.write_text(text, encoding="utf-8", errors="surrogateescape")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Construye una wheel rawpy-demosaic con AMaZE/GPL3 activado.")
     parser.add_argument("--python", default=sys.executable, help="Python/venv usado para construir la wheel.")
@@ -153,7 +174,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     patch_setup_py(source_dir)
     patch_libraw_sources(source_dir)
-    run([str(python), "-m", "pip", "install", "--upgrade", "setuptools<70", "wheel", "Cython<3"], cwd=source_dir)
+    patch_rawpy_sources(source_dir)
+    run([str(python), "-m", "pip", "install", "--upgrade", "setuptools<70", "wheel", "Cython>=3.1", "numpy"], cwd=source_dir)
     run([str(python), "setup.py", "bdist_wheel"], cwd=source_dir)
 
     wheels = sorted((source_dir / "dist").glob("rawpy_demosaic-*.whl"))

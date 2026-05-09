@@ -469,10 +469,13 @@ class PreviewMenuMixin:
             self._set_status(self.tr("Herramientas externas disponibles"))
 
     def _menu_load_profile(self) -> None:
+        start = self.path_profile_active.text().strip()
+        if not start:
+            start = self._default_icc_browse_directory()
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             self.tr("Selecciona perfil ICC"),
-            self.path_profile_active.text().strip(),
+            start,
             "ICC Profiles (*.icc *.icm);;Todos (*)",
         )
         if not path:

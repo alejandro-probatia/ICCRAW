@@ -844,6 +844,7 @@ def _argyll_reference_dirs() -> list[Path]:
         dirs.extend(
             [
                 root_dir / "ref",
+                root_dir / "share" / "argyllcms" / "ref",
                 root_dir / "share" / "color" / "argyll" / "ref",
                 bin_dir / "ref",
             ]
@@ -851,8 +852,11 @@ def _argyll_reference_dirs() -> list[Path]:
 
     dirs.extend(
         [
+            Path("/usr/share/argyllcms/ref"),
             Path("/usr/share/color/argyll/ref"),
+            Path("/usr/local/share/argyllcms/ref"),
             Path("/usr/local/share/color/argyll/ref"),
+            Path("/opt/homebrew/share/argyllcms/ref"),
             Path("/opt/homebrew/share/color/argyll/ref"),
         ]
     )

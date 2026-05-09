@@ -108,8 +108,10 @@ Direccion tecnica:
 1. Definir dos modos explicitos:
    - `assign-input-profile`: TIFF en RGB camara + perfil ICC de entrada incrustado.
    - `convert-to-output-profile`: transformacion con CMM real a sRGB/AdobeRGB/XYZ/Lab.
-2. Integrar un CMM real para conversiones ICC:
-   - ArgyllCMS (`cctiff`/`xicclu`) para mantener un unico proveedor CMM externo.
+2. Integrar CMMs reales con responsabilidades separadas:
+   - LittleCMS2 via Pillow `ImageCms` para preview gestionada e ICC de perfil.
+   - ArgyllCMS `cctiff` para conversiones derivadas de exportacion.
+   - ArgyllCMS `xicclu`/`icclu` para validacion del ICC generado.
 3. Eliminar la aplicacion silenciosa de la matriz lateral como salida principal.
 4. Mantener la matriz solo como artefacto diagnostico, no como sustituto del ICC.
 

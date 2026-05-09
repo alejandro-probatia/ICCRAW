@@ -29,6 +29,16 @@ To maintain full traceability, each change must:
   dependencies through one selector.
 - Documented the macOS install/build flow, artifact validation, AMaZE variables,
   optional signing and Python 3.11/3.12 recommendations.
+- Added native Arch/CachyOS packaging with `PKGBUILD`,
+  `packaging/arch/build_pkg.sh`, installation under `/opt/probraw/venv`,
+  `probraw`/`probraw-ui` launchers, `validate_cachyos_install.sh` validation
+  and optimized AMaZE build support.
+- Added `probraw check-color-environment` to audit the display-profile provider,
+  LittleCMS2, ArgyllCMS, Qt/PySide, colord, KWin/Wayland and system standard
+  ICC profiles.
+- Documented system color management for Linux/Windows/macOS and the CMM
+  contract: LittleCMS2 for preview, ArgyllCMS for creation, validation and
+  derived conversions.
 
 ### Changed
 
@@ -36,11 +46,24 @@ To maintain full traceability, each change must:
   before source tarballs.
 - Shell scripts are normalized to LF through `.gitattributes` to avoid problems
   when preparing macOS builds from Windows.
+- Generic sRGB, Adobe RGB and ProPhoto RGB profile discovery now uses
+  XDG/colord/ArgyllCMS/Homebrew system paths and validates ICC descriptions to
+  avoid selecting linear ProPhoto as gamma 1.8 ProPhoto RGB.
+- ICC profile preview now uses LittleCMS2 through Pillow `ImageCms`;
+  `xicclu`/`icclu` remain for generated ICC validation and `cctiff` for derived
+  exports.
+- ICC selection dialogs now start in system profile directories when no previous
+  path is available.
+- The `rawpy-demosaic` build adapts to current toolchains with a minimum CMake
+  policy, `Cython>=3.1`, `numpy` and `np.set_array_base`.
 
 ### Tests
 
 - Validated with `bash -n packaging/macos/build_app.sh`, `python -m compileall`,
   macOS spec syntax checking and `pytest` for docs/update/external coverage.
+- Validated on CachyOS with installed package `probraw 0.3.18-3`: `pacman -Qkk`
+  with no altered files, `validate_cachyos_install.sh`, `check-tools --strict`,
+  `check-amaze` and offscreen `probraw-ui` smoke.
 
 ## [0.3.18] - 2026-05-07
 

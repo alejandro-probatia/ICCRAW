@@ -1185,7 +1185,7 @@ class ProfileWorkflowMixin:
                     widget.setVisible(visible)
 
     def _browse_gamut_custom_profile(self, target: QtWidgets.QLineEdit) -> None:
-        start = target.text().strip() or str(self._current_dir)
+        start = target.text().strip() or self._default_icc_browse_directory()
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             self.tr("Selecciona perfil ICC"),

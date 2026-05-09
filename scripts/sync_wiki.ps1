@@ -109,6 +109,7 @@ $pages = [ordered]@{
   "docs/MANUAL_USUARIO.es.md" = "Manual-de-usuario.md"
   "docs/METODOLOGIA_COLOR_RAW.es.md" = "Metodologia-RAW-e-ICC.md"
   "docs/COLOR_PIPELINE.es.md" = "Pipeline-de-color.md"
+  "docs/GESTION_COLOR_LINUX_PROBRAW.es.md" = "Gestion-de-color-del-sistema.md"
   "docs/ARCHITECTURE.es.md" = "Arquitectura.md"
   "docs/PERFORMANCE.es.md" = "Rendimiento.md"
   "docs/REPRODUCIBILITY.es.md" = "Reproducibilidad.md"
@@ -162,6 +163,7 @@ lectura y navegacion.
 - [Manual de usuario](Manual-de-usuario)
 - [Metodologia RAW e ICC](Metodologia-RAW-e-ICC)
 - [Pipeline de color](Pipeline-de-color)
+- [Gestion de color del sistema](Gestion-de-color-del-sistema)
 - [Rendimiento](Rendimiento)
 - [Reproducibilidad](Reproducibilidad)
 

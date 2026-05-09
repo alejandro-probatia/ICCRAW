@@ -49,7 +49,13 @@ from .provenance.probraw_proof import (
 from .qa_compare import compare_qa_reports
 from .raw.metadata import raw_info
 from .raw.pipeline import develop_controlled
-from .reporting import check_amaze_backend, check_c2pa_support, check_external_tools, gather_run_context
+from .reporting import (
+    check_amaze_backend,
+    check_c2pa_support,
+    check_color_environment,
+    check_external_tools,
+    gather_run_context,
+)
 from .version import __version__
 from .workflow import auto_profile_batch
 
@@ -270,6 +276,14 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
 
     s = sub.add_parser("check-display-profile")
     s.add_argument("--out", default=None, help="JSON de salida opcional")
+
+    s = sub.add_parser("check-color-environment")
+    s.add_argument("--out", default=None, help="JSON de salida opcional")
+    s.add_argument(
+        "--strict",
+        action="store_true",
+        help="Devuelve codigo 2 si la auditoria de color detecta advertencias",
+    )
 
     s = sub.add_parser("mtf-roi-worker", help=argparse.SUPPRESS)
     s.add_argument("request", help=argparse.SUPPRESS)
@@ -544,6 +558,15 @@ def main(argv: list[str] | None = None) -> int:
             if args.out:
                 write_json(Path(args.out), result)
             print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0
+
+        if args.command == "check-color-environment":
+            result = check_color_environment()
+            if args.out:
+                write_json(Path(args.out), result)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            if args.strict and result.get("status") != "ok":
+                return 2
             return 0
 
         if args.command == "mtf-roi-worker":

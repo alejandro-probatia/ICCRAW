@@ -1,0 +1,226 @@
+# Maintainer: local ProbRAW build <local@probraw>
+
+pkgname=probraw
+pkgver=0.3.18
+pkgrel=${PROBRAW_ARCH_PKGREL:-1}
+pkgdesc="ProbRAW reproducible RAW and ICC session profiling"
+arch=('x86_64')
+url="https://github.com/alejandro-probatia/ProbRAW"
+license=('AGPL-3.0-or-later')
+depends=(
+  'python>=3.11'
+  'argyllcms'
+  'perl-image-exiftool'
+  'colord'
+  'lcms2'
+  'libjpeg-turbo'
+  'libtiff'
+  'libglvnd'
+  'libxkbcommon'
+  'libxcb'
+  'libx11'
+  'xcb-util-cursor'
+  'xcb-util-image'
+  'xcb-util-keysyms'
+  'xcb-util-renderutil'
+  'xcb-util-wm'
+  'openmp'
+  'desktop-file-utils'
+  'hicolor-icon-theme'
+  'xorg-xprop'
+)
+optdepends=(
+  'wayland-utils: audit Wayland color-management protocols'
+  'colord-kde: KDE color-management integration'
+  'displaycal: monitor calibration workflow'
+)
+conflicts=('iccraw' 'nexoraw')
+replaces=('iccraw' 'nexoraw')
+makedepends=('python' 'git')
+install=probraw.install
+options=('!strip')
+source=()
+sha256sums=()
+
+_root="${PROBRAW_SOURCE_DIR:-$(cd "$startdir/../.." && pwd)}"
+_venv_install="/opt/probraw/venv"
+_rawpy_demosaic_repo="${PROBRAW_RAWPY_DEMOSAIC_REPO:-https://github.com/exfab/rawpy-demosaic.git}"
+_rawpy_demosaic_ref="${PROBRAW_RAWPY_DEMOSAIC_REF:-8b17075}"
+
+pkgver() {
+  python - "$_root" <<'PY'
+import sys
+from pathlib import Path
+
+namespace = {}
+exec((Path(sys.argv[1]) / "src" / "probraw" / "version.py").read_text(encoding="utf-8"), namespace)
+print(namespace["__version__"])
+PY
+}
+
+_is_true() {
+  case "${1,,}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+package() {
+  local venv="$pkgdir$_venv_install"
+  local py="$venv/bin/python"
+  local native="${PROBRAW_ARCH_NATIVE:-1}"
+  local build_amaze="${PROBRAW_BUILD_AMAZE:-1}"
+
+  install -d "$pkgdir/opt/probraw" "$pkgdir/usr/bin" "$pkgdir/usr/share/doc/probraw"
+
+  if _is_true "$native"; then
+    export CFLAGS="${CFLAGS:-} -O3 -march=native -mtune=native"
+    export CXXFLAGS="${CXXFLAGS:-} -O3 -march=native -mtune=native"
+  fi
+  export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)}"
+  export MAKEFLAGS="${MAKEFLAGS:--j$(nproc)}"
+  export PIP_DISABLE_PIP_VERSION_CHECK=1
+  export PIP_NO_CACHE_DIR=1
+
+  python -m venv "$venv"
+  "$py" -m pip install --upgrade pip setuptools wheel
+  "$py" -m pip install --prefer-binary "$_root[gui,c2pa]"
+
+  if _is_true "$build_amaze"; then
+    "$py" -m pip install --upgrade "setuptools<70" wheel "Cython>=3.1" numpy cmake ninja
+    export PATH="$venv/bin:$PATH"
+    "$py" "$_root/scripts/build_rawpy_demosaic_wheel.py" \
+      --python "$py" \
+      --repo "$_rawpy_demosaic_repo" \
+      --ref "$_rawpy_demosaic_ref" \
+      --work-dir "$srcdir/rawpy-demosaic-build" \
+      --output-dir "$srcdir/rawpy-demosaic-wheel" \
+      --force
+
+    local amaze_wheel
+    amaze_wheel="$(find "$srcdir/rawpy-demosaic-wheel" -maxdepth 1 -type f -name 'rawpy_demosaic-*.whl' | sort | tail -n 1)"
+    [[ -n "$amaze_wheel" ]] || return 2
+    "$py" -m pip uninstall -y rawpy rawpy-demosaic
+    "$py" -m pip install --force-reinstall --no-deps "$amaze_wheel"
+    "$py" -m pip uninstall -y cmake ninja Cython
+
+    install -d "$pkgdir/usr/share/doc/probraw/third_party/rawpy-demosaic"
+    "$py" "$_root/scripts/check_amaze_support.py" \
+      > "$pkgdir/usr/share/doc/probraw/third_party/rawpy-demosaic/check-amaze.json"
+    "$py" - "$pkgdir/usr/share/doc/probraw/third_party/rawpy-demosaic/build-metadata.json" "$amaze_wheel" "$_rawpy_demosaic_repo" "$_rawpy_demosaic_ref" "$native" <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+metadata_path = Path(sys.argv[1])
+wheel = Path(sys.argv[2])
+payload = {
+    "backend": "rawpy-demosaic",
+    "source_url": sys.argv[3],
+    "source_ref": sys.argv[4],
+    "wheel": wheel.name,
+    "wheel_sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+    "build_profile": "arch-cachyos-native" if sys.argv[5].lower() in {"1", "true", "yes", "on"} else "arch-generic",
+}
+metadata_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+PY
+  fi
+
+  local site_packages
+  site_packages="$("$py" - <<'PY'
+import site
+print(site.getsitepackages()[0])
+PY
+)"
+  rm -f "$site_packages"/rawpy_demosaic-*.dist-info/direct_url.json
+  find "$site_packages/rawpy" -maxdepth 1 -type f \( -name '*.so' -o -name '*.so.*' \) \
+    -exec chmod u+w {} + \
+    -exec strip --strip-unneeded {} + 2>/dev/null || true
+
+  rm -f "$venv/bin/nexoraw" "$venv/bin/nexoraw-ui" "$venv/bin/iccraw" "$venv/bin/iccraw-ui"
+  rm -f "$venv/bin/activate" "$venv/bin/activate.csh" "$venv/bin/activate.fish" "$venv/bin/Activate.ps1"
+
+  local entry first_line
+  for entry in "$venv/bin/"*; do
+    [[ -f "$entry" ]] || continue
+    grep -Iq . "$entry" || continue
+    first_line="$(head -n 1 "$entry" || true)"
+    case "$first_line" in
+      "#!$venv/bin/python"*)
+        sed -i "1s|^#!.*|#!$_venv_install/bin/python|" "$entry"
+        ;;
+    esac
+  done
+  sed -i "s|$venv|$_venv_install|g" "$venv/pyvenv.cfg"
+
+  cat > "$pkgdir/usr/bin/probraw" <<'SH'
+#!/usr/bin/env sh
+exec /opt/probraw/venv/bin/probraw "$@"
+SH
+  cat > "$pkgdir/usr/bin/probraw-ui" <<'SH'
+#!/usr/bin/env sh
+exec /opt/probraw/venv/bin/probraw-ui "$@"
+SH
+  chmod 0755 "$pkgdir/usr/bin/probraw" "$pkgdir/usr/bin/probraw-ui"
+
+  install -Dm0644 "$_root/src/probraw/resources/icons/probraw-icon.svg" \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/probraw.svg"
+  "$py" - "$_root/src/probraw/resources/icons/probraw-icon.png" "$pkgdir" <<'PY'
+from pathlib import Path
+import sys
+from PIL import Image
+
+src = Path(sys.argv[1])
+pkgdir = Path(sys.argv[2])
+with Image.open(src) as image:
+    image = image.convert("RGBA")
+    for size in (16, 32, 48, 64, 128, 256, 512):
+        dest = pkgdir / "usr" / "share" / "icons" / "hicolor" / f"{size}x{size}" / "apps" / "probraw.png"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        resized = image if image.size == (size, size) else image.resize((size, size), Image.Resampling.LANCZOS)
+        resized.save(dest)
+    pixmap = pkgdir / "usr" / "share" / "pixmaps" / "probraw.png"
+    pixmap.parent.mkdir(parents=True, exist_ok=True)
+    image.save(pixmap)
+PY
+
+  install -Dm0644 /dev/stdin "$pkgdir/usr/share/applications/probraw.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=ProbRAW
+GenericName=RAW color profiling
+Comment=Pipeline reproducible RAW -> carta -> perfil ICC de sesion
+Exec=probraw-ui
+Icon=/usr/share/pixmaps/probraw.png
+Terminal=false
+Categories=Graphics;Photography;
+Keywords=RAW;ICC;color;photography;forensics;
+StartupWMClass=probraw
+DESKTOP
+
+  local doc
+  for doc in \
+    README.md README.es.md CHANGELOG.md CHANGELOG.es.md LICENSE \
+    docs/THIRD_PARTY_LICENSES.md docs/LEGAL_COMPLIANCE.md docs/AMAZE_GPL3.md \
+    docs/RELEASE_INSTALLERS.md docs/MANUAL_USUARIO.md docs/MANUAL_USUARIO.es.md \
+    docs/METODOLOGIA_COLOR_RAW.md docs/METODOLOGIA_COLOR_RAW.es.md \
+    docs/COLOR_PIPELINE.md docs/COLOR_PIPELINE.es.md \
+    docs/GESTION_COLOR_LINUX_PROBRAW.md docs/GESTION_COLOR_LINUX_PROBRAW.es.md \
+    docs/DECISIONS.md \
+    docs/C2PA_CAI.md docs/PROBRAW_PROOF.md docs/PERFORMANCE.md docs/PERFORMANCE.es.md; do
+    [[ -f "$_root/$doc" ]] || continue
+    install -m 0644 "$_root/$doc" "$pkgdir/usr/share/doc/probraw/$(basename "$doc")"
+  done
+  install -m 0644 "$_root/packaging/arch/README.md" "$pkgdir/usr/share/doc/probraw/ARCH_PACKAGE.md"
+  install -m 0644 "$_root/packaging/arch/README.es.md" "$pkgdir/usr/share/doc/probraw/ARCH_PACKAGE.es.md"
+  install -m 0755 "$_root/scripts/check_amaze_support.py" "$pkgdir/usr/share/doc/probraw/check_amaze_support.py"
+  install -m 0755 "$_root/scripts/validate_cachyos_install.sh" "$pkgdir/usr/share/doc/probraw/validate_cachyos_install.sh"
+
+  find "$venv" -type d -name '__pycache__' -prune -exec rm -rf {} +
+  "$py" -m compileall -q -f -x '.*\.tmpl\.py$' -s "$venv" -p "$_venv_install" "$venv/lib"
+  "$py" -m compileall -q -f -o 2 -x '.*\.tmpl\.py$' -s "$venv" -p "$_venv_install" "$venv/lib"
+
+  "$py" -m probraw.cli check-tools --strict >/dev/null
+  "$py" -m probraw.cli check-color-environment >/dev/null || true
+}

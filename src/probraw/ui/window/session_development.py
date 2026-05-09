@@ -16,6 +16,15 @@ class SessionDevelopmentMixin:
         except Exception:
             return self._profile_timestamp()
 
+    def _default_icc_browse_directory(self) -> str:
+        for folder in standard_profile_search_dirs():
+            try:
+                if folder.exists() and folder.is_dir():
+                    return str(folder)
+            except Exception:
+                continue
+        return str(self._current_dir)
+
     def _icc_profile_id_for_path(self, path: Path) -> str:
         stored = self._session_relative_or_absolute(path)
         digest = hashlib.sha1(stored.encode("utf-8")).hexdigest()[:12]

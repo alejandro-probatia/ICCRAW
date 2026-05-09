@@ -42,7 +42,8 @@ interactive performance improvements from 0.3.17.
 The latest packaging validation passed with:
 
 ```text
-438 passed, 2 warnings
+439 passed, 2 warnings
+CachyOS probraw 0.3.18-3: pacman -Qkk -> 18160 files, 0 altered; validate_cachyos_install -> OK
 ```
 
 ## Documentation
@@ -50,6 +51,7 @@ The latest packaging validation passed with:
 - [User Manual](docs/MANUAL_USUARIO.md)
 - [RAW and ICC Methodology](docs/METODOLOGIA_COLOR_RAW.md)
 - [Color Pipeline](docs/COLOR_PIPELINE.md)
+- [System Color Management](docs/GESTION_COLOR_LINUX_PROBRAW.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Performance](docs/PERFORMANCE.md)
@@ -227,8 +229,8 @@ probraw verify-c2pa ./02_DRV/capture.tiff \
   commercial use; the non-commercial orientation is a governance goal, not an
   additional license restriction.
 - Redistribution must respect the licenses of direct and indirect dependencies,
-  including LibRaw/rawpy, rawpy-demosaic, ArgyllCMS, ExifTool, Qt/PySide6 and
-  C2PA tooling.
+  including LibRaw/rawpy, rawpy-demosaic, ArgyllCMS, LittleCMS2,
+  Pillow/ImageCms, ExifTool, Qt/PySide6 and C2PA tooling.
 
 ProbRAW is led by [**Probatia Forensics SL**](https://probatia.com) in
 collaboration with the

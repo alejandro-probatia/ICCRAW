@@ -7,8 +7,11 @@ ProbRAW usa un único motor de revelado RAW:
 - **LibRaw**, mediante la dependencia Python `rawpy`, para decodificación e
   interpolación RAW.
 - **ArgyllCMS** (`colprof`) como motor de generación de perfiles ICC.
-- **ArgyllCMS** (`cctiff`/`xicclu`) como CMM para conversiones ICC de salida,
-  validación y preview de perfil.
+- **ArgyllCMS** (`xicclu`/`icclu`) como herramienta de validación del ICC real
+  generado.
+- **LittleCMS2**, vía Pillow `ImageCms`, como CMM de previsualización ICC.
+- **ArgyllCMS** (`cctiff`) se conserva por ahora para conversiones ICC de
+  salida explícitas.
 
 La meta es mantener un flujo científico reproducible y auditable con menos
 ramas de código y sin mapeos implícitos entre motores RAW distintos.
@@ -43,9 +46,10 @@ bash scripts/check_tools.sh
 probraw check-tools --strict --out tools_report.json
 ```
 
-`probraw check-tools` registra disponibilidad de ArgyllCMS y
-`exiftool`. Las versiones de `rawpy` y LibRaw quedan registradas en el contexto
-de ejecución (`run_context`).
+`probraw check-tools` registra disponibilidad de ArgyllCMS y `exiftool`.
+`probraw check-color-environment` registra además LittleCMS2, Qt/PySide,
+colord, Wayland/KWin y perfiles ICC del sistema. Las versiones de `rawpy` y
+LibRaw quedan registradas en el contexto de ejecución (`run_context`).
 
 ## Integración LibRaw/rawpy
 
@@ -123,6 +127,10 @@ Validación:
 Archivo clave:
 
 - `src/probraw/profile/export.py`
+
+Esta seccion describe la exportacion derivada actual. La previsualizacion ICC de
+la GUI no usa `xicclu`/`cctiff`: construye sus transformaciones con LittleCMS2
+mediante Pillow `ImageCms`, y cachea LUTs por perfil y version del CMM.
 
 Modos de salida:
 

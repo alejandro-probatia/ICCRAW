@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 from pathlib import Path
 import os
-import subprocess
 import threading
 from dataclasses import asdict
 from functools import lru_cache
@@ -12,9 +11,8 @@ import cv2
 import numpy as np
 import colour
 from colour.adaptation import matrix_chromatic_adaptation_VonKries
-from PIL import Image, ImageOps
+from PIL import Image, ImageCms, ImageOps
 
-from ..core.external import external_tool_path, run_external
 from ..core.models import Recipe
 from ..core.recipe import load_recipe
 from ..core.utils import RAW_EXTENSIONS, read_image
@@ -24,7 +22,7 @@ from .compat import open_rawpy, rawpy
 from .pipeline import develop_image_array, develop_standard_output_array, is_standard_output_space
 
 
-_PROFILE_PREVIEW_LUT_CACHE: dict[tuple[str, int], np.ndarray] = {}
+_PROFILE_PREVIEW_LUT_CACHE: dict[tuple[str, int, str], np.ndarray] = {}
 _STANDARD_TO_SRGB_MATRIX_CACHE: dict[str, np.ndarray] = {}
 _RADIAL_MAP_CACHE: dict[tuple[int, int, float], tuple[np.ndarray, np.ndarray]] = {}
 _RADIAL_MAP_CACHE_LOCK = threading.RLock()
@@ -1230,12 +1228,12 @@ def apply_profile_preview(image_linear_rgb: np.ndarray, profile_path: Path) -> n
 
 
 def _profile_preview_lut(profile_path: Path, *, grid_size: int) -> np.ndarray:
-    key = (_profile_cache_key(profile_path), int(grid_size))
+    key = (_profile_cache_key(profile_path), int(grid_size), _lcms_cache_key())
     cached = _PROFILE_PREVIEW_LUT_CACHE.get(key)
     if cached is not None:
         return cached
 
-    lut = _build_profile_preview_lut_with_argyll(profile_path, grid_size=grid_size)
+    lut = _build_profile_preview_lut_with_lcms(profile_path, grid_size=grid_size)
     _PROFILE_PREVIEW_LUT_CACHE[key] = lut
     if len(_PROFILE_PREVIEW_LUT_CACHE) > 8:
         oldest = next(iter(_PROFILE_PREVIEW_LUT_CACHE))
@@ -1252,48 +1250,35 @@ def _profile_cache_key(profile_path: Path) -> str:
         return str(profile_path)
 
 
-def _build_profile_preview_lut_with_argyll(profile_path: Path, *, grid_size: int) -> np.ndarray:
-    xicclu = external_tool_path("xicclu") or external_tool_path("icclu")
-    if xicclu is None:
-        raise RuntimeError("No se puede previsualizar ICC: 'xicclu'/'icclu' de ArgyllCMS no esta disponible.")
+def _lcms_cache_key() -> str:
+    return f"lcms2|{getattr(ImageCms.core, 'littlecms_version', 'unknown')}"
 
+
+def _build_profile_preview_lut_with_lcms(profile_path: Path, *, grid_size: int) -> np.ndarray:
     n = int(np.clip(grid_size, 3, 65))
     axis = np.linspace(0.0, 1.0, n, dtype=np.float64)
     rr, gg, bb = np.meshgrid(axis, axis, axis, indexing="ij")
     grid = np.stack([rr, gg, bb], axis=-1).reshape((-1, 3))
-    stdin = "\n".join(" ".join(f"{float(v):.10g}" for v in row) for row in grid) + "\n"
-    cmd = [
-        xicclu,
-        "-v0",
-        "-ff",
-        "-ir",
-        "-pl",
-        str(profile_path),
-    ]
-    proc = run_external(cmd, input=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if proc.returncode != 0:
-        stderr_tail = (proc.stderr or proc.stdout)[-800:]
-        raise RuntimeError(f"Fallo previsualizando ICC con {Path(xicclu).name}: {stderr_tail}")
 
-    lab_rows: list[list[float]] = []
-    for line in proc.stdout.splitlines():
-        parts = line.strip().split()
-        if len(parts) < 3:
-            continue
-        try:
-            lab_rows.append([float(parts[0]), float(parts[1]), float(parts[2])])
-        except ValueError as exc:
-            raise RuntimeError(f"Salida inesperada de {Path(xicclu).name}: {line}") from exc
-
-    if len(lab_rows) != grid.shape[0]:
-        raise RuntimeError(
-            f"{Path(xicclu).name} devolvio {len(lab_rows)} muestras Lab para {grid.shape[0]} entradas RGB"
+    try:
+        source = ImageCms.getOpenProfile(str(profile_path))
+        destination = ImageCms.createProfile("sRGB")
+        transform = ImageCms.buildTransformFromOpenProfiles(
+            source,
+            destination,
+            "RGB",
+            "RGB",
+            renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC,
         )
+    except Exception as exc:
+        raise RuntimeError(f"No se pudo construir preview ICC con LittleCMS: {profile_path}") from exc
 
-    d50_xy = colour.CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"]["D50"]
-    lab = np.asarray(lab_rows, dtype=np.float64)
-    xyz = colour.Lab_to_XYZ(lab, illuminant=d50_xy)
-    srgb = colour.XYZ_to_sRGB(xyz, illuminant=d50_xy, apply_cctf_encoding=True)
+    grid_u8 = np.clip(np.round(grid * 255.0), 0, 255).astype(np.uint8, copy=False)
+    image = Image.fromarray(grid_u8.reshape((n * n, n, 3)), "RGB")
+    converted = ImageCms.applyTransform(image, transform)
+    if converted is None:
+        raise RuntimeError("LittleCMS no devolvio imagen para la LUT de preview ICC.")
+    srgb = np.asarray(converted, dtype=np.float32).reshape((-1, 3)) / np.float32(255.0)
     return np.clip(srgb.reshape((n, n, n, 3)).astype(np.float32), 0.0, 1.0)
 
 

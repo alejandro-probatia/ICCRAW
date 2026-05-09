@@ -39,8 +39,9 @@ Politica:
 ProbRAW combina dependencias Python y herramientas externas:
 
 - `rawpy`/LibRaw o `rawpy-demosaic`/LibRaw para revelado RAW.
+- `LittleCMS2` via Pillow `ImageCms` para previsualizacion ICC gestionada.
 - `ArgyllCMS` (`colprof`, `xicclu`, `cctiff`) para construccion, validacion y
-  conversion de perfiles ICC.
+  conversiones derivadas de perfiles ICC.
 - `exiftool` para metadatos.
 - `PySide6` (Qt for Python, opcional) para GUI.
 

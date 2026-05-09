@@ -11,6 +11,9 @@ científica/forense.
 
 La metodología completa se describe en
 [Metodología de revelado RAW y gestión ICC](METODOLOGIA_COLOR_RAW.es.md).
+La integracion especifica con perfiles del sistema, LittleCMS2, WCS/ICM,
+ColorSync, colord, KDE/Wayland y validacion de entorno se documenta en
+[Gestión de Color del Sistema en ProbRAW](GESTION_COLOR_LINUX_PROBRAW.es.md).
 
 ## Principio de Diseño
 
@@ -114,8 +117,8 @@ Esta regla no es negociable en ProbRAW:
   debe sustituir al ICC de entrada de la imagen ni al ICC de monitor en la
   visualizacion gestionada.
 - Si falta el ICC del monitor o esta roto, es un problema de configuracion de
-  pantalla. No debe degradar silenciosamente una preview gestionada a una ruta
-  de pantalla sRGB.
+  pantalla. ProbRAW puede usar fallback visual sRGB solo de forma explicita y
+  reportada, sin sustituir el ICC de entrada ni convertir datos de analisis.
 
 ## Gestión de Color del Monitor
 
@@ -129,10 +132,10 @@ Detección:
 - Linux/BSD: `colord`, `colormgr` o `_ICC_PROFILE`.
 
 Si el perfil de monitor desaparece o no puede abrirse, ProbRAW registra el
-problema y considera la ruta de visualizacion gestionada no disponible hasta que
-se detecte o seleccione un ICC de monitor valido. Los bypass de diagnostico
-deben ser explicitos y no eliminan ni sustituyen el perfil de entrada de la
-imagen.
+problema y marca el estado como fallback visual sRGB hasta que se detecte o
+seleccione un ICC de monitor valido. Ese fallback es solo de visualizacion; no
+elimina ni sustituye el perfil de entrada de la imagen ni participa en recetas,
+histogramas colorimetricos, TIFF, Proof o manifiestos.
 
 ## Previsualización e Histograma
 
