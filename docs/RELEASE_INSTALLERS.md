@@ -146,6 +146,26 @@ zip.
 8. If a published asset turns out to be defective and GitHub does not allow it to be replaced,
    create a new revision of the release and mark the previous one with a warning.
 
+## Release 0.3.19
+
+Release 0.3.19 consolidates the post-0.3.18 packaging and preview work:
+
+- macOS packaging is available from versioned scripts and documented for
+  validation, optional signing and AMaZE checks,
+- Arch/CachyOS packaging and system ICC profile discovery remain documented for
+  native package builds,
+- first RAW preview loading can show an oriented provisional embedded preview
+  while the full render is prepared,
+- viewer geometry sidecar writes are flushed during fast file changes.
+
+Expected artifacts for the Windows release:
+
+- `ProbRAW-0.3.19-Setup.exe`
+- `ProbRAW-0.3.19-Setup.exe.sha256`
+- `probraw-0.3.19.tar.gz`
+- `probraw-0.3.19-py3-none-any.whl`
+- `probraw_0.3.19_python_artifacts.sha256`
+
 ## Release 0.3.18
 
 Release 0.3.18 fixes undo after viewer geometry changes:

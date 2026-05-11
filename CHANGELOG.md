@@ -20,6 +20,10 @@ To maintain full traceability, each change must:
 
 ## [Unreleased]
 
+No entries yet.
+
+## [0.3.19] - 2026-05-11
+
 ### Added
 
 - Added macOS packaging under `packaging/macos/` with a PyInstaller spec,
@@ -39,6 +43,9 @@ To maintain full traceability, each change must:
 - Documented system color management for Linux/Windows/macOS and the CMM
   contract: LittleCMS2 for preview, ArgyllCMS for creation, validation and
   derived conversions.
+- Added first-preview load progress and timing estimates for slower RAW opens.
+- Added regression coverage for preview loading, provisional RAW orientation,
+  MTF behavior and pending sidecar geometry writes.
 
 ### Changed
 
@@ -56,6 +63,12 @@ To maintain full traceability, each change must:
   path is available.
 - The `rawpy-demosaic` build adapts to current toolchains with a minimum CMake
   policy, `Cython>=3.1`, `numpy` and `np.set_array_base`.
+- RAW preview loading can show a correctly oriented provisional embedded
+  preview while the full render is prepared.
+- Viewer crop, rotation and leveling sidecar writes are flushed before file
+  changes so geometry is not lost during fast navigation.
+- Display cache and preview cache handling avoid unnecessary rebuilds while
+  keeping final TIFF rendering and ProbRAW Proof output reproducible.
 
 ### Tests
 
@@ -64,6 +77,9 @@ To maintain full traceability, each change must:
 - Validated on CachyOS with installed package `probraw 0.3.18-3`: `pacman -Qkk`
   with no altered files, `validate_cachyos_install.sh`, `check-tools --strict`,
   `check-amaze` and offscreen `probraw-ui` smoke.
+- Windows release build: `465 passed, 2 warnings`, `check-tools --strict`,
+  packaged CLI `--version`/`--help`, packaged `check-tools --strict`, C2PA and
+  AMaZE smoke checks.
 
 ## [0.3.18] - 2026-05-07
 

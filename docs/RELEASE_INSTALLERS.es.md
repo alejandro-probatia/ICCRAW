@@ -152,6 +152,28 @@ pruebas.
 8. Si un asset publicado resulta defectuoso y GitHub no permite reemplazarlo,
    crear una revision nueva de la release y marcar la anterior con un aviso.
 
+## Release 0.3.19
+
+La release 0.3.19 consolida el trabajo posterior a 0.3.18 en empaquetado y
+preview:
+
+- el empaquetado macOS queda disponible desde scripts versionados y documentado
+  para validacion, firma opcional y checks AMaZE,
+- el empaquetado Arch/CachyOS y la busqueda de perfiles ICC del sistema siguen
+  documentados para builds nativas,
+- la primera carga de preview RAW puede mostrar una preview embebida
+  provisional orientada mientras se prepara el render completo,
+- las escrituras de geometria del visor en sidecar se vacian durante cambios
+  rapidos de archivo.
+
+Artefactos esperados para la release Windows:
+
+- `ProbRAW-0.3.19-Setup.exe`
+- `ProbRAW-0.3.19-Setup.exe.sha256`
+- `probraw-0.3.19.tar.gz`
+- `probraw-0.3.19-py3-none-any.whl`
+- `probraw_0.3.19_python_artifacts.sha256`
+
 ## Release 0.3.18
 
 La release 0.3.18 corrige deshacer tras cambios de geometria de visor:

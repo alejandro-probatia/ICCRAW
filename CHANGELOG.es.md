@@ -18,6 +18,10 @@ Para mantener trazabilidad completa, cada cambio debe:
 
 ## [Unreleased]
 
+Sin entradas todavia.
+
+## [0.3.19] - 2026-05-11
+
 ### Added
 
 - Anadido empaquetado macOS en `packaging/macos/` con spec PyInstaller,
@@ -37,6 +41,10 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Documentada la gestion de color del sistema en Linux/Windows/macOS y el
   contrato de CMM: LittleCMS2 para preview, ArgyllCMS para creacion,
   validacion y conversiones derivadas.
+- Anadido progreso de primera carga de preview y estimaciones de tiempo para
+  aperturas RAW lentas.
+- Anadida cobertura de regresion para carga de preview, orientacion provisional
+  RAW, comportamiento MTF y escrituras pendientes de geometria en sidecar.
 
 ### Changed
 
@@ -54,6 +62,13 @@ Para mantener trazabilidad completa, cada cambio debe:
   sistema cuando no hay ruta previa.
 - La build `rawpy-demosaic` se adapta a toolchains actuales con CMake policy
   minima, `Cython>=3.1`, `numpy` y `np.set_array_base`.
+- La carga de preview RAW puede mostrar una preview embebida provisional con
+  orientacion correcta mientras se prepara el render completo.
+- Las escrituras de recorte, rotacion y nivelado del visor en sidecar se
+  vacian antes de cambiar de archivo para no perder geometria durante
+  navegacion rapida.
+- La gestion de cache de display y preview evita reconstrucciones innecesarias
+  manteniendo reproducible el render TIFF final y ProbRAW Proof.
 
 ### Tests
 
@@ -62,6 +77,9 @@ Para mantener trazabilidad completa, cada cambio debe:
 - Validado en CachyOS con paquete instalado `probraw 0.3.18-3`: `pacman -Qkk`
   sin ficheros alterados, `validate_cachyos_install.sh`, `check-tools --strict`,
   `check-amaze` y smoke `probraw-ui` offscreen.
+- Build de release Windows: `465 passed, 2 warnings`, `check-tools --strict`,
+  smoke de CLI empaquetada `--version`/`--help`, `check-tools --strict`
+  empaquetado, C2PA y AMaZE.
 
 ## [0.3.18] - 2026-05-07
 

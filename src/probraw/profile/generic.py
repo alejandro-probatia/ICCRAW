@@ -213,11 +213,7 @@ def _standard_profile_search_dirs() -> list[Path]:
         )
     else:
         data_home = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share").expanduser()
-        data_dirs = [
-            Path(item).expanduser()
-            for item in os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":")
-            if item.strip()
-        ]
+        data_dirs = [Path(item).expanduser() for item in _split_xdg_data_dirs() if item.strip()]
         dirs.extend(
             [
                 data_home / "color" / "icc",
@@ -237,14 +233,42 @@ def _standard_profile_search_dirs() -> list[Path]:
     seen: set[Path] = set()
     out: list[Path] = []
     for folder in dirs:
-        try:
-            resolved = folder.expanduser().resolve(strict=False)
-        except Exception:
-            resolved = folder
+        resolved = _normal_search_dir(folder)
         if resolved not in seen:
             seen.add(resolved)
             out.append(resolved)
     return out
+
+
+def _split_xdg_data_dirs() -> list[str]:
+    raw = os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share")
+    parts: list[str] = []
+    start = 0
+    index = 0
+    while index < len(raw):
+        if raw[index] == ":":
+            is_drive_separator = (
+                index == start + 1
+                and raw[start].isalpha()
+                and index + 1 < len(raw)
+                and raw[index + 1] in ("\\", "/")
+            )
+            if not is_drive_separator:
+                parts.append(raw[start:index])
+                start = index + 1
+        index += 1
+    parts.append(raw[start:])
+    return parts
+
+
+def _normal_search_dir(folder: Path) -> Path:
+    expanded = folder.expanduser()
+    if os.name == "nt" and sys.platform != "win32":
+        return expanded
+    try:
+        return expanded.resolve(strict=False)
+    except Exception:
+        return expanded
 
 
 def _find_standard_profile_by_filename(folders: list[Path], filenames: tuple[str, ...]) -> Path | None:

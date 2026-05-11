@@ -1,7 +1,7 @@
 # Maintainer: local ProbRAW build <local@probraw>
 
 pkgname=probraw
-pkgver=0.3.18
+pkgver=0.3.19
 pkgrel=${PROBRAW_ARCH_PKGREL:-1}
 pkgdesc="ProbRAW reproducible RAW and ICC session profiling"
 arch=('x86_64')
